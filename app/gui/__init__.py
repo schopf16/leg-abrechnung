@@ -1,0 +1,1 @@
+"""NiceGUI desktop user interface."""
