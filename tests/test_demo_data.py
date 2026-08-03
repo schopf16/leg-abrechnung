@@ -11,6 +11,7 @@ from app.domain.demo_data import (
 )
 from app.domain.period import quarter_bounds
 from app.models import participant as participant_repo
+from app.models import settings as settings_repo
 
 
 def test_create_demo_data_creates_five_participants_and_seven_meters(db):
@@ -19,6 +20,15 @@ def test_create_demo_data_creates_five_participants_and_seven_meters(db):
     assert len(summary.participant_ids) == 5
     assert len(summary.meter_ids) == 7
     assert summary.reading_count > 0
+
+
+def test_create_demo_data_configures_valid_demo_qr_iban(db):
+    """The generator fills in LEG settings so demo QR-invoices can be generated right away."""
+    create_demo_data(db)
+    settings = settings_repo.get_settings(db)
+    assert settings.qr_iban
+    assert settings.name
+    assert settings.address_street
 
 
 def test_create_demo_data_is_guarded_against_double_run(db):

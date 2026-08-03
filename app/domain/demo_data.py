@@ -23,10 +23,15 @@ from app.domain.period import INTERVAL_MINUTES, quarter_bounds
 from app.models import assignment as assignment_repo
 from app.models import meter as meter_repo
 from app.models import participant as participant_repo
+from app.models import settings as settings_repo
 from app.models.assignment import MeterAssignment
 from app.models.meter import Meter
 from app.models.participant import Participant
 from app.models.reading import Reading, upsert_readings
+
+#: Demo QR-IBAN (valid checksum, QR-IID range) so generated demo data can
+#: be used to produce QR-invoices end to end without manual configuration.
+_DEMO_QR_IBAN = "CH5730000123456789012"
 
 #: Year used for the generated demo quarters. Chosen in the past so both
 #: quarters are always complete, regardless of when the app is run.
@@ -205,6 +210,7 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     meters = _create_demo_meters(connection)
     _create_demo_assignments(connection, participants, meters)
     reading_count = _create_demo_readings(connection, meters)
+    _set_demo_leg_settings(connection)
 
     return DemoDataSummary(
         participant_ids=[p.id for p in participants.values()],
@@ -482,3 +488,27 @@ def _create_demo_readings(
         total += upsert_readings(connection, winter_readings)
         total += upsert_readings(connection, summer_readings)
     return total
+
+
+def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
+    """Fill in plausible LEG sender data and a valid demo QR-IBAN.
+
+    Lets the administrator generate real QR-invoice PDFs from the demo
+    data without first having to configure a real QR-IBAN. Only ever
+    called as part of `create_demo_data`, which itself only runs once on a
+    fresh database (see `demo_data_exists`).
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        None.
+    """
+    settings = settings_repo.get_settings(connection)
+    settings.name = "Energiegemeinschaft Sonnenweg (Demo)"
+    settings.address_street = "Sonnenweg 10"
+    settings.address_zip = "3000"
+    settings.address_city = "Bern"
+    settings.address_country = "CH"
+    settings.qr_iban = _DEMO_QR_IBAN
+    settings_repo.update_settings(connection, settings)

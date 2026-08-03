@@ -9,6 +9,7 @@ from app.domain.billing import create_or_replace_billing_run
 from app.gui.navigation import page_frame
 from app.models import billing_run as billing_run_repo
 from app.models import participant as participant_repo
+from app.pdf.export_service import export_billing_run_documents
 
 KIND_LABELS = {"rechnung": "Rechnung", "gutschrift": "Gutschrift"}
 
@@ -155,6 +156,44 @@ def abrechnung_page() -> None:
                     ).classes("w-full mt-2")
                 else:
                     ui.label("Keine Belege für dieses Quartal (keine lokale Verteilung).")
+
+                if items:
+                    ui.button(
+                        "PDFs erzeugen (Rechnungen, Gutschriften, Zahlliste)",
+                        on_click=lambda: export_documents(run.id),
+                    ).classes("mt-4")
+
+        def export_documents(run_id: int) -> None:
+            """Generate all PDFs for a billing run and report the outcome.
+
+            Args:
+                run_id: Database id of the billing run to export.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                run = billing_run_repo.get_run(connection, run_id)
+                export_result = export_billing_run_documents(connection, run)
+
+            with result_column:
+                with ui.card().classes("w-full mt-2"):
+                    ui.label(f"Dokumente gespeichert in: {export_result.output_dir}").classes(
+                        "font-bold"
+                    )
+                    ui.label(f"{len(export_result.document_paths)} Belege erzeugt.")
+                    if export_result.payment_list_path:
+                        ui.label(f"Zahlliste: {export_result.payment_list_path.name}")
+                    for error in export_result.errors:
+                        ui.label(f"⚠ {error}").classes("text-negative")
+
+            if export_result.errors:
+                ui.notify(
+                    f"{len(export_result.errors)} Beleg(e) konnten nicht erzeugt werden.",
+                    type="warning",
+                )
+            else:
+                ui.notify("PDFs erfolgreich erzeugt.", type="positive")
 
         def run_billing() -> None:
             """Compute (or recompute) the billing run for the selected quarter.
