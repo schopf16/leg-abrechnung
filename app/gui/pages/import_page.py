@@ -1,4 +1,4 @@
-"""Import page: upload an EBIX (.xml) or CSV file with meter readings."""
+"""Import page: upload one or many EBIX (.xml) / CSV files with meter readings."""
 
 import tempfile
 from pathlib import Path
@@ -22,8 +22,10 @@ def import_page() -> None:
     with page_frame("/import", "Import"):
         ui.label(
             "Messdaten der BKW importieren: EBIX (.xml) bevorzugt, CSV als "
-            "Rückfallebene. Ein mehrfacher Import derselben Periode dupliziert "
-            "keine Werte."
+            "Rückfallebene. Es können mehrere Dateien auf einmal ausgewählt "
+            "werden (im Dateidialog mit Strg+A bzw. Umschalt+Klick den "
+            "gesamten Ordnerinhalt markieren). Ein mehrfacher Import "
+            "derselben Periode dupliziert keine Werte."
         ).classes("text-body2 text-grey-8")
 
         result_column = ui.column().classes("w-full")
@@ -59,11 +61,45 @@ def import_page() -> None:
             ]
             history_table.update()
 
-        def show_outcome(outcome) -> None:
-            """Render the result of one import in the result panel.
+        def import_one_file(filename: str, data: bytes) -> tuple[str, str]:
+            """Import a single already-read file's bytes.
 
             Args:
-                outcome: `ImportOutcome` returned by `import_file`.
+                filename: Original filename, used to pick the parser and
+                    for display in the result panel.
+                data: Raw file content.
+
+            Returns:
+                A `(status, message)` tuple, `status` being "ok" or "error".
+            """
+            # Written into its own temp directory under the original
+            # filename (rather than a randomized tempfile name) so the
+            # import history shows the real filename, not "leg_import_xyz".
+            tmp_dir = Path(tempfile.mkdtemp(prefix="leg_import_"))
+            tmp_path = tmp_dir / Path(filename).name
+            tmp_path.write_bytes(data)
+
+            try:
+                with connection_scope() as connection:
+                    outcome = import_file(connection, tmp_path)
+            except ImportValidationError as exc:
+                return "error", f"{filename}: {exc}"
+            finally:
+                tmp_path.unlink(missing_ok=True)
+                tmp_dir.rmdir()
+
+            message = f"{filename}: {outcome.rows_stored} Werte gespeichert"
+            if outcome.period_from:
+                message += f" ({outcome.period_from} bis {outcome.period_to})"
+            if outcome.warnings:
+                message += " -- " + "; ".join(outcome.warnings)
+            return "ok", message
+
+        def show_results(results: list[tuple[str, str]]) -> None:
+            """Render the outcome of one or more imports in the result panel.
+
+            Args:
+                results: `(status, message)` tuples, one per imported file.
 
             Returns:
                 None.
@@ -71,45 +107,45 @@ def import_page() -> None:
             result_column.clear()
             with result_column:
                 with ui.card().classes("w-full"):
-                    ui.label(f"„{outcome.filename}“ importiert ({outcome.format.upper()})").classes(
+                    ok_count = sum(1 for status, _ in results if status == "ok")
+                    ui.label(f"{ok_count} von {len(results)} Datei(en) importiert").classes(
                         "text-md font-bold"
                     )
-                    ui.label(f"{outcome.rows_stored} Werte gespeichert.")
-                    if outcome.period_from:
-                        ui.label(f"Periode: {outcome.period_from} bis {outcome.period_to}")
-                    for warning in outcome.warnings:
-                        ui.label(f"⚠ {warning}").classes("text-negative text-body2")
+                    for status, message in results:
+                        css_class = "text-body2" if status == "ok" else "text-negative text-body2"
+                        symbol = "✓" if status == "ok" else "⚠"
+                        ui.label(f"{symbol} {message}").classes(css_class)
 
-        def handle_upload(event: events.UploadEventArguments) -> None:
-            """Handle a file selected via the upload widget: store and import it.
+        async def handle_multi_upload(event: events.MultiUploadEventArguments) -> None:
+            """Handle one or more files selected at once via the upload widget.
 
             Args:
-                event: NiceGUI upload event carrying the file name and content.
+                event: NiceGUI multi-upload event carrying all selected files.
 
             Returns:
                 None.
             """
-            suffix = Path(event.name).suffix
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=suffix, prefix="leg_import_"
-            ) as tmp_file:
-                tmp_file.write(event.content.read())
-                tmp_path = Path(tmp_file.name)
+            results = []
+            for file in event.files:
+                data = await file.read()
+                results.append(import_one_file(file.name, data))
 
-            try:
-                with connection_scope() as connection:
-                    outcome = import_file(connection, tmp_path)
-                show_outcome(outcome)
-                refresh_history()
-                ui.notify(f"{outcome.rows_stored} Werte importiert.", type="positive")
-            except ImportValidationError as exc:
-                ui.notify(f"Import fehlgeschlagen: {exc}", type="negative")
-            finally:
-                tmp_path.unlink(missing_ok=True)
+            show_results(results)
+            refresh_history()
+
+            ok_count = sum(1 for status, _ in results if status == "ok")
+            if ok_count == len(results):
+                ui.notify(f"{ok_count} Datei(en) erfolgreich importiert.", type="positive")
+            else:
+                ui.notify(
+                    f"{ok_count} von {len(results)} Datei(en) importiert, Rest fehlgeschlagen.",
+                    type="warning",
+                )
 
         ui.upload(
-            label="EBIX- oder CSV-Datei auswählen",
-            on_upload=handle_upload,
+            label="EBIX- oder CSV-Dateien auswählen (Mehrfachauswahl möglich)",
+            multiple=True,
+            on_multi_upload=handle_multi_upload,
             auto_upload=True,
         ).props('accept=".xml,.csv"').classes("w-full")
 
