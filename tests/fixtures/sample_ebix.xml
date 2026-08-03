@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder EBIX/SDAT-CH-style fixture (see app/importers/ebix_parser.py
+  for why this is an approximation, not a real BKW export). Two metering
+  points, one hour of 15-minute values each: one consumption (OBIS 1.8.0)
+  and one production (OBIS 2.8.0) time series.
+-->
+<DocumentSeries xmlns="urn:ebix-ch:sdat:demo:v1">
+  <MeteringPointTimeSeries>
+    <MeteringPointID>CH1000000000000000000000001</MeteringPointID>
+    <ObisCode>1.8.0</ObisCode>
+    <Period>
+      <Start>2025-07-01T00:00:00</Start>
+      <Resolution>PT15M</Resolution>
+      <Values>
+        <Value position="1">0.100</Value>
+        <Value position="2">0.150</Value>
+        <Value position="3">0.200</Value>
+        <Value position="4">0.120</Value>
+      </Values>
+    </Period>
+  </MeteringPointTimeSeries>
+  <MeteringPointTimeSeries>
+    <MeteringPointID>CH1000000000000000000000002</MeteringPointID>
+    <ObisCode>2.8.0</ObisCode>
+    <Period>
+      <Start>2025-07-01T00:00:00</Start>
+      <Resolution>PT15M</Resolution>
+      <Values>
+        <Value position="1">0.000</Value>
+        <Value position="2">0.050</Value>
+        <Value position="3">0.300</Value>
+        <Value position="4">0.400</Value>
+      </Values>
+    </Period>
+  </MeteringPointTimeSeries>
+</DocumentSeries>

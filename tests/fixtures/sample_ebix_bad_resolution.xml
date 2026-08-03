@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DocumentSeries xmlns="urn:ebix-ch:sdat:demo:v1">
+  <MeteringPointTimeSeries>
+    <MeteringPointID>CH1000000000000000000000001</MeteringPointID>
+    <ObisCode>1.8.0</ObisCode>
+    <Period>
+      <Start>2025-07-01T00:00:00</Start>
+      <Resolution>PT1H</Resolution>
+      <Values>
+        <Value position="1">1.000</Value>
+      </Values>
+    </Period>
+  </MeteringPointTimeSeries>
+</DocumentSeries>
