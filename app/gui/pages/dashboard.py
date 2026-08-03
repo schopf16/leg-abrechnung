@@ -50,3 +50,18 @@ def dashboard_page() -> None:
             "importieren Sie Messdaten und erstellen Sie darauf basierend "
             "quartalsweise Rechnungen und Gutschriften."
         )
+
+        if counts["participants"] == 0:
+            with ui.card().classes("mt-4 bg-blue-1"):
+                ui.label("Erste Schritte").classes("font-bold")
+                ui.label(
+                    "Es sind noch keine Teilnehmer erfasst. Legen Sie unter "
+                    "„Teilnehmer“ und „Zähler“ Ihre Stammdaten an, oder "
+                    "erzeugen Sie unter „Einstellungen“ Demo-Daten, um die "
+                    "App auszuprobieren."
+                )
+                with ui.row().classes("gap-2 mt-2"):
+                    ui.button("Zu den Einstellungen", on_click=lambda: ui.navigate.to("/einstellungen"))
+                    ui.button("Teilnehmer erfassen", on_click=lambda: ui.navigate.to("/teilnehmer")).props(
+                        "flat"
+                    )
