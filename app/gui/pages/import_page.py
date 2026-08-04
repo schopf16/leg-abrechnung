@@ -1,5 +1,8 @@
-"""Import page: upload one or many EBIX (.xml) / CSV files with meter readings."""
+"""Import page: select one or many EBIX (.xml) / CSV files, then explicitly
+start the import with visible per-file progress.
+"""
 
+import asyncio
 import tempfile
 from pathlib import Path
 
@@ -22,13 +25,26 @@ def import_page() -> None:
     with page_frame("/import", "Import"):
         ui.label(
             "Messdaten der BKW importieren: EBIX (.xml) bevorzugt, CSV als "
-            "Rückfallebene. Es können mehrere Dateien auf einmal ausgewählt "
-            "werden (im Dateidialog mit Strg+A bzw. Umschalt+Klick den "
-            "gesamten Ordnerinhalt markieren). Ein mehrfacher Import "
+            "Rückfallebene. Dateien auswählen (im Dateidialog mit Strg+A "
+            "bzw. Umschalt+Klick den gesamten Ordnerinhalt markieren) und "
+            "danach auf „Import starten“ klicken. Ein mehrfacher Import "
             "derselben Periode dupliziert keine Werte."
         ).classes("text-body2 text-grey-8")
 
-        result_column = ui.column().classes("w-full")
+        upload_widget = ui.upload(
+            label="1. Dateien auswählen (Mehrfachauswahl möglich)",
+            multiple=True,
+            auto_upload=False,
+        ).props('accept=".xml,.csv" hide-upload-btn').classes("w-full")
+
+        start_button = ui.button("2. Import starten", icon="play_arrow").classes("mt-2")
+
+        progress_column = ui.column().classes("w-full mt-4")
+        progress_label = ui.label().classes("text-body2")
+        progress_bar = ui.linear_progress(value=0, show_value=False).classes("w-full")
+        progress_column.visible = False
+
+        result_column = ui.column().classes("w-full mt-4")
         history_table = ui.table(
             columns=[
                 {"name": "imported_at", "label": "Importiert am", "field": "imported_at", "align": "left"},
@@ -117,7 +133,7 @@ def import_page() -> None:
                         ui.label(f"{symbol} {message}").classes(css_class)
 
         async def handle_multi_upload(event: events.MultiUploadEventArguments) -> None:
-            """Handle one or more files selected at once via the upload widget.
+            """Import every selected file, showing live per-file progress.
 
             Args:
                 event: NiceGUI multi-upload event carrying all selected files.
@@ -125,10 +141,29 @@ def import_page() -> None:
             Returns:
                 None.
             """
-            results = []
-            for file in event.files:
+            files = event.files
+            total = len(files)
+            results: list[tuple[str, str]] = []
+
+            start_button.disable()
+            progress_column.visible = True
+            result_column.clear()
+
+            for index, file in enumerate(files, start=1):
+                progress_label.text = f"Importiere Datei {index} von {total}: {file.name}"
+                progress_bar.value = (index - 1) / total
+                # Yield control so the progress update is actually sent to
+                # the browser before the (blocking) import work below runs.
+                await asyncio.sleep(0)
+
                 data = await file.read()
                 results.append(import_one_file(file.name, data))
+                progress_bar.value = index / total
+                await asyncio.sleep(0)
+
+            progress_label.text = f"Fertig: {total} von {total} Datei(en) verarbeitet."
+            start_button.enable()
+            upload_widget.reset()
 
             show_results(results)
             refresh_history()
@@ -142,12 +177,8 @@ def import_page() -> None:
                     type="warning",
                 )
 
-        ui.upload(
-            label="EBIX- oder CSV-Dateien auswählen (Mehrfachauswahl möglich)",
-            multiple=True,
-            on_multi_upload=handle_multi_upload,
-            auto_upload=True,
-        ).props('accept=".xml,.csv"').classes("w-full")
+        upload_widget.on_multi_upload(handle_multi_upload)
+        start_button.on_click(lambda: upload_widget.run_method("upload"))
 
         ui.label("Importhistorie").classes("text-lg font-bold mt-6")
         refresh_history()

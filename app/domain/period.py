@@ -1,6 +1,8 @@
 """Calendar-quarter helpers shared by the billing engine, demo data and GUI."""
 
+import sqlite3
 from datetime import datetime
+from typing import Optional
 
 #: First calendar month of each quarter, 1-indexed (quarter -> month).
 _QUARTER_START_MONTH = {1: 1, 2: 4, 3: 7, 4: 10}
@@ -58,3 +60,49 @@ def quarter_of(moment: datetime) -> tuple[int, int]:
         A `(year, quarter)` tuple.
     """
     return moment.year, (moment.month - 1) // 3 + 1
+
+
+def list_available_periods(connection: sqlite3.Connection) -> dict[int, set[int]]:
+    """Determine which (year, quarter) combinations actually have readings.
+
+    Used by the GUI to only ever offer year/quarter combinations that have
+    data, instead of letting the user pick a period that can never produce
+    a result.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A dict mapping calendar year to the set of quarter numbers (1-4)
+        for which at least one reading exists. Empty if there are no
+        readings at all.
+    """
+    rows = connection.execute(
+        "SELECT DISTINCT substr(timestamp, 1, 4) AS yr, substr(timestamp, 6, 2) AS mo FROM readings"
+    ).fetchall()
+    periods: dict[int, set[int]] = {}
+    for row in rows:
+        year = int(row["yr"])
+        month = int(row["mo"])
+        quarter = (month - 1) // 3 + 1
+        periods.setdefault(year, set()).add(quarter)
+    return periods
+
+
+def latest_available_period(
+    available: dict[int, set[int]]
+) -> Optional[tuple[int, int]]:
+    """Pick the most recent (year, quarter) that has data, as a GUI default.
+
+    Args:
+        available: Result of `list_available_periods`.
+
+    Returns:
+        The `(year, quarter)` with the highest year and, within that year,
+        the highest quarter -- or `None` if `available` is empty.
+    """
+    if not available:
+        return None
+    latest_year = max(available)
+    latest_quarter = max(available[latest_year])
+    return latest_year, latest_quarter

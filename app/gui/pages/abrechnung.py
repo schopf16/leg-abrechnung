@@ -1,36 +1,17 @@
 """Billing run page: compute, inspect and re-run quarterly billing."""
 
-from datetime import date
-
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.billing import create_or_replace_billing_run
+from app.domain.period import list_available_periods
 from app.gui.navigation import page_frame
+from app.gui.period_selector import build_period_selector
 from app.models import billing_run as billing_run_repo
 from app.models import participant as participant_repo
 from app.pdf.export_service import export_billing_run_documents
 
 KIND_LABELS = {"rechnung": "Rechnung", "gutschrift": "Gutschrift"}
-
-
-def _current_quarter() -> tuple[int, int]:
-    """Determine the calendar quarter before the current one (last completed).
-
-    Used as a sensible default selection: billing usually happens for a
-    quarter that has already ended.
-
-    Returns:
-        A `(year, quarter)` tuple.
-    """
-    today = date.today()
-    quarter = (today.month - 1) // 3 + 1
-    quarter -= 1
-    year = today.year
-    if quarter == 0:
-        quarter = 4
-        year -= 1
-    return year, quarter
 
 
 @ui.page("/abrechnung")
@@ -47,14 +28,18 @@ def abrechnung_page() -> None:
             "für dasselbe Quartal ersetzt den vorherigen vollständig."
         ).classes("text-body2 text-grey-8")
 
-        default_year, default_quarter = _current_quarter()
+        with connection_scope() as connection:
+            available_periods = list_available_periods(connection)
+
+        if not available_periods:
+            ui.label(
+                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der "
+                "Seite „Import“ Daten einlesen."
+            ).classes("text-negative mt-2")
+            return
+
         with ui.row().classes("items-end gap-2"):
-            year_input = ui.number("Jahr", value=default_year, format="%.0f").classes("w-28")
-            quarter_select = ui.select(
-                {1: "Q1 (Jan-Mär)", 2: "Q2 (Apr-Jun)", 3: "Q3 (Jul-Sep)", 4: "Q4 (Okt-Dez)"},
-                label="Quartal",
-                value=default_quarter,
-            ).classes("w-48")
+            selector = build_period_selector(available_periods)
             run_button = ui.button("Abrechnung erstellen / neu berechnen")
 
         result_column = ui.column().classes("w-full mt-4")
@@ -201,8 +186,11 @@ def abrechnung_page() -> None:
             Returns:
                 None.
             """
-            year = int(year_input.value)
-            quarter = int(quarter_select.value)
+            period = selector.selected_period
+            if period is None:
+                ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
+                return
+            year, quarter = period
             with connection_scope() as connection:
                 run, items, control_check, distribution = create_or_replace_billing_run(
                     connection, year, quarter

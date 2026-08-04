@@ -1,14 +1,14 @@
 """Reports page: per-participant quarterly overview and plausibility checks."""
 
-from datetime import date
-
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.billing import compute_billing_items, verify_sum_balance
 from app.domain.distribution import compute_quarter_distribution
+from app.domain.period import list_available_periods
 from app.domain.quality_checks import check_assignment_consistency, check_reading_completeness
 from app.gui.navigation import page_frame
+from app.gui.period_selector import build_period_selector
 from app.models import participant as participant_repo
 from app.models import settings as settings_repo
 
@@ -18,22 +18,6 @@ CATEGORY_LABELS = {
     "zuordnung_luecke": "Lücke in Zuordnung",
     "messdaten_luecke": "Lücke in Messdaten",
 }
-
-
-def _default_quarter() -> tuple[int, int]:
-    """Determine the calendar quarter before the current one.
-
-    Returns:
-        A `(year, quarter)` tuple.
-    """
-    today = date.today()
-    quarter = (today.month - 1) // 3 + 1
-    quarter -= 1
-    year = today.year
-    if quarter == 0:
-        quarter = 4
-        year -= 1
-    return year, quarter
 
 
 @ui.page("/auswertungen")
@@ -51,14 +35,18 @@ def auswertungen_page() -> None:
             "prüfungen über die gesamten Stammdaten."
         ).classes("text-body2 text-grey-8")
 
-        default_year, default_quarter = _default_quarter()
+        with connection_scope() as connection:
+            available_periods = list_available_periods(connection)
+
+        if not available_periods:
+            ui.label(
+                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der "
+                "Seite „Import“ Daten einlesen."
+            ).classes("text-negative mt-2")
+            return
+
         with ui.row().classes("items-end gap-2"):
-            year_input = ui.number("Jahr", value=default_year, format="%.0f").classes("w-28")
-            quarter_select = ui.select(
-                {1: "Q1 (Jan-Mär)", 2: "Q2 (Apr-Jun)", 3: "Q3 (Jul-Sep)", 4: "Q4 (Okt-Dez)"},
-                label="Quartal",
-                value=default_quarter,
-            ).classes("w-48")
+            selector = build_period_selector(available_periods)
             check_button = ui.button("Auswerten")
 
         overview_column = ui.column().classes("w-full mt-4")
@@ -70,8 +58,11 @@ def auswertungen_page() -> None:
             Returns:
                 None.
             """
-            year = int(year_input.value)
-            quarter = int(quarter_select.value)
+            period = selector.selected_period
+            if period is None:
+                ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
+                return
+            year, quarter = period
 
             with connection_scope() as connection:
                 price = settings_repo.get_settings(connection).price_rp_per_kwh
