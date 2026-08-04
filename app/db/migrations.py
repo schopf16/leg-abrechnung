@@ -130,4 +130,27 @@ MIGRATIONS: list[Migration] = [
             CREATE INDEX idx_items_run ON billing_run_items(billing_run_id);
         """,
     ),
+    Migration(
+        version=2,
+        description="One combined billing document per participant: "
+        "billing_run_items now holds a single net (Bezug minus Vergütung) "
+        "row per participant instead of separate 'rechnung'/'gutschrift' "
+        "rows, so each participant receives exactly one PDF.",
+        sql="""
+            DROP TABLE billing_run_items;
+
+            CREATE TABLE billing_run_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                billing_run_id INTEGER NOT NULL REFERENCES billing_runs(id) ON DELETE CASCADE,
+                participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE RESTRICT,
+                consumed_kwh REAL NOT NULL,
+                produced_kwh REAL NOT NULL,
+                price_rp_per_kwh REAL NOT NULL,
+                net_amount_rappen INTEGER NOT NULL,
+                pdf_path TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_items_run ON billing_run_items(billing_run_id);
+        """,
+    ),
 ]

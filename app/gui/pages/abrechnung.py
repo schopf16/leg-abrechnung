@@ -11,7 +11,22 @@ from app.models import billing_run as billing_run_repo
 from app.models import participant as participant_repo
 from app.pdf.export_service import export_billing_run_documents
 
-KIND_LABELS = {"rechnung": "Rechnung", "gutschrift": "Gutschrift"}
+
+def _type_label(item) -> str:
+    """German label for a billing item's net direction.
+
+    Args:
+        item: A `BillingRunItem`.
+
+    Returns:
+        "Rechnung" if the participant owes the LEG, "Gutschrift" if the
+        LEG owes the participant, "Ausgeglichen" if the net is zero.
+    """
+    if item.is_owed_to_leg:
+        return "Rechnung"
+    if item.is_owed_by_leg:
+        return "Gutschrift"
+    return "Ausgeglichen"
 
 
 @ui.page("/abrechnung")
@@ -109,31 +124,33 @@ def abrechnung_page() -> None:
                         ).classes("text-negative")
 
                     balance_text = (
-                        "✓ Summenabgleich Rechnungen ↔ Gutschriften OK"
+                        "✓ Summenabgleich OK (Rechnungen ≈ Gutschriften)"
                         if control_check.balanced
                         else "⚠ Summenabgleich weicht ab!"
                     )
                     balance_class = "text-positive" if control_check.balanced else "text-negative"
                     ui.label(
                         f"{balance_text} "
-                        f"(Rechnungen: {control_check.total_invoices_rappen / 100:.2f} CHF, "
-                        f"Gutschriften: {control_check.total_credits_rappen / 100:.2f} CHF)"
+                        f"(offen zugunsten LEG: {control_check.total_owed_to_leg_rappen / 100:.2f} CHF, "
+                        f"offen zulasten LEG: {control_check.total_owed_by_leg_rappen / 100:.2f} CHF)"
                     ).classes(balance_class)
 
                 if items:
                     ui.table(
                         columns=[
                             {"name": "participant", "label": "Teilnehmer", "field": "participant", "align": "left"},
-                            {"name": "kind", "label": "Typ", "field": "kind", "align": "left"},
-                            {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
-                            {"name": "amount", "label": "Betrag (CHF)", "field": "amount", "align": "right"},
+                            {"name": "typ", "label": "Typ", "field": "typ", "align": "left"},
+                            {"name": "consumed", "label": "Bezug (kWh)", "field": "consumed", "align": "right"},
+                            {"name": "produced", "label": "Vergütung (kWh)", "field": "produced", "align": "right"},
+                            {"name": "amount", "label": "Netto-Betrag (CHF)", "field": "amount", "align": "right"},
                         ],
                         rows=[
                             {
                                 "participant": participant_names.get(i.participant_id, "?"),
-                                "kind": KIND_LABELS.get(i.kind, i.kind),
-                                "kwh": f"{i.kwh:.3f}",
-                                "amount": f"{i.amount_chf:.2f}",
+                                "typ": _type_label(i),
+                                "consumed": f"{i.consumed_kwh:.3f}",
+                                "produced": f"{i.produced_kwh:.3f}",
+                                "amount": f"{i.net_amount_chf:.2f}",
                             }
                             for i in items
                         ],
@@ -144,7 +161,7 @@ def abrechnung_page() -> None:
 
                 if items:
                     ui.button(
-                        "PDFs erzeugen (Rechnungen, Gutschriften, Zahlliste)",
+                        "PDFs erzeugen (1 Abrechnung je Teilnehmer + Zahlliste)",
                         on_click=lambda: export_documents(run.id),
                     ).classes("mt-4")
 

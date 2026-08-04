@@ -226,3 +226,36 @@ def test_unassigned_meter_reading_is_tracked_not_dropped(db):
     assert result.participant_results[producer].produced_local_kwh == pytest.approx(4.0)
     assert result.participant_results[producer].consumed_local_kwh == 0.0
     assert result.unassigned_kwh == pytest.approx(4.0)
+
+
+def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
+    """Each participant's monthly dicts cover all 3 quarter months and sum to the total."""
+    consumer = _participant(db, "Consumer")
+    producer = _participant(db, "Producer")
+    consumption_meter = _meter(db, "M-C1", "bezug")
+    production_meter = _meter(db, "M-P1", "produktion")
+    _assign(db, consumption_meter, consumer, date(YEAR, 1, 1))
+    _assign(db, production_meter, producer, date(YEAR, 1, 1))
+
+    # January and March get readings; February gets none (must still show as 0).
+    _reading(db, consumption_meter, datetime(YEAR, 1, 15, 12, 0), "bezug", 4.0)
+    _reading(db, production_meter, datetime(YEAR, 1, 15, 12, 0), "produktion", 4.0)
+    _reading(db, consumption_meter, datetime(YEAR, 3, 20, 12, 0), "bezug", 2.0)
+    _reading(db, production_meter, datetime(YEAR, 3, 20, 12, 0), "produktion", 2.0)
+
+    result = compute_quarter_distribution(db, YEAR, QUARTER)
+    consumer_result = result.participant_results[consumer]
+    producer_result = result.participant_results[producer]
+
+    assert set(consumer_result.consumed_by_month.keys()) == {1, 2, 3}
+    assert consumer_result.consumed_by_month[1] == pytest.approx(4.0)
+    assert consumer_result.consumed_by_month[2] == pytest.approx(0.0)
+    assert consumer_result.consumed_by_month[3] == pytest.approx(2.0)
+    assert sum(consumer_result.consumed_by_month.values()) == pytest.approx(
+        consumer_result.consumed_local_kwh
+    )
+
+    assert set(producer_result.produced_by_month.keys()) == {1, 2, 3}
+    assert sum(producer_result.produced_by_month.values()) == pytest.approx(
+        producer_result.produced_local_kwh
+    )

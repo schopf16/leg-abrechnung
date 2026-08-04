@@ -1,8 +1,15 @@
-"""Turns a quarter's distribution result into invoices, credit notes and a
-sum-balance control check (project brief, section 5, points 6-8).
+"""Turns a quarter's distribution result into one combined billing item per
+participant, and a sum-balance control check (project brief, section 5,
+points 6-9).
 
-Prosumers (consumption *and* production) always get both a separate
-invoice and a separate credit note -- amounts are never netted.
+Every participant gets exactly one document: their locally-sourced
+consumption ("Bezug") and locally-delivered production ("Vergütung") are
+computed independently and only *netted together at the very end* --
+`consumed_value - produced_value` -- with rounding to the nearest Rappen
+happening exactly once, on that final net amount. Intermediate figures
+(monthly and quarterly kWh, subtotal values) stay at full precision and
+are only *formatted* for display, never independently rounded and re-added,
+so rounding error can never compound across a document.
 """
 
 import sqlite3
@@ -17,35 +24,41 @@ from app.models.billing_run import BillingRun, BillingRunItem
 
 @dataclass
 class ControlCheckResult:
-    """Outcome of verifying that invoices and credit notes balance.
+    """Outcome of verifying that the LEG is a pure pass-through.
 
-    At a uniform price, the sum of all invoices must equal the sum of all
-    credit notes (see the distribution engine's docstring: every interval's
-    shared energy `S(t)` is split identically on both sides). Independent
-    per-item Rappen rounding can introduce a tiny difference, which is
+    At a uniform price, every interval's shared energy `S(t)` is split
+    identically between its consumption side and its production side (see
+    the distribution engine's docstring), so before rounding, the sum of
+    every participant's net amount (`consumed_value - produced_value`)
+    across the whole run is exactly zero -- money owed *to* the LEG by
+    consumers equals money owed *by* the LEG to producers. Independent
+    per-participant Rappen rounding can introduce a tiny difference,
     accepted only up to `tolerance_rappen`.
 
     Attributes:
-        total_invoices_rappen: Sum of all "rechnung" line items, in Rappen.
-        total_credits_rappen: Sum of all "gutschrift" line items, in Rappen.
-        difference_rappen: `total_invoices_rappen - total_credits_rappen`.
+        total_owed_to_leg_rappen: Sum of all positive net amounts (money
+            consumers owe the LEG), in Rappen.
+        total_owed_by_leg_rappen: Sum of the absolute value of all negative
+            net amounts (money the LEG owes producers), in Rappen.
+        difference_rappen: `total_owed_to_leg_rappen - total_owed_by_leg_rappen`.
         tolerance_rappen: Maximum acceptable absolute difference, one
-            Rappen per line item (worst-case independent rounding).
+            Rappen per participant (worst-case independent rounding).
         balanced: Whether `difference_rappen` is within tolerance.
     """
 
-    total_invoices_rappen: int
-    total_credits_rappen: int
+    total_owed_to_leg_rappen: int
+    total_owed_by_leg_rappen: int
     difference_rappen: int
     tolerance_rappen: int
     balanced: bool
 
 
-def _round_to_rappen(amount_rappen: float) -> int:
+def round_to_rappen(amount_rappen: float) -> int:
     """Round a fractional Rappen amount to the nearest whole Rappen.
 
     Uses standard "round half up" as is customary for Swiss franc amounts,
     via `Decimal` to avoid binary floating-point surprises at the boundary.
+    This is the *only* place rounding happens in the billing computation.
 
     Args:
         amount_rappen: Amount in Rappen (1/100 CHF), typically
@@ -62,11 +75,13 @@ def _round_to_rappen(amount_rappen: float) -> int:
 def compute_billing_items(
     distribution: DistributionResult, price_rp_per_kwh: float
 ) -> list[BillingRunItem]:
-    """Derive invoice and credit note line items from a distribution result.
+    """Derive one combined, netted billing item per participant.
 
-    A participant with zero locally-sourced consumption gets no invoice
-    line; a participant with zero locally-delivered production gets no
-    credit note line. A prosumer with both gets one of each.
+    A participant with locally-sourced consumption and/or locally-delivered
+    production during the quarter gets exactly one item; participants with
+    neither (no local sharing at all) get none. Consumption value and
+    production value are computed at full precision and only netted --
+    and rounded -- at the very end, per participant.
 
     Args:
         distribution: Result of `compute_quarter_distribution`.
@@ -78,56 +93,46 @@ def compute_billing_items(
     """
     items: list[BillingRunItem] = []
     for participant_id, totals in sorted(distribution.participant_results.items()):
-        if totals.consumed_local_kwh > 0:
-            amount = totals.consumed_local_kwh * price_rp_per_kwh
-            items.append(
-                BillingRunItem(
-                    id=None,
-                    billing_run_id=0,
-                    participant_id=participant_id,
-                    kind="rechnung",
-                    kwh=totals.consumed_local_kwh,
-                    price_rp_per_kwh=price_rp_per_kwh,
-                    amount_rappen=_round_to_rappen(amount),
-                    pdf_path=None,
-                    created_at="",
-                )
+        if totals.consumed_local_kwh <= 0 and totals.produced_local_kwh <= 0:
+            continue
+
+        consumed_value_rappen = totals.consumed_local_kwh * price_rp_per_kwh
+        produced_value_rappen = totals.produced_local_kwh * price_rp_per_kwh
+        net_value_rappen = consumed_value_rappen - produced_value_rappen
+
+        items.append(
+            BillingRunItem(
+                id=None,
+                billing_run_id=0,
+                participant_id=participant_id,
+                consumed_kwh=totals.consumed_local_kwh,
+                produced_kwh=totals.produced_local_kwh,
+                price_rp_per_kwh=price_rp_per_kwh,
+                net_amount_rappen=round_to_rappen(net_value_rappen),
+                pdf_path=None,
+                created_at="",
             )
-        if totals.produced_local_kwh > 0:
-            amount = totals.produced_local_kwh * price_rp_per_kwh
-            items.append(
-                BillingRunItem(
-                    id=None,
-                    billing_run_id=0,
-                    participant_id=participant_id,
-                    kind="gutschrift",
-                    kwh=totals.produced_local_kwh,
-                    price_rp_per_kwh=price_rp_per_kwh,
-                    amount_rappen=_round_to_rappen(amount),
-                    pdf_path=None,
-                    created_at="",
-                )
-            )
+        )
     return items
 
 
 def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
-    """Check that total invoices and total credit notes balance out.
+    """Check that money owed to the LEG balances money owed by the LEG.
 
     Args:
-        items: Billing run line items (invoices and credit notes mixed).
+        items: Netted billing run items for one run.
 
     Returns:
         A `ControlCheckResult` describing the balance and whether it is
         within the accepted rounding tolerance.
     """
-    total_invoices = sum(i.amount_rappen for i in items if i.kind == "rechnung")
-    total_credits = sum(i.amount_rappen for i in items if i.kind == "gutschrift")
-    difference = total_invoices - total_credits
+    total_owed_to_leg = sum(i.net_amount_rappen for i in items if i.net_amount_rappen > 0)
+    total_owed_by_leg = sum(-i.net_amount_rappen for i in items if i.net_amount_rappen < 0)
+    difference = total_owed_to_leg - total_owed_by_leg
     tolerance = max(1, len(items))
     return ControlCheckResult(
-        total_invoices_rappen=total_invoices,
-        total_credits_rappen=total_credits,
+        total_owed_to_leg_rappen=total_owed_to_leg,
+        total_owed_by_leg_rappen=total_owed_by_leg,
         difference_rappen=difference,
         tolerance_rappen=tolerance,
         balanced=abs(difference) <= tolerance,

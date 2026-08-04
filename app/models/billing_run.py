@@ -52,17 +52,27 @@ class BillingRun:
 
 @dataclass
 class BillingRunItem:
-    """One invoice or credit note line within a billing run.
+    """One participant's combined billing document within a billing run.
+
+    Every participant gets exactly one item, and one resulting PDF,
+    regardless of whether they only consume, only produce, or both:
+    consumption ("Bezug") and production ("Vergütung") are netted into a
+    single amount. A positive `net_amount_rappen` means the participant
+    owes the LEG (an invoice); negative means the LEG owes the participant
+    (a credit, paid out via the payment list).
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         billing_run_id: Foreign key to the parent `BillingRun`.
-        participant_id: Foreign key to the billed/credited participant.
-        kind: "rechnung" (invoice, for consumption) or "gutschrift" (credit
-            note, for production).
-        kwh: Locally shared energy amount in kWh (3 decimal precision).
+        participant_id: Foreign key to the billed participant.
+        consumed_kwh: Total locally-sourced consumption for the quarter
+            (3 decimal precision).
+        produced_kwh: Total locally-delivered production for the quarter
+            (3 decimal precision).
         price_rp_per_kwh: Price applied, copied from the parent run.
-        amount_rappen: Final amount in Rappen (1/100 CHF), rounded.
+        net_amount_rappen: `consumed_kwh * price - produced_kwh * price`,
+            rounded to the nearest Rappen -- the *only* rounding step in
+            the whole billing computation (see `app.domain.billing`).
         pdf_path: Filesystem path of the generated PDF, once created.
         created_at: ISO-8601 creation timestamp.
     """
@@ -70,21 +80,40 @@ class BillingRunItem:
     id: Optional[int]
     billing_run_id: int
     participant_id: int
-    kind: str
-    kwh: float
+    consumed_kwh: float
+    produced_kwh: float
     price_rp_per_kwh: float
-    amount_rappen: int
+    net_amount_rappen: int
     pdf_path: Optional[str]
     created_at: str
 
     @property
-    def amount_chf(self) -> float:
-        """Amount in Swiss francs, derived from `amount_rappen`.
+    def net_amount_chf(self) -> float:
+        """Net amount in Swiss francs, derived from `net_amount_rappen`.
 
         Returns:
-            The amount as a float in CHF (Rappen / 100).
+            The amount as a float in CHF (Rappen / 100). Positive means
+            owed to the LEG, negative means owed by the LEG.
         """
-        return self.amount_rappen / 100
+        return self.net_amount_rappen / 100
+
+    @property
+    def is_owed_to_leg(self) -> bool:
+        """Whether the participant owes the LEG money (a real, payable invoice).
+
+        Returns:
+            `True` if `net_amount_rappen` is strictly positive.
+        """
+        return self.net_amount_rappen > 0
+
+    @property
+    def is_owed_by_leg(self) -> bool:
+        """Whether the LEG owes the participant a payout.
+
+        Returns:
+            `True` if `net_amount_rappen` is strictly negative.
+        """
+        return self.net_amount_rappen < 0
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "BillingRunItem":
@@ -100,10 +129,10 @@ class BillingRunItem:
             id=row["id"],
             billing_run_id=row["billing_run_id"],
             participant_id=row["participant_id"],
-            kind=row["kind"],
-            kwh=row["kwh"],
+            consumed_kwh=row["consumed_kwh"],
+            produced_kwh=row["produced_kwh"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
-            amount_rappen=row["amount_rappen"],
+            net_amount_rappen=row["net_amount_rappen"],
             pdf_path=row["pdf_path"],
             created_at=row["created_at"],
         )
@@ -225,17 +254,17 @@ def add_items(
         cursor = connection.execute(
             """
             INSERT INTO billing_run_items
-                (billing_run_id, participant_id, kind, kwh, price_rp_per_kwh,
-                 amount_rappen, pdf_path, created_at)
+                (billing_run_id, participant_id, consumed_kwh, produced_kwh,
+                 price_rp_per_kwh, net_amount_rappen, pdf_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 item.billing_run_id,
                 item.participant_id,
-                item.kind,
-                item.kwh,
+                item.consumed_kwh,
+                item.produced_kwh,
                 item.price_rp_per_kwh,
-                item.amount_rappen,
+                item.net_amount_rappen,
                 item.pdf_path,
                 datetime.now(timezone.utc).isoformat(),
             ),
@@ -255,13 +284,13 @@ def list_items(
         billing_run_id: Primary key of the parent billing run.
 
     Returns:
-        All line items for the run, ordered by kind then participant id.
+        All line items for the run, ordered by participant id.
     """
     rows = connection.execute(
         """
         SELECT * FROM billing_run_items
         WHERE billing_run_id = ?
-        ORDER BY kind, participant_id
+        ORDER BY participant_id
         """,
         (billing_run_id,),
     ).fetchall()

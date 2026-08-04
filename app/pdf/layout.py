@@ -1,9 +1,5 @@
-"""Shared A4 letterhead drawing helpers for invoices and credit notes.
-
-Both document types share the same sender/recipient block, title and
-line-item table; only the payment section below differs (Swiss QR-bill for
-invoices, plain IBAN note for credit notes -- see `app.pdf.invoice_pdf` and
-`app.pdf.credit_pdf`).
+"""Shared A4 letterhead and table drawing helpers for the combined
+per-participant billing document (see `app.pdf.participant_bill_pdf`).
 """
 
 from reportlab.lib.pagesizes import A4
@@ -130,49 +126,94 @@ def draw_intro_text(canvas: Canvas, text: str, top_y: float) -> float:
     return top_y - 10 * mm
 
 
-def draw_items_table(
+def draw_monthly_table(
     canvas: Canvas,
     top_y: float,
-    rows: list[tuple[str, str, str]],
-    total_label: str,
-    total_value: str,
+    section_title: str,
+    rows: list[tuple[str, str, str, str]],
+    subtotal_label: str,
+    subtotal_value: str,
 ) -> float:
-    """Draw a simple three-column line-item table with a total row.
+    """Draw a per-month energy table (Monat | kWh | Rp./kWh | Betrag) with a subtotal.
 
     Args:
         canvas: Target canvas.
-        top_y: Y-coordinate (points from page bottom) of the table's top edge.
-        rows: `(description, quantity_and_price, amount)` tuples.
-        total_label: Label for the total row, e.g. "Total (keine MWST)".
-        total_value: Formatted total amount, e.g. "123.45 CHF".
+        top_y: Y-coordinate (points from page bottom) of the section's top edge.
+        section_title: Section heading, e.g. "Bezug" or "Vergütung (Produktion)".
+        rows: `(month_label, kwh_text, price_text, amount_text)` tuples,
+            one per calendar month of the billing period.
+        subtotal_label: Label for the subtotal row, e.g. "Zwischensumme Bezug".
+        subtotal_value: Formatted subtotal amount, e.g. "123.45 CHF". This
+            is a *display* figure only -- see the module docstring of
+            `app.domain.billing` for why rounding never happens here.
 
     Returns:
-        The y-coordinate directly below the table.
+        The y-coordinate directly below the section.
     """
-    col_description_x = _LEFT_MARGIN
-    col_quantity_x = PAGE_WIDTH - 80 * mm
+    col_month_x = _LEFT_MARGIN
+    col_kwh_x = PAGE_WIDTH - 95 * mm
+    col_price_x = PAGE_WIDTH - 60 * mm
     col_amount_x = PAGE_WIDTH - _RIGHT_MARGIN
 
     y = top_y
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.drawString(_LEFT_MARGIN, y, section_title)
+    y -= 8 * mm
+
     canvas.setFont("Helvetica-Bold", 9)
-    canvas.drawString(col_description_x, y, "Position")
-    canvas.drawString(col_quantity_x, y, "Menge / Preis")
-    canvas.drawRightString(col_amount_x, y, "Betrag")
+    canvas.drawString(col_month_x, y, "Monat")
+    canvas.drawRightString(col_kwh_x, y, "kWh")
+    canvas.drawRightString(col_price_x, y, "Rp./kWh")
+    canvas.drawRightString(col_amount_x, y, "Betrag (CHF)")
     y -= 6
     canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
     y -= 12
 
     canvas.setFont("Helvetica", 9)
-    for description, quantity, amount in rows:
-        canvas.drawString(col_description_x, y, description)
-        canvas.drawString(col_quantity_x, y, quantity)
-        canvas.drawRightString(col_amount_x, y, amount)
+    for month_label, kwh_text, price_text, amount_text in rows:
+        canvas.drawString(col_month_x, y, month_label)
+        canvas.drawRightString(col_kwh_x, y, kwh_text)
+        canvas.drawRightString(col_price_x, y, price_text)
+        canvas.drawRightString(col_amount_x, y, amount_text)
         y -= 14
 
     y -= 4
     canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
     y -= 14
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(col_description_x, y, total_label)
-    canvas.drawRightString(col_amount_x, y, total_value)
-    return y - 10 * mm
+    canvas.drawString(col_month_x, y, subtotal_label)
+    canvas.drawRightString(col_amount_x, y, subtotal_value)
+    return y - 12 * mm
+
+
+def draw_net_settlement(
+    canvas: Canvas, top_y: float, label: str, value: str, note: str
+) -> float:
+    """Draw the final, rounded net settlement line and an explanatory note.
+
+    This is the only place a rounded monetary figure appears on the page
+    (see `app.domain.billing`): everything above it is either an unrounded
+    display figure or a per-month kWh quantity.
+
+    Args:
+        canvas: Target canvas.
+        top_y: Y-coordinate (points from page bottom) to start at.
+        label: Label for the net amount, e.g. "Netto-Betrag (keine MWST)".
+        value: Formatted, rounded net amount, e.g. "34.50 CHF".
+        note: Short explanatory sentence shown below the amount.
+
+    Returns:
+        The y-coordinate directly below the drawn section.
+    """
+    y = top_y
+    canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
+    y -= 16
+    canvas.setFont("Helvetica-Bold", 13)
+    canvas.drawString(_LEFT_MARGIN, y, label)
+    canvas.drawRightString(PAGE_WIDTH - _RIGHT_MARGIN, y, value)
+    y -= 8 * mm
+    canvas.setFont("Helvetica", 9)
+    for line in note.split("\n"):
+        canvas.drawString(_LEFT_MARGIN, y, line)
+        y -= 12
+    return y

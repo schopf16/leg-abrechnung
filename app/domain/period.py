@@ -1,7 +1,8 @@
 """Calendar-quarter helpers shared by the billing engine, demo data and GUI."""
 
+import calendar
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 #: First calendar month of each quarter, 1-indexed (quarter -> month).
@@ -9,6 +10,12 @@ _QUARTER_START_MONTH = {1: 1, 2: 4, 3: 7, 4: 10}
 
 #: Interval length used throughout the app, in minutes.
 INTERVAL_MINUTES = 15
+
+#: German month names, 1-indexed (index 0 unused).
+MONTH_NAMES_DE = [
+    "", "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+]
 
 
 def quarter_bounds(year: int, quarter: int) -> tuple[datetime, datetime]:
@@ -106,3 +113,49 @@ def latest_available_period(
     latest_year = max(available)
     latest_quarter = max(available[latest_year])
     return latest_year, latest_quarter
+
+
+def months_in_quarter(year: int, quarter: int) -> list[tuple[int, int]]:
+    """List the three calendar months making up a quarter.
+
+    Args:
+        year: Calendar year.
+        quarter: Quarter number, 1 to 4.
+
+    Returns:
+        `(year, month)` pairs in chronological order, e.g. for Q1 2025:
+        `[(2025, 1), (2025, 2), (2025, 3)]`.
+    """
+    start_month = _QUARTER_START_MONTH[quarter]
+    return [(year, start_month + offset) for offset in range(3)]
+
+
+def month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Compute the first and last calendar day of a month.
+
+    Args:
+        year: Calendar year.
+        month: Calendar month, 1 to 12.
+
+    Returns:
+        A `(first_day, last_day)` tuple, both inclusive.
+    """
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+
+def month_label_de(year: int, month: int) -> str:
+    """Format a calendar month as a German label with its date range.
+
+    Args:
+        year: Calendar year.
+        month: Calendar month, 1 to 12.
+
+    Returns:
+        A label such as "Januar (01.01-31.01)".
+    """
+    first_day, last_day = month_bounds(year, month)
+    return (
+        f"{MONTH_NAMES_DE[month]} "
+        f"({first_day.strftime('%d.%m')}-{last_day.strftime('%d.%m')})"
+    )

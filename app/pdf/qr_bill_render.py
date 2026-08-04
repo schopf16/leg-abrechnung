@@ -1,16 +1,42 @@
-"""Builds a `qrbill.QRBill` and renders it as the bottom section of an A4 PDF page."""
+"""Builds a `qrbill.QRBill` and renders it as the bottom section of an A4 PDF page.
+
+When a participant is owed money by the LEG (a net credit), the QR-bill
+still has to be printed for a consistent document layout, but must never
+be usable to actually transfer money: `build_qr_bill` is called with
+`amount=None`, which makes qrbill itself omit the amount from the encoded
+QR data (an "open amount" bill nobody can auto-pay a fixed sum with), and
+`draw_void_amount_overlay` additionally prints a visible "***.**" over
+both amount fields so a human reading the printed page immediately sees
+it is void, not merely blank by mistake.
+"""
 
 import tempfile
 from decimal import Decimal
 from pathlib import Path
+from typing import Optional
 
 from qrbill import QRBill
 from reportlab.graphics import renderPDF
+from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 from svglib.svglib import svg2rlg
 
 from app.models.participant import Participant
 from app.models.settings import LegSettings
+from app.pdf.layout import PAGE_HEIGHT
+
+#: Placeholder text printed over a voided QR-bill's amount fields.
+VOID_AMOUNT_TEXT = "***.**"
+
+# Coordinates below mirror the "amount" blank-rectangle positions qrbill's
+# own draw_bill() computes internally (qrbill/bill.py, draw_blank_rect calls
+# for the "Amount" field). They are not exposed by the library, so are
+# reproduced here from its fixed, standardized full-page layout: bill
+# margin 5mm, RECEIPT_WIDTH 62mm, currency_top at 73mm within the 106mm-tall
+# bill block, which full_page=True places starting at 297mm - 106mm = 191mm
+# from the top of the A4 page.
+_RECEIPT_AMOUNT_BOX_MM = (30, 262, 27, 11)  # x, y (from page top), width, height
+_PAYMENT_AMOUNT_BOX_MM = (79, 267, 40, 15)
 
 
 class QrBillConfigurationError(Exception):
@@ -22,15 +48,21 @@ class QrBillConfigurationError(Exception):
 
 
 def build_qr_bill(
-    settings: LegSettings, participant: Participant, amount_chf: Decimal, reference: str
+    settings: LegSettings,
+    participant: Participant,
+    amount_chf: Optional[Decimal],
+    reference: str,
 ) -> QRBill:
-    """Construct a `QRBill` for one invoice.
+    """Construct a `QRBill` for one participant.
 
     Args:
         settings: LEG settings providing the creditor (payee) account and
             address.
         participant: The billed participant, used as the debtor address.
-        amount_chf: Amount to collect, in Swiss francs.
+        amount_chf: Amount to collect, in Swiss francs, or `None` to create
+            a QR-bill with no fixed amount encoded (used when the
+            participant is owed money by the LEG instead -- see
+            `draw_void_amount_overlay`).
         reference: 27-digit QRR reference number, see
             `app.pdf.qr_reference.generate_qrr_reference`.
 
@@ -58,7 +90,7 @@ def build_qr_bill(
                 "city": participant.address_city,
                 "country": participant.address_country or "CH",
             },
-            amount=str(amount_chf),
+            amount=str(amount_chf) if amount_chf is not None else None,
             reference_number=reference,
             language="de",
         )
@@ -89,3 +121,25 @@ def draw_qr_bill(canvas: Canvas, bill: QRBill) -> None:
         bill.as_svg(str(svg_path), full_page=True)
         drawing = svg2rlg(str(svg_path))
         renderPDF.draw(drawing, canvas, 0, 0)
+
+
+def draw_void_amount_overlay(canvas: Canvas) -> None:
+    """Print "***.**" over both of a voided QR-bill's blank amount fields.
+
+    Must be called after `draw_qr_bill` (so it draws on top), and only for
+    a bill built with `amount_chf=None`.
+
+    Args:
+        canvas: Target canvas, already holding a voided (open-amount) QR-bill.
+
+    Returns:
+        None.
+    """
+    canvas.setFont("Helvetica-Bold", 11)
+    for x_mm, y_mm_from_top, width_mm, height_mm in (
+        _RECEIPT_AMOUNT_BOX_MM,
+        _PAYMENT_AMOUNT_BOX_MM,
+    ):
+        center_x = (x_mm + width_mm / 2) * mm
+        center_y = PAGE_HEIGHT - (y_mm_from_top + height_mm / 2) * mm - 1.5
+        canvas.drawCentredString(center_x, center_y, VOID_AMOUNT_TEXT)

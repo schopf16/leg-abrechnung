@@ -39,8 +39,8 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
 - **Zuordnungen** — welcher Zähler in welchem Zeitraum zu welchem
   Teilnehmer gehört (wichtig bei Umzügen mitten im Quartal).
 - **Import** — Messdaten der BKW einlesen (EBIX-XML oder CSV).
-- **Abrechnung** — Rechnungen/Gutschriften für ein Quartal berechnen und
-  als PDF erzeugen.
+- **Abrechnung** — für ein Quartal je Teilnehmer eine kombinierte
+  Abrechnung berechnen und als PDF erzeugen (siehe unten).
 - **Auswertungen** — Übersicht je Teilnehmer sowie Plausibilitätsprüfungen
   (fehlende Zuordnungen, Lücken in Messdaten, Summenabgleich).
 - **Einstellungen** — Name/Adresse/QR-IBAN der LEG, interner Strompreis,
@@ -71,6 +71,25 @@ Bevor Sie echte Rechnungen erzeugen:
 5. **Import:** die von der BKW gelieferte Datei hochladen.
 6. **Abrechnung:** Jahr und Quartal wählen, Abrechnung erstellen, PDFs
    erzeugen.
+
+### Ein PDF pro Teilnehmer
+
+Jeder Teilnehmer erhält für ein Quartal genau **ein** PDF, unabhängig
+davon, ob er nur Strom bezieht, nur einspeist, oder beides tut (Prosumer):
+
+- Zuerst der **Bezug**, aufgeschlüsselt nach Monat, mit Zwischensumme.
+- Danach die **Vergütung** (Produktion), ebenfalls nach Monat, mit
+  Zwischensumme.
+- Erst am Schluss werden Bezug und Vergütung verrechnet — **nur dort wird
+  gerundet** (auf den Rappen genau), alle Zwischenwerte sind ungerundete
+  Anzeigewerte.
+- Jedes PDF enthält einen Schweizer QR-Einzahlungsschein. Muss der
+  Teilnehmer der LEG Geld schulden (Netto-Betrag positiv), ist er normal
+  benutzbar. Schuldet umgekehrt die LEG dem Teilnehmer Geld
+  (Netto-Betrag negativ), wird der Betrag auf dem Einzahlungsschein durch
+  `***.**` ersetzt und ist damit absichtlich **nicht als Zahlungsmittel
+  nutzbar** — die Auszahlung erfolgt stattdessen durch den Verwalter über
+  die Zahlliste.
 
 ### Hinweis zum EBIX-Import
 
@@ -125,7 +144,7 @@ mit hochgeladen werden, sind folgende Ordner in `.gitignore` eingetragen
 und werden nie mitversioniert:
 
 - `data/` — die eigentliche Datenbank
-- `output/` — erzeugte Rechnungen, Gutschriften, Zahllisten
+- `output/` — erzeugte Abrechnungen (PDFs je Teilnehmer), Zahllisten
 - `backups/` — Datenbank-Backups
 - `.venv/` — die lokale Python-Umgebung
 

@@ -28,14 +28,15 @@ def generate_payment_list_pdf(
 
     Args:
         run: The billing run to summarize.
-        items: All line items of the run (only "gutschrift" ones are used).
+        items: All line items of the run (only participants owed money by
+            the LEG, i.e. `net_amount_rappen < 0`, are listed).
         participants: Participant lookup by id, for names and IBANs.
         output_path: Destination path for the generated PDF.
 
     Returns:
         `output_path`, for convenience.
     """
-    credit_items = [i for i in items if i.kind == "gutschrift"]
+    credit_items = [i for i in items if i.is_owed_by_leg]
     period = quarter_label(run.period_year, run.period_quarter)
 
     canvas = new_canvas(output_path)
@@ -57,8 +58,8 @@ def generate_payment_list_pdf(
         participant = participants.get(item.participant_id)
         name = participant.name if participant else f"Teilnehmer #{item.participant_id}"
         iban = participant.iban if participant else ""
-        amount = Decimal(item.amount_rappen) / 100
-        total_rappen += item.amount_rappen
+        amount = Decimal(-item.net_amount_rappen) / 100
+        total_rappen += -item.net_amount_rappen
 
         canvas.drawString(_LEFT_MARGIN, y, name)
         canvas.drawString(_LEFT_MARGIN + 80 * mm, y, iban)

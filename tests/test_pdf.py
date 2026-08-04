@@ -1,18 +1,18 @@
-"""Tests for QR-invoice, credit note, payment list and export generation."""
+"""Tests for the combined participant billing PDF, QR-bill voiding, payment
+list and export generation."""
 
 from decimal import Decimal
 
-import pytest
-
 from app.domain.billing import create_or_replace_billing_run
 from app.domain.demo_data import SUMMER_QUARTER, create_demo_data
+from app.domain.distribution import compute_quarter_distribution
 from app.models import billing_run as billing_run_repo
 from app.models import participant as participant_repo
 from app.models import settings as settings_repo
-from app.pdf.credit_pdf import generate_credit_pdf
 from app.pdf.export_service import export_billing_run_documents
-from app.pdf.invoice_pdf import generate_invoice_pdf
+from app.pdf.participant_bill_pdf import generate_participant_bill_pdf
 from app.pdf.payment_list import generate_payment_list_pdf
+from app.pdf.qr_bill_render import build_qr_bill
 from app.pdf.qr_reference import generate_qrr_reference
 
 
@@ -30,6 +30,22 @@ def _assert_is_pdf(path) -> None:
         assert f.read(5) == b"%PDF-"
 
 
+def _billing_context(db):
+    """Set up demo data and a summer billing run, returning common test fixtures.
+
+    Args:
+        db: Database connection fixture.
+
+    Returns:
+        A `(run, items, distribution, settings)` tuple.
+    """
+    create_demo_data(db)
+    run, items, _, _ = create_or_replace_billing_run(db, *SUMMER_QUARTER)
+    distribution = compute_quarter_distribution(db, *SUMMER_QUARTER)
+    settings = settings_repo.get_settings(db)
+    return run, items, distribution, settings
+
+
 def test_generate_qrr_reference_is_unique_per_item():
     """Different item ids produce different, valid-length references."""
     ref1 = generate_qrr_reference(1, 1, 1)
@@ -38,61 +54,88 @@ def test_generate_qrr_reference_is_unique_per_item():
     assert ref1 != ref2
 
 
-def test_generate_invoice_pdf_creates_valid_pdf_file(db, tmp_path):
-    """A "rechnung" item renders to a real PDF file including the QR-bill."""
-    create_demo_data(db)
-    run, items, _, _ = create_or_replace_billing_run(db, *SUMMER_QUARTER)
-    invoice_item = next(i for i in items if i.kind == "rechnung")
-    participant = participant_repo.get(db, invoice_item.participant_id)
-    settings = settings_repo.get_settings(db)
+def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
+    """A voided QR-bill (amount=None) never encodes a payable amount."""
+    from app.models.participant import Participant
+    from app.models.settings import LegSettings
 
-    output_path = tmp_path / "invoice.pdf"
-    generate_invoice_pdf(run, invoice_item, participant, settings, output_path)
+    settings = LegSettings(
+        name="LEG Test", address_street="Weg 1", address_zip="3000", address_city="Bern",
+        address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0, updated_at="",
+    )
+    participant = Participant(
+        id=1, name="Max Muster", address_street="Strasse 1", address_zip="8000",
+        address_city="Zürich", address_country="CH", iban="", email="", created_at="",
+    )
+    ref = generate_qrr_reference(1, 1, 1)
+
+    voided_bill = build_qr_bill(settings, participant, None, ref)
+    payable_bill = build_qr_bill(settings, participant, Decimal("42.50"), ref)
+
+    assert voided_bill.amount is None
+    assert payable_bill.amount == "42.50"
+
+
+def test_generate_participant_bill_pdf_for_prosumer_is_one_valid_pdf(db, tmp_path):
+    """A prosumer's combined document (both consumption and production) is a single PDF."""
+    run, items, distribution, settings = _billing_context(db)
+    prosumer_item = next(i for i in items if i.consumed_kwh > 0 and i.produced_kwh > 0)
+    participant = participant_repo.get(db, prosumer_item.participant_id)
+    participant_result = distribution.participant_results[prosumer_item.participant_id]
+
+    output_path = tmp_path / "prosumer.pdf"
+    generate_participant_bill_pdf(
+        run, prosumer_item, participant_result, participant, settings, output_path
+    )
 
     _assert_is_pdf(output_path)
 
 
-def test_generate_invoice_pdf_rejects_credit_item(db, tmp_path):
-    """Passing a "gutschrift" item to the invoice generator is a programming error."""
-    create_demo_data(db)
-    run, items, _, _ = create_or_replace_billing_run(db, *SUMMER_QUARTER)
-    credit_item = next(i for i in items if i.kind == "gutschrift")
+def test_generate_participant_bill_pdf_for_credit_item_has_voided_amount(db, tmp_path):
+    """A participant with a negative net (owed money by the LEG) gets a voided QR-bill."""
+    run, items, distribution, settings = _billing_context(db)
+    credit_item = next(i for i in items if i.is_owed_by_leg)
     participant = participant_repo.get(db, credit_item.participant_id)
-    settings = settings_repo.get_settings(db)
-
-    with pytest.raises(ValueError):
-        generate_invoice_pdf(run, credit_item, participant, settings, tmp_path / "x.pdf")
-
-
-def test_generate_credit_pdf_creates_valid_pdf_file(db, tmp_path):
-    """A "gutschrift" item renders to a real PDF file without a QR-bill."""
-    create_demo_data(db)
-    run, items, _, _ = create_or_replace_billing_run(db, *SUMMER_QUARTER)
-    credit_item = next(i for i in items if i.kind == "gutschrift")
-    participant = participant_repo.get(db, credit_item.participant_id)
-    settings = settings_repo.get_settings(db)
+    participant_result = distribution.participant_results[credit_item.participant_id]
 
     output_path = tmp_path / "credit.pdf"
-    generate_credit_pdf(run, credit_item, participant, settings, output_path)
+    generate_participant_bill_pdf(
+        run, credit_item, participant_result, participant, settings, output_path
+    )
 
     _assert_is_pdf(output_path)
 
 
-def test_generate_payment_list_pdf(db, tmp_path):
-    """The payment list renders for all credit note items in a run."""
-    create_demo_data(db)
-    run, items, _, _ = create_or_replace_billing_run(db, *SUMMER_QUARTER)
+def test_generate_participant_bill_pdf_for_pure_consumer_is_payable(db, tmp_path):
+    """A pure consumer's document has a positive net and a real, payable QR-bill."""
+    run, items, distribution, settings = _billing_context(db)
+    consumer_item = next(i for i in items if i.is_owed_to_leg and i.produced_kwh == 0)
+    participant = participant_repo.get(db, consumer_item.participant_id)
+    participant_result = distribution.participant_results[consumer_item.participant_id]
+
+    output_path = tmp_path / "consumer.pdf"
+    generate_participant_bill_pdf(
+        run, consumer_item, participant_result, participant, settings, output_path
+    )
+
+    _assert_is_pdf(output_path)
+
+
+def test_generate_payment_list_pdf_only_lists_credits(db, tmp_path):
+    """The payment list renders and only includes participants owed money by the LEG."""
+    run, items, _, _ = _billing_context(db)
     participants = {p.id: p for p in participant_repo.list_all(db)}
 
     output_path = tmp_path / "zahlliste.pdf"
     generate_payment_list_pdf(run, items, participants, output_path)
 
     _assert_is_pdf(output_path)
+    assert any(i.is_owed_by_leg for i in items), "expected at least one credit for a meaningful test"
 
 
-def test_export_billing_run_documents_writes_all_files_and_updates_db(db, tmp_path, monkeypatch):
-    """The export service writes one PDF per item plus a payment list, and
-    records each item's PDF path back into the database."""
+def test_export_billing_run_documents_writes_one_pdf_per_participant(db, tmp_path, monkeypatch):
+    """The export service writes exactly one PDF per billing item (per
+    participant) plus a payment list, and records each item's PDF path."""
     import app.pdf.export_service as export_service
 
     monkeypatch.setattr(export_service, "OUTPUT_DIR", tmp_path)
@@ -104,6 +147,8 @@ def test_export_billing_run_documents_writes_all_files_and_updates_db(db, tmp_pa
 
     assert not result.errors
     assert len(result.document_paths) == len(items)
+    # One PDF per participant, regardless of prosumer/consumer/producer status.
+    assert len(result.document_paths) == len({i.participant_id for i in items})
     for path in result.document_paths:
         _assert_is_pdf(path)
     assert result.payment_list_path is not None

@@ -12,12 +12,28 @@ from app.gui.period_selector import build_period_selector
 from app.models import participant as participant_repo
 from app.models import settings as settings_repo
 
-KIND_LABELS = {"rechnung": "Rechnung", "gutschrift": "Gutschrift"}
 CATEGORY_LABELS = {
     "zuordnung_ueberlappung": "Überlappende Zuordnung",
     "zuordnung_luecke": "Lücke in Zuordnung",
     "messdaten_luecke": "Lücke in Messdaten",
 }
+
+
+def _type_label(item) -> str:
+    """German label for a billing item's net direction.
+
+    Args:
+        item: A `BillingRunItem`.
+
+    Returns:
+        "Rechnung" if the participant owes the LEG, "Gutschrift" if the
+        LEG owes the participant, "Ausgeglichen" if the net is zero.
+    """
+    if item.is_owed_to_leg:
+        return "Rechnung"
+    if item.is_owed_by_leg:
+        return "Gutschrift"
+    return "Ausgeglichen"
 
 
 @ui.page("/auswertungen")
@@ -90,25 +106,27 @@ def auswertungen_page() -> None:
                     balance_class = "text-positive" if control_check.balanced else "text-negative"
                     balance_symbol = "✓" if control_check.balanced else "⚠"
                     ui.label(
-                        f"{balance_symbol} Summenabgleich: Rechnungen "
-                        f"{control_check.total_invoices_rappen / 100:.2f} CHF, Gutschriften "
-                        f"{control_check.total_credits_rappen / 100:.2f} CHF"
+                        f"{balance_symbol} Summenabgleich: offen zugunsten LEG "
+                        f"{control_check.total_owed_to_leg_rappen / 100:.2f} CHF, offen "
+                        f"zulasten LEG {control_check.total_owed_by_leg_rappen / 100:.2f} CHF"
                     ).classes(balance_class)
 
                 if items:
                     ui.table(
                         columns=[
                             {"name": "participant", "label": "Teilnehmer", "field": "participant", "align": "left"},
-                            {"name": "kind", "label": "Typ", "field": "kind", "align": "left"},
-                            {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
-                            {"name": "amount", "label": "Betrag (CHF)", "field": "amount", "align": "right"},
+                            {"name": "typ", "label": "Typ", "field": "typ", "align": "left"},
+                            {"name": "consumed", "label": "Bezug (kWh)", "field": "consumed", "align": "right"},
+                            {"name": "produced", "label": "Vergütung (kWh)", "field": "produced", "align": "right"},
+                            {"name": "amount", "label": "Netto-Betrag (CHF)", "field": "amount", "align": "right"},
                         ],
                         rows=[
                             {
                                 "participant": participant_names.get(i.participant_id, "?"),
-                                "kind": KIND_LABELS.get(i.kind, i.kind),
-                                "kwh": f"{i.kwh:.3f}",
-                                "amount": f"{i.amount_chf:.2f}",
+                                "typ": _type_label(i),
+                                "consumed": f"{i.consumed_kwh:.3f}",
+                                "produced": f"{i.produced_kwh:.3f}",
+                                "amount": f"{i.net_amount_chf:.2f}",
                             }
                             for i in items
                         ],

@@ -21,7 +21,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from app.domain.period import quarter_bounds
+from app.domain.period import months_in_quarter, quarter_bounds
 from app.models import assignment as assignment_repo
 from app.models.meter import CONSUMPTION_ROLES
 from app.models.reading import list_readings_in_period
@@ -42,11 +42,20 @@ class ParticipantQuarterResult:
         produced_local_kwh: Total locally-delivered energy this participant
             produced (creditable via a credit note), rounded to
             `KWH_PRECISION` decimals.
+        consumed_by_month: Locally-sourced consumption, keyed by calendar
+            month (1-12), rounded to `KWH_PRECISION` decimals. Always has
+            one entry per month of the quarter, including zero-valued ones,
+            so the billing document can show a complete monthly breakdown.
+        produced_by_month: Locally-delivered production, keyed by calendar
+            month (1-12), same rounding and completeness as
+            `consumed_by_month`.
     """
 
     participant_id: int
     consumed_local_kwh: float = 0.0
     produced_local_kwh: float = 0.0
+    consumed_by_month: dict[int, float] = field(default_factory=dict)
+    produced_by_month: dict[int, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -179,18 +188,39 @@ def compute_quarter_distribution(
             participant_result = result.participant_results.setdefault(
                 participant_id, ParticipantQuarterResult(participant_id=participant_id)
             )
+            month = moment.month
             if is_consumption:
                 participant_result.consumed_local_kwh += local_share
+                participant_result.consumed_by_month[month] = (
+                    participant_result.consumed_by_month.get(month, 0.0) + local_share
+                )
             else:
                 participant_result.produced_local_kwh += local_share
+                participant_result.produced_by_month[month] = (
+                    participant_result.produced_by_month.get(month, 0.0) + local_share
+                )
 
+    quarter_months = [month for _, month in months_in_quarter(year, quarter)]
     for participant_result in result.participant_results.values():
+        # Ensure every month of the quarter has an entry (zero if unused)
+        # so billing documents always show a complete monthly breakdown.
+        for month in quarter_months:
+            participant_result.consumed_by_month.setdefault(month, 0.0)
+            participant_result.produced_by_month.setdefault(month, 0.0)
+
         participant_result.consumed_local_kwh = round(
             participant_result.consumed_local_kwh, KWH_PRECISION
         )
         participant_result.produced_local_kwh = round(
             participant_result.produced_local_kwh, KWH_PRECISION
         )
+        for month in quarter_months:
+            participant_result.consumed_by_month[month] = round(
+                participant_result.consumed_by_month[month], KWH_PRECISION
+            )
+            participant_result.produced_by_month[month] = round(
+                participant_result.produced_by_month[month], KWH_PRECISION
+            )
     result.unassigned_kwh = round(result.unassigned_kwh, KWH_PRECISION)
 
     return result

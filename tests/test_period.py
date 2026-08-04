@@ -1,6 +1,14 @@
 """Tests for calendar-quarter helpers, in particular data-availability lookup."""
 
-from app.domain.period import latest_available_period, list_available_periods
+from datetime import date
+
+from app.domain.period import (
+    latest_available_period,
+    list_available_periods,
+    month_bounds,
+    month_label_de,
+    months_in_quarter,
+)
 from app.models.reading import Reading, upsert_readings
 
 
@@ -66,3 +74,21 @@ def test_latest_available_period_picks_highest_year_and_quarter(db):
 def test_latest_available_period_none_when_empty():
     """An empty availability map has no latest period."""
     assert latest_available_period({}) is None
+
+
+def test_months_in_quarter_returns_three_chronological_months():
+    """Q1 covers January through March, Q4 covers October through December."""
+    assert months_in_quarter(2025, 1) == [(2025, 1), (2025, 2), (2025, 3)]
+    assert months_in_quarter(2025, 4) == [(2025, 10), (2025, 11), (2025, 12)]
+
+
+def test_month_bounds_handles_leap_february():
+    """February in a leap year runs through the 29th."""
+    assert month_bounds(2024, 2) == (date(2024, 2, 1), date(2024, 2, 29))
+    assert month_bounds(2025, 2) == (date(2025, 2, 1), date(2025, 2, 28))
+
+
+def test_month_label_de_matches_expected_format():
+    """The German label follows 'Monat (DD.MM-DD.MM)'."""
+    assert month_label_de(2025, 1) == "Januar (01.01-31.01)"
+    assert month_label_de(2025, 4) == "April (01.04-30.04)"
