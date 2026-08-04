@@ -26,6 +26,7 @@ from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.participant import Participant
 from app.models.settings import LegSettings
 from app.pdf.layout import (
+    CONTENT_BOTTOM_Y,
     draw_intro_text,
     draw_meta_block,
     draw_monthly_table,
@@ -167,13 +168,20 @@ def generate_participant_bill_pdf(
     else:
         note = "Für diese Periode ist kein Betrag fällig."
 
-    draw_net_settlement(
+    y = draw_net_settlement(
         canvas,
         y,
         "Netto-Betrag (keine MWST)",
         f"{net_amount_chf:.2f} CHF",
         note,
     )
+
+    # The QR-bill always occupies the bottom 106mm of whatever page it is
+    # drawn on. If the content above would run into that reserved zone
+    # (e.g. a prosumer with both a Bezug and a Vergütung table), start a
+    # fresh page for the QR-bill instead of letting the two collide.
+    if y < CONTENT_BOTTOM_Y:
+        canvas.showPage()
 
     reference = generate_qrr_reference(participant.id, run.id, item.id)
     payable_amount = net_amount_chf if item.is_owed_to_leg else None

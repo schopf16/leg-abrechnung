@@ -1,6 +1,7 @@
 """Tests for the combined participant billing PDF, QR-bill voiding, payment
 list and export generation."""
 
+import re
 from decimal import Decimal
 
 from app.domain.billing import create_or_replace_billing_run
@@ -28,6 +29,20 @@ def _assert_is_pdf(path) -> None:
     assert path.exists()
     with open(path, "rb") as f:
         assert f.read(5) == b"%PDF-"
+
+
+def _page_count(path) -> int:
+    """Read a PDF's page count from its `/Pages` object's `/Count` entry.
+
+    Args:
+        path: Path of the PDF file.
+
+    Returns:
+        The number of pages in the document.
+    """
+    match = re.search(rb"/Count (\d+) /Kids", path.read_bytes())
+    assert match, "could not find a /Pages /Count entry in the PDF"
+    return int(match.group(1))
 
 
 def _billing_context(db):
@@ -76,8 +91,51 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     assert payable_bill.amount == "42.50"
 
 
-def test_generate_participant_bill_pdf_for_prosumer_is_one_valid_pdf(db, tmp_path):
-    """A prosumer's combined document (both consumption and production) is a single PDF."""
+def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
+    """`draw_qr_bill` must render qrbill's bill-only SVG, not its full-page one.
+
+    Regression test for a real bug: qrbill's full_page=True output paints
+    an opaque white rectangle across the *entire* A4 page as a background
+    (qrbill/bill.py "Force white background"). Composited on top of an
+    already-populated canvas via renderPDF.draw(), that rectangle silently
+    erased all previously drawn content (letterhead, tables) -- the PDF
+    still contained the text objects, so naive text extraction missed it,
+    but nothing was visible except the QR-bill itself.
+    """
+    from app.models.participant import Participant
+    from app.models.settings import LegSettings
+
+    settings = LegSettings(
+        name="LEG Test", address_street="Weg 1", address_zip="3000", address_city="Bern",
+        address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0, updated_at="",
+    )
+    participant = Participant(
+        id=1, name="Max Muster", address_street="Strasse 1", address_zip="8000",
+        address_city="Zürich", address_country="CH", iban="", email="", created_at="",
+    )
+    ref = generate_qrr_reference(1, 1, 1)
+    bill = build_qr_bill(settings, participant, Decimal("10.00"), ref)
+
+    from svglib.svglib import svg2rlg
+
+    svg_path = tmp_path / "bill.svg"
+    bill.as_svg(str(svg_path), full_page=False)
+    drawing = svg2rlg(str(svg_path))
+
+    # The bill-only drawing is ~106mm (~300pt) tall, not a full A4 page
+    # (~842pt) -- confirming it can only ever paint its own reserved
+    # bottom strip, never the whole page.
+    assert drawing.height < 320
+
+
+def test_generate_participant_bill_pdf_for_prosumer_overflows_to_second_page(db, tmp_path):
+    """A prosumer's document (both Bezug and Vergütung tables) is long enough to
+    push the QR-bill onto a second page rather than overlapping the content.
+
+    Regression test: the QR-bill must never be drawn on top of content that
+    reaches into its reserved bottom area -- see app.pdf.layout.CONTENT_BOTTOM_Y
+    and the page-break check in generate_participant_bill_pdf.
+    """
     run, items, distribution, settings = _billing_context(db)
     prosumer_item = next(i for i in items if i.consumed_kwh > 0 and i.produced_kwh > 0)
     participant = participant_repo.get(db, prosumer_item.participant_id)
@@ -89,6 +147,7 @@ def test_generate_participant_bill_pdf_for_prosumer_is_one_valid_pdf(db, tmp_pat
     )
 
     _assert_is_pdf(output_path)
+    assert _page_count(output_path) == 2
 
 
 def test_generate_participant_bill_pdf_for_credit_item_has_voided_amount(db, tmp_path):
@@ -106,8 +165,9 @@ def test_generate_participant_bill_pdf_for_credit_item_has_voided_amount(db, tmp
     _assert_is_pdf(output_path)
 
 
-def test_generate_participant_bill_pdf_for_pure_consumer_is_payable(db, tmp_path):
-    """A pure consumer's document has a positive net and a real, payable QR-bill."""
+def test_generate_participant_bill_pdf_for_pure_consumer_fits_on_one_page(db, tmp_path):
+    """A pure consumer's document (one table) has a positive net, a real,
+    payable QR-bill, and fits on a single page (no unnecessary page break)."""
     run, items, distribution, settings = _billing_context(db)
     consumer_item = next(i for i in items if i.is_owed_to_leg and i.produced_kwh == 0)
     participant = participant_repo.get(db, consumer_item.participant_id)
@@ -119,6 +179,7 @@ def test_generate_participant_bill_pdf_for_pure_consumer_is_payable(db, tmp_path
     )
 
     _assert_is_pdf(output_path)
+    assert _page_count(output_path) == 1
 
 
 def test_generate_payment_list_pdf_only_lists_credits(db, tmp_path):

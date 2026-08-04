@@ -31,10 +31,13 @@ VOID_AMOUNT_TEXT = "***.**"
 # Coordinates below mirror the "amount" blank-rectangle positions qrbill's
 # own draw_bill() computes internally (qrbill/bill.py, draw_blank_rect calls
 # for the "Amount" field). They are not exposed by the library, so are
-# reproduced here from its fixed, standardized full-page layout: bill
-# margin 5mm, RECEIPT_WIDTH 62mm, currency_top at 73mm within the 106mm-tall
-# bill block, which full_page=True places starting at 297mm - 106mm = 191mm
-# from the top of the A4 page.
+# reproduced here from its fixed, standardized layout: bill margin 5mm,
+# RECEIPT_WIDTH 62mm, currency_top at 73mm within the 106mm-tall bill
+# block. Since `draw_qr_bill` places that 106mm-tall block flush with the
+# bottom of the A4 page (297mm), a local y measured from the *top* of the
+# block corresponds to page position `297 - 106 + local_y` from the page
+# top -- i.e. the same numbers as if qrbill's own full_page=True layout
+# (which uses that exact offset) had been used.
 _RECEIPT_AMOUNT_BOX_MM = (30, 262, 27, 11)  # x, y (from page top), width, height
 _PAYMENT_AMOUNT_BOX_MM = (79, 267, 40, 15)
 
@@ -104,10 +107,19 @@ def build_qr_bill(
 def draw_qr_bill(canvas: Canvas, bill: QRBill) -> None:
     """Render a `QRBill` as the bottom payment section of the current canvas page.
 
-    Renders the QR-bill's official full-page SVG layout (which includes the
-    perforation line and reserves its content to the bottom ~105mm of an A4
-    page) and overlays it on top of whatever has already been drawn, so it
-    must be called last for a given page.
+    Deliberately renders qrbill's *bill-only* SVG (``full_page=False``,
+    sized 210x106mm) rather than its full-page variant: qrbill's
+    full-page output paints an opaque white rectangle across the *entire*
+    A4 page as a background (qrbill/bill.py, "Force white background"),
+    which would silently erase any content already drawn on this canvas
+    (letterhead, tables) when composited on top of it. The smaller
+    bill-only drawing only ever covers its own 106mm-tall area, so placing
+    it flush with the bottom of the page reserves exactly that area and
+    nothing more.
+
+    Must be called after all other content for the page has been drawn,
+    and only once the caller has confirmed (see `app.pdf.layout.CONTENT_BOTTOM_Y`)
+    that nothing else on the page extends into the bottom 106mm.
 
     Args:
         canvas: Target canvas, already sized A4.
@@ -118,7 +130,7 @@ def draw_qr_bill(canvas: Canvas, bill: QRBill) -> None:
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         svg_path = Path(tmp_dir) / "qrbill.svg"
-        bill.as_svg(str(svg_path), full_page=True)
+        bill.as_svg(str(svg_path), full_page=False)
         drawing = svg2rlg(str(svg_path))
         renderPDF.draw(drawing, canvas, 0, 0)
 
