@@ -22,6 +22,9 @@ dist/
 venv/
 env/
 
+# --- Von update.bat automatisch heruntergeladenes, portables Git ---
+.mingit/
+
 # --- Tests / Tooling ---
 .pytest_cache/
 .mypy_cache/

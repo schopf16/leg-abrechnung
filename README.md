@@ -17,7 +17,17 @@ Vorausgesetzt wird [Python](https://www.python.org/downloads/) (Version 3.11
 oder neuer) — bei der Installation die Option **"Add python.exe to PATH"**
 aktivieren.
 
-**Erster Start:** Doppelklick auf **`start.bat`**.
+**Programm herunterladen / aktualisieren:** Doppelklick auf **`update.bat`**.
+
+Dieses eine Skript genügt für alles rund um den Programmcode: Beim allerersten
+Mal lädt es die komplette App herunter (kein GitHub-Konto, keine
+Git-Kenntnisse nötig — falls Git auf dem Computer fehlt, wird automatisch
+eine kleine, eigene Kopie eingerichtet, ohne Installation oder
+Administratorrechte). Bei jedem weiteren Doppelklick prüft es auf eine
+neuere Version und holt diese bei Bedarf nach. Ihre eigenen Daten (Ordner
+`data`, `output`, `backups`) werden dabei nie verändert.
+
+**Start:** Doppelklick auf **`start.bat`**.
 
 Das Skript richtet beim allerersten Mal automatisch eine eigene, isolierte
 Python-Umgebung ein (Ordner `.venv`) und installiert alle benötigten
