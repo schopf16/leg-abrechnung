@@ -12,14 +12,12 @@ from app.domain.period import (
 from app.models.reading import Reading, upsert_readings
 
 
-def _insert_reading(db, meter_id: int, timestamp: str) -> None:
-    """Insert a single reading with an arbitrary meter id (no FK needed
-    for these SQL-only queries since foreign_keys enforcement would
-    require a real meter row -- so callers must create one first).
+def _insert_reading(db, messpunkt_id: int, timestamp: str) -> None:
+    """Insert a single reading for an existing Messpunkt.
 
     Args:
         db: Database connection fixture.
-        meter_id: Meter id to attach the reading to.
+        messpunkt_id: Messpunkt id to attach the reading to.
         timestamp: ISO-8601 timestamp for the reading.
 
     Returns:
@@ -27,18 +25,30 @@ def _insert_reading(db, meter_id: int, timestamp: str) -> None:
     """
     upsert_readings(
         db,
-        [Reading(meter_id=meter_id, timestamp=timestamp, direction="bezug", kwh=1.0, source="test")],
+        [Reading(messpunkt_id=messpunkt_id, timestamp=timestamp, direction="bezug", kwh=1.0, source="test")],
     )
 
 
-def _make_meter(db) -> int:
-    """Create a minimal meter and return its id."""
-    from app.models import meter as meter_repo
-    from app.models.meter import Meter
+def _make_messpunkt(db) -> int:
+    """Create a minimal Standort and Messpunkt and return the Messpunkt's id."""
+    from app.models import messpunkt as messpunkt_repo
+    from app.models import standort as standort_repo
+    from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
+    from app.models.standort import Standort
 
-    return meter_repo.create(
+    standort_id = standort_repo.create(
         db,
-        Meter(id=None, metering_point_id="CH-period-test", label="x", building_address="", role="bezug", created_at=""),
+        Standort(
+            id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+            leg_id=None, netzebene="NE7", created_at="",
+        ),
+    )
+    return messpunkt_repo.create(
+        db,
+        Messpunkt(
+            id=None, messpunkt_bezeichnung="CH-period-test",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, created_at="",
+        ),
     )
 
 
@@ -49,11 +59,11 @@ def test_list_available_periods_empty_when_no_readings(db):
 
 def test_list_available_periods_groups_months_into_quarters(db):
     """Readings in different months of the same quarter collapse to one entry."""
-    meter_id = _make_meter(db)
-    _insert_reading(db, meter_id, "2025-01-15T12:00:00")  # Q1
-    _insert_reading(db, meter_id, "2025-03-20T12:00:00")  # Q1
-    _insert_reading(db, meter_id, "2025-07-01T00:00:00")  # Q3
-    _insert_reading(db, meter_id, "2024-12-31T23:45:00")  # Q4 2024
+    messpunkt_id = _make_messpunkt(db)
+    _insert_reading(db, messpunkt_id, "2025-01-15T12:00:00")  # Q1
+    _insert_reading(db, messpunkt_id, "2025-03-20T12:00:00")  # Q1
+    _insert_reading(db, messpunkt_id, "2025-07-01T00:00:00")  # Q3
+    _insert_reading(db, messpunkt_id, "2024-12-31T23:45:00")  # Q4 2024
 
     available = list_available_periods(db)
 
@@ -62,10 +72,10 @@ def test_list_available_periods_groups_months_into_quarters(db):
 
 def test_latest_available_period_picks_highest_year_and_quarter(db):
     """The latest period is the highest year, then highest quarter within it."""
-    meter_id = _make_meter(db)
-    _insert_reading(db, meter_id, "2024-05-01T00:00:00")  # 2024 Q2
-    _insert_reading(db, meter_id, "2025-01-01T00:00:00")  # 2025 Q1
-    _insert_reading(db, meter_id, "2025-11-01T00:00:00")  # 2025 Q4
+    messpunkt_id = _make_messpunkt(db)
+    _insert_reading(db, messpunkt_id, "2024-05-01T00:00:00")  # 2024 Q2
+    _insert_reading(db, messpunkt_id, "2025-01-01T00:00:00")  # 2025 Q1
+    _insert_reading(db, messpunkt_id, "2025-11-01T00:00:00")  # 2025 Q4
 
     available = list_available_periods(db)
     assert latest_available_period(available) == (2025, 4)

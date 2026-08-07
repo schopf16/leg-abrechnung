@@ -1,4 +1,4 @@
-"""Meter-to-participant assignment history page (Zuordnungen)."""
+"""Messpunkt-to-Person assignment history page (Zuordnungen)."""
 
 from datetime import date, datetime
 from typing import Optional
@@ -7,16 +7,16 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
-from app.models import assignment as assignment_repo
-from app.models import meter as meter_repo
-from app.models import participant as participant_repo
-from app.models.assignment import MeterAssignment
+from app.models import messpunkt as messpunkt_repo
+from app.models import person as person_repo
+from app.models import zuordnung as zuordnung_repo
+from app.models.zuordnung import Zuordnung
 
 COLUMNS = [
-    {"name": "meter_label", "label": "Zähler", "field": "meter_label", "align": "left", "sortable": True},
-    {"name": "participant_name", "label": "Teilnehmer", "field": "participant_name", "align": "left"},
-    {"name": "valid_from", "label": "Gültig von", "field": "valid_from", "align": "left", "sortable": True},
-    {"name": "valid_to", "label": "Gültig bis", "field": "valid_to", "align": "left"},
+    {"name": "messpunkt_label", "label": "Messpunkt", "field": "messpunkt_label", "align": "left", "sortable": True},
+    {"name": "person_name", "label": "Person", "field": "person_name", "align": "left"},
+    {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left", "sortable": True},
+    {"name": "gueltig_bis", "label": "Gültig bis", "field": "gueltig_bis", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
@@ -37,14 +37,14 @@ def _parse_date(value: str) -> Optional[date]:
 
 @ui.page("/zuordnungen")
 def zuordnungen_page() -> None:
-    """Render the meter-assignment CRUD page, including consistency warnings.
+    """Render the Zuordnungen CRUD page, including consistency warnings.
 
     Returns:
         None.
     """
     with page_frame("/zuordnungen", "Zuordnungen"):
         ui.label(
-            "Legt fest, welchem Teilnehmer ein Zähler in welchem Zeitraum "
+            "Legt fest, welcher Person ein Messpunkt in welchem Zeitraum "
             "zugeordnet ist. Bei einem Umzug mitten im Quartal zwei "
             "Zuordnungen mit passendem Enddatum/Startdatum anlegen."
         ).classes("text-body2 text-grey-8")
@@ -62,32 +62,32 @@ def zuordnungen_page() -> None:
         )
 
         def refresh() -> None:
-            """Reload the assignments table and recompute consistency warnings.
+            """Reload the Zuordnungen table and recompute consistency warnings.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                meters = {m.id: m for m in meter_repo.list_all(connection)}
-                participants = {p.id: p for p in participant_repo.list_all(connection)}
-                assignments = assignment_repo.list_all(connection)
+                messpunkte = {mp.id: mp for mp in messpunkt_repo.list_all(connection)}
+                persons = {p.id: p for p in person_repo.list_all(connection)}
+                zuordnungen = zuordnung_repo.list_all(connection)
                 all_warnings = []
-                for meter_id in meters:
-                    all_warnings.extend(assignment_repo.find_warnings(connection, meter_id))
+                for messpunkt_id in messpunkte:
+                    all_warnings.extend(zuordnung_repo.find_warnings(connection, messpunkt_id))
 
             rows = [
                 {
-                    "id": a.id,
-                    "meter_id": a.meter_id,
-                    "participant_id": a.participant_id,
-                    "meter_label": meters[a.meter_id].label if a.meter_id in meters else "?",
-                    "participant_name": participants[a.participant_id].name
-                    if a.participant_id in participants
+                    "id": z.id,
+                    "messpunkt_id": z.messpunkt_id,
+                    "person_id": z.person_id,
+                    "messpunkt_label": messpunkte[z.messpunkt_id].messpunkt_bezeichnung
+                    if z.messpunkt_id in messpunkte
                     else "?",
-                    "valid_from": a.valid_from.isoformat(),
-                    "valid_to": a.valid_to.isoformat() if a.valid_to else "offen",
+                    "person_name": persons[z.person_id].name if z.person_id in persons else "?",
+                    "gueltig_von": z.gueltig_von.isoformat(),
+                    "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
                 }
-                for a in assignments
+                for z in zuordnungen
             ]
             table.rows = rows
             table.update()
@@ -99,59 +99,62 @@ def zuordnungen_page() -> None:
                         "text-negative text-body2"
                     )
 
-        def open_form(existing: Optional[MeterAssignment]) -> None:
-            """Open the create/edit dialog for a meter assignment.
+        def open_form(existing: Optional[Zuordnung]) -> None:
+            """Open the create/edit dialog for a Zuordnung.
 
             Args:
-                existing: Assignment to edit, or `None` to create a new one.
+                existing: Zuordnung to edit, or `None` to create a new one.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                meters = meter_repo.list_all(connection)
-                participants = participant_repo.list_all(connection)
-            meter_options = {m.id: f"{m.label} ({m.metering_point_id})" for m in meters}
-            participant_options = {p.id: p.name for p in participants}
+                messpunkte = messpunkt_repo.list_all(connection)
+                persons = person_repo.list_all(connection)
+            messpunkt_options = {
+                mp.id: f"{mp.messpunkt_bezeichnung} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
+                for mp in messpunkte
+            }
+            person_options = {p.id: p.name for p in persons}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label(
                     "Zuordnung bearbeiten" if existing else "Neue Zuordnung"
                 ).classes("text-lg font-bold")
-                meter_select = ui.select(
-                    meter_options,
-                    label="Zähler",
-                    value=existing.meter_id if existing else (meters[0].id if meters else None),
+                messpunkt_select = ui.select(
+                    messpunkt_options,
+                    label="Messpunkt",
+                    value=existing.messpunkt_id if existing else (messpunkte[0].id if messpunkte else None),
                 ).classes("w-full")
-                participant_select = ui.select(
-                    participant_options,
-                    label="Teilnehmer",
-                    value=existing.participant_id
+                person_select = ui.select(
+                    person_options,
+                    label="Person",
+                    value=existing.person_id
                     if existing
-                    else (participants[0].id if participants else None),
+                    else (persons[0].id if persons else None),
                 ).classes("w-full")
-                valid_from = ui.input(
+                gueltig_von = ui.input(
                     "Gültig von",
-                    value=existing.valid_from.isoformat() if existing else date.today().isoformat(),
+                    value=existing.gueltig_von.isoformat() if existing else date.today().isoformat(),
                 ).props("type=date").classes("w-full")
-                valid_to = ui.input(
+                gueltig_bis = ui.input(
                     "Gültig bis (leer = offen)",
-                    value=existing.valid_to.isoformat() if existing and existing.valid_to else "",
+                    value=existing.gueltig_bis.isoformat() if existing and existing.gueltig_bis else "",
                 ).props("type=date").classes("w-full")
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
-                    """Validate the form and persist the assignment.
+                    """Validate the form and persist the Zuordnung.
 
                     Returns:
                         None.
                     """
-                    if meter_select.value is None or participant_select.value is None:
-                        error_label.text = "Zähler und Teilnehmer sind erforderlich."
+                    if messpunkt_select.value is None or person_select.value is None:
+                        error_label.text = "Messpunkt und Person sind erforderlich."
                         return
                     try:
-                        from_date = _parse_date(valid_from.value)
-                        to_date = _parse_date(valid_to.value)
+                        from_date = _parse_date(gueltig_von.value)
+                        to_date = _parse_date(gueltig_bis.value)
                     except ValueError:
                         error_label.text = "Ungültiges Datum."
                         return
@@ -164,25 +167,25 @@ def zuordnungen_page() -> None:
 
                     with connection_scope() as connection:
                         if existing:
-                            updated = MeterAssignment(
+                            updated = Zuordnung(
                                 id=existing.id,
-                                meter_id=meter_select.value,
-                                participant_id=participant_select.value,
-                                valid_from=from_date,
-                                valid_to=to_date,
+                                person_id=person_select.value,
+                                messpunkt_id=messpunkt_select.value,
+                                gueltig_von=from_date,
+                                gueltig_bis=to_date,
                                 created_at=existing.created_at,
                             )
-                            assignment_repo.update(connection, updated)
+                            zuordnung_repo.update(connection, updated)
                         else:
-                            new_assignment = MeterAssignment(
+                            new_zuordnung = Zuordnung(
                                 id=None,
-                                meter_id=meter_select.value,
-                                participant_id=participant_select.value,
-                                valid_from=from_date,
-                                valid_to=to_date,
+                                person_id=person_select.value,
+                                messpunkt_id=messpunkt_select.value,
+                                gueltig_von=from_date,
+                                gueltig_bis=to_date,
                                 created_at="",
                             )
-                            assignment_repo.create(connection, new_assignment)
+                            zuordnung_repo.create(connection, new_zuordnung)
                     dialog.close()
                     refresh()
                     ui.notify("Gespeichert.", type="positive")
@@ -202,13 +205,13 @@ def zuordnungen_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                assignments = {a.id: a for a in assignment_repo.list_all(connection)}
-            existing = assignments.get(event.args["id"])
+                zuordnungen = {z.id: z for z in zuordnung_repo.list_all(connection)}
+            existing = zuordnungen.get(event.args["id"])
             if existing:
                 open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete the assignment after confirmation.
+            """Table row-delete handler: delete the Zuordnung after confirmation.
 
             Args:
                 event: NiceGUI generic event carrying the clicked row's args.
@@ -216,7 +219,7 @@ def zuordnungen_page() -> None:
             Returns:
                 None.
             """
-            assignment_id = event.args["id"]
+            zuordnung_id = event.args["id"]
 
             with ui.dialog() as confirm, ui.card():
                 ui.label("Diese Zuordnung wirklich löschen?")
@@ -225,7 +228,7 @@ def zuordnungen_page() -> None:
 
                     def do_delete() -> None:
                         with connection_scope() as connection:
-                            assignment_repo.delete(connection, assignment_id)
+                            zuordnung_repo.delete(connection, zuordnung_id)
                         confirm.close()
                         refresh()
                         ui.notify("Gelöscht.", type="warning")

@@ -9,7 +9,9 @@ from app.gui.pages import (  # noqa: F401
     dashboard,
     einstellungen,
     import_page,
-    teilnehmer,
-    zaehler,
+    legs,
+    messpunkte,
+    personen,
+    standorte,
     zuordnungen,
 )

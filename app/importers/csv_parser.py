@@ -3,13 +3,13 @@
 Expected columns (semicolon- or comma-separated, header row required,
 column order does not matter, matching is case-insensitive):
 
-    Zaehlpunkt;Zeitstempel;Richtung;Wert_kWh
+    Messpunkt;Zeitstempel;Richtung;Wert_kWh
     CH1000000000000000000000001;2025-07-01T00:00:00;Bezug;0.123
     CH1000000000000000000000001;2025-07-01T00:15:00;Bezug;0.150
 
-- `Zaehlpunkt`: metering point id (business key).
+- `Messpunkt`: metering point designation (business key, "messpunkt_bezeichnung").
 - `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
-- `Richtung`: "Bezug" or "Produktion" (German, case-insensitive; English
+- `Richtung`: "Bezug" or "Einspeisung" (German, case-insensitive; English
   synonyms are also accepted, see `app.importers.base.validate_direction`).
 - `Wert_kWh`: energy for the interval, decimal point or comma.
 
@@ -26,9 +26,10 @@ from app.importers.base import ImportValidationError, ParsedReading, ParseResult
 
 #: Maps accepted header spellings (lowercased) to the canonical field name.
 _COLUMN_ALIASES = {
-    "zaehlpunkt": "metering_point_id",
-    "zählpunkt": "metering_point_id",
-    "metering_point_id": "metering_point_id",
+    "messpunkt": "messpunkt_bezeichnung",
+    "messpunkt_bezeichnung": "messpunkt_bezeichnung",
+    "zaehlpunkt": "messpunkt_bezeichnung",
+    "zählpunkt": "messpunkt_bezeichnung",
     "zeitstempel": "timestamp",
     "timestamp": "timestamp",
     "richtung": "direction",
@@ -39,7 +40,7 @@ _COLUMN_ALIASES = {
     "value": "kwh",
 }
 
-_REQUIRED_FIELDS = {"metering_point_id", "timestamp", "direction", "kwh"}
+_REQUIRED_FIELDS = {"messpunkt_bezeichnung", "timestamp", "direction", "kwh"}
 
 
 def _sniff_delimiter(sample: str) -> str:
@@ -118,7 +119,7 @@ def parse_csv_file(path: Path) -> ParseResult:
 
         result.readings.append(
             ParsedReading(
-                metering_point_id=values["metering_point_id"],
+                messpunkt_bezeichnung=values["messpunkt_bezeichnung"],
                 timestamp=timestamp,
                 direction=direction,
                 kwh=kwh,

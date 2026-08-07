@@ -12,12 +12,12 @@ from app.backup.backup_service import (
 )
 from app.db.connection import create_connection
 from app.db.schema import initialize_database
-from app.models import participant as participant_repo
-from app.models.participant import Participant
+from app.models import person as person_repo
+from app.models.person import Person
 
 
 def _make_live_db(path) -> None:
-    """Initialize a schema-migrated database at `path` with one participant.
+    """Initialize a schema-migrated database at `path` with one person.
 
     Args:
         path: Filesystem path to create the database at.
@@ -27,11 +27,13 @@ def _make_live_db(path) -> None:
     """
     connection = create_connection(path)
     initialize_database(connection)
-    participant_repo.create(
+    person_repo.create(
         connection,
-        Participant(
-            id=None, name="Original", address_street="", address_zip="",
-            address_city="", address_country="CH", iban="", email="", created_at="",
+        Person(
+            id=None, anrede="", name="Original", kontakt_email="", kontakt_telefon="",
+            rechnungsadresse_strasse="", rechnungsadresse_plz="",
+            rechnungsadresse_ort="", rechnungsadresse_land="CH",
+            iban="", kundennummer=None, papierrechnung=False, created_at="",
         ),
     )
     connection.close()
@@ -47,7 +49,7 @@ def test_create_backup_produces_restorable_snapshot(tmp_path):
 
     assert backup_path.exists()
     connection = sqlite3.connect(str(backup_path))
-    names = [row[0] for row in connection.execute("SELECT name FROM participants")]
+    names = [row[0] for row in connection.execute("SELECT name FROM person")]
     connection.close()
     assert names == ["Original"]
 
@@ -75,11 +77,13 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
 
     # Change the live database after the backup was taken.
     connection = create_connection(db_path)
-    participant_repo.create(
+    person_repo.create(
         connection,
-        Participant(
-            id=None, name="Added later", address_street="", address_zip="",
-            address_city="", address_country="CH", iban="", email="", created_at="",
+        Person(
+            id=None, anrede="", name="Added later", kontakt_email="", kontakt_telefon="",
+            rechnungsadresse_strasse="", rechnungsadresse_plz="",
+            rechnungsadresse_ort="", rechnungsadresse_land="CH",
+            iban="", kundennummer=None, papierrechnung=False, created_at="",
         ),
     )
     connection.close()
@@ -88,14 +92,14 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
 
     # The live DB is back to the pre-change (backed up) state.
     connection = create_connection(db_path)
-    names = {row["name"] for row in connection.execute("SELECT name FROM participants")}
+    names = {row["name"] for row in connection.execute("SELECT name FROM person")}
     connection.close()
     assert names == {"Original"}
 
     # A safety backup of the state just before restoring was taken.
     assert result.safety_backup_path.exists()
     safety_connection = sqlite3.connect(str(result.safety_backup_path))
-    safety_names = {row[0] for row in safety_connection.execute("SELECT name FROM participants")}
+    safety_names = {row[0] for row in safety_connection.execute("SELECT name FROM person")}
     safety_connection.close()
     assert safety_names == {"Original", "Added later"}
 

@@ -1,109 +1,186 @@
-"""Tests for participant/meter/assignment CRUD and consistency warnings."""
+"""Tests for Person/Messpunkt/Zuordnung/Leg CRUD and consistency warnings."""
 
 from datetime import date
 
 import pytest
 
-from app.models import assignment as assignment_repo
-from app.models import meter as meter_repo
-from app.models import participant as participant_repo
-from app.models.assignment import MeterAssignment
-from app.models.meter import Meter
-from app.models.participant import Participant
+from app.models import leg as leg_repo
+from app.models import messpunkt as messpunkt_repo
+from app.models import person as person_repo
+from app.models import zuordnung as zuordnung_repo
+from app.models.leg import Leg
+from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
+from app.models.person import Person
+from app.models.zuordnung import Zuordnung
 
 
-def _make_participant(name: str = "Test Teilnehmer") -> Participant:
-    """Build an unpersisted `Participant` for use in tests.
+def _make_person(name: str = "Test Person") -> Person:
+    """Build an unpersisted `Person` for use in tests.
 
     Args:
         name: Name to assign.
 
     Returns:
-        A `Participant` with `id=None`.
+        A `Person` with `id=None`.
     """
-    return Participant(
+    return Person(
         id=None,
+        anrede="",
         name=name,
-        address_street="Musterstrasse 1",
-        address_zip="3000",
-        address_city="Bern",
-        address_country="CH",
+        kontakt_email="test@example.ch",
+        kontakt_telefon="",
+        rechnungsadresse_strasse="Musterstrasse 1",
+        rechnungsadresse_plz="3000",
+        rechnungsadresse_ort="Bern",
+        rechnungsadresse_land="CH",
         iban="CH9300762011623852957",
-        email="test@example.ch",
+        kundennummer=None,
+        papierrechnung=False,
         created_at="",
     )
 
 
-def _make_meter(metering_point_id: str = "CH1234567890123456789012345", role: str = "bezug") -> Meter:
-    """Build an unpersisted `Meter` for use in tests.
+def _make_messpunkt(
+    messpunkt_bezeichnung: str = "CH1234567890123456789012345",
+    messrichtung: str = MESSRICHTUNG_BEZUG,
+    standort_id: int = 1,
+) -> Messpunkt:
+    """Build an unpersisted `Messpunkt` for use in tests.
 
     Args:
-        metering_point_id: Business key to assign.
-        role: Meter role.
+        messpunkt_bezeichnung: Business key to assign.
+        messrichtung: Measurement direction.
+        standort_id: Foreign key of the site the Messpunkt belongs to.
 
     Returns:
-        A `Meter` with `id=None`.
+        A `Messpunkt` with `id=None`.
     """
-    return Meter(
+    return Messpunkt(
         id=None,
-        metering_point_id=metering_point_id,
-        label="Testzähler",
-        building_address="Musterstrasse 1, 3000 Bern",
-        role=role,
+        messpunkt_bezeichnung=messpunkt_bezeichnung,
+        messrichtung=messrichtung,
+        standort_id=standort_id,
         created_at="",
     )
 
 
-def test_participant_crud_roundtrip(db):
-    """Creating, fetching, updating and deleting a participant all work."""
-    participant_id = participant_repo.create(db, _make_participant())
-    fetched = participant_repo.get(db, participant_id)
+def _make_standort(db) -> int:
+    """Create a minimal Standort and return its id.
+
+    Args:
+        db: Database connection fixture.
+
+    Returns:
+        The new Standort's id.
+    """
+    from app.models import standort as standort_repo
+    from app.models.standort import Standort
+
+    return standort_repo.create(
+        db,
+        Standort(
+            id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+            leg_id=None, netzebene="NE7", created_at="",
+        ),
+    )
+
+
+def test_person_crud_roundtrip(db):
+    """Creating, fetching, updating and deleting a person all work."""
+    person_id = person_repo.create(db, _make_person())
+    fetched = person_repo.get(db, person_id)
     assert fetched is not None
-    assert fetched.name == "Test Teilnehmer"
+    assert fetched.name == "Test Person"
 
     fetched.name = "Geänderter Name"
-    participant_repo.update(db, fetched)
-    assert participant_repo.get(db, participant_id).name == "Geänderter Name"
+    person_repo.update(db, fetched)
+    assert person_repo.get(db, person_id).name == "Geänderter Name"
 
-    participant_repo.delete(db, participant_id)
-    assert participant_repo.get(db, participant_id) is None
+    person_repo.delete(db, person_id)
+    assert person_repo.get(db, person_id) is None
 
 
-def test_meter_rejects_unknown_role(db):
-    """Creating a meter with an invalid role raises ValueError."""
+def test_person_kundennummer_is_auto_assigned_and_unique(db):
+    """`create` always assigns a fresh, unique 8-digit Kundennummer."""
+    first_id = person_repo.create(db, _make_person("A"))
+    second_id = person_repo.create(db, _make_person("B"))
+
+    first = person_repo.get(db, first_id)
+    second = person_repo.get(db, second_id)
+
+    assert first.kundennummer is not None
+    assert second.kundennummer is not None
+    assert 10_000_000 <= first.kundennummer <= 99_999_999
+    assert first.kundennummer != second.kundennummer
+
+
+def test_person_kundennummer_ignores_caller_supplied_value(db):
+    """`create` always auto-assigns a Kundennummer, ignoring `person.kundennummer`."""
+    person = _make_person("A")
+    person.kundennummer = None  # what every caller actually passes for a new Person
+    person_id = person_repo.create(db, person)
+
+    fetched = person_repo.get(db, person_id)
+    assert fetched.kundennummer is not None
+
+
+def test_person_kundennummer_survives_update(db):
+    """Updating a person never changes their Kundennummer."""
+    person_id = person_repo.create(db, _make_person())
+    original = person_repo.get(db, person_id)
+
+    original.name = "Neuer Name"
+    person_repo.update(db, original)
+
+    assert person_repo.get(db, person_id).kundennummer == original.kundennummer
+
+
+def test_person_kundennummer_formatiert_groups_digits(db):
+    """`kundennummer_formatiert` groups the 8 digits as "XX XXX XXX"."""
+    person_id = person_repo.create(db, _make_person())
+    person = person_repo.get(db, person_id)
+    formatted = person.kundennummer_formatiert
+    digits = f"{person.kundennummer:08d}"
+    assert formatted == f"{digits[:2]} {digits[2:5]} {digits[5:]}"
+
+
+def test_messpunkt_rejects_unknown_messrichtung(db):
+    """Creating a Messpunkt with an invalid messrichtung raises ValueError."""
+    standort_id = _make_standort(db)
     with pytest.raises(ValueError):
-        meter_repo.create(db, _make_meter(role="unbekannt"))
+        messpunkt_repo.create(db, _make_messpunkt(messrichtung="unbekannt", standort_id=standort_id))
 
 
-def test_meter_metering_point_id_is_unique(db):
-    """Two meters cannot share the same metering point id."""
-    meter_repo.create(db, _make_meter(metering_point_id="CH1"))
+def test_messpunkt_bezeichnung_is_unique(db):
+    """Two Messpunkte cannot share the same messpunkt_bezeichnung."""
+    standort_id = _make_standort(db)
+    messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", standort_id=standort_id))
     with pytest.raises(Exception):
-        meter_repo.create(db, _make_meter(metering_point_id="CH1"))
+        messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", standort_id=standort_id))
 
 
-def test_meter_role_categorization():
-    """Consumption and production roles are categorized correctly."""
-    assert _make_meter(role="bezug").is_consumption
-    assert _make_meter(role="bezug_fix").is_consumption
-    assert _make_meter(role="bezug_geschaltet").is_consumption
-    assert not _make_meter(role="bezug").is_production
-    assert _make_meter(role="produktion").is_production
-    assert not _make_meter(role="produktion").is_consumption
+def test_messpunkt_direction_properties():
+    """`is_bezug`/`is_einspeisung` reflect the Messpunkt's messrichtung."""
+    from app.models.messpunkt import MESSRICHTUNG_EINSPEISUNG
+
+    bezug = _make_messpunkt(messrichtung=MESSRICHTUNG_BEZUG)
+    einspeisung = _make_messpunkt(messrichtung=MESSRICHTUNG_EINSPEISUNG)
+    assert bezug.is_bezug and not bezug.is_einspeisung
+    assert einspeisung.is_einspeisung and not einspeisung.is_bezug
 
 
-def test_assignment_covers_respects_open_and_closed_ranges():
-    """`MeterAssignment.covers` handles open-ended and bounded periods."""
-    open_ended = MeterAssignment(
-        id=1, meter_id=1, participant_id=1,
-        valid_from=date(2025, 1, 1), valid_to=None, created_at="",
+def test_zuordnung_covers_respects_open_and_closed_ranges():
+    """`Zuordnung.covers` handles open-ended and bounded periods."""
+    open_ended = Zuordnung(
+        id=1, person_id=1, messpunkt_id=1,
+        gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
     )
     assert open_ended.covers(_dt(2025, 6, 1))
     assert not open_ended.covers(_dt(2024, 12, 31))
 
-    bounded = MeterAssignment(
-        id=2, meter_id=1, participant_id=2,
-        valid_from=date(2025, 1, 1), valid_to=date(2025, 3, 31), created_at="",
+    bounded = Zuordnung(
+        id=2, person_id=2, messpunkt_id=1,
+        gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
     )
     assert bounded.covers(_dt(2025, 2, 1))
     assert not bounded.covers(_dt(2025, 4, 1))
@@ -126,76 +203,112 @@ def _dt(year: int, month: int, day: int):
 
 
 def test_find_warnings_detects_gap(db):
-    """A gap between two assignment periods is reported."""
-    participant_a = participant_repo.create(db, _make_participant("A"))
-    participant_b = participant_repo.create(db, _make_participant("B"))
-    meter_id = meter_repo.create(db, _make_meter())
+    """A gap between two Zuordnung periods is reported."""
+    standort_id = _make_standort(db)
+    person_a = person_repo.create(db, _make_person("A"))
+    person_b = person_repo.create(db, _make_person("B"))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
 
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_a,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 1, 31), created_at="",
+        Zuordnung(
+            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 1, 31), created_at="",
         ),
     )
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_b,
-            valid_from=date(2025, 2, 5), valid_to=None, created_at="",
+        Zuordnung(
+            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 2, 5), gueltig_bis=None, created_at="",
         ),
     )
 
-    warnings = assignment_repo.find_warnings(db, meter_id)
+    warnings = zuordnung_repo.find_warnings(db, messpunkt_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "gap"
 
 
 def test_find_warnings_detects_overlap(db):
-    """Overlapping assignment periods are reported."""
-    participant_a = participant_repo.create(db, _make_participant("A"))
-    participant_b = participant_repo.create(db, _make_participant("B"))
-    meter_id = meter_repo.create(db, _make_meter())
+    """Overlapping Zuordnung periods are reported."""
+    standort_id = _make_standort(db)
+    person_a = person_repo.create(db, _make_person("A"))
+    person_b = person_repo.create(db, _make_person("B"))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
 
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_a,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 2, 15), created_at="",
+        Zuordnung(
+            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 2, 15), created_at="",
         ),
     )
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_b,
-            valid_from=date(2025, 2, 1), valid_to=None, created_at="",
+        Zuordnung(
+            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 2, 1), gueltig_bis=None, created_at="",
         ),
     )
 
-    warnings = assignment_repo.find_warnings(db, meter_id)
+    warnings = zuordnung_repo.find_warnings(db, messpunkt_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "overlap"
 
 
 def test_find_warnings_none_for_consecutive_periods(db):
-    """Back-to-back assignments with no gap or overlap raise no warnings."""
-    participant_a = participant_repo.create(db, _make_participant("A"))
-    participant_b = participant_repo.create(db, _make_participant("B"))
-    meter_id = meter_repo.create(db, _make_meter())
+    """Back-to-back Zuordnungen with no gap or overlap raise no warnings."""
+    standort_id = _make_standort(db)
+    person_a = person_repo.create(db, _make_person("A"))
+    person_b = person_repo.create(db, _make_person("B"))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
 
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_a,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 8, 15), created_at="",
+        Zuordnung(
+            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 8, 15), created_at="",
         ),
     )
-    assignment_repo.create(
+    zuordnung_repo.create(
         db,
-        MeterAssignment(
-            id=None, meter_id=meter_id, participant_id=participant_b,
-            valid_from=date(2025, 8, 16), valid_to=None, created_at="",
+        Zuordnung(
+            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 8, 16), gueltig_bis=None, created_at="",
         ),
     )
 
-    assert assignment_repo.find_warnings(db, meter_id) == []
+    assert zuordnung_repo.find_warnings(db, messpunkt_id) == []
+
+
+def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:
+    """Build an unpersisted `Leg` for use in tests.
+
+    Args:
+        name: Name to assign.
+
+    Returns:
+        A `Leg` with `id=None`.
+    """
+    return Leg(id=None, name=name, gemeinde="Ittigen", bemerkung="", created_at="")
+
+
+def test_leg_get_by_name_finds_exact_match(db):
+    """`get_by_name` finds a LEG by its exact name."""
+    leg_repo.create(db, _make_leg("Ittigen_TRA21359"))
+
+    found = leg_repo.get_by_name(db, "Ittigen_TRA21359")
+    assert found is not None
+    assert found.name == "Ittigen_TRA21359"
+
+
+def test_leg_get_by_name_returns_none_for_unknown_name(db):
+    """`get_by_name` returns `None` when no LEG has that name."""
+    assert leg_repo.get_by_name(db, "Unbekannt_TRA00000") is None
+
+
+def test_leg_name_is_unique(db):
+    """Two LEGs cannot share the same name."""
+    leg_repo.create(db, _make_leg("Ittigen_TRA21359"))
+    with pytest.raises(Exception):
+        leg_repo.create(db, _make_leg("Ittigen_TRA21359"))

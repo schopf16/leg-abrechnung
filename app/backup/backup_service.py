@@ -17,7 +17,7 @@ from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version, initialize
 from app.paths import BACKUPS_DIR, DATABASE_PATH
 
 #: Tables that must be present for a file to be accepted as a LEG database.
-_REQUIRED_TABLES = {"leg_settings", "participants", "meters", "readings", "billing_runs"}
+_REQUIRED_TABLES = {"leg_settings", "person", "messpunkt", "readings", "billing_runs"}
 
 _BACKUP_FILENAME_PREFIX = "leg_abrechnung_"
 _BACKUP_FILENAME_SUFFIX = ".sqlite3"

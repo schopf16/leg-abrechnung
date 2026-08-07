@@ -13,8 +13,10 @@ from nicegui import ui
 #: (route, label) pairs shown in the side navigation, in display order.
 NAV_ITEMS = [
     ("/", "Übersicht"),
-    ("/teilnehmer", "Teilnehmer"),
-    ("/zaehler", "Zähler"),
+    ("/personen", "Personen"),
+    ("/messpunkte", "Messpunkte"),
+    ("/standorte", "Standorte"),
+    ("/legs", "LEGs"),
     ("/zuordnungen", "Zuordnungen"),
     ("/import", "Import"),
     ("/abrechnung", "Abrechnung"),

@@ -1,6 +1,6 @@
 """Builds a `qrbill.QRBill` and renders it as the bottom section of an A4 PDF page.
 
-When a participant is owed money by the LEG (a net credit), the QR-bill
+When a person is owed money by the LEG (a net credit), the QR-bill
 still has to be printed for a consistent document layout, but must never
 be usable to actually transfer money: `build_qr_bill` is called with
 `amount=None`, which makes qrbill itself omit the amount from the encoded
@@ -21,7 +21,8 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 from svglib.svglib import svg2rlg
 
-from app.models.participant import Participant
+from app.models.leg import Leg
+from app.models.person import Person
 from app.models.settings import LegSettings
 from app.pdf.layout import PAGE_HEIGHT
 
@@ -52,19 +53,23 @@ class QrBillConfigurationError(Exception):
 
 def build_qr_bill(
     settings: LegSettings,
-    participant: Participant,
+    leg: Leg,
+    person: Person,
     amount_chf: Optional[Decimal],
     reference: str,
 ) -> QRBill:
-    """Construct a `QRBill` for one participant.
+    """Construct a `QRBill` for one person, billed under one LEG.
 
     Args:
-        settings: LEG settings providing the creditor (payee) account and
-            address.
-        participant: The billed participant, used as the debtor address.
+        settings: LEG-wide settings providing the creditor (payee) account
+            and address (shared across all LEGs).
+        leg: The LEG this document is billed under, providing the
+            creditor name.
+        person: The billed person, whose Rechnungsadresse becomes the
+            debtor address.
         amount_chf: Amount to collect, in Swiss francs, or `None` to create
-            a QR-bill with no fixed amount encoded (used when the
-            participant is owed money by the LEG instead -- see
+            a QR-bill with no fixed amount encoded (used when the person
+            is owed money by the LEG instead -- see
             `draw_void_amount_overlay`).
         reference: 27-digit QRR reference number, see
             `app.pdf.qr_reference.generate_qrr_reference`.
@@ -73,25 +78,26 @@ def build_qr_bill(
         A configured `QRBill` instance, ready for `as_svg`.
 
     Raises:
-        QrBillConfigurationError: If the LEG settings or participant
-            address are missing required fields, or the QR-IBAN is invalid.
+        QrBillConfigurationError: If the LEG settings or the person's
+            Rechnungsadresse are missing required fields, or the QR-IBAN
+            is invalid.
     """
     try:
         return QRBill(
             account=settings.qr_iban,
             creditor={
-                "name": settings.name,
+                "name": leg.name,
                 "street": settings.address_street,
                 "pcode": settings.address_zip,
                 "city": settings.address_city,
                 "country": settings.address_country or "CH",
             },
             debtor={
-                "name": participant.name,
-                "street": participant.address_street,
-                "pcode": participant.address_zip,
-                "city": participant.address_city,
-                "country": participant.address_country or "CH",
+                "name": person.name,
+                "street": person.rechnungsadresse_strasse,
+                "pcode": person.rechnungsadresse_plz,
+                "city": person.rechnungsadresse_ort,
+                "country": person.rechnungsadresse_land or "CH",
             },
             amount=str(amount_chf) if amount_chf is not None else None,
             reference_number=reference,

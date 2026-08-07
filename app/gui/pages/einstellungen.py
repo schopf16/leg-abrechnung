@@ -1,4 +1,7 @@
-"""LEG settings page: sender data, QR-IBAN, price, and demo data generation."""
+"""LEG-wide settings page: sender address, QR-IBAN, price, admin fees
+(shared across all LEGs -- see `app.models.leg` for the per-LEG name),
+and demo data generation.
+"""
 
 from nicegui import ui
 
@@ -11,7 +14,7 @@ from app.models.settings import LegSettings
 
 @ui.page("/einstellungen")
 def einstellungen_page() -> None:
-    """Render the LEG settings page.
+    """Render the LEG-wide settings page.
 
     Returns:
         None.
@@ -20,14 +23,15 @@ def einstellungen_page() -> None:
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
 
-        ui.label("LEG-Einstellungen").classes("text-lg font-bold")
+        ui.label("Einstellungen").classes("text-lg font-bold")
         ui.label(
-            "Diese Angaben gelten für alle Rechnungen und Gutschriften "
-            "(Absender und Zahlungsempfänger der QR-Rechnung)."
+            "Diese Angaben gelten für alle LEGs (Absender und "
+            "Zahlungsempfänger der QR-Rechnung, interner Strompreis, "
+            "Gebühren). Der Name auf der Rechnung wird von der "
+            "jeweiligen LEG bezogen -- siehe „LEGs“."
         ).classes("text-body2 text-grey-8")
 
         with ui.card().classes("w-full max-w-lg"):
-            name = ui.input("Name / Bezeichnung der LEG", value=current.name).classes("w-full")
             street = ui.input("Strasse", value=current.address_street).classes("w-full")
             with ui.row().classes("w-full gap-2"):
                 zip_code = ui.input("PLZ", value=current.address_zip).classes("w-24")
@@ -41,28 +45,46 @@ def einstellungen_page() -> None:
                 step=0.1,
                 format="%.2f",
             ).classes("w-full")
+            verwaltungsaufwand = ui.number(
+                "Verwaltungsaufwand (Rp./kWh, nur auf Bezug)",
+                value=current.verwaltungsaufwand_rp_per_kwh,
+                min=0,
+                step=0.01,
+                format="%.4f",
+            ).classes("w-full")
+            papierrechnung_fee = ui.number(
+                "Kosten Papierrechnung (CHF, pro Abrechnung)",
+                value=current.papierrechnung_rappen / 100,
+                min=0,
+                step=0.5,
+                format="%.2f",
+            ).classes("w-full")
             error_label = ui.label("").classes("text-negative")
 
             def save() -> None:
-                """Validate and persist the LEG settings form.
+                """Validate and persist the LEG-wide settings form.
 
                 Returns:
                     None.
                 """
-                if not name.value.strip():
-                    error_label.text = "Name darf nicht leer sein."
-                    return
                 if price.value is None or price.value < 0:
                     error_label.text = "Preis muss positiv sein."
                     return
+                if verwaltungsaufwand.value is None or verwaltungsaufwand.value < 0:
+                    error_label.text = "Verwaltungsaufwand muss positiv sein."
+                    return
+                if papierrechnung_fee.value is None or papierrechnung_fee.value < 0:
+                    error_label.text = "Kosten Papierrechnung müssen positiv sein."
+                    return
                 updated = LegSettings(
-                    name=name.value.strip(),
                     address_street=street.value.strip(),
                     address_zip=zip_code.value.strip(),
                     address_city=city.value.strip(),
                     address_country=country.value.strip() or "CH",
                     qr_iban=qr_iban.value.strip().replace(" ", ""),
                     price_rp_per_kwh=float(price.value),
+                    verwaltungsaufwand_rp_per_kwh=float(verwaltungsaufwand.value),
+                    papierrechnung_rappen=round(float(papierrechnung_fee.value) * 100),
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -76,8 +98,9 @@ def einstellungen_page() -> None:
 
         ui.label("Demo-Daten").classes("text-lg font-bold")
         ui.markdown(
-            "Erzeugt vier Beispiel-Teilnehmer (zwei Prosumer, zwei reine "
-            "Bezüger) mit Zählern, Zuordnungen inkl. eines Umzug-Beispiels, "
+            "Erzeugt eine Beispiel-LEG mit Standorten, fünf "
+            "Beispiel-Personen (zwei Prosumer, drei reine Bezüger) mit "
+            "Messpunkten und Zuordnungen inkl. eines Umzug-Beispiels, "
             "sowie synthetische 15-Minuten-Messwerte für ein Winter- und "
             "ein Sommer-Quartal 2025 zum Ausprobieren der App."
         ).classes("text-body2")
@@ -95,8 +118,8 @@ def einstellungen_page() -> None:
                 ui.notify(str(exc), type="warning")
                 return
             ui.notify(
-                f"Demo-Daten erzeugt: {len(summary.participant_ids)} Teilnehmer, "
-                f"{len(summary.meter_ids)} Zähler, {summary.reading_count} Messwerte.",
+                f"Demo-Daten erzeugt: {len(summary.person_ids)} Personen, "
+                f"{len(summary.messpunkt_ids)} Messpunkte, {summary.reading_count} Messwerte.",
                 type="positive",
             )
 

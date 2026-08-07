@@ -8,10 +8,17 @@ from typing import Optional
 
 @dataclass
 class BillingRun:
-    """One quarterly billing run.
+    """One quarterly billing run, scoped to exactly one LEG.
+
+    Local sharing only ever happens within one LEG (see
+    `app.domain.distribution`), so a billing run covers one LEG's
+    Personen for one quarter -- a Person with Messpunkte in more than one
+    LEG gets one item (and one PDF) per LEG they participate in, from that
+    LEG's separate run.
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
+        leg_id: Foreign key to the `Leg` this run belongs to.
         period_year: Calendar year of the billing quarter.
         period_quarter: Quarter number, 1 to 4.
         created_at: ISO-8601 creation timestamp.
@@ -22,6 +29,7 @@ class BillingRun:
     """
 
     id: Optional[int]
+    leg_id: int
     period_year: int
     period_quarter: int
     created_at: str
@@ -41,6 +49,7 @@ class BillingRun:
         """
         return BillingRun(
             id=row["id"],
+            leg_id=row["leg_id"],
             period_year=row["period_year"],
             period_quarter=row["period_quarter"],
             created_at=row["created_at"],
@@ -52,37 +61,48 @@ class BillingRun:
 
 @dataclass
 class BillingRunItem:
-    """One participant's combined billing document within a billing run.
+    """One person's combined billing document within a billing run.
 
-    Every participant gets exactly one item, and one resulting PDF,
+    Every person gets exactly one item, and one resulting PDF,
     regardless of whether they only consume, only produce, or both:
     consumption ("Bezug") and production ("Vergütung") are netted into a
-    single amount. A positive `net_amount_rappen` means the participant
-    owes the LEG (an invoice); negative means the LEG owes the participant
-    (a credit, paid out via the payment list).
+    single amount. A positive `net_amount_rappen` means the person owes
+    the LEG (an invoice); negative means the LEG owes the person (a
+    credit, paid out via the payment list).
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         billing_run_id: Foreign key to the parent `BillingRun`.
-        participant_id: Foreign key to the billed participant.
+        person_id: Foreign key to the billed person.
         consumed_kwh: Total locally-sourced consumption for the quarter
             (3 decimal precision).
         produced_kwh: Total locally-delivered production for the quarter
             (3 decimal precision).
         price_rp_per_kwh: Price applied, copied from the parent run.
-        net_amount_rappen: `consumed_kwh * price - produced_kwh * price`,
-            rounded to the nearest Rappen -- the *only* rounding step in
-            the whole billing computation (see `app.domain.billing`).
+        verwaltungsaufwand_rappen: Administrative surcharge on
+            `consumed_kwh`, already rounded to the nearest Rappen (its own
+            distinct billed line, not subject to the "round only once"
+            rule that applies to the energy net amount).
+        papierrechnung_rappen: Flat paper-invoice fee, copied verbatim
+            from `LegSettings.papierrechnung_rappen` if the person has
+            `Person.papierrechnung` set, else 0.
+        net_amount_rappen: The full invoiced total -- rounded energy net
+            (`consumed_kwh * price - produced_kwh * price`, the *only*
+            rounding step for the energy portion, see
+            `app.domain.billing`) plus `verwaltungsaufwand_rappen` plus
+            `papierrechnung_rappen`.
         pdf_path: Filesystem path of the generated PDF, once created.
         created_at: ISO-8601 creation timestamp.
     """
 
     id: Optional[int]
     billing_run_id: int
-    participant_id: int
+    person_id: int
     consumed_kwh: float
     produced_kwh: float
     price_rp_per_kwh: float
+    verwaltungsaufwand_rappen: int
+    papierrechnung_rappen: int
     net_amount_rappen: int
     pdf_path: Optional[str]
     created_at: str
@@ -99,7 +119,7 @@ class BillingRunItem:
 
     @property
     def is_owed_to_leg(self) -> bool:
-        """Whether the participant owes the LEG money (a real, payable invoice).
+        """Whether the person owes the LEG money (a real, payable invoice).
 
         Returns:
             `True` if `net_amount_rappen` is strictly positive.
@@ -108,7 +128,7 @@ class BillingRunItem:
 
     @property
     def is_owed_by_leg(self) -> bool:
-        """Whether the LEG owes the participant a payout.
+        """Whether the LEG owes the person a payout.
 
         Returns:
             `True` if `net_amount_rappen` is strictly negative.
@@ -128,10 +148,12 @@ class BillingRunItem:
         return BillingRunItem(
             id=row["id"],
             billing_run_id=row["billing_run_id"],
-            participant_id=row["participant_id"],
+            person_id=row["person_id"],
             consumed_kwh=row["consumed_kwh"],
             produced_kwh=row["produced_kwh"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
+            verwaltungsaufwand_rappen=row["verwaltungsaufwand_rappen"],
+            papierrechnung_rappen=row["papierrechnung_rappen"],
             net_amount_rappen=row["net_amount_rappen"],
             pdf_path=row["pdf_path"],
             created_at=row["created_at"],
@@ -139,7 +161,7 @@ class BillingRunItem:
 
 
 def list_runs(connection: sqlite3.Connection) -> list[BillingRun]:
-    """List all billing runs, most recent quarter first.
+    """List all billing runs (across all LEGs), most recent quarter first.
 
     Args:
         connection: Open SQLite connection.
@@ -149,6 +171,26 @@ def list_runs(connection: sqlite3.Connection) -> list[BillingRun]:
     """
     rows = connection.execute(
         "SELECT * FROM billing_runs ORDER BY period_year DESC, period_quarter DESC"
+    ).fetchall()
+    return [BillingRun.from_row(row) for row in rows]
+
+
+def list_runs_for_leg(connection: sqlite3.Connection, leg_id: int) -> list[BillingRun]:
+    """List all billing runs for one LEG, most recent quarter first.
+
+    Args:
+        connection: Open SQLite connection.
+        leg_id: Primary key of the LEG.
+
+    Returns:
+        That LEG's billing runs, ordered by year and quarter, descending.
+    """
+    rows = connection.execute(
+        """
+        SELECT * FROM billing_runs WHERE leg_id = ?
+        ORDER BY period_year DESC, period_quarter DESC
+        """,
+        (leg_id,),
     ).fetchall()
     return [BillingRun.from_row(row) for row in rows]
 
@@ -170,12 +212,13 @@ def get_run(connection: sqlite3.Connection, run_id: int) -> Optional[BillingRun]
 
 
 def get_run_by_period(
-    connection: sqlite3.Connection, year: int, quarter: int
+    connection: sqlite3.Connection, leg_id: int, year: int, quarter: int
 ) -> Optional[BillingRun]:
-    """Fetch a billing run by calendar year and quarter.
+    """Fetch a LEG's billing run for a calendar year and quarter.
 
     Args:
         connection: Open SQLite connection.
+        leg_id: Primary key of the LEG.
         year: Calendar year.
         quarter: Quarter number, 1 to 4.
 
@@ -183,8 +226,11 @@ def get_run_by_period(
         The matching `BillingRun`, or `None` if none exists yet.
     """
     row = connection.execute(
-        "SELECT * FROM billing_runs WHERE period_year = ? AND period_quarter = ?",
-        (year, quarter),
+        """
+        SELECT * FROM billing_runs
+        WHERE leg_id = ? AND period_year = ? AND period_quarter = ?
+        """,
+        (leg_id, year, quarter),
     ).fetchone()
     return BillingRun.from_row(row) if row else None
 
@@ -220,10 +266,11 @@ def create_run(connection: sqlite3.Connection, run: BillingRun) -> int:
     cursor = connection.execute(
         """
         INSERT INTO billing_runs
-            (period_year, period_quarter, created_at, price_rp_per_kwh, status, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (leg_id, period_year, period_quarter, created_at, price_rp_per_kwh, status, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            run.leg_id,
             run.period_year,
             run.period_quarter,
             datetime.now(timezone.utc).isoformat(),
@@ -254,16 +301,19 @@ def add_items(
         cursor = connection.execute(
             """
             INSERT INTO billing_run_items
-                (billing_run_id, participant_id, consumed_kwh, produced_kwh,
-                 price_rp_per_kwh, net_amount_rappen, pdf_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (billing_run_id, person_id, consumed_kwh, produced_kwh,
+                 price_rp_per_kwh, verwaltungsaufwand_rappen, papierrechnung_rappen,
+                 net_amount_rappen, pdf_path, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 item.billing_run_id,
-                item.participant_id,
+                item.person_id,
                 item.consumed_kwh,
                 item.produced_kwh,
                 item.price_rp_per_kwh,
+                item.verwaltungsaufwand_rappen,
+                item.papierrechnung_rappen,
                 item.net_amount_rappen,
                 item.pdf_path,
                 datetime.now(timezone.utc).isoformat(),
@@ -284,13 +334,13 @@ def list_items(
         billing_run_id: Primary key of the parent billing run.
 
     Returns:
-        All line items for the run, ordered by participant id.
+        All line items for the run, ordered by person id.
     """
     rows = connection.execute(
         """
         SELECT * FROM billing_run_items
         WHERE billing_run_id = ?
-        ORDER BY participant_id
+        ORDER BY person_id
         """,
         (billing_run_id,),
     ).fetchall()

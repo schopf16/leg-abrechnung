@@ -24,7 +24,7 @@ file arrives:
 OBIS codes used to determine direction (Swiss convention):
     1.8.0 (and 1.8.x sub-registers) = Wirkenergie Bezug   -> "bezug"
     2.8.0 (and 2.8.x sub-registers) = Wirkenergie Lieferung/Einspeisung
-                                                          -> "produktion"
+                                                          -> "einspeisung"
 """
 
 from datetime import datetime, timedelta
@@ -49,7 +49,7 @@ def _obis_to_direction(obis_code: str) -> str:
         obis_code: OBIS code string, e.g. "1.8.0" or "2.8.1".
 
     Returns:
-        Either "bezug" or "produktion".
+        Either "bezug" or "einspeisung".
 
     Raises:
         ImportValidationError: If the OBIS code's first component is
@@ -59,10 +59,10 @@ def _obis_to_direction(obis_code: str) -> str:
     if prefix == "1.8":
         return "bezug"
     if prefix == "2.8":
-        return "produktion"
+        return "einspeisung"
     raise ImportValidationError(
         f"Unbekannter OBIS-Code {obis_code!r}: erwartet 1.8.x (Bezug) "
-        "oder 2.8.x (Produktion)."
+        "oder 2.8.x (Einspeisung)."
     )
 
 
@@ -130,12 +130,12 @@ def _extract_time_series(root: Element) -> ParseResult:
         )
 
     for series in series_elements:
-        metering_point_id = _find_text(series, "MeteringPointID")
+        messpunkt_bezeichnung = _find_text(series, "MeteringPointID")
         obis_code = _find_text(series, "ObisCode")
         period = _find_ns(series, "Period")
-        if metering_point_id is None or obis_code is None or period is None:
+        if messpunkt_bezeichnung is None or obis_code is None or period is None:
             result.warnings.append(
-                "Zeitreihe ohne Zählpunkt-ID, OBIS-Code oder Periode übersprungen."
+                "Zeitreihe ohne Messpunkt-Bezeichnung, OBIS-Code oder Periode übersprungen."
             )
             continue
 
@@ -148,14 +148,14 @@ def _extract_time_series(root: Element) -> ParseResult:
         resolution = _find_text(period, "Resolution")
         if resolution != _SUPPORTED_RESOLUTION:
             raise ImportValidationError(
-                f"Nicht unterstützte Auflösung {resolution!r} bei Zählpunkt "
-                f"{metering_point_id}: nur {_SUPPORTED_RESOLUTION} wird unterstützt."
+                f"Nicht unterstützte Auflösung {resolution!r} bei Messpunkt "
+                f"{messpunkt_bezeichnung}: nur {_SUPPORTED_RESOLUTION} wird unterstützt."
             )
 
         start_text = _find_text(period, "Start")
         if start_text is None:
             result.warnings.append(
-                f"Periode ohne Start-Zeitstempel bei Zählpunkt {metering_point_id} übersprungen."
+                f"Periode ohne Start-Zeitstempel bei Messpunkt {messpunkt_bezeichnung} übersprungen."
             )
             continue
         start = datetime.fromisoformat(start_text)
@@ -167,7 +167,7 @@ def _extract_time_series(root: Element) -> ParseResult:
             position_text = value_element.get("position")
             if position_text is None or value_element.text is None:
                 result.warnings.append(
-                    f"Wert ohne Position oder Inhalt bei Zählpunkt {metering_point_id} übersprungen."
+                    f"Wert ohne Position oder Inhalt bei Messpunkt {messpunkt_bezeichnung} übersprungen."
                 )
                 continue
             try:
@@ -176,19 +176,19 @@ def _extract_time_series(root: Element) -> ParseResult:
             except ValueError:
                 result.warnings.append(
                     f"Ungültiger Wert {value_element.text!r} (Position {position_text}) "
-                    f"bei Zählpunkt {metering_point_id} übersprungen."
+                    f"bei Messpunkt {messpunkt_bezeichnung} übersprungen."
                 )
                 continue
             if kwh < 0:
                 result.warnings.append(
-                    f"Negativer Wert {kwh} (Position {position}) bei Zählpunkt "
-                    f"{metering_point_id} übersprungen."
+                    f"Negativer Wert {kwh} (Position {position}) bei Messpunkt "
+                    f"{messpunkt_bezeichnung} übersprungen."
                 )
                 continue
             timestamp = start + timedelta(minutes=15 * (position - 1))
             result.readings.append(
                 ParsedReading(
-                    metering_point_id=metering_point_id,
+                    messpunkt_bezeichnung=messpunkt_bezeichnung,
                     timestamp=timestamp,
                     direction=direction,
                     kwh=kwh,

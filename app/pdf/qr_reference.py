@@ -12,16 +12,16 @@ from stdnum.ch import esr
 #: Width, in digits, of each encoded component before the check digit.
 #: The three widths sum to 26, the QRR payload length (27 digits total
 #: once the check digit computed below is appended).
-_PARTICIPANT_DIGITS = 8
+_PERSON_DIGITS = 8
 _BILLING_RUN_DIGITS = 6
 _ITEM_DIGITS = 12
 
 
-def generate_qrr_reference(participant_id: int, billing_run_id: int, item_id: int) -> str:
+def generate_qrr_reference(person_id: int, billing_run_id: int, item_id: int) -> str:
     """Build a unique, valid 27-digit QRR reference for one invoice.
 
     Args:
-        participant_id: Database id of the billed participant.
+        person_id: Database id of the billed person.
         billing_run_id: Database id of the billing run.
         item_id: Database id of the billing run line item (the invoice).
 
@@ -33,13 +33,13 @@ def generate_qrr_reference(participant_id: int, billing_run_id: int, item_id: in
         ValueError: If any id is too large to fit its allotted digit width.
     """
     payload = (
-        f"{participant_id:0{_PARTICIPANT_DIGITS}d}"
+        f"{person_id:0{_PERSON_DIGITS}d}"
         f"{billing_run_id:0{_BILLING_RUN_DIGITS}d}"
         f"{item_id:0{_ITEM_DIGITS}d}"
     )
-    if len(payload) != _PARTICIPANT_DIGITS + _BILLING_RUN_DIGITS + _ITEM_DIGITS:
+    if len(payload) != _PERSON_DIGITS + _BILLING_RUN_DIGITS + _ITEM_DIGITS:
         raise ValueError(
-            "One of participant_id, billing_run_id or item_id is too large "
+            "One of person_id, billing_run_id or item_id is too large "
             "to encode in a QRR reference."
         )
     check_digit = esr.calc_check_digit(payload)

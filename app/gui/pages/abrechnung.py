@@ -1,14 +1,16 @@
-"""Billing run page: compute, inspect and re-run quarterly billing."""
+"""Billing run page: compute, inspect and re-run quarterly billing, per LEG."""
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.billing import create_or_replace_billing_run
+from app.domain.distribution import LegNotAssignedError
 from app.domain.period import list_available_periods
 from app.gui.navigation import page_frame
 from app.gui.period_selector import build_period_selector
 from app.models import billing_run as billing_run_repo
-from app.models import participant as participant_repo
+from app.models import leg as leg_repo
+from app.models import person as person_repo
 from app.pdf.export_service import export_billing_run_documents
 
 
@@ -19,8 +21,8 @@ def _type_label(item) -> str:
         item: A `BillingRunItem`.
 
     Returns:
-        "Rechnung" if the participant owes the LEG, "Gutschrift" if the
-        LEG owes the participant, "Ausgeglichen" if the net is zero.
+        "Rechnung" if the person owes the LEG, "Gutschrift" if the
+        LEG owes the person, "Ausgeglichen" if the net is zero.
     """
     if item.is_owed_to_leg:
         return "Rechnung"
@@ -39,12 +41,14 @@ def abrechnung_page() -> None:
     with page_frame("/abrechnung", "Abrechnung"):
         ui.label(
             "Berechnet die lokale Verteilung und erzeugt Rechnungen/"
-            "Gutschriften je Teilnehmer für ein Quartal. Ein erneuter Lauf "
-            "für dasselbe Quartal ersetzt den vorherigen vollständig."
+            "Gutschriften je Person für ein Quartal, innerhalb einer LEG. "
+            "Ein erneuter Lauf für dieselbe LEG und dasselbe Quartal "
+            "ersetzt den vorherigen vollständig."
         ).classes("text-body2 text-grey-8")
 
         with connection_scope() as connection:
             available_periods = list_available_periods(connection)
+            legs = leg_repo.list_all(connection)
 
         if not available_periods:
             ui.label(
@@ -53,7 +57,17 @@ def abrechnung_page() -> None:
             ).classes("text-negative mt-2")
             return
 
+        if not legs:
+            ui.label(
+                "⚠ Noch keine LEG angelegt. Bitte zuerst unter „LEGs“ "
+                "mindestens eine LEG erfassen."
+            ).classes("text-negative mt-2")
+            return
+
+        leg_options = {leg.id: leg.name for leg in legs}
+
         with ui.row().classes("items-end gap-2"):
+            leg_select = ui.select(leg_options, label="LEG", value=legs[0].id).classes("w-64")
             selector = build_period_selector(available_periods)
             run_button = ui.button("Abrechnung erstellen / neu berechnen")
 
@@ -61,25 +75,29 @@ def abrechnung_page() -> None:
 
         runs_table = ui.table(
             columns=[
+                {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
                 {"name": "period", "label": "Quartal", "field": "period", "align": "left"},
                 {"name": "created_at", "label": "Erstellt am", "field": "created_at", "align": "left"},
                 {"name": "price", "label": "Preis (Rp./kWh)", "field": "price", "align": "right"},
                 {"name": "status", "label": "Status", "field": "status", "align": "left"},
             ],
             rows=[],
-            row_key="period",
+            row_key="id",
         ).classes("w-full mt-6")
 
         def refresh_runs_table() -> None:
-            """Reload the list of past billing runs.
+            """Reload the list of past billing runs, across all LEGs.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
                 runs = billing_run_repo.list_runs(connection)
+                leg_names = {leg.id: leg.name for leg in leg_repo.list_all(connection)}
             runs_table.rows = [
                 {
+                    "id": r.id,
+                    "leg": leg_names.get(r.leg_id, "?"),
                     "period": f"Q{r.period_quarter} {r.period_year}",
                     "created_at": r.created_at.replace("T", " ").split(".")[0],
                     "price": r.price_rp_per_kwh,
@@ -102,14 +120,15 @@ def abrechnung_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                participant_names = {
-                    p.id: p.name for p in participant_repo.list_all(connection)
+                person_names = {
+                    p.id: p.name for p in person_repo.list_all(connection)
                 }
+                leg_name = leg_options.get(run.leg_id, "?")
 
             result_column.clear()
             with result_column:
                 with ui.card().classes("w-full"):
-                    ui.label(f"Q{run.period_quarter} {run.period_year}").classes(
+                    ui.label(f"{leg_name} -- Q{run.period_quarter} {run.period_year}").classes(
                         "text-lg font-bold"
                     )
                     ui.label(
@@ -118,8 +137,8 @@ def abrechnung_page() -> None:
                     )
                     if distribution.unassigned_kwh:
                         ui.label(
-                            f"⚠ {distribution.unassigned_kwh} kWh konnten keinem "
-                            "Teilnehmer zugeordnet werden (Lücke in den "
+                            f"⚠ {distribution.unassigned_kwh} kWh konnten keiner "
+                            "Person zugeordnet werden (Lücke in den "
                             "Zuordnungen -- siehe Auswertungen)."
                         ).classes("text-negative")
 
@@ -138,7 +157,7 @@ def abrechnung_page() -> None:
                 if items:
                     ui.table(
                         columns=[
-                            {"name": "participant", "label": "Teilnehmer", "field": "participant", "align": "left"},
+                            {"name": "person", "label": "Person", "field": "person", "align": "left"},
                             {"name": "typ", "label": "Typ", "field": "typ", "align": "left"},
                             {"name": "consumed", "label": "Bezug (kWh)", "field": "consumed", "align": "right"},
                             {"name": "produced", "label": "Vergütung (kWh)", "field": "produced", "align": "right"},
@@ -146,7 +165,7 @@ def abrechnung_page() -> None:
                         ],
                         rows=[
                             {
-                                "participant": participant_names.get(i.participant_id, "?"),
+                                "person": person_names.get(i.person_id, "?"),
                                 "typ": _type_label(i),
                                 "consumed": f"{i.consumed_kwh:.3f}",
                                 "produced": f"{i.produced_kwh:.3f}",
@@ -154,14 +173,15 @@ def abrechnung_page() -> None:
                             }
                             for i in items
                         ],
-                        row_key="participant",
+                        row_key="person",
                     ).classes("w-full mt-2")
                 else:
                     ui.label("Keine Belege für dieses Quartal (keine lokale Verteilung).")
 
                 if items:
                     ui.button(
-                        "PDFs erzeugen (1 Abrechnung je Teilnehmer + Zahlliste)",
+                        "PDFs + CSV-Listen erzeugen (1 Abrechnung je Person, "
+                        "Rechnungs- und Auszahlungsliste)",
                         on_click=lambda: export_documents(run.id),
                     ).classes("mt-4")
 
@@ -184,8 +204,10 @@ def abrechnung_page() -> None:
                         "font-bold"
                     )
                     ui.label(f"{len(export_result.document_paths)} Belege erzeugt.")
-                    if export_result.payment_list_path:
-                        ui.label(f"Zahlliste: {export_result.payment_list_path.name}")
+                    if export_result.invoice_list_path:
+                        ui.label(f"Rechnungsliste (CSV): {export_result.invoice_list_path.name}")
+                    if export_result.payout_list_path:
+                        ui.label(f"Auszahlungsliste (CSV): {export_result.payout_list_path.name}")
                     for error in export_result.errors:
                         ui.label(f"⚠ {error}").classes("text-negative")
 
@@ -198,23 +220,36 @@ def abrechnung_page() -> None:
                 ui.notify("PDFs erfolgreich erzeugt.", type="positive")
 
         def run_billing() -> None:
-            """Compute (or recompute) the billing run for the selected quarter.
+            """Compute (or recompute) the billing run for the selected LEG and quarter.
 
             Returns:
                 None.
             """
+            if leg_select.value is None:
+                ui.notify("Bitte eine LEG wählen.", type="warning")
+                return
             period = selector.selected_period
             if period is None:
                 ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
                 return
             year, quarter = period
-            with connection_scope() as connection:
-                run, items, control_check, distribution = create_or_replace_billing_run(
-                    connection, year, quarter
-                )
+            try:
+                with connection_scope() as connection:
+                    run, items, control_check, distribution = create_or_replace_billing_run(
+                        connection, leg_select.value, year, quarter
+                    )
+            except LegNotAssignedError as exc:
+                result_column.clear()
+                with result_column:
+                    ui.label(f"⚠ {exc}").classes("text-negative")
+                ui.notify("Abrechnung nicht möglich: LEG-Zuweisung fehlt.", type="negative")
+                return
             render_result(run, items, control_check, distribution)
             refresh_runs_table()
-            ui.notify(f"Abrechnung für Q{quarter} {year} erstellt.", type="positive")
+            ui.notify(
+                f"Abrechnung für {leg_options[leg_select.value]}, Q{quarter} {year} erstellt.",
+                type="positive",
+            )
 
         run_button.on_click(run_billing)
 

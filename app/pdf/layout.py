@@ -1,12 +1,13 @@
 """Shared A4 letterhead and table drawing helpers for the combined
-per-participant billing document (see `app.pdf.participant_bill_pdf`).
+per-person billing document (see `app.pdf.person_bill_pdf`).
 """
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from app.models.participant import Participant
+from app.models.leg import Leg
+from app.models.person import Person
 from app.models.settings import LegSettings
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
@@ -31,12 +32,16 @@ def new_canvas(path) -> Canvas:
     return Canvas(str(path), pagesize=A4)
 
 
-def draw_sender_block(canvas: Canvas, settings: LegSettings) -> None:
-    """Draw the LEG's sender address in the top-left corner.
+def draw_sender_block(canvas: Canvas, settings: LegSettings, leg: Leg) -> None:
+    """Draw the sender address in the top-left corner.
+
+    The displayed name is the LEG's own name (invoices are per-LEG, see
+    `app.models.leg`); address is shared across all LEGs (`settings`).
 
     Args:
         canvas: Target canvas.
-        settings: LEG settings providing name and address.
+        settings: LEG-wide settings providing the sender address.
+        leg: The LEG this document is billed under.
 
     Returns:
         None.
@@ -44,7 +49,7 @@ def draw_sender_block(canvas: Canvas, settings: LegSettings) -> None:
     y = PAGE_HEIGHT - 20 * mm
     canvas.setFont("Helvetica", 8)
     for line in (
-        settings.name,
+        leg.name,
         settings.address_street,
         f"{settings.address_zip} {settings.address_city}",
     ):
@@ -52,12 +57,12 @@ def draw_sender_block(canvas: Canvas, settings: LegSettings) -> None:
         y -= 10
 
 
-def draw_recipient_block(canvas: Canvas, participant: Participant) -> None:
-    """Draw the recipient's address, positioned for a windowed envelope.
+def draw_recipient_block(canvas: Canvas, person: Person) -> None:
+    """Draw the recipient's billing address, positioned for a windowed envelope.
 
     Args:
         canvas: Target canvas.
-        participant: Recipient of the document.
+        person: Recipient of the document.
 
     Returns:
         None.
@@ -65,9 +70,10 @@ def draw_recipient_block(canvas: Canvas, participant: Participant) -> None:
     y = PAGE_HEIGHT - 55 * mm
     canvas.setFont("Helvetica", 10)
     for line in (
-        participant.name,
-        participant.address_street,
-        f"{participant.address_zip} {participant.address_city}",
+        person.anrede,
+        person.name,
+        person.rechnungsadresse_strasse,
+        f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}",
     ):
         if line.strip():
             canvas.drawString(_LEFT_MARGIN, y, line)

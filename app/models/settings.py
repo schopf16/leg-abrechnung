@@ -7,26 +7,35 @@ from datetime import datetime, timezone
 
 @dataclass
 class LegSettings:
-    """The one and only settings record for the local energy community.
+    """Settings shared across all LEGs (see `app.models.leg`).
+
+    Every LEG bills under its own name (see `Leg.name`), but the sender
+    address, QR-IBAN, energy price and admin fees below are the same for
+    every LEG in this deployment.
 
     Attributes:
-        name: Display name of the LEG, used as payment recipient.
         address_street: Street and house number of the sender address.
         address_zip: Postal code of the sender address.
         address_city: City of the sender address.
         address_country: ISO-3166 alpha-2 country code, e.g. ``"CH"``.
         qr_iban: QR-IBAN used as the creditor account on invoices.
         price_rp_per_kwh: Internal energy price in Rappen per kWh.
+        verwaltungsaufwand_rp_per_kwh: Administrative surcharge in Rappen
+            per kWh, charged on top of the energy price for a person's
+            locally-sourced consumption only (never on production).
+        papierrechnung_rappen: Flat fee in Rappen charged to persons with
+            `Person.papierrechnung` set (paper invoice by post).
         updated_at: ISO-8601 timestamp of the last update.
     """
 
-    name: str
     address_street: str
     address_zip: str
     address_city: str
     address_country: str
     qr_iban: str
     price_rp_per_kwh: float
+    verwaltungsaufwand_rp_per_kwh: float
+    papierrechnung_rappen: int
     updated_at: str
 
     @staticmethod
@@ -40,13 +49,14 @@ class LegSettings:
             The corresponding `LegSettings` dataclass instance.
         """
         return LegSettings(
-            name=row["name"],
             address_street=row["address_street"],
             address_zip=row["address_zip"],
             address_city=row["address_city"],
             address_country=row["address_country"],
             qr_iban=row["qr_iban"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
+            verwaltungsaufwand_rp_per_kwh=row["verwaltungsaufwand_rp_per_kwh"],
+            papierrechnung_rappen=row["papierrechnung_rappen"],
             updated_at=row["updated_at"],
         )
 
@@ -86,18 +96,21 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
     connection.execute(
         """
         UPDATE leg_settings SET
-            name = ?, address_street = ?, address_zip = ?, address_city = ?,
-            address_country = ?, qr_iban = ?, price_rp_per_kwh = ?, updated_at = ?
+            address_street = ?, address_zip = ?, address_city = ?,
+            address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
+            verwaltungsaufwand_rp_per_kwh = ?, papierrechnung_rappen = ?,
+            updated_at = ?
         WHERE id = 1
         """,
         (
-            settings.name,
             settings.address_street,
             settings.address_zip,
             settings.address_city,
             settings.address_country,
             settings.qr_iban,
             settings.price_rp_per_kwh,
+            settings.verwaltungsaufwand_rp_per_kwh,
+            settings.papierrechnung_rappen,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

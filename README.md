@@ -44,24 +44,47 @@ Bei jedem weiteren Start genügt wieder ein Doppelklick auf `start.bat` — es
 Die App ist in folgende Bereiche gegliedert (linke Navigation):
 
 - **Übersicht** — Startseite mit Kennzahlen und ersten Schritten.
-- **Teilnehmer** — Personen/Firmen, die an der LEG teilnehmen.
-- **Zähler** — Stromzähler mit ihrer Rolle (Bezug, Produktion, usw.).
-- **Zuordnungen** — welcher Zähler in welchem Zeitraum zu welchem
-  Teilnehmer gehört (wichtig bei Umzügen mitten im Quartal).
+- **Personen** — Personen/Firmen, die an der LEG teilnehmen, inkl.
+  Detailansicht mit allen ihnen zugeordneten Messpunkten.
+- **Messpunkte** — Messpunkte des Netzbetreibers (Bezug oder Einspeisung),
+  jeder fix an einem Standort.
+- **Standorte** — physische Netzanschlusspunkte (Adresse, Lage, LEG). Die
+  LEG wird manuell zugewiesen: im Dropdown genügt es, einen Teil der
+  Bezeichnung einzutippen, um passende LEGs zu finden.
+- **LEGs** — lokale Elektrizitätsgemeinschaften, eine Eigenschaft des
+  Standorts (nie einer Person oder eines Messpunkts direkt). Per Default
+  entspricht eine LEG genau einem physischen Trafokreis der BKW — sie kann
+  aber auch gezielt mehrere Trafokreise zusammenfassen, wenn sich Personen
+  aus verschiedenen Trafokreisen zu einer gemeinsamen Abrechnung
+  zusammenschliessen. Der LEG-Name erscheint als Absender auf den
+  Rechnungen dieser LEG. Name (muss eindeutig sein) und optionale
+  Bemerkung.
+- **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
+  Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Import** — Messdaten der BKW einlesen (EBIX-XML oder CSV).
-- **Abrechnung** — für ein Quartal je Teilnehmer eine kombinierte
-  Abrechnung berechnen und als PDF erzeugen (siehe unten).
-- **Auswertungen** — Übersicht je Teilnehmer sowie Plausibilitätsprüfungen
-  (fehlende Zuordnungen, Lücken in Messdaten, Summenabgleich).
-- **Einstellungen** — Name/Adresse/QR-IBAN der LEG, interner Strompreis,
-  sowie der Demo-Daten-Generator zum Ausprobieren.
+- **Abrechnung** — für eine LEG und ein Quartal je Person eine kombinierte
+  Abrechnung berechnen und als PDF erzeugen (siehe unten). Jede LEG wird
+  unabhängig abgerechnet.
+- **Auswertungen** — je LEG gewählt: Übersicht je Person sowie
+  Plausibilitätsprüfungen (fehlende Zuordnungen, Lücken in Messdaten,
+  Standorte ohne LEG, Summenabgleich).
+- **Einstellungen** — Absender-Adresse/QR-IBAN, interner Strompreis,
+  Verwaltungsaufwand (Rp./kWh) und Kosten der Papierrechnung, sowie der
+  Demo-Daten-Generator zum Ausprobieren. Diese Werte gelten global für alle
+  LEGs; nur der Name (das Absender-Label auf der Rechnung) wird pro LEG
+  festgelegt.
 - **Backup** — Datenbank sichern und wiederherstellen.
 
+Jede Listenansicht hat oben ein Suchfeld (einfacher Teilstring-Filter über
+die relevanten Spalten, inkl. verknüpfter Daten wie Messpunkt oder
+Standort-Adresse).
+
 **Zum Ausprobieren:** Unter „Einstellungen" den Knopf **„Demo-Daten
-erzeugen"** anklicken. Das legt vier Beispiel-Teilnehmer mit Zählern,
-Zuordnungen und einem Jahr synthetischer Messdaten an, inklusive eines
-Beispiel-Umzugs. Damit lässt sich direkt eine vollständige Test-Abrechnung
-inkl. PDF-Rechnungen durchklicken.
+erzeugen"** anklicken. Das legt eine Beispiel-LEG mit Standorten, fünf
+Beispiel-Personen mit Messpunkten, Zuordnungen und einem Jahr
+synthetischer Messdaten an, inklusive eines Beispiel-Umzugs. Damit lässt
+sich direkt eine vollständige Test-Abrechnung inkl. PDF-Rechnungen
+durchklicken.
 
 ---
 
@@ -69,33 +92,49 @@ inkl. PDF-Rechnungen durchklicken.
 
 Bevor Sie echte Rechnungen erzeugen:
 
-1. **Einstellungen:** Name, Absender-Adresse und **QR-IBAN** der LEG
-   eintragen, sowie den internen Strompreis (Startwert 12 Rp./kWh).
-2. **Teilnehmer** anlegen (Name, Adresse, IBAN für Gutschriften).
-3. **Zähler** anlegen, mit der Zählpunkt-ID aus den BKW-Unterlagen und der
-   korrekten Rolle (Bezug / Produktion / Bezug-fix / Bezug-geschaltet).
-4. **Zuordnungen** anlegen: welcher Teilnehmer welchen Zähler ab welchem
+1. **Einstellungen:** Absender-Adresse und **QR-IBAN** eintragen, sowie den
+   internen Strompreis (Startwert 12 Rp./kWh) und ggf. Verwaltungsaufwand
+   und Kosten der Papierrechnung.
+2. **LEGs** und **Standorte** anlegen (LEG-Zuweisung am Standort erfolgt
+   manuell über ein durchsuchbares Dropdown). Der LEG-Name wird als
+   Absender auf den Rechnungen dieser LEG gedruckt — im Normalfall die
+   BKW-Bezeichnung des Trafokreises.
+3. **Messpunkte** anlegen, mit der Messpunkt-Bezeichnung aus den
+   BKW-Unterlagen, der korrekten Messrichtung (Bezug / Einspeisung) und
+   dem zugehörigen Standort.
+4. **Personen** anlegen (Anrede, Name, Kontakt, Rechnungsadresse, IBAN für
+   Gutschriften, ob Papierrechnung gewünscht ist). Die Kundennummer wird
+   beim Anlegen automatisch und zufällig vergeben (keine fortlaufende
+   Nummer, um Rückschlüsse auf Kundenanzahl oder -reihenfolge zu
+   verhindern) und bleibt danach unveränderlich.
+5. **Zuordnungen** anlegen: welche Person welchen Messpunkt ab welchem
    Datum nutzt. Bei einem Mieterwechsel zwei Zuordnungen mit passendem
    End-/Startdatum anlegen — die App teilt die Messwerte dann automatisch
    korrekt zwischen den beiden Personen auf.
-5. **Import:** die von der BKW gelieferte Datei hochladen.
-6. **Abrechnung:** Jahr und Quartal wählen, Abrechnung erstellen, PDFs
-   erzeugen.
+6. **Import:** die von der BKW gelieferte Datei hochladen.
+7. **Abrechnung:** LEG, Jahr und Quartal wählen, Abrechnung erstellen,
+   PDFs erzeugen. Jede LEG wird unabhängig und pro Quartal separat
+   abgerechnet.
 
-### Ein PDF pro Teilnehmer
+### Ein PDF pro Person
 
-Jeder Teilnehmer erhält für ein Quartal genau **ein** PDF, unabhängig
-davon, ob er nur Strom bezieht, nur einspeist, oder beides tut (Prosumer):
+Jede Person erhält für ein Quartal genau **ein** PDF, unabhängig davon, ob
+sie nur Strom bezieht, nur einspeist, oder beides tut (Prosumer):
 
-- Zuerst der **Bezug**, aufgeschlüsselt nach Monat, mit Zwischensumme.
-- Danach die **Vergütung** (Produktion), ebenfalls nach Monat, mit
-  Zwischensumme.
-- Erst am Schluss werden Bezug und Vergütung verrechnet — **nur dort wird
-  gerundet** (auf den Rappen genau), alle Zwischenwerte sind ungerundete
-  Anzeigewerte.
-- Jedes PDF enthält einen Schweizer QR-Einzahlungsschein. Muss der
-  Teilnehmer der LEG Geld schulden (Netto-Betrag positiv), ist er normal
-  benutzbar. Schuldet umgekehrt die LEG dem Teilnehmer Geld
+- Persönliche Anrede (Anrede + Name) und die Kundennummer der Person
+  (gruppiert dargestellt, z. B. `80 083 138`).
+- Zuerst der **Bezug** als Quartals-Summenzeile (kWh × Preis), danach die
+  **Vergütung** (Einspeisung) ebenfalls als Quartals-Summenzeile.
+- Sind Verwaltungsaufwand (nur auf den Bezug) und/oder die
+  Papierrechnungs-Pauschale (nur falls die Person das gewählt hat) für
+  diese Person ungleich null, folgt ein eigener Abschnitt mit diesen
+  Positionen.
+- Erst am Schluss werden Bezug, Vergütung und allfällige Gebühren
+  verrechnet — **nur dort wird gerundet** (auf den Rappen genau), alle
+  Zwischenwerte sind ungerundete Anzeigewerte.
+- Jedes PDF enthält einen Schweizer QR-Einzahlungsschein mit Zahlungsfrist
+  (45 Tage). Muss die Person der LEG Geld schulden (Netto-Betrag positiv),
+  ist er normal benutzbar. Schuldet umgekehrt die LEG der Person Geld
   (Netto-Betrag negativ), wird der Betrag auf dem Einzahlungsschein durch
   `***.**` ersetzt und ist damit absichtlich **nicht als Zahlungsmittel
   nutzbar** — die Auszahlung erfolgt stattdessen durch den Verwalter über
@@ -154,7 +193,7 @@ mit hochgeladen werden, sind folgende Ordner in `.gitignore` eingetragen
 und werden nie mitversioniert:
 
 - `data/` — die eigentliche Datenbank
-- `output/` — erzeugte Abrechnungen (PDFs je Teilnehmer), Zahllisten
+- `output/` — erzeugte Abrechnungen (PDFs je Person), Zahllisten
 - `backups/` — Datenbank-Backups
 - `.venv/` — die lokale Python-Umgebung
 
@@ -180,13 +219,15 @@ sendet die Änderungen an GitHub.
   `app/db/migrations.py`.
 - **Domänenlogik:** `app/domain/` — 15-Minuten-Verteilung
   (`distribution.py`), Rechnungs-/Gutschriftlogik (`billing.py`),
-  Plausibilitätsprüfungen (`quality_checks.py`), Demo-Daten (`demo_data.py`).
+  Plausibilitätsprüfungen inkl. LEG-Zuschnitt-Check (`quality_checks.py`),
+  Demo-Daten (`demo_data.py`).
 - **Import:** `app/importers/` — EBIX- und CSV-Parser, klar getrennt vom
   Rest der App.
 - **PDF/QR-Rechnung:** `app/pdf/` (Bibliotheken `qrbill` + `reportlab` +
   `svglib`).
-- **Persistenz:** `app/models/` — ein Modul pro Tabelle, reine
-  CRUD-Funktionen ohne Geschäftslogik.
+- **Persistenz:** `app/models/` — ein Modul pro Tabelle
+  (`leg.py`, `standort.py`, `messpunkt.py`, `person.py`,
+  `zuordnung.py`), reine CRUD-Funktionen ohne Geschäftslogik.
 - **Oberfläche:** `app/gui/pages/` — ein Modul pro Seite.
 - **Backup:** `app/backup/`.
 

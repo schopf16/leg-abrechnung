@@ -8,23 +8,25 @@ which file format a given reading originally came from.
 from dataclasses import dataclass, field
 from datetime import datetime
 
-#: Recognized reading directions, matching the `readings.direction` column.
-VALID_DIRECTIONS = frozenset({"bezug", "produktion"})
+#: Recognized reading directions, matching the `readings.direction` column
+#: and `Messpunkt.messrichtung`.
+VALID_DIRECTIONS = frozenset({"bezug", "einspeisung"})
 
 
 @dataclass
 class ParsedReading:
     """One 15-minute interval value read from an import file, not yet
-    matched against the local meter registry.
+    matched against the local Messpunkt registry.
 
     Attributes:
-        metering_point_id: Business key as it appears in the source file.
+        messpunkt_bezeichnung: Business key (grid operator's metering
+            point id) as it appears in the source file.
         timestamp: Interval start (naive local datetime).
-        direction: Either "bezug" or "produktion".
+        direction: Either "bezug" or "einspeisung".
         kwh: Energy for the interval in kWh, non-negative.
     """
 
-    metering_point_id: str
+    messpunkt_bezeichnung: str
     timestamp: datetime
     direction: str
     kwh: float
@@ -60,7 +62,7 @@ def validate_direction(raw_value: str) -> str:
             by the caller).
 
     Returns:
-        Either "bezug" or "produktion".
+        Either "bezug" or "einspeisung".
 
     Raises:
         ImportValidationError: If `raw_value` cannot be mapped to a known
@@ -71,10 +73,10 @@ def validate_direction(raw_value: str) -> str:
         "bezug": "bezug",
         "consumption": "bezug",
         "import": "bezug",
-        "produktion": "produktion",
-        "production": "produktion",
-        "einspeisung": "produktion",
-        "export": "produktion",
+        "einspeisung": "einspeisung",
+        "produktion": "einspeisung",
+        "production": "einspeisung",
+        "export": "einspeisung",
     }
     if normalized not in mapping:
         raise ImportValidationError(f"Unbekannte Richtung: {raw_value!r}")
