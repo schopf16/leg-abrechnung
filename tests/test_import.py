@@ -29,7 +29,7 @@ def _make_standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            leg_id=None, netzebene="NE7", created_at="",
+            trafokreis_id=None, netzebene="NE7", created_at="",
         ),
     )
 
@@ -50,6 +50,7 @@ def _make_messpunkt(messpunkt_bezeichnung: str, messrichtung: str, standort_id: 
         messpunkt_bezeichnung=messpunkt_bezeichnung,
         messrichtung=messrichtung,
         standort_id=standort_id,
+        leg_id=None,
         created_at="",
     )
 

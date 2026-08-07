@@ -1,19 +1,17 @@
 """LEG (Lokale Elektrizitätsgemeinschaft): the administrative and billing
-entity a Standort belongs to. By default one LEG corresponds to exactly
-one physical Trafokreis (transformer circuit) -- its `name` typically
-starts out as the Trafokreis's own designation -- but a LEG can
-deliberately span Standorte on more than one Trafokreis if their owners
-agree to form a joint LEG (at a correspondingly different internal
-discount/tariff arrangement negotiated with the grid operator, outside
-this app's concern). Never attached to a Person or Messpunkt directly --
-see `app.models.standort`.
+group an individual Messpunkt opts into. Attached to the Messpunkt itself,
+never to a Standort or Person directly -- two Messpunkte at the very same
+Standort (and thus the same Trafokreis, see `app.models.trafokreis`) can
+belong to different LEGs, and one LEG can combine Messpunkte spread across
+several Trafokreise if their owners agree to bill jointly (at a
+correspondingly lower BKW discount for the cross-Trafokreis share, which
+this app never computes but can flag -- see `app.domain.leg_composition`).
 
 Billing runs (see `app.domain.billing`) are scoped to exactly one LEG at a
-time: local sharing only ever happens between Messpunkte whose Standorte
-belong to the same LEG (see `app.domain.distribution`), and each LEG gets
-its own name on its invoices' letterhead -- everything else (address,
-QR-IBAN, energy price, admin fees) is shared across all LEGs, see
-`app.models.settings`.
+time: local sharing only ever happens between Messpunkte belonging to the
+same LEG (see `app.domain.distribution`), and each LEG gets its own name on
+its invoices' letterhead -- everything else (address, QR-IBAN, energy
+price, admin fees) is shared across all LEGs, see `app.models.settings`.
 """
 
 import sqlite3
@@ -24,22 +22,20 @@ from typing import Optional
 
 @dataclass
 class Leg:
-    """One LEG (billing entity), by default matching one Trafokreis.
+    """One LEG (billing entity), attached to individual Messpunkte.
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
-        name: The LEG's name -- the official BKW Trafokreis designation if
-            it matches one physical Trafokreis 1:1, a self-chosen name
-            otherwise (e.g. a joint LEG spanning several Trafokreise).
-            Must be unique, and is what appears on this LEG's invoices.
-        gemeinde: Municipality the LEG is located in.
+        name: The LEG's name -- typically the Trafokreis designation it
+            matches 1:1, a self-chosen name otherwise (e.g. a joint LEG
+            spanning several Trafokreise). Must be unique, and is what
+            appears on this LEG's invoices.
         bemerkung: Free-text notes (optional).
         created_at: ISO-8601 creation timestamp.
     """
 
     id: Optional[int]
     name: str
-    gemeinde: str
     bemerkung: str
     created_at: str
 
@@ -56,22 +52,21 @@ class Leg:
         return Leg(
             id=row["id"],
             name=row["name"],
-            gemeinde=row["gemeinde"],
             bemerkung=row["bemerkung"],
             created_at=row["created_at"],
         )
 
 
 def list_all(connection: sqlite3.Connection) -> list[Leg]:
-    """List all LEGs, ordered by municipality then name.
+    """List all LEGs, ordered by name.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        All LEGs, sorted by `gemeinde` then `name`.
+        All LEGs, sorted by `name`.
     """
-    rows = connection.execute("SELECT * FROM leg ORDER BY gemeinde, name").fetchall()
+    rows = connection.execute("SELECT * FROM leg ORDER BY name").fetchall()
     return [Leg.from_row(row) for row in rows]
 
 
@@ -119,12 +114,11 @@ def create(connection: sqlite3.Connection, leg: Leg) -> int:
     """
     cursor = connection.execute(
         """
-        INSERT INTO leg (name, gemeinde, bemerkung, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO leg (name, bemerkung, created_at)
+        VALUES (?, ?, ?)
         """,
         (
             leg.name,
-            leg.gemeinde,
             leg.bemerkung,
             datetime.now(timezone.utc).isoformat(),
         ),
@@ -153,18 +147,18 @@ def update(connection: sqlite3.Connection, leg: Leg) -> None:
     connection.execute(
         """
         UPDATE leg SET
-            name = ?, gemeinde = ?, bemerkung = ?
+            name = ?, bemerkung = ?
         WHERE id = ?
         """,
-        (leg.name, leg.gemeinde, leg.bemerkung, leg.id),
+        (leg.name, leg.bemerkung, leg.id),
     )
     connection.commit()
 
 
-def count_standorte(connection: sqlite3.Connection, leg_id: int) -> int:
-    """Count the Standorte currently assigned to a LEG.
+def count_messpunkte(connection: sqlite3.Connection, leg_id: int) -> int:
+    """Count the Messpunkte currently assigned to a LEG.
 
-    Used to guard deletion: a LEG with assigned Standorte must not be
+    Used to guard deletion: a LEG with assigned Messpunkte must not be
     deleted (see `delete`).
 
     Args:
@@ -172,20 +166,20 @@ def count_standorte(connection: sqlite3.Connection, leg_id: int) -> int:
         leg_id: Primary key of the LEG.
 
     Returns:
-        The number of `standort` rows referencing this LEG.
+        The number of `messpunkt` rows referencing this LEG.
     """
     row = connection.execute(
-        "SELECT COUNT(*) AS n FROM standort WHERE leg_id = ?", (leg_id,)
+        "SELECT COUNT(*) AS n FROM messpunkt WHERE leg_id = ?", (leg_id,)
     ).fetchone()
     return row["n"]
 
 
 class LegInUseError(Exception):
-    """Raised when deleting a LEG that still has assigned Standorte."""
+    """Raised when deleting a LEG that still has assigned Messpunkte."""
 
 
 def delete(connection: sqlite3.Connection, leg_id: int) -> None:
-    """Delete a LEG, but only if no Standort is assigned to it.
+    """Delete a LEG, but only if no Messpunkt is assigned to it.
 
     Args:
         connection: Open SQLite connection.
@@ -195,11 +189,11 @@ def delete(connection: sqlite3.Connection, leg_id: int) -> None:
         None.
 
     Raises:
-        LegInUseError: If one or more Standorte still reference this LEG.
+        LegInUseError: If one or more Messpunkte still reference this LEG.
     """
-    if count_standorte(connection, leg_id) > 0:
+    if count_messpunkte(connection, leg_id) > 0:
         raise LegInUseError(
-            "LEG kann nicht gelöscht werden: es sind noch Standorte zugeordnet."
+            "LEG kann nicht gelöscht werden: es sind noch Messpunkte zugeordnet."
         )
     connection.execute("DELETE FROM leg WHERE id = ?", (leg_id,))
     connection.commit()

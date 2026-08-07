@@ -1,8 +1,10 @@
-"""Standort (connection site): the physical grid connection point a LEG
-is attached to, and that groups one or more Messpunkte.
+"""Standort (connection site): the physical grid connection point a
+Trafokreis is attached to, and that groups one or more Messpunkte.
 
-LEG membership is deliberately a property of the Standort, never of a
-Person or Messpunkt -- see the module docstring of `app.models.leg`.
+Trafokreis membership is deliberately a property of the Standort, never of
+a Person or Messpunkt -- see the module docstring of
+`app.models.trafokreis`. LEG membership, by contrast, is a property of the
+individual Messpunkt (see `app.models.leg`), not of the Standort.
 """
 
 import sqlite3
@@ -35,8 +37,8 @@ class Standort:
         plz: Postal code.
         gemeinde: Municipality.
         lage: Optional detail (e.g. floor/unit) within that address.
-        leg_id: Foreign key to the assigned `Leg`, `None` until manually
-            assigned.
+        trafokreis_id: Foreign key to the assigned `Trafokreis`, `None`
+            until manually assigned.
         netzebene: Grid level, one of `NETZEBENE_OPTIONS`'s keys.
         created_at: ISO-8601 creation timestamp.
     """
@@ -47,7 +49,7 @@ class Standort:
     plz: str
     gemeinde: str
     lage: str
-    leg_id: Optional[int]
+    trafokreis_id: Optional[int]
     netzebene: str
     created_at: str
 
@@ -80,7 +82,7 @@ class Standort:
             plz=row["plz"],
             gemeinde=row["gemeinde"],
             lage=row["lage"],
-            leg_id=row["leg_id"],
+            trafokreis_id=row["trafokreis_id"],
             netzebene=row["netzebene"],
             created_at=row["created_at"],
         )
@@ -131,7 +133,7 @@ def create(connection: sqlite3.Connection, standort: Standort) -> int:
     cursor = connection.execute(
         """
         INSERT INTO standort
-            (adresse, hausnummer, plz, gemeinde, lage, leg_id, netzebene, created_at)
+            (adresse, hausnummer, plz, gemeinde, lage, trafokreis_id, netzebene, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -140,7 +142,7 @@ def create(connection: sqlite3.Connection, standort: Standort) -> int:
             standort.plz,
             standort.gemeinde,
             standort.lage,
-            standort.leg_id,
+            standort.trafokreis_id,
             standort.netzebene,
             datetime.now(timezone.utc).isoformat(),
         ),
@@ -168,7 +170,7 @@ def update(connection: sqlite3.Connection, standort: Standort) -> None:
         """
         UPDATE standort SET
             adresse = ?, hausnummer = ?, plz = ?, gemeinde = ?, lage = ?,
-            leg_id = ?, netzebene = ?
+            trafokreis_id = ?, netzebene = ?
         WHERE id = ?
         """,
         (
@@ -177,7 +179,7 @@ def update(connection: sqlite3.Connection, standort: Standort) -> None:
             standort.plz,
             standort.gemeinde,
             standort.lage,
-            standort.leg_id,
+            standort.trafokreis_id,
             standort.netzebene,
             standort.id,
         ),

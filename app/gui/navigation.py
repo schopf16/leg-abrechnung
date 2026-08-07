@@ -16,6 +16,7 @@ NAV_ITEMS = [
     ("/personen", "Personen"),
     ("/messpunkte", "Messpunkte"),
     ("/standorte", "Standorte"),
+    ("/trafokreise", "Trafokreise"),
     ("/legs", "LEGs"),
     ("/zuordnungen", "Zuordnungen"),
     ("/import", "Import"),

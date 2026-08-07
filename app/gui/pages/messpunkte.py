@@ -1,5 +1,5 @@
 """Messpunkte management page: list, search, create, edit, delete, and a
-detail drill-down showing the Standort and currently assigned Person.
+detail drill-down showing the Standort, LEG and currently assigned Person.
 """
 
 from datetime import date
@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
+from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import standort as standort_repo
@@ -27,6 +28,7 @@ COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt-Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left", "sortable": True},
     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
     {"name": "standort_adresse", "label": "Standort", "field": "standort_adresse", "align": "left"},
+    {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
     {"name": "person", "label": "Aktuell zugeordnet", "field": "person", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
@@ -50,13 +52,14 @@ def _current_person_name(connection, messpunkt_id: int) -> str:
     return "-"
 
 
-def _to_row(connection, mp: Messpunkt, standorte: dict) -> dict:
+def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
     """Convert a `Messpunkt` into a row dict for the NiceGUI table.
 
     Args:
         connection: Open SQLite connection.
         mp: Messpunkt to convert.
         standorte: Preloaded `{standort_id: Standort}` lookup.
+        legs: Preloaded `{leg_id: Leg}` lookup.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
@@ -64,12 +67,15 @@ def _to_row(connection, mp: Messpunkt, standorte: dict) -> dict:
     """
     standort = standorte.get(mp.standort_id)
     standort_adresse = standort.adresse_vollstaendig if standort else "?"
+    leg = legs.get(mp.leg_id)
+    leg_name = leg.name if leg else "-"
     person_name = _current_person_name(connection, mp.id)
     search_text = " ".join(
         [
             mp.messpunkt_bezeichnung,
             MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
             standort_adresse,
+            leg_name,
             person_name,
         ]
     ).lower()
@@ -79,6 +85,7 @@ def _to_row(connection, mp: Messpunkt, standorte: dict) -> dict:
         "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
         "standort_id": mp.standort_id,
         "standort_adresse": standort_adresse,
+        "leg": leg_name,
         "person": person_name,
         "_search": search_text,
     }
@@ -93,12 +100,14 @@ def messpunkte_page() -> None:
     """
     with page_frame("/messpunkte", "Messpunkte"):
         ui.label(
-            "Messpunkte sind fix an einen Standort gebunden. Wer über "
+            "Messpunkte sind fix an einen Standort gebunden. Die LEG wird "
+            "hier pro Messpunkt zugewiesen -- zwei Messpunkte am selben "
+            "Standort können unterschiedlichen LEGs angehören. Wer über "
             "einen Messpunkt abgerechnet wird, legen Sie unter "
             "„Zuordnungen“ fest."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Bezeichnung, Richtung, Standort, Person...)").classes(
+        search_input = ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)").classes(
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
@@ -135,8 +144,9 @@ def messpunkte_page() -> None:
             nonlocal all_rows
             with connection_scope() as connection:
                 standorte = {s.id: s for s in standort_repo.list_all(connection)}
+                legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
                 all_rows = [
-                    _to_row(connection, mp, standorte) for mp in messpunkt_repo.list_all(connection)
+                    _to_row(connection, mp, standorte, legs) for mp in messpunkt_repo.list_all(connection)
                 ]
             apply_filter()
 
@@ -153,7 +163,9 @@ def messpunkte_page() -> None:
             """
             with connection_scope() as connection:
                 standorte = standort_repo.list_all(connection)
+                legs = leg_repo.list_all(connection)
             standort_options = {s.id: s.adresse_vollstaendig for s in standorte}
+            leg_options = {leg.id: leg.name for leg in legs}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Messpunkt bearbeiten" if existing else "Neuer Messpunkt").classes(
@@ -172,6 +184,12 @@ def messpunkte_page() -> None:
                     standort_options,
                     label="Standort",
                     value=existing.standort_id if existing else (standorte[0].id if standorte else None),
+                ).classes("w-full")
+                leg_select = ui.select(
+                    leg_options,
+                    label="LEG",
+                    value=existing.leg_id if existing else None,
+                    with_input=True,
                 ).classes("w-full")
                 error_label = ui.label("").classes("text-negative")
 
@@ -195,6 +213,7 @@ def messpunkte_page() -> None:
                                     messpunkt_bezeichnung=bezeichnung.value.strip(),
                                     messrichtung=messrichtung.value,
                                     standort_id=standort_select.value,
+                                    leg_id=leg_select.value,
                                     created_at=existing.created_at,
                                 )
                                 messpunkt_repo.update(connection, updated)
@@ -204,6 +223,7 @@ def messpunkte_page() -> None:
                                     messpunkt_bezeichnung=bezeichnung.value.strip(),
                                     messrichtung=messrichtung.value,
                                     standort_id=standort_select.value,
+                                    leg_id=leg_select.value,
                                     created_at="",
                                 )
                                 messpunkt_repo.create(connection, new_mp)
@@ -285,7 +305,7 @@ def messpunkte_page() -> None:
 @ui.page("/messpunkte/{messpunkt_id}")
 def messpunkt_detail_page(messpunkt_id: int) -> None:
     """Render one Messpunkt's detail view: Bezeichnung, Messrichtung,
-    Standort and currently assigned Person.
+    Standort, LEG and currently assigned Person.
 
     Args:
         messpunkt_id: Database id of the Messpunkt, from the URL path.
@@ -296,6 +316,7 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
     with connection_scope() as connection:
         mp = messpunkt_repo.get(connection, messpunkt_id)
         standort = standort_repo.get(connection, mp.standort_id) if mp else None
+        leg = leg_repo.get(connection, mp.leg_id) if mp and mp.leg_id else None
         person_name = _current_person_name(connection, messpunkt_id) if mp else "-"
 
     with page_frame(
@@ -313,4 +334,5 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
             ui.label(f"Standort: {standort.adresse_vollstaendig if standort else '?'}")
             if standort:
                 ui.link("Standort ansehen", f"/standorte/{standort.id}")
+            ui.label(f"LEG: {leg.name if leg else '-'}")
             ui.label(f"Aktuell zugeordnete Person: {person_name}")

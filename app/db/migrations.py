@@ -495,4 +495,65 @@ MIGRATIONS: list[Migration] = [
             CREATE INDEX idx_items_run ON billing_run_items(billing_run_id);
         """,
     ),
+    Migration(
+        version=8,
+        description="Split LEG and Trafokreis back apart: a Trafokreis is "
+        "purely the physical grid-topology grouping (a property of the "
+        "Standort, as before migration 7), while a LEG is now the "
+        "administrative/billing group an individual Messpunkt opts into. "
+        "Two Messpunkte at the same Standort (hence the same Trafokreis) "
+        "can now belong to different LEGs, and one LEG can combine "
+        "Messpunkte from several Trafokreise (at a correspondingly lower "
+        "BKW discount, which this app never computes but can flag -- see "
+        "app.domain.leg_composition). No data migration/backfill: only "
+        "demo/test data existed at this point, regenerated via the demo "
+        "data generator after this runs.",
+        sql="""
+            ALTER TABLE leg RENAME TO trafokreis;
+
+            ALTER TABLE standort RENAME COLUMN leg_id TO trafokreis_id;
+            DROP INDEX IF EXISTS idx_standort_leg;
+            CREATE INDEX idx_standort_trafokreis ON standort(trafokreis_id);
+
+            CREATE TABLE leg (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                bemerkung TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            ALTER TABLE messpunkt ADD COLUMN leg_id INTEGER REFERENCES leg(id) ON DELETE SET NULL;
+            CREATE INDEX idx_messpunkt_leg ON messpunkt(leg_id);
+
+            DROP TABLE billing_run_items;
+            DROP TABLE billing_runs;
+
+            CREATE TABLE billing_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                leg_id INTEGER NOT NULL REFERENCES leg(id) ON DELETE CASCADE,
+                period_year INTEGER NOT NULL,
+                period_quarter INTEGER NOT NULL CHECK (period_quarter BETWEEN 1 AND 4),
+                created_at TEXT NOT NULL,
+                price_rp_per_kwh REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'erstellt',
+                notes TEXT NOT NULL DEFAULT '',
+                UNIQUE (leg_id, period_year, period_quarter)
+            );
+
+            CREATE TABLE billing_run_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                billing_run_id INTEGER NOT NULL REFERENCES billing_runs(id) ON DELETE CASCADE,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE RESTRICT,
+                consumed_kwh REAL NOT NULL,
+                produced_kwh REAL NOT NULL,
+                price_rp_per_kwh REAL NOT NULL,
+                verwaltungsaufwand_rappen INTEGER NOT NULL DEFAULT 0,
+                papierrechnung_rappen INTEGER NOT NULL DEFAULT 0,
+                net_amount_rappen INTEGER NOT NULL,
+                pdf_path TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_items_run ON billing_run_items(billing_run_id);
+        """,
+    ),
 ]

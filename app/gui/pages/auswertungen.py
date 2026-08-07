@@ -21,7 +21,7 @@ CATEGORY_LABELS = {
     "zuordnung_ueberlappung": "Überlappende Zuordnung",
     "zuordnung_luecke": "Lücke in Zuordnung",
     "messdaten_luecke": "Lücke in Messdaten",
-    "leg_nicht_zugeordnet": "Standort ohne LEG",
+    "leg_nicht_zugeordnet": "Messpunkt ohne LEG",
 }
 
 

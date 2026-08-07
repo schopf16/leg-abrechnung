@@ -1,6 +1,6 @@
-"""Generates demo/test data: one LEG, four Standorte, seven Messpunkte,
-five Personen (including a mid-quarter move), and synthetic 15-minute
-readings for one winter and one summer quarter.
+"""Generates demo/test data: one Trafokreis, one LEG, four Standorte,
+seven Messpunkte, five Personen (including a mid-quarter move), and
+synthetic 15-minute readings for one winter and one summer quarter.
 
 Used both to let the administrator click through the app with realistic
 data, and as the fixture basis for the distribution-engine unit tests (see
@@ -11,8 +11,8 @@ data, and as the fixture basis for the distribution-engine unit tests (see
   min(P, C) = C`, testing the consumption-limited case) and sometimes falls
   short of it (testing the production-limited case).
 - A Messpunkt that changes Person mid-quarter (tenant move), exercising
-  the time-sliced Zuordnung lookup, while its Standort (and thus LEG)
-  never changes.
+  the time-sliced Zuordnung lookup, while its Standort/Trafokreis and its
+  LEG never change.
 """
 
 import math
@@ -26,12 +26,14 @@ from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.standort import Standort
+from app.models.trafokreis import Trafokreis
 from app.models.zuordnung import Zuordnung
 
 #: Demo QR-IBAN (valid checksum, QR-IID range) so generated demo data can
@@ -217,9 +219,10 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
             f'"{_DEMO_MARKER_NAME}" existiert schon).'
         )
 
+    trafokreis = _create_demo_trafokreis(connection)
     leg = _create_demo_leg(connection)
-    standorte = _create_demo_standorte(connection, leg)
-    messpunkte = _create_demo_messpunkte(connection, standorte)
+    standorte = _create_demo_standorte(connection, trafokreis)
+    messpunkte = _create_demo_messpunkte(connection, standorte, leg)
     personen = _create_demo_personen(connection)
     _create_demo_zuordnungen(connection, personen, messpunkte)
     reading_count = _create_demo_readings(connection, messpunkte)
@@ -232,8 +235,31 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     )
 
 
+def _create_demo_trafokreis(connection: sqlite3.Connection) -> Trafokreis:
+    """Insert the single demo Trafokreis all demo Standorte share.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        The persisted `Trafokreis` (with `id` set).
+    """
+    trafokreis = Trafokreis(
+        id=None,
+        name="Bern_TRA00001",
+        gemeinde="Bern",
+        bemerkung="",
+        created_at="",
+    )
+    trafokreis.id = trafokreis_repo.create(connection, trafokreis)
+    return trafokreis
+
+
 def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
-    """Insert the single demo LEG all demo Standorte share.
+    """Insert the single demo LEG all demo Messpunkte share.
+
+    By default matches the demo Trafokreis 1:1 -- same name, since no
+    cross-Trafokreis grouping is demonstrated in the showcase data.
 
     Args:
         connection: Open SQLite connection.
@@ -244,7 +270,6 @@ def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
     leg = Leg(
         id=None,
         name="Bern_TRA00001",
-        gemeinde="Bern",
         bemerkung="",
         created_at="",
     )
@@ -253,13 +278,13 @@ def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
 
 
 def _create_demo_standorte(
-    connection: sqlite3.Connection, leg: Leg
+    connection: sqlite3.Connection, trafokreis: Trafokreis
 ) -> dict[str, Standort]:
-    """Insert the four demo Standorte, all on the demo LEG.
+    """Insert the four demo Standorte, all on the demo Trafokreis.
 
     Args:
         connection: Open SQLite connection.
-        leg: LEG created by `_create_demo_leg`.
+        trafokreis: Trafokreis created by `_create_demo_trafokreis`.
 
     Returns:
         A dict keyed by short handle ("anna", "beat", "carla",
@@ -268,19 +293,19 @@ def _create_demo_standorte(
     definitions = {
         "anna": Standort(
             id=None, adresse="Sonnenweg", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            leg_id=leg.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
         ),
         "beat": Standort(
             id=None, adresse="Sonnenweg", hausnummer="2", plz="3000", gemeinde="Bern", lage="",
-            leg_id=leg.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
         ),
         "carla": Standort(
             id=None, adresse="Bergstrasse", hausnummer="3", plz="3001", gemeinde="Bern", lage="",
-            leg_id=leg.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
         ),
         "bergstrasse4": Standort(
             id=None, adresse="Bergstrasse", hausnummer="4", plz="3001", gemeinde="Bern", lage="",
-            leg_id=leg.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
         ),
     }
     created = {}
@@ -291,13 +316,14 @@ def _create_demo_standorte(
 
 
 def _create_demo_messpunkte(
-    connection: sqlite3.Connection, standorte: dict[str, Standort]
+    connection: sqlite3.Connection, standorte: dict[str, Standort], leg: Leg
 ) -> dict[str, Messpunkt]:
-    """Insert the demo Messpunkte for the showcase Standorte.
+    """Insert the demo Messpunkte for the showcase Standorte, all on the demo LEG.
 
     Args:
         connection: Open SQLite connection.
         standorte: Standorte created by `_create_demo_standorte`.
+        leg: LEG created by `_create_demo_leg`.
 
     Returns:
         A dict keyed by short handle ("anna_bezug", "anna_einspeisung",
@@ -308,31 +334,38 @@ def _create_demo_messpunkte(
     definitions = {
         "anna_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000001",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["anna"].id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["anna"].id,
+            leg_id=leg.id, created_at="",
         ),
         "anna_einspeisung": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000002",
-            messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["anna"].id, created_at="",
+            messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["anna"].id,
+            leg_id=leg.id, created_at="",
         ),
         "beat_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000003",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["beat"].id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["beat"].id,
+            leg_id=leg.id, created_at="",
         ),
         "beat_einspeisung": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000004",
-            messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["beat"].id, created_at="",
+            messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["beat"].id,
+            leg_id=leg.id, created_at="",
         ),
         "carla_bezug_1": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000005",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id,
+            leg_id=leg.id, created_at="",
         ),
         "carla_bezug_2": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000006",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id,
+            leg_id=leg.id, created_at="",
         ),
         "bergstrasse4_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000007",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["bergstrasse4"].id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["bergstrasse4"].id,
+            leg_id=leg.id, created_at="",
         ),
     }
     created = {}
@@ -411,8 +444,8 @@ def _create_demo_zuordnungen(
     The "bergstrasse4_bezug" Messpunkt is assigned to Erika (previous
     tenant) until 2025-08-15 and to David from 2025-08-16 onward, so a
     single Messpunkt's readings are split between two Personen within the
-    summer demo quarter -- while its Standort (Bergstrasse 4) and that
-    Standort's LEG never change.
+    summer demo quarter -- while its Standort (Bergstrasse 4) and its own
+    LEG never change.
 
     Args:
         connection: Open SQLite connection.

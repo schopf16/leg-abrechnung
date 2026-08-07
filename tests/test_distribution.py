@@ -52,34 +52,32 @@ def _leg(db) -> int:
     """Create a LEG with a unique name and return its id."""
     return leg_repo.create(
         db,
-        Leg(id=None, name=f"Testkreis-{uuid.uuid4().hex[:8]}", gemeinde="Bern", bemerkung="", created_at=""),
+        Leg(id=None, name=f"Testkreis-{uuid.uuid4().hex[:8]}", bemerkung="", created_at=""),
     )
 
 
-def _standort(db, leg_id: int | None = "auto") -> int:
-    """Create a minimal Standort and return its id.
+def _standort(db) -> int:
+    """Create a minimal Standort (no Trafokreis needed for these tests) and
+    return its id.
 
     Args:
         db: Database connection fixture.
-        leg_id: LEG to assign. Defaults to a freshly created one (most
-            tests just need *a* valid LEG, not to control which one);
-            pass `None` explicitly to test the unassigned case.
 
     Returns:
         The new Standort's id.
     """
-    if leg_id == "auto":
-        leg_id = _leg(db)
     return standort_repo.create(
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            leg_id=leg_id, netzebene="NE7", created_at="",
+            trafokreis_id=None, netzebene="NE7", created_at="",
         ),
     )
 
 
-def _messpunkt(db, messpunkt_bezeichnung: str, messrichtung: str, standort_id: int) -> int:
+def _messpunkt(
+    db, messpunkt_bezeichnung: str, messrichtung: str, standort_id: int, leg_id: "int | None | str" = "auto"
+) -> int:
     """Create a Messpunkt and return its id.
 
     Args:
@@ -87,15 +85,20 @@ def _messpunkt(db, messpunkt_bezeichnung: str, messrichtung: str, standort_id: i
         messpunkt_bezeichnung: Business key.
         messrichtung: Measurement direction.
         standort_id: Foreign key of the site the Messpunkt belongs to.
+        leg_id: LEG to assign. Defaults to a freshly created one (most
+            tests just need *a* valid LEG, not to control which one);
+            pass `None` explicitly to test the unassigned case.
 
     Returns:
         The new Messpunkt's id.
     """
+    if leg_id == "auto":
+        leg_id = _leg(db)
     return messpunkt_repo.create(
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=messpunkt_bezeichnung,
-            messrichtung=messrichtung, standort_id=standort_id, created_at="",
+            messrichtung=messrichtung, standort_id=standort_id, leg_id=leg_id, created_at="",
         ),
     )
 
@@ -144,11 +147,11 @@ def _reading(db, messpunkt_id: int, moment: datetime, direction: str, kwh: float
 def test_zero_production_yields_zero_sharing(db):
     """If P(t) = 0, no energy is shared even though consumption is nonzero."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -165,9 +168,9 @@ def test_zero_production_yields_zero_sharing(db):
 def test_zero_consumption_yields_zero_sharing(db):
     """If C(t) = 0, no energy is shared even though production is nonzero."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     producer = _person(db, "Producer")
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
@@ -182,11 +185,11 @@ def test_zero_consumption_yields_zero_sharing(db):
 def test_production_surplus_limits_sharing_to_consumption(db):
     """When P(t) > C(t), sharing is capped at consumption (S = C)."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -203,13 +206,13 @@ def test_production_surplus_limits_sharing_to_consumption(db):
 def test_production_deficit_splits_proportionally_across_consumers(db):
     """When P(t) < C(t), consumers share the deficit-limited energy proportionally."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     consumer_a = _person(db, "Consumer A")
     consumer_b = _person(db, "Consumer B")
     producer = _person(db, "Producer")
-    mp_a = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    mp_b = _messpunkt(db, "M-C2", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    mp_a = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    mp_b = _messpunkt(db, "M-C2", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, mp_a, consumer_a, date(YEAR, 1, 1))
     _assign(db, mp_b, consumer_b, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
@@ -231,12 +234,12 @@ def test_production_deficit_splits_proportionally_across_consumers(db):
 def test_mid_period_move_splits_messpunkt_between_two_personen(db):
     """A Messpunkt reassigned mid-quarter attributes readings to the correct person."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     tenant_before = _person(db, "Vormieter")
     tenant_after = _person(db, "Nachmieter")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
 
     move_day = date(YEAR, 2, 1)
     _assign(db, consumption_mp, tenant_before, date(YEAR, 1, 1), move_day - timedelta(days=1))
@@ -260,10 +263,10 @@ def test_mid_period_move_splits_messpunkt_between_two_personen(db):
 def test_unassigned_messpunkt_reading_is_tracked_not_dropped(db):
     """A reading for a Messpunkt with no covering Zuordnung is reported, not billed."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     # consumption_mp is intentionally never assigned to anyone.
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -283,11 +286,11 @@ def test_unassigned_messpunkt_reading_is_tracked_not_dropped(db):
 def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
     """Each person's monthly dicts cover all 3 quarter months and sum to the total."""
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -316,11 +319,11 @@ def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
 
 
 def test_messpunkt_without_leg_raises_error(db):
-    """A Messpunkt with readings whose Standort has no LEG blocks the whole run."""
+    """A Messpunkt with readings but no LEG assigned blocks the whole run."""
     unrelated_leg_id = _leg(db)
-    standort = _standort(db, leg_id=None)
+    standort = _standort(db)
     producer = _person(db, "Producer")
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id=None)
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
     _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "einspeisung", 5.0)
 
@@ -330,13 +333,14 @@ def test_messpunkt_without_leg_raises_error(db):
 
 def test_messpunkt_without_readings_does_not_block_run(db):
     """A Messpunkt with no LEG but also no readings this quarter is not an obstacle."""
-    _standort(db, leg_id=None)  # unused: no Messpunkt, let alone readings, on it
+    unused_standort = _standort(db)
+    _messpunkt(db, "M-UNUSED", MESSRICHTUNG_BEZUG, unused_standort, leg_id=None)  # no readings on it
     leg_id = _leg(db)
-    standort = _standort(db, leg_id)
+    standort = _standort(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort, leg_id)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
     _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "bezug", 4.0)
@@ -350,12 +354,12 @@ def test_distribution_scoped_to_one_leg_excludes_other_legs_messpunkte(db):
     """Two Personen on different LEGs never share, even with matching P(t)/C(t)."""
     leg_a = _leg(db)
     leg_b = _leg(db)
-    standort_a = _standort(db, leg_a)
-    standort_b = _standort(db, leg_b)
+    standort_a = _standort(db)
+    standort_b = _standort(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort_a)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort_b)
+    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, standort_a, leg_a)
+    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, standort_b, leg_b)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -381,16 +385,16 @@ def test_two_legs_each_share_correctly_within_themselves(db):
     """Two independent LEGs each compute correct, isolated local sharing."""
     leg_a = _leg(db)
     leg_b = _leg(db)
-    standort_a = _standort(db, leg_a)
-    standort_b = _standort(db, leg_b)
+    standort_a = _standort(db)
+    standort_b = _standort(db)
     consumer_a = _person(db, "Consumer A")
     producer_a = _person(db, "Producer A")
     consumer_b = _person(db, "Consumer B")
     producer_b = _person(db, "Producer B")
-    consumption_mp_a = _messpunkt(db, "A-C1", MESSRICHTUNG_BEZUG, standort_a)
-    production_mp_a = _messpunkt(db, "A-P1", MESSRICHTUNG_EINSPEISUNG, standort_a)
-    consumption_mp_b = _messpunkt(db, "B-C1", MESSRICHTUNG_BEZUG, standort_b)
-    production_mp_b = _messpunkt(db, "B-P1", MESSRICHTUNG_EINSPEISUNG, standort_b)
+    consumption_mp_a = _messpunkt(db, "A-C1", MESSRICHTUNG_BEZUG, standort_a, leg_a)
+    production_mp_a = _messpunkt(db, "A-P1", MESSRICHTUNG_EINSPEISUNG, standort_a, leg_a)
+    consumption_mp_b = _messpunkt(db, "B-C1", MESSRICHTUNG_BEZUG, standort_b, leg_b)
+    production_mp_b = _messpunkt(db, "B-P1", MESSRICHTUNG_EINSPEISUNG, standort_b, leg_b)
     _assign(db, consumption_mp_a, consumer_a, date(YEAR, 1, 1))
     _assign(db, production_mp_a, producer_a, date(YEAR, 1, 1))
     _assign(db, consumption_mp_b, consumer_b, date(YEAR, 1, 1))

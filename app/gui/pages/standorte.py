@@ -9,6 +9,7 @@ from app.gui.navigation import page_frame
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import standort as standort_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models.standort import NETZEBENE_OPTIONS, Standort
 
 COLUMNS = [
@@ -16,24 +17,24 @@ COLUMNS = [
     {"name": "plz_gemeinde", "label": "PLZ / Gemeinde", "field": "plz_gemeinde", "align": "left"},
     {"name": "lage", "label": "Lage", "field": "lage", "align": "left"},
     {"name": "netzebene", "label": "Netzebene", "field": "netzebene", "align": "left"},
-    {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
+    {"name": "trafokreis", "label": "Trafokreis", "field": "trafokreis", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
 
-def _to_row(standort: Standort, legs: dict) -> dict:
+def _to_row(standort: Standort, trafokreise: dict) -> dict:
     """Convert a `Standort` into a row dict for the NiceGUI table.
 
     Args:
         standort: Standort to convert.
-        legs: Preloaded `{leg_id: Leg}` lookup.
+        trafokreise: Preloaded `{trafokreis_id: Trafokreis}` lookup.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
         `_search` key used for client-side filtering.
     """
-    leg = legs.get(standort.leg_id)
-    leg_name = leg.name if leg else "-"
+    trafokreis = trafokreise.get(standort.trafokreis_id)
+    trafokreis_name = trafokreis.name if trafokreis else "-"
     search_text = " ".join(
         [
             standort.adresse,
@@ -41,7 +42,7 @@ def _to_row(standort: Standort, legs: dict) -> dict:
             standort.plz,
             standort.gemeinde,
             standort.lage or "",
-            leg_name,
+            trafokreis_name,
         ]
     ).lower()
     return {
@@ -50,7 +51,7 @@ def _to_row(standort: Standort, legs: dict) -> dict:
         "plz_gemeinde": f"{standort.plz} {standort.gemeinde}".strip(),
         "lage": standort.lage,
         "netzebene": NETZEBENE_OPTIONS.get(standort.netzebene, standort.netzebene),
-        "leg": leg_name,
+        "trafokreis": trafokreis_name,
         "_search": search_text,
     }
 
@@ -65,12 +66,14 @@ def standorte_page() -> None:
     with page_frame("/standorte", "Standorte"):
         ui.label(
             "Standorte sind physische Netzanschlusspunkte. Ein Standort "
-            "gehört zu genau einer LEG; die Zuordnung erfolgt manuell -- "
-            "im LEG-Feld die (Teil-)Bezeichnung eintippen, um passende "
-            "LEGs zu finden."
+            "gehört zu genau einem Trafokreis; die Zuordnung erfolgt "
+            "manuell -- im Trafokreis-Feld die (Teil-)Bezeichnung "
+            "eintippen, um passende Trafokreise zu finden. Die LEG wird "
+            "nicht hier, sondern pro Messpunkt zugewiesen (siehe "
+            "„Messpunkte“)."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Adresse, PLZ, Gemeinde, LEG...)").classes(
+        search_input = ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)").classes(
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
@@ -106,8 +109,8 @@ def standorte_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
-                all_rows = [_to_row(s, legs) for s in standort_repo.list_all(connection)]
+                trafokreise = {t.id: t for t in trafokreis_repo.list_all(connection)}
+                all_rows = [_to_row(s, trafokreise) for s in standort_repo.list_all(connection)]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
@@ -122,8 +125,8 @@ def standorte_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                legs = leg_repo.list_all(connection)
-            leg_options = {leg.id: leg.name for leg in legs}
+                trafokreise = trafokreis_repo.list_all(connection)
+            trafokreis_options = {t.id: t.name for t in trafokreise}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes(
@@ -151,10 +154,10 @@ def standorte_page() -> None:
                     label="Netzebene",
                     value=existing.netzebene if existing else "NE7",
                 ).classes("w-full")
-                leg_select = ui.select(
-                    leg_options,
-                    label="LEG",
-                    value=existing.leg_id if existing else None,
+                trafokreis_select = ui.select(
+                    trafokreis_options,
+                    label="Trafokreis",
+                    value=existing.trafokreis_id if existing else None,
                     with_input=True,
                 ).classes("w-full")
                 error_label = ui.label("").classes("text-negative")
@@ -177,7 +180,7 @@ def standorte_page() -> None:
                                 plz=plz.value.strip(),
                                 gemeinde=gemeinde.value.strip(),
                                 lage=lage.value.strip(),
-                                leg_id=leg_select.value,
+                                trafokreis_id=trafokreis_select.value,
                                 netzebene=netzebene.value,
                                 created_at=existing.created_at,
                             )
@@ -190,7 +193,7 @@ def standorte_page() -> None:
                                 plz=plz.value.strip(),
                                 gemeinde=gemeinde.value.strip(),
                                 lage=lage.value.strip(),
-                                leg_id=leg_select.value,
+                                trafokreis_id=trafokreis_select.value,
                                 netzebene=netzebene.value,
                                 created_at="",
                             )
@@ -269,7 +272,8 @@ def standorte_page() -> None:
 
 @ui.page("/standorte/{standort_id}")
 def standort_detail_page(standort_id: int) -> None:
-    """Render one Standort's detail view: Adresse, Lage, LEG, and its Messpunkte.
+    """Render one Standort's detail view: Adresse, Lage, Trafokreis, and its
+    Messpunkte (each with its own LEG, see `app.models.leg`).
 
     Args:
         standort_id: Database id of the Standort, from the URL path.
@@ -279,12 +283,13 @@ def standort_detail_page(standort_id: int) -> None:
     """
     with connection_scope() as connection:
         standort = standort_repo.get(connection, standort_id)
-        leg = (
-            leg_repo.get(connection, standort.leg_id)
-            if standort and standort.leg_id
+        trafokreis = (
+            trafokreis_repo.get(connection, standort.trafokreis_id)
+            if standort and standort.trafokreis_id
             else None
         )
         messpunkte = messpunkt_repo.list_for_standort(connection, standort_id) if standort else []
+        legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
 
     with page_frame(
         "/standorte", "Standort" if standort is None else standort.adresse_vollstaendig
@@ -299,7 +304,7 @@ def standort_detail_page(standort_id: int) -> None:
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Lage: {standort.lage or '-'}")
             ui.label(f"Netzebene: {NETZEBENE_OPTIONS.get(standort.netzebene, standort.netzebene)}")
-            ui.label(f"LEG: {leg.name if leg else '-'}")
+            ui.label(f"Trafokreis: {trafokreis.name if trafokreis else '-'}")
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")
         if messpunkte:
@@ -307,12 +312,14 @@ def standort_detail_page(standort_id: int) -> None:
                 columns=[
                     {"name": "messpunkt_bezeichnung", "label": "Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left"},
                     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
+                    {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
                 ],
                 rows=[
                     {
                         "id": mp.id,
                         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
                         "messrichtung": "Bezug" if mp.is_bezug else "Einspeisung",
+                        "leg": legs[mp.leg_id].name if mp.leg_id in legs else "-",
                     }
                     for mp in messpunkte
                 ],

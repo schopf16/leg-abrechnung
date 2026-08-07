@@ -1,79 +1,65 @@
-"""LEGs management page: list, search, create, edit, delete.
+"""Trafokreise management page: list, search, create, edit, delete.
 
-A LEG cannot be deleted while Messpunkte still reference it (see
-`app.models.leg.LegInUseError`). Its `name` must be unique -- by default
-it matches the physical Trafokreis its Messpunkte are on, but a LEG can
-combine Messpunkte from several Trafokreise if their owners agree to bill
-jointly. The name is also what appears on this LEG's invoices, checked
-live as the administrator types.
-
-A LEG whose Messpunkte span more than one Trafokreis is flagged here (see
-`app.domain.leg_composition`): the grid operator (BKW) only grants the
-full same-Trafokreis discount within one Trafokreis, so mixed LEGs
-warrant a heads-up to the administrator, e.g. to inform the affected
-Personen.
+A Trafokreis cannot be deleted while Standorte still reference it (see
+`app.models.trafokreis.TrafokreisInUseError`). Its `name` must be unique,
+checked live as the administrator types.
 """
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
-from app.models import leg as leg_repo
-from app.models.leg import Leg, LegInUseError
+from app.models import trafokreis as trafokreis_repo
+from app.models.trafokreis import Trafokreis, TrafokreisInUseError
 
 COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
-    {"name": "messpunkte_count", "label": "Messpunkte", "field": "messpunkte_count", "align": "right"},
-    {"name": "trafokreise", "label": "Trafokreis(e)", "field": "trafokreise", "align": "left"},
+    {"name": "gemeinde", "label": "Gemeinde", "field": "gemeinde", "align": "left"},
+    {"name": "standorte_count", "label": "Standorte", "field": "standorte_count", "align": "right"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
 
-def _to_row(connection, leg: Leg) -> dict:
-    """Convert a `Leg` into a row dict for the NiceGUI table.
+def _to_row(connection, trafokreis: Trafokreis) -> dict:
+    """Convert a `Trafokreis` into a row dict for the NiceGUI table.
 
     Args:
         connection: Open SQLite connection.
-        leg: LEG to convert.
+        trafokreis: Trafokreis to convert.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
         `_search` key used for client-side filtering.
     """
-    composition = compute_leg_composition(connection, leg.id)
-    trafokreis_names = ", ".join(t.name for t in composition.trafokreise) or "-"
-    trafokreise_display = f"⚠ {trafokreis_names}" if composition.is_mixed else trafokreis_names
-    search_text = " ".join([leg.name, leg.bemerkung or "", trafokreis_names]).lower()
+    search_text = " ".join(
+        [trafokreis.name, trafokreis.gemeinde or "", trafokreis.bemerkung or ""]
+    ).lower()
     return {
-        "id": leg.id,
-        "name": leg.name,
-        "messpunkte_count": leg_repo.count_messpunkte(connection, leg.id),
-        "trafokreise": trafokreise_display,
+        "id": trafokreis.id,
+        "name": trafokreis.name,
+        "gemeinde": trafokreis.gemeinde,
+        "standorte_count": trafokreis_repo.count_standorte(connection, trafokreis.id),
         "_search": search_text,
     }
 
 
-@ui.page("/legs")
-def legs_page() -> None:
-    """Render the LEGs CRUD page with search.
+@ui.page("/trafokreise")
+def trafokreise_page() -> None:
+    """Render the Trafokreise CRUD page with search.
 
     Returns:
         None.
     """
-    with page_frame("/legs", "LEGs"):
+    with page_frame("/trafokreise", "Trafokreise"):
         ui.label(
-            "Eine LEG wird pro Messpunkt zugewiesen (siehe „Messpunkte“), "
-            "nie einer Person oder einem Standort direkt. Lokale "
-            "Verteilung findet nur innerhalb derselben LEG statt (siehe "
-            "Abrechnung). Der Name erscheint auf den Rechnungen dieser LEG."
+            "Ein Trafokreis ist eine Eigenschaft des Standorts, nie einer "
+            "Person, eines Messpunkts oder einer LEG direkt. Er entspricht "
+            "der physischen Gruppierung durch den Netzbetreiber (BKW)."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Name, Bemerkung, Trafokreis...)").classes(
+        search_input = ui.input("Suche (Name, Gemeinde, Bemerkung...)").classes(
             "w-full max-w-md"
         ).props("debounce=300 clearable")
-
-        warnings_column = ui.column().classes("w-full")
 
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(
@@ -99,53 +85,42 @@ def legs_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all LEGs from the database and re-apply the filter.
+            """Reload all Trafokreise from the database and re-apply the filter.
 
             Returns:
                 None.
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                legs = leg_repo.list_all(connection)
-                all_rows = [_to_row(connection, leg) for leg in legs]
-                mixed_warnings = []
-                for leg in legs:
-                    composition = compute_leg_composition(connection, leg.id)
-                    if composition.is_mixed:
-                        trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
-                        mixed_warnings.append(
-                            f"⚠ LEG „{leg.name}“ umfasst mehrere Trafokreise "
-                            f"({trafokreis_names}) -- die BKW gewährt dafür "
-                            "vermutlich einen tieferen Rabatt als innerhalb "
-                            "eines einzelnen Trafokreises."
-                        )
+                all_rows = [
+                    _to_row(connection, trafokreis)
+                    for trafokreis in trafokreis_repo.list_all(connection)
+                ]
             apply_filter()
-
-            warnings_column.clear()
-            with warnings_column:
-                for message in mixed_warnings:
-                    ui.label(message).classes("text-warning text-body2")
 
         search_input.on_value_change(lambda _: apply_filter())
 
-        def open_form(existing: Leg | None) -> None:
-            """Open the create/edit dialog for a LEG.
+        def open_form(existing: Trafokreis | None) -> None:
+            """Open the create/edit dialog for a Trafokreis.
 
             Args:
-                existing: LEG to edit, or `None` to create a new one.
+                existing: Trafokreis to edit, or `None` to create a new one.
 
             Returns:
                 None.
             """
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label("LEG bearbeiten" if existing else "Neue LEG").classes(
+                ui.label("Trafokreis bearbeiten" if existing else "Neuer Trafokreis").classes(
                     "text-lg font-bold"
                 )
                 name = ui.input(
-                    "Name (Trafokreis-Bezeichnung oder eigener LEG-Name)",
+                    "Name (BKW-Bezeichnung oder eigener Name)",
                     value=existing.name if existing else "",
                 ).classes("w-full").props("debounce=300")
                 duplicate_warning = ui.label("").classes("text-warning")
+                gemeinde = ui.input(
+                    "Gemeinde", value=existing.gemeinde if existing else ""
+                ).classes("w-full")
                 bemerkung = ui.textarea(
                     "Bemerkung (optional)",
                     value=existing.bemerkung if existing else "",
@@ -153,19 +128,19 @@ def legs_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
-                    """Check whether the current name input is already used by another LEG.
+                    """Check whether the current name input is already used by another Trafokreis.
 
                     Updates `duplicate_warning` as a side effect.
 
                     Returns:
-                        `True` if the name is a duplicate of a different LEG.
+                        `True` if the name is a duplicate of a different Trafokreis.
                     """
                     typed = name.value.strip()
                     if not typed:
                         duplicate_warning.text = ""
                         return False
                     with connection_scope() as connection:
-                        found = leg_repo.get_by_name(connection, typed)
+                        found = trafokreis_repo.get_by_name(connection, typed)
                     is_duplicate = found is not None and (existing is None or found.id != existing.id)
                     duplicate_warning.text = (
                         "Dieser Name wird bereits verwendet." if is_duplicate else ""
@@ -175,7 +150,7 @@ def legs_page() -> None:
                 name.on_value_change(lambda _: check_duplicate())
 
                 def save() -> None:
-                    """Validate the form and persist the LEG.
+                    """Validate the form and persist the Trafokreis.
 
                     Returns:
                         None.
@@ -183,27 +158,32 @@ def legs_page() -> None:
                     if not name.value.strip():
                         error_label.text = "Name darf nicht leer sein."
                         return
+                    if not gemeinde.value.strip():
+                        error_label.text = "Gemeinde darf nicht leer sein."
+                        return
                     if check_duplicate():
                         error_label.text = "Dieser Name wird bereits verwendet."
                         return
                     try:
                         with connection_scope() as connection:
                             if existing:
-                                updated = Leg(
+                                updated = Trafokreis(
                                     id=existing.id,
                                     name=name.value.strip(),
+                                    gemeinde=gemeinde.value.strip(),
                                     bemerkung=bemerkung.value.strip(),
                                     created_at=existing.created_at,
                                 )
-                                leg_repo.update(connection, updated)
+                                trafokreis_repo.update(connection, updated)
                             else:
-                                new_leg = Leg(
+                                new_trafokreis = Trafokreis(
                                     id=None,
                                     name=name.value.strip(),
+                                    gemeinde=gemeinde.value.strip(),
                                     bemerkung=bemerkung.value.strip(),
                                     created_at="",
                                 )
-                                leg_repo.create(connection, new_leg)
+                                trafokreis_repo.create(connection, new_trafokreis)
                     except Exception as exc:  # unique constraint race, etc.
                         error_label.text = f"Fehler beim Speichern: {exc}"
                         return
@@ -226,11 +206,11 @@ def legs_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                existing = leg_repo.get(connection, event.args["id"])
+                existing = trafokreis_repo.get(connection, event.args["id"])
             open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete the LEG after confirmation.
+            """Table row-delete handler: delete the Trafokreis after confirmation.
 
             Args:
                 event: NiceGUI generic event carrying the clicked row's args.
@@ -238,19 +218,19 @@ def legs_page() -> None:
             Returns:
                 None.
             """
-            leg_id = event.args["id"]
+            trafokreis_id = event.args["id"]
             name = event.args["name"]
 
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'LEG "{name}" wirklich löschen?')
+                ui.label(f'Trafokreis "{name}" wirklich löschen?')
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
                     def do_delete() -> None:
                         try:
                             with connection_scope() as connection:
-                                leg_repo.delete(connection, leg_id)
-                        except LegInUseError as exc:
+                                trafokreis_repo.delete(connection, trafokreis_id)
+                        except TrafokreisInUseError as exc:
                             confirm.close()
                             ui.notify(str(exc), type="negative")
                             return
@@ -264,6 +244,6 @@ def legs_page() -> None:
         table.on("edit", on_edit)
         table.on("remove", on_remove)
 
-        ui.button("+ Neue LEG", on_click=lambda: open_form(None)).classes("mt-2")
+        ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()

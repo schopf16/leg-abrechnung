@@ -44,21 +44,34 @@ Bei jedem weiteren Start genügt wieder ein Doppelklick auf `start.bat` — es
 Die App ist in folgende Bereiche gegliedert (linke Navigation):
 
 - **Übersicht** — Startseite mit Kennzahlen und ersten Schritten.
-- **Personen** — Personen/Firmen, die an der LEG teilnehmen, inkl.
-  Detailansicht mit allen ihnen zugeordneten Messpunkten.
+- **Personen** — Personen/Firmen, die an einer LEG teilnehmen, inkl.
+  Detailansicht mit allen ihnen zugeordneten Messpunkten (und deren LEG /
+  Trafokreis).
 - **Messpunkte** — Messpunkte des Netzbetreibers (Bezug oder Einspeisung),
-  jeder fix an einem Standort.
-- **Standorte** — physische Netzanschlusspunkte (Adresse, Lage, LEG). Die
-  LEG wird manuell zugewiesen: im Dropdown genügt es, einen Teil der
-  Bezeichnung einzutippen, um passende LEGs zu finden.
-- **LEGs** — lokale Elektrizitätsgemeinschaften, eine Eigenschaft des
-  Standorts (nie einer Person oder eines Messpunkts direkt). Per Default
-  entspricht eine LEG genau einem physischen Trafokreis der BKW — sie kann
-  aber auch gezielt mehrere Trafokreise zusammenfassen, wenn sich Personen
-  aus verschiedenen Trafokreisen zu einer gemeinsamen Abrechnung
-  zusammenschliessen. Der LEG-Name erscheint als Absender auf den
-  Rechnungen dieser LEG. Name (muss eindeutig sein) und optionale
-  Bemerkung.
+  jeder fix an einem Standort. Die **LEG wird hier pro Messpunkt
+  zugewiesen** — zwei Messpunkte am selben Standort können
+  unterschiedlichen LEGs angehören, falls deren Eigentümer sich mit
+  Personen an einem anderen Standort zu einer gemeinsamen Abrechnung
+  zusammenschliessen.
+- **Standorte** — physische Netzanschlusspunkte (Adresse, Lage,
+  Trafokreis). Der Trafokreis wird manuell zugewiesen: im Dropdown genügt
+  es, einen Teil der Bezeichnung einzutippen, um passende Trafokreise zu
+  finden.
+- **Trafokreise** — Transformatorkreise, die physische Gruppierung durch
+  den Netzbetreiber (BKW), eine Eigenschaft des Standorts (nie einer
+  Person, eines Messpunkts oder einer LEG direkt).
+- **LEGs** — lokale Elektrizitätsgemeinschaften, die administrative
+  Abrechnungsgruppe eines Messpunkts. Per Default entspricht eine LEG
+  genau einem physischen Trafokreis der BKW — sie kann aber auch gezielt
+  Messpunkte aus mehreren Trafokreisen zusammenfassen, wenn sich deren
+  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Die BKW
+  gewährt dafür vermutlich einen tieferen Rabatt als innerhalb eines
+  einzelnen Trafokreises (40% vs. 20%) — die App berechnet diesen Rabatt
+  nicht, warnt aber auf der LEG-Seite, der Personen-Detailseite und beim
+  Zuweisen einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst,
+  damit Sie die betroffenen Personen informieren können. Der LEG-Name
+  erscheint als Absender auf den Rechnungen dieser LEG. Name (muss
+  eindeutig sein) und optionale Bemerkung.
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Import** — Messdaten der BKW einlesen (EBIX-XML oder CSV).
@@ -67,7 +80,7 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   unabhängig abgerechnet.
 - **Auswertungen** — je LEG gewählt: Übersicht je Person sowie
   Plausibilitätsprüfungen (fehlende Zuordnungen, Lücken in Messdaten,
-  Standorte ohne LEG, Summenabgleich).
+  Messpunkte ohne LEG, Summenabgleich).
 - **Einstellungen** — Absender-Adresse/QR-IBAN, interner Strompreis,
   Verwaltungsaufwand (Rp./kWh) und Kosten der Papierrechnung, sowie der
   Demo-Daten-Generator zum Ausprobieren. Diese Werte gelten global für alle
@@ -80,11 +93,11 @@ die relevanten Spalten, inkl. verknüpfter Daten wie Messpunkt oder
 Standort-Adresse).
 
 **Zum Ausprobieren:** Unter „Einstellungen" den Knopf **„Demo-Daten
-erzeugen"** anklicken. Das legt eine Beispiel-LEG mit Standorten, fünf
-Beispiel-Personen mit Messpunkten, Zuordnungen und einem Jahr
-synthetischer Messdaten an, inklusive eines Beispiel-Umzugs. Damit lässt
-sich direkt eine vollständige Test-Abrechnung inkl. PDF-Rechnungen
-durchklicken.
+erzeugen"** anklicken. Das legt einen Beispiel-Trafokreis mit Standorten,
+eine dazu passende Beispiel-LEG, fünf Beispiel-Personen mit Messpunkten,
+Zuordnungen und einem Jahr synthetischer Messdaten an, inklusive eines
+Beispiel-Umzugs. Damit lässt sich direkt eine vollständige Test-Abrechnung
+inkl. PDF-Rechnungen durchklicken.
 
 ---
 
@@ -95,24 +108,25 @@ Bevor Sie echte Rechnungen erzeugen:
 1. **Einstellungen:** Absender-Adresse und **QR-IBAN** eintragen, sowie den
    internen Strompreis (Startwert 12 Rp./kWh) und ggf. Verwaltungsaufwand
    und Kosten der Papierrechnung.
-2. **LEGs** und **Standorte** anlegen (LEG-Zuweisung am Standort erfolgt
-   manuell über ein durchsuchbares Dropdown). Der LEG-Name wird als
-   Absender auf den Rechnungen dieser LEG gedruckt — im Normalfall die
-   BKW-Bezeichnung des Trafokreises.
-3. **Messpunkte** anlegen, mit der Messpunkt-Bezeichnung aus den
-   BKW-Unterlagen, der korrekten Messrichtung (Bezug / Einspeisung) und
-   dem zugehörigen Standort.
-4. **Personen** anlegen (Anrede, Name, Kontakt, Rechnungsadresse, IBAN für
+2. **Trafokreise** und **Standorte** anlegen (Trafokreis-Zuweisung am
+   Standort erfolgt manuell über ein durchsuchbares Dropdown).
+3. **LEGs** anlegen. Der LEG-Name wird als Absender auf den Rechnungen
+   dieser LEG gedruckt — im Normalfall die BKW-Bezeichnung des
+   Trafokreises, den sie abdeckt.
+4. **Messpunkte** anlegen, mit der Messpunkt-Bezeichnung aus den
+   BKW-Unterlagen, der korrekten Messrichtung (Bezug / Einspeisung), dem
+   zugehörigen Standort und der zugehörigen LEG.
+5. **Personen** anlegen (Anrede, Name, Kontakt, Rechnungsadresse, IBAN für
    Gutschriften, ob Papierrechnung gewünscht ist). Die Kundennummer wird
    beim Anlegen automatisch und zufällig vergeben (keine fortlaufende
    Nummer, um Rückschlüsse auf Kundenanzahl oder -reihenfolge zu
    verhindern) und bleibt danach unveränderlich.
-5. **Zuordnungen** anlegen: welche Person welchen Messpunkt ab welchem
+6. **Zuordnungen** anlegen: welche Person welchen Messpunkt ab welchem
    Datum nutzt. Bei einem Mieterwechsel zwei Zuordnungen mit passendem
    End-/Startdatum anlegen — die App teilt die Messwerte dann automatisch
    korrekt zwischen den beiden Personen auf.
-6. **Import:** die von der BKW gelieferte Datei hochladen.
-7. **Abrechnung:** LEG, Jahr und Quartal wählen, Abrechnung erstellen,
+7. **Import:** die von der BKW gelieferte Datei hochladen.
+8. **Abrechnung:** LEG, Jahr und Quartal wählen, Abrechnung erstellen,
    PDFs erzeugen. Jede LEG wird unabhängig und pro Quartal separat
    abgerechnet.
 
@@ -138,7 +152,7 @@ sie nur Strom bezieht, nur einspeist, oder beides tut (Prosumer):
   (Netto-Betrag negativ), wird der Betrag auf dem Einzahlungsschein durch
   `***.**` ersetzt und ist damit absichtlich **nicht als Zahlungsmittel
   nutzbar** — die Auszahlung erfolgt stattdessen durch den Verwalter über
-  die Zahlliste.
+  die Auszahlungsliste (CSV, siehe unten).
 
 ### Hinweis zum EBIX-Import
 
@@ -193,7 +207,8 @@ mit hochgeladen werden, sind folgende Ordner in `.gitignore` eingetragen
 und werden nie mitversioniert:
 
 - `data/` — die eigentliche Datenbank
-- `output/` — erzeugte Abrechnungen (PDFs je Person), Zahllisten
+- `output/` — erzeugte Abrechnungen (PDFs je Person), Rechnungs-/
+  Auszahlungslisten (CSV)
 - `backups/` — Datenbank-Backups
 - `.venv/` — die lokale Python-Umgebung
 
@@ -220,14 +235,16 @@ sendet die Änderungen an GitHub.
 - **Domänenlogik:** `app/domain/` — 15-Minuten-Verteilung
   (`distribution.py`), Rechnungs-/Gutschriftlogik (`billing.py`),
   Plausibilitätsprüfungen inkl. LEG-Zuschnitt-Check (`quality_checks.py`),
-  Demo-Daten (`demo_data.py`).
+  Erkennung gemischter Trafokreise innerhalb einer LEG
+  (`leg_composition.py`), Demo-Daten (`demo_data.py`).
 - **Import:** `app/importers/` — EBIX- und CSV-Parser, klar getrennt vom
   Rest der App.
-- **PDF/QR-Rechnung:** `app/pdf/` (Bibliotheken `qrbill` + `reportlab` +
-  `svglib`).
-- **Persistenz:** `app/models/` — ein Modul pro Tabelle
-  (`leg.py`, `standort.py`, `messpunkt.py`, `person.py`,
-  `zuordnung.py`), reine CRUD-Funktionen ohne Geschäftslogik.
+- **PDF/QR-Rechnung + CSV-Listen:** `app/pdf/` (Bibliotheken `qrbill` +
+  `reportlab` + `svglib` für die PDFs; die Rechnungs-/Auszahlungslisten
+  sind reines CSV, siehe `csv_export.py`).
+- **Persistenz:** `app/models/` — ein Modul pro Tabelle (`trafokreis.py`,
+  `leg.py`, `standort.py`, `messpunkt.py`, `person.py`, `zuordnung.py`),
+  reine CRUD-Funktionen ohne Geschäftslogik.
 - **Oberfläche:** `app/gui/pages/` — ein Modul pro Seite.
 - **Backup:** `app/backup/`.
 

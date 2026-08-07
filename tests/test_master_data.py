@@ -1,16 +1,20 @@
-"""Tests for Person/Messpunkt/Zuordnung/Leg CRUD and consistency warnings."""
+"""Tests for Person/Messpunkt/Zuordnung/Leg/Trafokreis CRUD, consistency
+warnings, and LEG/Trafokreis composition."""
 
 from datetime import date
 
 import pytest
 
+from app.domain.leg_composition import compute_leg_composition
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
 from app.models.person import Person
+from app.models.trafokreis import Trafokreis
 from app.models.zuordnung import Zuordnung
 
 
@@ -44,6 +48,7 @@ def _make_messpunkt(
     messpunkt_bezeichnung: str = "CH1234567890123456789012345",
     messrichtung: str = MESSRICHTUNG_BEZUG,
     standort_id: int = 1,
+    leg_id: int | None = None,
 ) -> Messpunkt:
     """Build an unpersisted `Messpunkt` for use in tests.
 
@@ -51,6 +56,7 @@ def _make_messpunkt(
         messpunkt_bezeichnung: Business key to assign.
         messrichtung: Measurement direction.
         standort_id: Foreign key of the site the Messpunkt belongs to.
+        leg_id: Foreign key of the assigned LEG, or `None`.
 
     Returns:
         A `Messpunkt` with `id=None`.
@@ -60,15 +66,32 @@ def _make_messpunkt(
         messpunkt_bezeichnung=messpunkt_bezeichnung,
         messrichtung=messrichtung,
         standort_id=standort_id,
+        leg_id=leg_id,
         created_at="",
     )
 
 
-def _make_standort(db) -> int:
+def _make_trafokreis(db, name: str = "Bern_TRA00001") -> int:
+    """Create a minimal Trafokreis and return its id.
+
+    Args:
+        db: Database connection fixture.
+        name: Name to assign (must be unique).
+
+    Returns:
+        The new Trafokreis's id.
+    """
+    return trafokreis_repo.create(
+        db, Trafokreis(id=None, name=name, gemeinde="Bern", bemerkung="", created_at="")
+    )
+
+
+def _make_standort(db, trafokreis_id: int | None = None) -> int:
     """Create a minimal Standort and return its id.
 
     Args:
         db: Database connection fixture.
+        trafokreis_id: Foreign key of the assigned Trafokreis, or `None`.
 
     Returns:
         The new Standort's id.
@@ -80,7 +103,7 @@ def _make_standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            leg_id=None, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis_id, netzebene="NE7", created_at="",
         ),
     )
 
@@ -290,7 +313,7 @@ def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:
     Returns:
         A `Leg` with `id=None`.
     """
-    return Leg(id=None, name=name, gemeinde="Ittigen", bemerkung="", created_at="")
+    return Leg(id=None, name=name, bemerkung="", created_at="")
 
 
 def test_leg_get_by_name_finds_exact_match(db):
@@ -312,3 +335,75 @@ def test_leg_name_is_unique(db):
     leg_repo.create(db, _make_leg("Ittigen_TRA21359"))
     with pytest.raises(Exception):
         leg_repo.create(db, _make_leg("Ittigen_TRA21359"))
+
+
+def test_trafokreis_get_by_name_finds_exact_match(db):
+    """`get_by_name` finds a Trafokreis by its exact name."""
+    trafokreis_repo.create(
+        db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+    )
+
+    found = trafokreis_repo.get_by_name(db, "Bern_TRA00001")
+    assert found is not None
+    assert found.name == "Bern_TRA00001"
+
+
+def test_trafokreis_get_by_name_returns_none_for_unknown_name(db):
+    """`get_by_name` returns `None` when no Trafokreis has that name."""
+    assert trafokreis_repo.get_by_name(db, "Unbekannt_TRA00000") is None
+
+
+def test_trafokreis_name_is_unique(db):
+    """Two Trafokreise cannot share the same name."""
+    trafokreis_repo.create(
+        db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+    )
+    with pytest.raises(Exception):
+        trafokreis_repo.create(
+            db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+        )
+
+
+def test_leg_composition_is_not_mixed_when_all_messpunkte_share_one_trafokreis(db):
+    """A LEG whose Messpunkte are all on one Trafokreis is not flagged as mixed."""
+    trafokreis_id = _make_trafokreis(db, "Bern_TRA00001")
+    standort_a = _make_standort(db, trafokreis_id)
+    standort_b = _make_standort(db, trafokreis_id)
+    leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
+
+    composition = compute_leg_composition(db, leg_id)
+    assert not composition.is_mixed
+    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001"]
+
+
+def test_leg_composition_is_mixed_when_messpunkte_span_two_trafokreise(db):
+    """A LEG whose Messpunkte span two Trafokreise is flagged as mixed."""
+    trafokreis_a = _make_trafokreis(db, "Bern_TRA00001")
+    trafokreis_b = _make_trafokreis(db, "Bern_TRA00002")
+    standort_a = _make_standort(db, trafokreis_a)
+    standort_b = _make_standort(db, trafokreis_b)
+    leg_id = leg_repo.create(db, _make_leg("Gemeinsame_LEG"))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
+
+    composition = compute_leg_composition(db, leg_id)
+    assert composition.is_mixed
+    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001", "Bern_TRA00002"]
+
+
+def test_leg_composition_ignores_other_legs_messpunkte(db):
+    """Messpunkte belonging to a different LEG don't count toward this LEG's composition."""
+    trafokreis_a = _make_trafokreis(db, "Bern_TRA00001")
+    trafokreis_b = _make_trafokreis(db, "Bern_TRA00002")
+    standort_a = _make_standort(db, trafokreis_a)
+    standort_b = _make_standort(db, trafokreis_b)
+    leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
+    other_leg_id = leg_repo.create(db, _make_leg("Bern_TRA00002"))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=other_leg_id))
+
+    composition = compute_leg_composition(db, leg_id)
+    assert not composition.is_mixed
+    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001"]

@@ -1,14 +1,16 @@
 """The core 15-minute local-solar distribution engine (project brief, section 5).
 
 Sharing happens **within one LEG at a time**, never across LEGs: two
-Messpunkte can only exchange energy if their Standorte belong to the same
-LEG (project requirement -- "es soll nicht über alle Messstationen
-ausgeglichen werden, sondern nur innerhalb der Trafostation"; a LEG by
-default matches one physical Trafokreis, see `app.models.leg`). Every
+Messpunkte can only exchange energy if they belong to the same LEG
+(project requirement -- "es soll nicht über alle Messstationen
+ausgeglichen werden, sondern nur innerhalb der Trafostation"; LEG
+membership is a property of the individual Messpunkt, see
+`app.models.leg` -- by default a LEG matches one physical Trafokreis, but
+it can deliberately span several, see `app.domain.leg_composition`). Every
 Messpunkt with readings in the requested quarter must therefore have a
-resolved LEG (via its Standort) before this runs at all -- regardless of
-which LEG's distribution is actually being computed, since an unassigned
-Messpunkt silently never appearing in *any* LEG's run would be a worse,
+resolved LEG before this runs at all -- regardless of which LEG's
+distribution is actually being computed, since an unassigned Messpunkt
+silently never appearing in *any* LEG's run would be a worse,
 harder-to-notice failure than a loud one; see `LegNotAssignedError`.
 
 For every 15-minute interval `t`, independently per LEG:
@@ -26,7 +28,7 @@ Each Messpunkt's interval share is then attributed to whichever Person was
 assigned to it at that exact moment (see `app.models.zuordnung`), so a
 mid-quarter move splits a Messpunkt's energy between two Personen
 automatically. Moving never changes the Messpunkt, its Standort, or that
-Standort's LEG -- only which Person the Zuordnung points at.
+Messpunkt's LEG -- only which Person the Zuordnung points at.
 """
 
 import sqlite3
@@ -35,7 +37,6 @@ from datetime import date, datetime
 
 from app.domain.period import months_in_quarter, quarter_bounds
 from app.models import messpunkt as messpunkt_repo
-from app.models import standort as standort_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG
 from app.models.reading import list_readings_in_period
@@ -46,15 +47,15 @@ KWH_PRECISION = 3
 
 class LegNotAssignedError(Exception):
     """Raised when a Messpunkt with readings in the requested quarter has
-    no resolved LEG (via its Standort).
+    no LEG assigned.
 
     Local sharing is only ever valid within one LEG -- computing a
     distribution while any Messpunkt's LEG is unknown would risk pooling
-    energy between physically/administratively unrelated groups, or
-    silently excluding that Messpunkt from every LEG's billing without
-    anyone noticing. The caller must assign a LEG to the offending
-    Standorte (see the "Standorte" page) before a distribution/billing
-    run is possible.
+    energy between administratively unrelated groups, or silently
+    excluding that Messpunkt from every LEG's billing without anyone
+    noticing. The caller must assign a LEG to the offending Messpunkte
+    (see the "Messpunkte" page) before a distribution/billing run is
+    possible.
     """
 
 
@@ -175,15 +176,12 @@ def _load_leg_and_bezeichnung_by_messpunkt(
     Returns:
         A `(leg_id_by_messpunkt, bezeichnung_by_messpunkt)` pair, both
         keyed by Messpunkt id. `leg_id_by_messpunkt` values are `None` for
-        a Messpunkt whose Standort has no LEG assigned (or whose Standort
-        is missing, which should not normally happen).
+        a Messpunkt with no LEG assigned yet.
     """
-    standorte_by_id = {s.id: s for s in standort_repo.list_all(connection)}
     leg_id_by_messpunkt: dict[int, "int | None"] = {}
     bezeichnung_by_messpunkt: dict[int, str] = {}
     for messpunkt in messpunkt_repo.list_all(connection):
-        standort = standorte_by_id.get(messpunkt.standort_id)
-        leg_id_by_messpunkt[messpunkt.id] = standort.leg_id if standort else None
+        leg_id_by_messpunkt[messpunkt.id] = messpunkt.leg_id
         bezeichnung_by_messpunkt[messpunkt.id] = messpunkt.messpunkt_bezeichnung
     return leg_id_by_messpunkt, bezeichnung_by_messpunkt
 
@@ -196,7 +194,7 @@ def compute_quarter_distribution(
     Args:
         connection: Open SQLite connection.
         leg_id: The LEG to compute local sharing for. Only Messpunkte
-            whose Standort belongs to this LEG are considered.
+            belonging to this LEG are considered.
         year: Calendar year of the billing quarter.
         quarter: Quarter number, 1 to 4.
 
@@ -227,7 +225,7 @@ def compute_quarter_distribution(
         raise LegNotAssignedError(
             "Folgende Messpunkte mit Messdaten in diesem Quartal sind noch "
             "keiner LEG zugeordnet: " + ", ".join(bezeichnungen) + ". "
-            "Bitte zuerst unter „Standorte“ die LEG zuweisen -- lokale "
+            "Bitte zuerst unter „Messpunkte“ die LEG zuweisen -- lokale "
             "Verteilung ist nur innerhalb derselben LEG möglich."
         )
 

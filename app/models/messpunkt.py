@@ -2,6 +2,11 @@
 uniquely identified by its `messpunkt_bezeichnung` (VNB id) -- never by a
 postal address, which is not an identity key (an address can host several
 Messpunkte, e.g. a multi-family building).
+
+LEG membership is deliberately a property of the Messpunkt, not of its
+Standort (see `app.models.leg`): two Messpunkte at the very same Standort
+can belong to different LEGs, since it is the Messpunkt's owner -- not the
+building -- who decides which LEG to join.
 """
 
 import sqlite3
@@ -27,6 +32,8 @@ class Messpunkt:
             `MESSRICHTUNG_EINSPEISUNG` (feed-in).
         standort_id: Foreign key to the `Standort` this Messpunkt is
             physically installed at.
+        leg_id: Foreign key to the assigned `Leg`, `None` until manually
+            assigned.
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -34,6 +41,7 @@ class Messpunkt:
     messpunkt_bezeichnung: str
     messrichtung: str
     standort_id: int
+    leg_id: Optional[int]
     created_at: str
 
     @property
@@ -69,6 +77,7 @@ class Messpunkt:
             messpunkt_bezeichnung=row["messpunkt_bezeichnung"],
             messrichtung=row["messrichtung"],
             standort_id=row["standort_id"],
+            leg_id=row["leg_id"],
             created_at=row["created_at"],
         )
 
@@ -158,13 +167,14 @@ def create(connection: sqlite3.Connection, messpunkt: Messpunkt) -> int:
         raise ValueError(f"Unknown messrichtung: {messpunkt.messrichtung!r}")
     cursor = connection.execute(
         """
-        INSERT INTO messpunkt (messpunkt_bezeichnung, messrichtung, standort_id, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO messpunkt (messpunkt_bezeichnung, messrichtung, standort_id, leg_id, created_at)
+        VALUES (?, ?, ?, ?, ?)
         """,
         (
             messpunkt.messpunkt_bezeichnung,
             messpunkt.messrichtung,
             messpunkt.standort_id,
+            messpunkt.leg_id,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -192,13 +202,14 @@ def update(connection: sqlite3.Connection, messpunkt: Messpunkt) -> None:
     connection.execute(
         """
         UPDATE messpunkt SET
-            messpunkt_bezeichnung = ?, messrichtung = ?, standort_id = ?
+            messpunkt_bezeichnung = ?, messrichtung = ?, standort_id = ?, leg_id = ?
         WHERE id = ?
         """,
         (
             messpunkt.messpunkt_bezeichnung,
             messpunkt.messrichtung,
             messpunkt.standort_id,
+            messpunkt.leg_id,
             messpunkt.id,
         ),
     )

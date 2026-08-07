@@ -96,7 +96,7 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, updated_at="",
     )
-    leg = Leg(id=1, name="LEG Test", gemeinde="Bern", bemerkung="", created_at="")
+    leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
         id=1, anrede="", name="Max Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",
@@ -132,7 +132,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, updated_at="",
     )
-    leg = Leg(id=1, name="LEG Test", gemeinde="Bern", bemerkung="", created_at="")
+    leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
         id=1, anrede="", name="Max Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",

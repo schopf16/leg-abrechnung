@@ -3,7 +3,7 @@
 Covers gaps in the Zuordnung history, missing reading periods, the
 invoice/credit-note sum balance (lives in `app.domain.billing.
 verify_sum_balance`, re-exposed here for a single import point), and
-Standorte with Messpunkte that have no LEG assigned yet.
+Messpunkte that have no LEG assigned yet.
 """
 
 import sqlite3
@@ -12,7 +12,6 @@ from datetime import datetime, time, timedelta
 
 from app.domain.period import quarter_bounds
 from app.models import messpunkt as messpunkt_repo
-from app.models import standort as standort_repo
 from app.models import zuordnung as zuordnung_repo
 
 #: Expected number of 15-minute readings per Messpunkt per full calendar day.
@@ -113,13 +112,13 @@ def check_reading_completeness(
 
 
 def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag Standorte with Messpunkte that have no LEG assigned yet.
+    """Flag Messpunkte that have no LEG assigned yet.
 
     Multiple LEGs coexisting in one deployment is normal (see
     `app.models.leg`), so there is no "everyone should share one LEG"
-    check anymore -- only a plain data-hygiene check that every in-use
-    Standort actually has a LEG, since `compute_quarter_distribution`
-    will otherwise refuse to bill it (see
+    check anymore -- only a plain data-hygiene check that every Messpunkt
+    actually has a LEG, since `compute_quarter_distribution` will
+    otherwise refuse to bill it (see
     `app.domain.distribution.LegNotAssignedError`). Surfacing it here lets
     the administrator catch it during data review, before attempting to
     run a billing.
@@ -128,21 +127,17 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
         connection: Open SQLite connection.
 
     Returns:
-        A `QualityWarning` per Standort with at least one Messpunkt but no
-        LEG assigned. Empty if every in-use Standort has one.
+        A `QualityWarning` per Messpunkt with no LEG assigned. Empty if
+        every Messpunkt has one.
     """
     warnings: list[QualityWarning] = []
-    standorte_by_id = {s.id: s for s in standort_repo.list_all(connection)}
-    used_standort_ids = {mp.standort_id for mp in messpunkt_repo.list_all(connection)}
-
-    for standort_id in sorted(used_standort_ids):
-        standort = standorte_by_id.get(standort_id)
-        if standort is None or standort.leg_id is not None:
+    for messpunkt in messpunkt_repo.list_all(connection):
+        if messpunkt.leg_id is not None:
             continue
         warnings.append(
             QualityWarning(
                 category="leg_nicht_zugeordnet",
-                message=f"Standort „{standort.adresse_vollstaendig}“ hat noch keine zugeordnete LEG.",
+                message=f"Messpunkt „{messpunkt.messpunkt_bezeichnung}“ hat noch keine zugeordnete LEG.",
             )
         )
 

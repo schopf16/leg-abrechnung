@@ -1,6 +1,7 @@
 """Personen management page: list, search, create, edit, delete, and a
-detail drill-down showing the Person → Zuordnung → Messpunkt → Standort
-(→ LEG) join (project prompt section 7, "Personen-Detailansicht").
+detail drill-down showing the Person → Zuordnung → Messpunkt (→ LEG,
+→ Standort → Trafokreis) join (project prompt section 7,
+"Personen-Detailansicht").
 """
 
 from datetime import date
@@ -8,11 +9,13 @@ from datetime import date
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import standort as standort_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
 from app.models.person import ANREDE_OPTIONS, Person
@@ -35,6 +38,7 @@ DETAIL_COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt", "field": "messpunkt_bezeichnung", "align": "left"},
     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
     {"name": "standort_adresse", "label": "Standort-Adresse", "field": "standort_adresse", "align": "left"},
+    {"name": "trafokreis", "label": "Trafokreis", "field": "trafokreis", "align": "left"},
     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
     {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left"},
     {"name": "gueltig_bis", "label": "Gültig bis", "field": "gueltig_bis", "align": "left"},
@@ -361,10 +365,13 @@ def person_detail_page(person_id: int) -> None:
 
         ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")
+        leg_warnings_column = ui.column().classes("w-full")
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
 
         def refresh_detail() -> None:
-            """Reload the person's Zuordnung → Messpunkt → Standort → LEG join.
+            """Reload the person's Zuordnung → Messpunkt (→ LEG, → Standort
+            → Trafokreis) join, and warn if any involved LEG mixes
+            Trafokreise.
 
             Filters to only currently valid Zuordnungen unless
             `show_all_switch` is on.
@@ -376,6 +383,7 @@ def person_detail_page(person_id: int) -> None:
             with connection_scope() as inner_connection:
                 zuordnungen = zuordnung_repo.list_for_person(inner_connection, person_id)
                 rows = []
+                leg_ids_involved: set[int] = set()
                 for z in zuordnungen:
                     is_current = z.gueltig_von <= today and (
                         z.gueltig_bis is None or z.gueltig_bis >= today
@@ -386,11 +394,16 @@ def person_detail_page(person_id: int) -> None:
                     standort = (
                         standort_repo.get(inner_connection, mp.standort_id) if mp else None
                     )
-                    leg = (
-                        leg_repo.get(inner_connection, standort.leg_id)
-                        if standort and standort.leg_id
+                    trafokreis = (
+                        trafokreis_repo.get(inner_connection, standort.trafokreis_id)
+                        if standort and standort.trafokreis_id
                         else None
                     )
+                    leg = (
+                        leg_repo.get(inner_connection, mp.leg_id) if mp and mp.leg_id else None
+                    )
+                    if leg is not None:
+                        leg_ids_involved.add(leg.id)
                     rows.append(
                         {
                             "id": z.id,
@@ -399,13 +412,31 @@ def person_detail_page(person_id: int) -> None:
                             if mp
                             else "?",
                             "standort_adresse": standort.adresse_vollstaendig if standort else "?",
+                            "trafokreis": trafokreis.name if trafokreis else "-",
                             "leg": leg.name if leg else "-",
                             "gueltig_von": z.gueltig_von.isoformat(),
                             "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
                         }
                     )
+                mixed_warnings = []
+                for leg_id in sorted(leg_ids_involved):
+                    composition = compute_leg_composition(inner_connection, leg_id)
+                    if not composition.is_mixed:
+                        continue
+                    leg = leg_repo.get(inner_connection, leg_id)
+                    trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
+                    mixed_warnings.append(
+                        f"⚠ Die LEG „{leg.name}“ dieser Person umfasst mehrere "
+                        f"Trafokreise ({trafokreis_names}) -- die BKW gewährt "
+                        "dafür vermutlich einen tieferen Rabatt. Informieren "
+                        "Sie die Person ggf. darüber."
+                    )
             detail_table.rows = rows
             detail_table.update()
+            leg_warnings_column.clear()
+            with leg_warnings_column:
+                for message in mixed_warnings:
+                    ui.label(message).classes("text-warning text-body2")
 
         show_all_switch.on_value_change(lambda _: refresh_detail())
         refresh_detail()

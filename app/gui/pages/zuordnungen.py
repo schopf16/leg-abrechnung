@@ -6,7 +6,9 @@ from typing import Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import zuordnung as zuordnung_repo
@@ -115,6 +117,7 @@ def zuordnungen_page() -> None:
                 mp.id: f"{mp.messpunkt_bezeichnung} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
                 for mp in messpunkte
             }
+            messpunkte_by_id = {mp.id: mp for mp in messpunkte}
             person_options = {p.id: p.name for p in persons}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
@@ -126,6 +129,38 @@ def zuordnungen_page() -> None:
                     label="Messpunkt",
                     value=existing.messpunkt_id if existing else (messpunkte[0].id if messpunkte else None),
                 ).classes("w-full")
+                leg_warning = ui.label("").classes("text-warning text-body2")
+
+                def update_leg_warning() -> None:
+                    """Show a warning if the selected Messpunkt's LEG mixes Trafokreise.
+
+                    Lets the administrator immediately see, while assigning
+                    a Person, whether the resulting LEG membership implies
+                    a reduced BKW discount -- see `app.domain.leg_composition`.
+
+                    Returns:
+                        None.
+                    """
+                    mp = messpunkte_by_id.get(messpunkt_select.value)
+                    if mp is None or mp.leg_id is None:
+                        leg_warning.text = ""
+                        return
+                    with connection_scope() as connection:
+                        composition = compute_leg_composition(connection, mp.leg_id)
+                        leg = leg_repo.get(connection, mp.leg_id)
+                    if composition.is_mixed and leg is not None:
+                        trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
+                        leg_warning.text = (
+                            f"⚠ Die LEG „{leg.name}“ dieses Messpunkts umfasst "
+                            f"mehrere Trafokreise ({trafokreis_names}) -- "
+                            "informieren Sie die Person ggf. über den "
+                            "dadurch tieferen BKW-Rabatt."
+                        )
+                    else:
+                        leg_warning.text = ""
+
+                messpunkt_select.on_value_change(lambda _: update_leg_warning())
+                update_leg_warning()
                 person_select = ui.select(
                     person_options,
                     label="Person",

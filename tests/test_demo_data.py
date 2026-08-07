@@ -11,8 +11,10 @@ from app.domain.demo_data import (
 )
 from app.domain.period import quarter_bounds
 from app.models import leg as leg_repo
+from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
+from app.models import trafokreis as trafokreis_repo
 
 
 def test_create_demo_data_creates_five_personen_and_seven_messpunkte(db):
@@ -24,15 +26,26 @@ def test_create_demo_data_creates_five_personen_and_seven_messpunkte(db):
 
 
 def test_create_demo_data_configures_valid_demo_qr_iban(db):
-    """The generator fills in settings and a LEG so demo QR-invoices can be
-    generated right away."""
+    """The generator fills in settings, a Trafokreis and a LEG so demo
+    QR-invoices can be generated right away."""
     create_demo_data(db)
     settings = settings_repo.get_settings(db)
     assert settings.qr_iban
     assert settings.address_street
+    trafokreise = trafokreis_repo.list_all(db)
+    assert len(trafokreise) == 1
+    assert trafokreise[0].name
     legs = leg_repo.list_all(db)
     assert len(legs) == 1
     assert legs[0].name
+
+
+def test_create_demo_data_assigns_leg_to_every_messpunkt(db):
+    """Every demo Messpunkt has a LEG assigned (the demo LEG matches the demo Trafokreis 1:1)."""
+    create_demo_data(db)
+    leg = leg_repo.list_all(db)[0]
+    for messpunkt in messpunkt_repo.list_all(db):
+        assert messpunkt.leg_id == leg.id
 
 
 def test_create_demo_data_is_guarded_against_double_run(db):

@@ -1,5 +1,5 @@
 """Tests for plausibility/consistency checks: Zuordnung gaps, reading
-completeness and Standorte with no LEG assigned."""
+completeness and Messpunkte with no LEG assigned."""
 
 import uuid
 from datetime import date, datetime, timedelta
@@ -37,33 +37,30 @@ def _person(db, name: str = "P") -> int:
     )
 
 
-def _standort(db, leg_id: int | None = None) -> int:
+def _standort(db) -> int:
     """Create a Standort and return its id."""
     return standort_repo.create(
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            leg_id=leg_id, netzebene="NE7", created_at="",
+            trafokreis_id=None, netzebene="NE7", created_at="",
         ),
     )
 
 
-def _leg(db, gemeinde: str = "Bern") -> int:
+def _leg(db) -> int:
     """Create a LEG with a unique name and return its id."""
     name = f"Testkreis-{uuid.uuid4().hex[:8]}"
-    return leg_repo.create(
-        db,
-        Leg(id=None, name=name, gemeinde=gemeinde, bemerkung="", created_at=""),
-    )
+    return leg_repo.create(db, Leg(id=None, name=name, bemerkung="", created_at=""))
 
 
-def _messpunkt(db, messpunkt_bezeichnung: str, standort_id: int) -> int:
+def _messpunkt(db, messpunkt_bezeichnung: str, standort_id: int, leg_id: int | None = None) -> int:
     """Create a "bezug" Messpunkt and return its id."""
     return messpunkt_repo.create(
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=messpunkt_bezeichnung,
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, leg_id=leg_id, created_at="",
         ),
     )
 
@@ -165,36 +162,33 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
 
 
 def test_check_leg_assignment_no_warnings_when_all_assigned(db):
-    """Standorte that all have a LEG assigned produce no warnings."""
+    """Messpunkte that all have a LEG assigned produce no warnings."""
     leg_a = _leg(db)
     leg_b = _leg(db)
-    standort_a = _standort(db, leg_id=leg_a)
-    standort_b = _standort(db, leg_id=leg_b)
-    _messpunkt(db, "CH-A", standort_a)
-    _messpunkt(db, "CH-B", standort_b)
+    standort = _standort(db)
+    _messpunkt(db, "CH-A", standort, leg_id=leg_a)
+    _messpunkt(db, "CH-B", standort, leg_id=leg_b)
 
     # Multiple different LEGs in use at once is normal, not a warning.
     assert check_leg_assignment(db) == []
 
 
-def test_check_leg_assignment_flags_unresolved_standort(db):
-    """A Standort with Messpunkte but no LEG assigned is flagged."""
+def test_check_leg_assignment_flags_unresolved_messpunkt(db):
+    """A Messpunkt with no LEG assigned is flagged."""
     leg_id = _leg(db)
-    standort_assigned = _standort(db, leg_id=leg_id)
-    standort_unresolved = _standort(db, leg_id=None)
-    _messpunkt(db, "CH-A", standort_assigned)
-    _messpunkt(db, "CH-C", standort_unresolved)
+    standort = _standort(db)
+    _messpunkt(db, "CH-A", standort, leg_id=leg_id)
+    _messpunkt(db, "CH-C", standort, leg_id=None)
 
     warnings = check_leg_assignment(db)
     assert any(w.category == "leg_nicht_zugeordnet" for w in warnings)
     assert len(warnings) == 1
 
 
-def test_check_leg_assignment_ignores_standorte_without_messpunkte(db):
-    """Standorte with no Messpunkt at all don't influence the check."""
+def test_check_leg_assignment_ignores_other_messpunkte_with_leg(db):
+    """Messpunkte that already have a LEG don't influence the check."""
     leg_id = _leg(db)
-    standort_a = _standort(db, leg_id=leg_id)
-    _standort(db, leg_id=None)  # unused, no Messpunkt attached
-    _messpunkt(db, "CH-A", standort_a)
+    standort = _standort(db)
+    _messpunkt(db, "CH-A", standort, leg_id=leg_id)
 
     assert check_leg_assignment(db) == []
