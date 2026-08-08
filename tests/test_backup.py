@@ -30,7 +30,8 @@ def _make_live_db(path) -> None:
     person_repo.create(
         connection,
         Person(
-            id=None, anrede="", name="Original", kontakt_email="", kontakt_telefon="",
+            id=None, anrede="", firma="", vorname="Original", nachname="",
+            kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
             iban="", kundennummer=None, papierrechnung=False, created_at="",
@@ -49,7 +50,7 @@ def test_create_backup_produces_restorable_snapshot(tmp_path):
 
     assert backup_path.exists()
     connection = sqlite3.connect(str(backup_path))
-    names = [row[0] for row in connection.execute("SELECT name FROM person")]
+    names = [row[0] for row in connection.execute("SELECT vorname FROM person")]
     connection.close()
     assert names == ["Original"]
 
@@ -80,7 +81,8 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
     person_repo.create(
         connection,
         Person(
-            id=None, anrede="", name="Added later", kontakt_email="", kontakt_telefon="",
+            id=None, anrede="", firma="", vorname="Added later", nachname="",
+            kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
             iban="", kundennummer=None, papierrechnung=False, created_at="",
@@ -92,14 +94,14 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
 
     # The live DB is back to the pre-change (backed up) state.
     connection = create_connection(db_path)
-    names = {row["name"] for row in connection.execute("SELECT name FROM person")}
+    names = {row["vorname"] for row in connection.execute("SELECT vorname FROM person")}
     connection.close()
     assert names == {"Original"}
 
     # A safety backup of the state just before restoring was taken.
     assert result.safety_backup_path.exists()
     safety_connection = sqlite3.connect(str(result.safety_backup_path))
-    safety_names = {row[0] for row in safety_connection.execute("SELECT name FROM person")}
+    safety_names = {row[0] for row in safety_connection.execute("SELECT vorname FROM person")}
     safety_connection.close()
     assert safety_names == {"Original", "Added later"}
 

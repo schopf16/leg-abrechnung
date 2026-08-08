@@ -56,7 +56,7 @@ def generate_invoice_list_csv(
                 [
                     item.id,
                     person.kundennummer if person else "",
-                    person.name if person else f"Person #{item.person_id}",
+                    person.anzeige_name if person else f"Person #{item.person_id}",
                     reference,
                     f"{item.net_amount_rappen / 100:.2f}",
                     due_date.strftime("%d.%m.%Y"),
@@ -91,7 +91,7 @@ def generate_payout_list_csv(
             writer.writerow(
                 [
                     person.kundennummer if person else "",
-                    person.name if person else f"Person #{item.person_id}",
+                    person.anzeige_name if person else f"Person #{item.person_id}",
                     person.iban if person else "",
                     f"{-item.net_amount_rappen / 100:.2f}",
                 ]

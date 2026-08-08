@@ -98,7 +98,7 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
-        id=1, anrede="", name="Max Muster", kontakt_email="", kontakt_telefon="",
+        id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
         kundennummer=12345678, papierrechnung=False, created_at="",
@@ -134,7 +134,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
-        id=1, anrede="", name="Max Muster", kontakt_email="", kontakt_telefon="",
+        id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
         kundennummer=12345678, papierrechnung=False, created_at="",
@@ -267,7 +267,7 @@ def test_generate_invoice_list_csv_lists_debtors_with_matching_reference_numbers
     for item in debtor_items:
         reference = generate_qrr_reference(item.person_id, run.id, item.id)
         row = rows_by_reference[reference]
-        assert row["Name"] == persons[item.person_id].name
+        assert row["Name"] == persons[item.person_id].anzeige_name
         assert round(float(row["Betrag (CHF)"]), 2) == round(item.net_amount_rappen / 100, 2)
 
 

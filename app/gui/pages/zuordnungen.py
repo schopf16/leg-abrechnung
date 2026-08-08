@@ -85,7 +85,7 @@ def zuordnungen_page() -> None:
                     "messpunkt_label": messpunkte[z.messpunkt_id].messpunkt_bezeichnung
                     if z.messpunkt_id in messpunkte
                     else "?",
-                    "person_name": persons[z.person_id].name if z.person_id in persons else "?",
+                    "person_name": persons[z.person_id].anzeige_name if z.person_id in persons else "?",
                     "gueltig_von": z.gueltig_von.isoformat(),
                     "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
                 }
@@ -118,7 +118,7 @@ def zuordnungen_page() -> None:
                 for mp in messpunkte
             }
             messpunkte_by_id = {mp.id: mp for mp in messpunkte}
-            person_options = {p.id: p.name for p in persons}
+            person_options = {p.id: p.anzeige_name for p in persons}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label(

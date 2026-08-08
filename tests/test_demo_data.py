@@ -99,7 +99,7 @@ def test_summer_quarter_has_both_surplus_and_deficit_intervals(db):
 def test_demo_move_splits_messpunkt_between_two_personen(db):
     """The Bergstrasse-4 Messpunkt is assigned to Erika, then to David, never both."""
     create_demo_data(db)
-    personen = {p.name: p for p in person_repo.list_all(db)}
+    personen = {p.anzeige_name: p for p in person_repo.list_all(db)}
     erika = personen["Erika Vorgängerin (Demo, Umzug-Beispiel)"]
     david = personen["David Demo (Demo)"]
 

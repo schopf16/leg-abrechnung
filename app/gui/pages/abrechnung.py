@@ -121,7 +121,7 @@ def abrechnung_page() -> None:
             """
             with connection_scope() as connection:
                 person_names = {
-                    p.id: p.name for p in person_repo.list_all(connection)
+                    p.id: p.anzeige_name for p in person_repo.list_all(connection)
                 }
                 leg_name = leg_options.get(run.leg_id, "?")
 

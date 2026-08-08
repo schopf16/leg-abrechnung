@@ -12,19 +12,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-#: Swiss grid levels (Netzebenen 1-7, per ElCom/StromVG), highest voltage
-#: (NE1) to the low-voltage household connection level (NE7). Displayed as
-#: a dropdown rather than free text since it is a fixed, well-known set.
-NETZEBENE_OPTIONS = {
-    "NE1": "NE1 – Höchstspannung",
-    "NE2": "NE2 – Trafo Höchstspannung/Hochspannung",
-    "NE3": "NE3 – Hochspannung",
-    "NE4": "NE4 – Trafo Hochspannung/Mittelspannung",
-    "NE5": "NE5 – Mittelspannung",
-    "NE6": "NE6 – Trafo Mittelspannung/Niederspannung",
-    "NE7": "NE7 – Niederspannung (Hausanschluss)",
-}
-
 
 @dataclass
 class Standort:
@@ -39,7 +26,6 @@ class Standort:
         lage: Optional detail (e.g. floor/unit) within that address.
         trafokreis_id: Foreign key to the assigned `Trafokreis`, `None`
             until manually assigned.
-        netzebene: Grid level, one of `NETZEBENE_OPTIONS`'s keys.
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -50,7 +36,6 @@ class Standort:
     gemeinde: str
     lage: str
     trafokreis_id: Optional[int]
-    netzebene: str
     created_at: str
 
     @property
@@ -83,13 +68,13 @@ class Standort:
             gemeinde=row["gemeinde"],
             lage=row["lage"],
             trafokreis_id=row["trafokreis_id"],
-            netzebene=row["netzebene"],
             created_at=row["created_at"],
         )
 
 
 def list_all(connection: sqlite3.Connection) -> list[Standort]:
-    """List all Standorte, ordered by municipality, street, then house number.
+    """List all Standorte, ordered by municipality, street (alphabetically),
+    then house number (numerically, e.g. "2" before "10").
 
     Args:
         connection: Open SQLite connection.
@@ -98,9 +83,43 @@ def list_all(connection: sqlite3.Connection) -> list[Standort]:
         All connection sites, sorted by `gemeinde`, `adresse`, `hausnummer`.
     """
     rows = connection.execute(
-        "SELECT * FROM standort ORDER BY gemeinde, adresse, hausnummer"
+        """
+        SELECT * FROM standort
+        ORDER BY gemeinde, adresse, CAST(hausnummer AS INTEGER), hausnummer
+        """
     ).fetchall()
     return [Standort.from_row(row) for row in rows]
+
+
+def find_by_address(
+    connection: sqlite3.Connection, adresse: str, hausnummer: str, plz: str
+) -> Optional[Standort]:
+    """Fetch a Standort by exact (case-insensitive) Adresse/Hausnummer/PLZ match.
+
+    Used to warn about likely duplicate Standorte -- the same physical
+    address entered twice by mistake. `lage` is deliberately not part of
+    the match: it is a descriptive detail (e.g. floor/unit) within one
+    Standort, not a way to distinguish several Standorte at one address (a
+    multi-family building is one Standort with several Messpunkte, see
+    `app.models.messpunkt`).
+
+    Args:
+        connection: Open SQLite connection.
+        adresse: Street name to match.
+        hausnummer: House number to match.
+        plz: Postal code to match.
+
+    Returns:
+        The matching `Standort`, or `None` if no such address exists.
+    """
+    row = connection.execute(
+        """
+        SELECT * FROM standort
+        WHERE lower(adresse) = lower(?) AND lower(hausnummer) = lower(?) AND lower(plz) = lower(?)
+        """,
+        (adresse, hausnummer, plz),
+    ).fetchone()
+    return Standort.from_row(row) if row else None
 
 
 def get(connection: sqlite3.Connection, standort_id: int) -> Optional[Standort]:
@@ -133,8 +152,8 @@ def create(connection: sqlite3.Connection, standort: Standort) -> int:
     cursor = connection.execute(
         """
         INSERT INTO standort
-            (adresse, hausnummer, plz, gemeinde, lage, trafokreis_id, netzebene, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (adresse, hausnummer, plz, gemeinde, lage, trafokreis_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             standort.adresse,
@@ -143,7 +162,6 @@ def create(connection: sqlite3.Connection, standort: Standort) -> int:
             standort.gemeinde,
             standort.lage,
             standort.trafokreis_id,
-            standort.netzebene,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -170,7 +188,7 @@ def update(connection: sqlite3.Connection, standort: Standort) -> None:
         """
         UPDATE standort SET
             adresse = ?, hausnummer = ?, plz = ?, gemeinde = ?, lage = ?,
-            trafokreis_id = ?, netzebene = ?
+            trafokreis_id = ?
         WHERE id = ?
         """,
         (
@@ -180,7 +198,6 @@ def update(connection: sqlite3.Connection, standort: Standort) -> None:
             standort.gemeinde,
             standort.lage,
             standort.trafokreis_id,
-            standort.netzebene,
             standort.id,
         ),
     )

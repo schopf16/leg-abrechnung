@@ -93,7 +93,7 @@ def build_qr_bill(
                 "country": settings.address_country or "CH",
             },
             debtor={
-                "name": person.name,
+                "name": person.anzeige_name,
                 "street": person.rechnungsadresse_strasse,
                 "pcode": person.rechnungsadresse_plz,
                 "city": person.rechnungsadresse_ort,

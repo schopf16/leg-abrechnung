@@ -57,8 +57,10 @@ WINTER_QUARTER = (DEMO_YEAR, 4)
 SUMMER_QUARTER = (DEMO_YEAR, 3)
 
 #: Marker used to detect "demo data already created" and to keep the
-#: generator idempotent.
-_DEMO_MARKER_NAME = "Anna Muster (Demo)"
+#: generator idempotent. Combined (see `Person.voller_name`) this reads
+#: "Anna Muster (Demo)", same as before the Vorname/Nachname split.
+_DEMO_MARKER_VORNAME = "Anna"
+_DEMO_MARKER_NACHNAME = "Muster (Demo)"
 
 #: Typical household load shape, average kW per hour-of-day (index 0-23).
 _HOURLY_LOAD_KW = [
@@ -104,7 +106,8 @@ def demo_data_exists(connection: sqlite3.Connection) -> bool:
         `True` if a person with the demo marker name exists.
     """
     row = connection.execute(
-        "SELECT 1 FROM person WHERE name = ?", (_DEMO_MARKER_NAME,)
+        "SELECT 1 FROM person WHERE vorname = ? AND nachname = ?",
+        (_DEMO_MARKER_VORNAME, _DEMO_MARKER_NACHNAME),
     ).fetchone()
     return row is not None
 
@@ -216,7 +219,7 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     if demo_data_exists(connection):
         raise DemoDataAlreadyExists(
             "Demo-Daten wurden bereits erzeugt (Person "
-            f'"{_DEMO_MARKER_NAME}" existiert schon).'
+            f'"{_DEMO_MARKER_VORNAME} {_DEMO_MARKER_NACHNAME}" existiert schon).'
         )
 
     trafokreis = _create_demo_trafokreis(connection)
@@ -247,7 +250,7 @@ def _create_demo_trafokreis(connection: sqlite3.Connection) -> Trafokreis:
     trafokreis = Trafokreis(
         id=None,
         name="Bern_TRA00001",
-        gemeinde="Bern",
+        bkw_bezeichnung="TRA00001",
         bemerkung="",
         created_at="",
     )
@@ -293,19 +296,19 @@ def _create_demo_standorte(
     definitions = {
         "anna": Standort(
             id=None, adresse="Sonnenweg", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, created_at="",
         ),
         "beat": Standort(
             id=None, adresse="Sonnenweg", hausnummer="2", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, created_at="",
         ),
         "carla": Standort(
             id=None, adresse="Bergstrasse", hausnummer="3", plz="3001", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, created_at="",
         ),
         "bergstrasse4": Standort(
             id=None, adresse="Bergstrasse", hausnummer="4", plz="3001", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, netzebene="NE7", created_at="",
+            trafokreis_id=trafokreis.id, created_at="",
         ),
     }
     created = {}
@@ -335,37 +338,37 @@ def _create_demo_messpunkte(
         "anna_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000001",
             messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["anna"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
         "anna_einspeisung": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000002",
             messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["anna"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=6.4, batteriespeicher_kwh=None, created_at="",
         ),
         "beat_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000003",
             messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["beat"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
         "beat_einspeisung": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000004",
             messrichtung=MESSRICHTUNG_EINSPEISUNG, standort_id=standorte["beat"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=9.9, batteriespeicher_kwh=10.0, created_at="",
         ),
         "carla_bezug_1": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000005",
             messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
         "carla_bezug_2": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000006",
             messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["carla"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
         "bergstrasse4_bezug": Messpunkt(
             id=None, messpunkt_bezeichnung="CH1000000000000000000000007",
             messrichtung=MESSRICHTUNG_BEZUG, standort_id=standorte["bergstrasse4"].id,
-            leg_id=leg.id, created_at="",
+            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
     }
     created = {}
@@ -387,7 +390,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
     """
     definitions = {
         "anna": Person(
-            id=None, anrede="Frau", name=_DEMO_MARKER_NAME,
+            id=None, anrede="Frau", firma="", vorname=_DEMO_MARKER_VORNAME, nachname=_DEMO_MARKER_NACHNAME,
             kontakt_email="anna.muster@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Sonnenweg 1", rechnungsadresse_plz="3000",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
@@ -395,7 +398,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             created_at="",
         ),
         "beat": Person(
-            id=None, anrede="Herr", name="Beat Beispiel (Demo)",
+            id=None, anrede="Herr", firma="", vorname="Beat", nachname="Beispiel (Demo)",
             kontakt_email="beat.beispiel@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Sonnenweg 2", rechnungsadresse_plz="3000",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
@@ -403,7 +406,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             created_at="",
         ),
         "carla": Person(
-            id=None, anrede="Frau", name="Carla Consumer (Demo)",
+            id=None, anrede="Frau", firma="Consumer AG (Demo)", vorname="Carla", nachname="Consumer",
             kontakt_email="carla.consumer@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse 3", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
@@ -411,7 +414,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             created_at="",
         ),
         "david": Person(
-            id=None, anrede="Herr", name="David Demo (Demo)",
+            id=None, anrede="Herr", firma="", vorname="David", nachname="Demo (Demo)",
             kontakt_email="david.demo@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse 4", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
@@ -419,7 +422,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             created_at="",
         ),
         "erika": Person(
-            id=None, anrede="Frau", name="Erika Vorgängerin (Demo, Umzug-Beispiel)",
+            id=None, anrede="Frau", firma="", vorname="Erika", nachname="Vorgängerin (Demo, Umzug-Beispiel)",
             kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse 4", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",

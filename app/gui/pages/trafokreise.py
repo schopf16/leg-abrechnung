@@ -14,7 +14,7 @@ from app.models.trafokreis import Trafokreis, TrafokreisInUseError
 
 COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
-    {"name": "gemeinde", "label": "Gemeinde", "field": "gemeinde", "align": "left"},
+    {"name": "bkw_bezeichnung", "label": "BKW-Bezeichnung", "field": "bkw_bezeichnung", "align": "left"},
     {"name": "standorte_count", "label": "Standorte", "field": "standorte_count", "align": "right"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
@@ -32,12 +32,12 @@ def _to_row(connection, trafokreis: Trafokreis) -> dict:
         `_search` key used for client-side filtering.
     """
     search_text = " ".join(
-        [trafokreis.name, trafokreis.gemeinde or "", trafokreis.bemerkung or ""]
+        [trafokreis.name, trafokreis.bkw_bezeichnung or "", trafokreis.bemerkung or ""]
     ).lower()
     return {
         "id": trafokreis.id,
         "name": trafokreis.name,
-        "gemeinde": trafokreis.gemeinde,
+        "bkw_bezeichnung": trafokreis.bkw_bezeichnung,
         "standorte_count": trafokreis_repo.count_standorte(connection, trafokreis.id),
         "_search": search_text,
     }
@@ -54,10 +54,12 @@ def trafokreise_page() -> None:
         ui.label(
             "Ein Trafokreis ist eine Eigenschaft des Standorts, nie einer "
             "Person, eines Messpunkts oder einer LEG direkt. Er entspricht "
-            "der physischen Gruppierung durch den Netzbetreiber (BKW)."
+            "der physischen Gruppierung durch den Netzbetreiber (BKW). Der "
+            "„Name“ ist ein frei wählbarer (Pseudo-)Name; die offizielle "
+            "BKW-Nummer gehört ins Feld „BKW-Bezeichnung“."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Name, Gemeinde, Bemerkung...)").classes(
+        search_input = ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)").classes(
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
@@ -114,12 +116,13 @@ def trafokreise_page() -> None:
                     "text-lg font-bold"
                 )
                 name = ui.input(
-                    "Name (BKW-Bezeichnung oder eigener Name)",
+                    "Name (frei wählbar, z. B. Pseudo-Name)",
                     value=existing.name if existing else "",
                 ).classes("w-full").props("debounce=300")
                 duplicate_warning = ui.label("").classes("text-warning")
-                gemeinde = ui.input(
-                    "Gemeinde", value=existing.gemeinde if existing else ""
+                bkw_bezeichnung = ui.input(
+                    "BKW-Bezeichnung (optional, z. B. TRA21359)",
+                    value=existing.bkw_bezeichnung if existing else "",
                 ).classes("w-full")
                 bemerkung = ui.textarea(
                     "Bemerkung (optional)",
@@ -158,9 +161,6 @@ def trafokreise_page() -> None:
                     if not name.value.strip():
                         error_label.text = "Name darf nicht leer sein."
                         return
-                    if not gemeinde.value.strip():
-                        error_label.text = "Gemeinde darf nicht leer sein."
-                        return
                     if check_duplicate():
                         error_label.text = "Dieser Name wird bereits verwendet."
                         return
@@ -170,7 +170,7 @@ def trafokreise_page() -> None:
                                 updated = Trafokreis(
                                     id=existing.id,
                                     name=name.value.strip(),
-                                    gemeinde=gemeinde.value.strip(),
+                                    bkw_bezeichnung=bkw_bezeichnung.value.strip(),
                                     bemerkung=bemerkung.value.strip(),
                                     created_at=existing.created_at,
                                 )
@@ -179,7 +179,7 @@ def trafokreise_page() -> None:
                                 new_trafokreis = Trafokreis(
                                     id=None,
                                     name=name.value.strip(),
-                                    gemeinde=gemeinde.value.strip(),
+                                    bkw_bezeichnung=bkw_bezeichnung.value.strip(),
                                     bemerkung=bemerkung.value.strip(),
                                     created_at="",
                                 )

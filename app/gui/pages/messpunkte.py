@@ -48,7 +48,7 @@ def _current_person_name(connection, messpunkt_id: int) -> str:
     for z in zuordnung_repo.list_for_messpunkt(connection, messpunkt_id):
         if z.gueltig_von <= today and (z.gueltig_bis is None or z.gueltig_bis >= today):
             person = person_repo.get(connection, z.person_id)
-            return person.name if person else "?"
+            return person.anzeige_name if person else "?"
     return "-"
 
 
@@ -191,6 +191,17 @@ def messpunkte_page() -> None:
                     value=existing.leg_id if existing else None,
                     with_input=True,
                 ).classes("w-full")
+                with ui.row().classes("w-full gap-2"):
+                    pv_leistung = ui.number(
+                        "PV-Leistung (kWp, optional)",
+                        value=existing.pv_leistung_kwp if existing else None,
+                        step=0.1,
+                    ).classes("flex-grow")
+                    batteriespeicher = ui.number(
+                        "Batteriespeicher (kWh, optional)",
+                        value=existing.batteriespeicher_kwh if existing else None,
+                        step=0.1,
+                    ).classes("flex-grow")
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
@@ -214,6 +225,8 @@ def messpunkte_page() -> None:
                                     messrichtung=messrichtung.value,
                                     standort_id=standort_select.value,
                                     leg_id=leg_select.value,
+                                    pv_leistung_kwp=pv_leistung.value,
+                                    batteriespeicher_kwh=batteriespeicher.value,
                                     created_at=existing.created_at,
                                 )
                                 messpunkt_repo.update(connection, updated)
@@ -224,6 +237,8 @@ def messpunkte_page() -> None:
                                     messrichtung=messrichtung.value,
                                     standort_id=standort_select.value,
                                     leg_id=leg_select.value,
+                                    pv_leistung_kwp=pv_leistung.value,
+                                    batteriespeicher_kwh=batteriespeicher.value,
                                     created_at="",
                                 )
                                 messpunkt_repo.create(connection, new_mp)
@@ -336,3 +351,7 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
                 ui.link("Standort ansehen", f"/standorte/{standort.id}")
             ui.label(f"LEG: {leg.name if leg else '-'}")
             ui.label(f"Aktuell zugeordnete Person: {person_name}")
+            if mp.pv_leistung_kwp is not None:
+                ui.label(f"PV-Leistung: {mp.pv_leistung_kwp:g} kWp")
+            if mp.batteriespeicher_kwh is not None:
+                ui.label(f"Batteriespeicher: {mp.batteriespeicher_kwh:g} kWh")

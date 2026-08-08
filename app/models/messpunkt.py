@@ -34,6 +34,12 @@ class Messpunkt:
             physically installed at.
         leg_id: Foreign key to the assigned `Leg`, `None` until manually
             assigned.
+        pv_leistung_kwp: Installed PV capacity in kWp, `None` if unknown
+            or not applicable (purely informational, not used in
+            billing/distribution).
+        batteriespeicher_kwh: Battery storage capacity in kWh, `None` if
+            unknown or not applicable (purely informational, not used in
+            billing/distribution).
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -42,6 +48,8 @@ class Messpunkt:
     messrichtung: str
     standort_id: int
     leg_id: Optional[int]
+    pv_leistung_kwp: Optional[float]
+    batteriespeicher_kwh: Optional[float]
     created_at: str
 
     @property
@@ -78,6 +86,8 @@ class Messpunkt:
             messrichtung=row["messrichtung"],
             standort_id=row["standort_id"],
             leg_id=row["leg_id"],
+            pv_leistung_kwp=row["pv_leistung_kwp"],
+            batteriespeicher_kwh=row["batteriespeicher_kwh"],
             created_at=row["created_at"],
         )
 
@@ -167,14 +177,18 @@ def create(connection: sqlite3.Connection, messpunkt: Messpunkt) -> int:
         raise ValueError(f"Unknown messrichtung: {messpunkt.messrichtung!r}")
     cursor = connection.execute(
         """
-        INSERT INTO messpunkt (messpunkt_bezeichnung, messrichtung, standort_id, leg_id, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO messpunkt
+            (messpunkt_bezeichnung, messrichtung, standort_id, leg_id,
+             pv_leistung_kwp, batteriespeicher_kwh, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             messpunkt.messpunkt_bezeichnung,
             messpunkt.messrichtung,
             messpunkt.standort_id,
             messpunkt.leg_id,
+            messpunkt.pv_leistung_kwp,
+            messpunkt.batteriespeicher_kwh,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -202,7 +216,8 @@ def update(connection: sqlite3.Connection, messpunkt: Messpunkt) -> None:
     connection.execute(
         """
         UPDATE messpunkt SET
-            messpunkt_bezeichnung = ?, messrichtung = ?, standort_id = ?, leg_id = ?
+            messpunkt_bezeichnung = ?, messrichtung = ?, standort_id = ?, leg_id = ?,
+            pv_leistung_kwp = ?, batteriespeicher_kwh = ?
         WHERE id = ?
         """,
         (
@@ -210,6 +225,8 @@ def update(connection: sqlite3.Connection, messpunkt: Messpunkt) -> None:
             messpunkt.messrichtung,
             messpunkt.standort_id,
             messpunkt.leg_id,
+            messpunkt.pv_leistung_kwp,
+            messpunkt.batteriespeicher_kwh,
             messpunkt.id,
         ),
     )

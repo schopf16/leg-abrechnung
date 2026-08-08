@@ -69,12 +69,12 @@ def draw_recipient_block(canvas: Canvas, person: Person) -> None:
     """
     y = PAGE_HEIGHT - 55 * mm
     canvas.setFont("Helvetica", 10)
-    for line in (
-        person.anrede,
-        person.name,
+    lines = [
+        *person.adressblock_zeilen,
         person.rechnungsadresse_strasse,
         f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}",
-    ):
+    ]
+    for line in lines:
         if line.strip():
             canvas.drawString(_LEFT_MARGIN, y, line)
             y -= 12

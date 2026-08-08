@@ -2,24 +2,45 @@
 detail drill-down showing the site's Messpunkte.
 """
 
+from datetime import date
+
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
+from app.models import person as person_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
-from app.models.standort import NETZEBENE_OPTIONS, Standort
+from app.models import zuordnung as zuordnung_repo
+from app.models.standort import Standort
 
 COLUMNS = [
     {"name": "adresse", "label": "Adresse", "field": "adresse", "align": "left", "sortable": True},
     {"name": "plz_gemeinde", "label": "PLZ / Gemeinde", "field": "plz_gemeinde", "align": "left"},
     {"name": "lage", "label": "Lage", "field": "lage", "align": "left"},
-    {"name": "netzebene", "label": "Netzebene", "field": "netzebene", "align": "left"},
     {"name": "trafokreis", "label": "Trafokreis", "field": "trafokreis", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
+
+
+def _current_person_name(connection, messpunkt_id: int) -> str:
+    """Find the name of the Person currently assigned to a Messpunkt.
+
+    Args:
+        connection: Open SQLite connection.
+        messpunkt_id: Primary key of the metering point.
+
+    Returns:
+        The current person's name, or "-" if unassigned today.
+    """
+    today = date.today()
+    for z in zuordnung_repo.list_for_messpunkt(connection, messpunkt_id):
+        if z.gueltig_von <= today and (z.gueltig_bis is None or z.gueltig_bis >= today):
+            person = person_repo.get(connection, z.person_id)
+            return person.anzeige_name if person else "?"
+    return "-"
 
 
 def _to_row(standort: Standort, trafokreise: dict) -> dict:
@@ -50,7 +71,6 @@ def _to_row(standort: Standort, trafokreise: dict) -> dict:
         "adresse": f"{standort.adresse} {standort.hausnummer}".strip(),
         "plz_gemeinde": f"{standort.plz} {standort.gemeinde}".strip(),
         "lage": standort.lage,
-        "netzebene": NETZEBENE_OPTIONS.get(standort.netzebene, standort.netzebene),
         "trafokreis": trafokreis_name,
         "_search": search_text,
     }
@@ -135,24 +155,20 @@ def standorte_page() -> None:
                 with ui.row().classes("w-full gap-2"):
                     adresse = ui.input(
                         "Adresse", value=existing.adresse if existing else ""
-                    ).classes("flex-grow")
+                    ).classes("flex-grow").props("debounce=300")
                     hausnummer = ui.input(
                         "Hausnummer", value=existing.hausnummer if existing else ""
-                    ).classes("w-24")
+                    ).classes("w-24").props("debounce=300")
                 with ui.row().classes("w-full gap-2"):
                     plz = ui.input(
                         "PLZ", value=existing.plz if existing else ""
-                    ).classes("w-24")
+                    ).classes("w-24").props("debounce=300")
                     gemeinde = ui.input(
                         "Gemeinde", value=existing.gemeinde if existing else ""
                     ).classes("flex-grow")
+                duplicate_warning = ui.label("").classes("text-warning")
                 lage = ui.input(
                     "Lage (optional, z. B. Stockwerk)", value=existing.lage if existing else ""
-                ).classes("w-full")
-                netzebene = ui.select(
-                    NETZEBENE_OPTIONS,
-                    label="Netzebene",
-                    value=existing.netzebene if existing else "NE7",
                 ).classes("w-full")
                 trafokreis_select = ui.select(
                     trafokreis_options,
@@ -162,6 +178,34 @@ def standorte_page() -> None:
                 ).classes("w-full")
                 error_label = ui.label("").classes("text-negative")
 
+                def check_duplicate() -> bool:
+                    """Check whether Adresse/Hausnummer/PLZ already match another Standort.
+
+                    Updates `duplicate_warning` as a side effect.
+
+                    Returns:
+                        `True` if a different Standort already has this
+                        exact address.
+                    """
+                    if not (adresse.value.strip() and hausnummer.value.strip() and plz.value.strip()):
+                        duplicate_warning.text = ""
+                        return False
+                    with connection_scope() as connection:
+                        found = standort_repo.find_by_address(
+                            connection, adresse.value.strip(), hausnummer.value.strip(), plz.value.strip()
+                        )
+                    is_duplicate = found is not None and (existing is None or found.id != existing.id)
+                    duplicate_warning.text = (
+                        "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits."
+                        if is_duplicate
+                        else ""
+                    )
+                    return is_duplicate
+
+                adresse.on_value_change(lambda _: check_duplicate())
+                hausnummer.on_value_change(lambda _: check_duplicate())
+                plz.on_value_change(lambda _: check_duplicate())
+
                 def save() -> None:
                     """Validate the form and persist the Standort.
 
@@ -170,6 +214,9 @@ def standorte_page() -> None:
                     """
                     if not adresse.value.strip():
                         error_label.text = "Adresse darf nicht leer sein."
+                        return
+                    if check_duplicate():
+                        error_label.text = "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits."
                         return
                     with connection_scope() as connection:
                         if existing:
@@ -181,7 +228,6 @@ def standorte_page() -> None:
                                 gemeinde=gemeinde.value.strip(),
                                 lage=lage.value.strip(),
                                 trafokreis_id=trafokreis_select.value,
-                                netzebene=netzebene.value,
                                 created_at=existing.created_at,
                             )
                             standort_repo.update(connection, updated)
@@ -194,7 +240,6 @@ def standorte_page() -> None:
                                 gemeinde=gemeinde.value.strip(),
                                 lage=lage.value.strip(),
                                 trafokreis_id=trafokreis_select.value,
-                                netzebene=netzebene.value,
                                 created_at="",
                             )
                             standort_repo.create(connection, new_standort)
@@ -290,6 +335,7 @@ def standort_detail_page(standort_id: int) -> None:
         )
         messpunkte = messpunkt_repo.list_for_standort(connection, standort_id) if standort else []
         legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
+        person_names = {mp.id: _current_person_name(connection, mp.id) for mp in messpunkte}
 
     with page_frame(
         "/standorte", "Standort" if standort is None else standort.adresse_vollstaendig
@@ -303,7 +349,6 @@ def standort_detail_page(standort_id: int) -> None:
         ui.label(standort.adresse_vollstaendig).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Lage: {standort.lage or '-'}")
-            ui.label(f"Netzebene: {NETZEBENE_OPTIONS.get(standort.netzebene, standort.netzebene)}")
             ui.label(f"Trafokreis: {trafokreis.name if trafokreis else '-'}")
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")
@@ -313,6 +358,7 @@ def standort_detail_page(standort_id: int) -> None:
                     {"name": "messpunkt_bezeichnung", "label": "Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left"},
                     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
                     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
+                    {"name": "person", "label": "Aktuell zugeordnet", "field": "person", "align": "left"},
                 ],
                 rows=[
                     {
@@ -320,6 +366,7 @@ def standort_detail_page(standort_id: int) -> None:
                         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
                         "messrichtung": "Bezug" if mp.is_bezug else "Einspeisung",
                         "leg": legs[mp.leg_id].name if mp.leg_id in legs else "-",
+                        "person": person_names.get(mp.id, "-"),
                     }
                     for mp in messpunkte
                 ],

@@ -29,7 +29,8 @@ def _person(db, name: str = "P") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="", name=name, kontakt_email="", kontakt_telefon="",
+            id=None, anrede="", firma="", vorname=name, nachname="",
+            kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
             iban="", kundennummer=None, papierrechnung=False, created_at="",
@@ -43,7 +44,7 @@ def _standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, netzebene="NE7", created_at="",
+            trafokreis_id=None, created_at="",
         ),
     )
 
@@ -60,7 +61,8 @@ def _messpunkt(db, messpunkt_bezeichnung: str, standort_id: int, leg_id: int | N
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=messpunkt_bezeichnung,
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, leg_id=leg_id, created_at="",
+            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, leg_id=leg_id,
+            pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
     )
 

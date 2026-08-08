@@ -556,4 +556,61 @@ MIGRATIONS: list[Migration] = [
             CREATE INDEX idx_items_run ON billing_run_items(billing_run_id);
         """,
     ),
+    Migration(
+        version=9,
+        description="Add Messpunkt.pv_leistung_kwp (installed PV capacity) "
+        "and Messpunkt.batteriespeicher_kwh (battery storage capacity), "
+        "both optional and purely informational -- neither feeds into "
+        "distribution or billing. Purely additive.",
+        sql="""
+            ALTER TABLE messpunkt ADD COLUMN pv_leistung_kwp REAL;
+            ALTER TABLE messpunkt ADD COLUMN batteriespeicher_kwh REAL;
+        """,
+    ),
+    Migration(
+        version=10,
+        description="Drop Standort.netzebene: this deployment is always on "
+        "NE7 (Niederspannung/Hausanschluss), so the field was dead weight "
+        "-- every Standort has to pick the same value anyway.",
+        sql="""
+            ALTER TABLE standort DROP COLUMN netzebene;
+        """,
+    ),
+    Migration(
+        version=11,
+        description="Rename Trafokreis.gemeinde to bkw_bezeichnung: 'Gemeinde' "
+        "was being (mis)used to hold the official BKW Trafokreis "
+        "designation/number, since 'Name' is meant for a self-chosen "
+        "pseudo-name and the municipality itself never varies within one "
+        "deployment (single-Gemeinde use). Municipality is therefore "
+        "dropped as a concept here; the field is repurposed for its "
+        "actual real-world use.",
+        sql="""
+            ALTER TABLE trafokreis RENAME COLUMN gemeinde TO bkw_bezeichnung;
+        """,
+    ),
+    Migration(
+        version=12,
+        description="Split Person.name into firma/vorname/nachname: a "
+        "Person can now be a company (firma), a natural person (vorname/"
+        "nachname), or a company with a named contact person (all three). "
+        "Purely additive/subtractive ALTER TABLE (add the three new "
+        "columns, copy the old 'name' into 'vorname' verbatim -- no "
+        "mechanical way to split it further -- then drop 'name'). "
+        "person itself is never dropped or renamed, so zuordnung and "
+        "billing_run_items (both REFERENCES person(id)) are completely "
+        "untouched and keep their data. (An earlier version of this "
+        "migration dropped and recreated person, zuordnung and "
+        "billing_run_items on the incorrect assumption that only demo/test "
+        "data existed at this point in the schema's history -- fixed here "
+        "since it destroyed real data for anyone upgrading a live "
+        "database; do not revert to that approach.)",
+        sql="""
+            ALTER TABLE person ADD COLUMN firma TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN vorname TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN nachname TEXT NOT NULL DEFAULT '';
+            UPDATE person SET vorname = name;
+            ALTER TABLE person DROP COLUMN name;
+        """,
+    ),
 ]

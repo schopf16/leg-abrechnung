@@ -124,7 +124,7 @@ def auswertungen_page() -> None:
                         )
                         control_check = verify_sum_balance(items)
                         person_names = {
-                            p.id: p.name for p in person_repo.list_all(connection)
+                            p.id: p.anzeige_name for p in person_repo.list_all(connection)
                         }
                 except LegNotAssignedError as exc:
                     ui.label(f"⚠ {exc}").classes("text-negative")

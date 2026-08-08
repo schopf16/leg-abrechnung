@@ -5,6 +5,11 @@ Connected to Messpunkte exclusively through the dated `Zuordnung` (see
 The `rechnungsadresse_*` fields are a pure contact/billing address and
 deliberately independent of any Standort's physical connection address (a
 person can be billed somewhere other than where their meter is installed).
+
+A Person can be a company (`firma` set), a natural person (`vorname`/
+`nachname` set, `firma` empty), or a company with a named contact person
+(all three set) -- see `Person.anzeige_name` and `Person.adressblock_zeilen`
+for how these combine for display.
 """
 
 import random
@@ -13,9 +18,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-#: Selectable values for `Person.anrede` (salutation), used on billing
-#: documents. Empty string means "no salutation known".
-ANREDE_OPTIONS = ["Herr", "Frau", "Firma"]
+#: Selectable values for `Person.anrede` (salutation of the natural person
+#: -- the standalone individual, or the named contact at a company), used
+#: on billing documents. Empty string means "no salutation known".
+ANREDE_OPTIONS = ["Herr", "Frau"]
 
 #: Digit range for `generate_kundennummer` -- always exactly 8 digits.
 _KUNDENNUMMER_MIN = 10_000_000
@@ -28,9 +34,15 @@ class Person:
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
-        anrede: Salutation for billing documents -- one of
-            `ANREDE_OPTIONS`, or `""` if unknown.
-        name: Full name or company name.
+        anrede: Salutation for the natural person (`vorname`/`nachname`)
+            -- one of `ANREDE_OPTIONS`, or `""` if unknown/not applicable
+            (e.g. a company with no named contact person).
+        firma: Company name, or `""` if this Person is a natural person
+            with no company.
+        vorname: First name, or `""` if this Person is a company with no
+            named contact person.
+        nachname: Last name, or `""` if this Person is a company with no
+            named contact person.
         kontakt_email: Contact email address.
         kontakt_telefon: Optional contact phone number.
         rechnungsadresse_strasse: Billing address street and house number.
@@ -50,7 +62,9 @@ class Person:
 
     id: Optional[int]
     anrede: str
-    name: str
+    firma: str
+    vorname: str
+    nachname: str
     kontakt_email: str
     kontakt_telefon: str
     rechnungsadresse_strasse: str
@@ -61,6 +75,48 @@ class Person:
     kundennummer: Optional[int]
     papierrechnung: bool
     created_at: str
+
+    @property
+    def voller_name(self) -> str:
+        """`"Vorname Nachname"`, with either part omitted if empty.
+
+        Returns:
+            The natural person's full name, or `""` if both are empty.
+        """
+        return " ".join(p for p in (self.vorname, self.nachname) if p)
+
+    @property
+    def anzeige_name(self) -> str:
+        """Single-line display name, for lists, search, dropdowns and exports.
+
+        Returns:
+            `"Firma (Vorname Nachname)"` if both are set, just the company
+            name or just the personal name if only one is, or `""` if
+            neither `firma` nor a personal name is set.
+        """
+        if self.firma and self.voller_name:
+            return f"{self.firma} ({self.voller_name})"
+        return self.firma or self.voller_name
+
+    @property
+    def adressblock_zeilen(self) -> list[str]:
+        """Recipient address block lines (company, salutation, personal name).
+
+        Standard Swiss business-letter order: company name first, then the
+        named contact's salutation and name (if any). Street/city are
+        appended by the caller (see `app.pdf.layout.draw_recipient_block`).
+
+        Returns:
+            Non-empty lines to print, in order.
+        """
+        lines = []
+        if self.firma:
+            lines.append(self.firma)
+        if self.voller_name:
+            if self.anrede:
+                lines.append(self.anrede)
+            lines.append(self.voller_name)
+        return lines
 
     @property
     def kundennummer_formatiert(self) -> str:
@@ -88,7 +144,9 @@ class Person:
         return Person(
             id=row["id"],
             anrede=row["anrede"],
-            name=row["name"],
+            firma=row["firma"],
+            vorname=row["vorname"],
+            nachname=row["nachname"],
             kontakt_email=row["kontakt_email"],
             kontakt_telefon=row["kontakt_telefon"],
             rechnungsadresse_strasse=row["rechnungsadresse_strasse"],
@@ -103,15 +161,20 @@ class Person:
 
 
 def list_all(connection: sqlite3.Connection) -> list[Person]:
-    """List all Personen, ordered by name.
+    """List all Personen, ordered by Nachname (or Firma if no Nachname), then Vorname.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        All persons, alphabetically sorted by name.
+        All persons, alphabetically sorted.
     """
-    rows = connection.execute("SELECT * FROM person ORDER BY name").fetchall()
+    rows = connection.execute(
+        """
+        SELECT * FROM person
+        ORDER BY lower(CASE WHEN nachname <> '' THEN nachname ELSE firma END), lower(vorname)
+        """
+    ).fetchall()
     return [Person.from_row(row) for row in rows]
 
 
@@ -183,14 +246,16 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
     cursor = connection.execute(
         """
         INSERT INTO person
-            (anrede, name, kontakt_email, kontakt_telefon, rechnungsadresse_strasse,
-             rechnungsadresse_plz, rechnungsadresse_ort, rechnungsadresse_land,
-             iban, kundennummer, papierrechnung, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (anrede, firma, vorname, nachname, kontakt_email, kontakt_telefon,
+             rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort,
+             rechnungsadresse_land, iban, kundennummer, papierrechnung, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             person.anrede,
-            person.name,
+            person.firma,
+            person.vorname,
+            person.nachname,
             person.kontakt_email,
             person.kontakt_telefon,
             person.rechnungsadresse_strasse,
@@ -228,15 +293,17 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
     connection.execute(
         """
         UPDATE person SET
-            anrede = ?, name = ?, kontakt_email = ?, kontakt_telefon = ?,
-            rechnungsadresse_strasse = ?, rechnungsadresse_plz = ?,
+            anrede = ?, firma = ?, vorname = ?, nachname = ?, kontakt_email = ?,
+            kontakt_telefon = ?, rechnungsadresse_strasse = ?, rechnungsadresse_plz = ?,
             rechnungsadresse_ort = ?, rechnungsadresse_land = ?, iban = ?,
             papierrechnung = ?
         WHERE id = ?
         """,
         (
             person.anrede,
-            person.name,
+            person.firma,
+            person.vorname,
+            person.nachname,
             person.kontakt_email,
             person.kontakt_telefon,
             person.rechnungsadresse_strasse,
@@ -251,6 +318,15 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
     connection.commit()
 
 
+class PersonInUseError(Exception):
+    """Raised when deleting a Person that still has billing history.
+
+    `billing_run_items.person_id` is `ON DELETE RESTRICT` deliberately --
+    once a person has been billed, that record is part of the accounting
+    trail and must never silently lose its person reference.
+    """
+
+
 def delete(connection: sqlite3.Connection, person_id: int) -> None:
     """Delete a Person.
 
@@ -263,6 +339,19 @@ def delete(connection: sqlite3.Connection, person_id: int) -> None:
 
     Returns:
         None.
+
+    Raises:
+        PersonInUseError: If the person still has one or more billing run
+            items (i.e. was ever included in a billing run) -- those
+            records are kept for accounting purposes and block deletion.
     """
-    connection.execute("DELETE FROM person WHERE id = ?", (person_id,))
-    connection.commit()
+    try:
+        connection.execute("DELETE FROM person WHERE id = ?", (person_id,))
+        connection.commit()
+    except sqlite3.IntegrityError as exc:
+        connection.rollback()
+        raise PersonInUseError(
+            "Person kann nicht gelöscht werden: es bestehen bereits "
+            "Abrechnungsbelege für diese Person (Buchhaltungs-/"
+            "Revisionssicherheit)."
+        ) from exc

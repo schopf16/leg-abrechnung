@@ -23,16 +23,18 @@ class Trafokreis:
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
-        name: The official BKW designation, or a self-chosen name if none
-            is known yet. Must be unique.
-        gemeinde: Municipality the Trafokreis is located in.
+        name: A self-chosen or pseudo name used within the app (e.g. to
+            avoid using the real BKW designation in the UI). Must be
+            unique.
+        bkw_bezeichnung: The official BKW Trafokreis designation/number
+            (e.g. "TRA21359"), if known.
         bemerkung: Free-text notes (optional).
         created_at: ISO-8601 creation timestamp.
     """
 
     id: Optional[int]
     name: str
-    gemeinde: str
+    bkw_bezeichnung: str
     bemerkung: str
     created_at: str
 
@@ -49,22 +51,22 @@ class Trafokreis:
         return Trafokreis(
             id=row["id"],
             name=row["name"],
-            gemeinde=row["gemeinde"],
+            bkw_bezeichnung=row["bkw_bezeichnung"],
             bemerkung=row["bemerkung"],
             created_at=row["created_at"],
         )
 
 
 def list_all(connection: sqlite3.Connection) -> list[Trafokreis]:
-    """List all Trafokreise, ordered by municipality then name.
+    """List all Trafokreise, ordered by name.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        All Trafokreise, sorted by `gemeinde` then `name`.
+        All Trafokreise, sorted by `name`.
     """
-    rows = connection.execute("SELECT * FROM trafokreis ORDER BY gemeinde, name").fetchall()
+    rows = connection.execute("SELECT * FROM trafokreis ORDER BY name").fetchall()
     return [Trafokreis.from_row(row) for row in rows]
 
 
@@ -116,12 +118,12 @@ def create(connection: sqlite3.Connection, trafokreis: Trafokreis) -> int:
     """
     cursor = connection.execute(
         """
-        INSERT INTO trafokreis (name, gemeinde, bemerkung, created_at)
+        INSERT INTO trafokreis (name, bkw_bezeichnung, bemerkung, created_at)
         VALUES (?, ?, ?, ?)
         """,
         (
             trafokreis.name,
-            trafokreis.gemeinde,
+            trafokreis.bkw_bezeichnung,
             trafokreis.bemerkung,
             datetime.now(timezone.utc).isoformat(),
         ),
@@ -150,10 +152,10 @@ def update(connection: sqlite3.Connection, trafokreis: Trafokreis) -> None:
     connection.execute(
         """
         UPDATE trafokreis SET
-            name = ?, gemeinde = ?, bemerkung = ?
+            name = ?, bkw_bezeichnung = ?, bemerkung = ?
         WHERE id = ?
         """,
-        (trafokreis.name, trafokreis.gemeinde, trafokreis.bemerkung, trafokreis.id),
+        (trafokreis.name, trafokreis.bkw_bezeichnung, trafokreis.bemerkung, trafokreis.id),
     )
     connection.commit()
 

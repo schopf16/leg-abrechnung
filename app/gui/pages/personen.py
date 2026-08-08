@@ -2,6 +2,11 @@
 detail drill-down showing the Person → Zuordnung → Messpunkt (→ LEG,
 → Standort → Trafokreis) join (project prompt section 7,
 "Personen-Detailansicht").
+
+The list is rendered as one card per Person (not a single-row-per-person
+table): a Person has enough fields (Name/Firma, Kontakt, Rechnungsadresse,
+IBAN) that a flat table forces horizontal scrolling. Cards let each group
+of fields wrap onto its own line instead.
 """
 
 from datetime import date
@@ -18,21 +23,12 @@ from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
-from app.models.person import ANREDE_OPTIONS, Person
+from app.models.person import ANREDE_OPTIONS, Person, PersonInUseError
 
 MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_BEZUG: "Bezug",
     MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
 }
-
-COLUMNS = [
-    {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
-    {"name": "kundennummer", "label": "Kunden-Nr.", "field": "kundennummer", "align": "left"},
-    {"name": "kontakt", "label": "Kontakt", "field": "kontakt", "align": "left"},
-    {"name": "rechnungsadresse", "label": "Rechnungsadresse", "field": "rechnungsadresse", "align": "left"},
-    {"name": "iban", "label": "IBAN", "field": "iban", "align": "left"},
-    {"name": "actions", "label": "", "field": "actions", "align": "right"},
-]
 
 DETAIL_COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt", "field": "messpunkt_bezeichnung", "align": "left"},
@@ -60,7 +56,9 @@ def _search_text_for_person(connection, person: Person) -> str:
         A single lowercase string containing all searchable text.
     """
     parts = [
-        person.name,
+        person.firma,
+        person.vorname,
+        person.nachname,
         person.kontakt_email,
         person.kontakt_telefon,
         person.rechnungsadresse_strasse,
@@ -79,29 +77,6 @@ def _search_text_for_person(connection, person: Person) -> str:
     return " ".join(p for p in parts if p).lower()
 
 
-def _to_row(person: Person, search_text: str) -> dict:
-    """Convert a `Person` into a row dict for the NiceGUI table.
-
-    Args:
-        person: Person to convert.
-        search_text: Precomputed haystack from `_search_text_for_person`.
-
-    Returns:
-        A dict with the fields required by `COLUMNS`, plus a hidden
-        `_search` key used for client-side filtering.
-    """
-    return {
-        "id": person.id,
-        "name": person.name,
-        "kundennummer": person.kundennummer_formatiert,
-        "kontakt": " / ".join(x for x in (person.kontakt_email, person.kontakt_telefon) if x),
-        "rechnungsadresse": f"{person.rechnungsadresse_strasse}, "
-        f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}".strip(", "),
-        "iban": person.iban,
-        "_search": search_text,
-    }
-
-
 @ui.page("/personen")
 def personen_page() -> None:
     """Render the Personen list page with search, CRUD, and a link to each detail view.
@@ -117,33 +92,64 @@ def personen_page() -> None:
             "Anlegen automatisch und eindeutig vergeben."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Name, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
+        search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
-        table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
-        table.add_slot(
-            "body-cell-actions",
-            r'''
-            <q-td :props="props">
-                <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
-                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
-                <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
-            </q-td>
-            ''',
-        )
+        list_container = ui.column().classes("w-full gap-2 mt-2")
 
-        all_rows: list[dict] = []
+        all_entries: list[tuple[Person, str]] = []
+
+        def render_card(person: Person) -> None:
+            """Render one Person as a card with wrapping field groups.
+
+            Args:
+                person: Person to render.
+
+            Returns:
+                None.
+            """
+            with ui.card().classes("w-full"):
+                with ui.row().classes("w-full items-start gap-6 flex-wrap"):
+                    with ui.column().classes("gap-0 min-w-[200px]"):
+                        ui.label(person.anzeige_name).classes("font-bold")
+                        ui.label(f"Kunden-Nr. {person.kundennummer_formatiert}").classes(
+                            "text-caption text-grey-6"
+                        )
+                    with ui.column().classes("gap-0 min-w-[180px]"):
+                        ui.label(person.kontakt_email or "-")
+                        ui.label(person.kontakt_telefon or "-").classes("text-grey-7")
+                    with ui.column().classes("gap-0 min-w-[220px]"):
+                        ui.label(
+                            f"{person.rechnungsadresse_strasse}".strip() or "-"
+                        )
+                        ui.label(
+                            f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}".strip()
+                        )
+                    with ui.column().classes("gap-0 min-w-[200px]"):
+                        ui.label(f"IBAN: {person.iban or '-'}")
+                        ui.label(
+                            "Papierrechnung: " + ("ja" if person.papierrechnung else "nein")
+                        ).classes("text-grey-7")
+                    with ui.row().classes("gap-1 ml-auto"):
+                        ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
+                        ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
+                        ui.button(icon="delete", on_click=lambda: on_remove(person)).props(
+                            "dense flat color=negative"
+                        )
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value.
+            """Filter the currently loaded persons by the search input's value.
 
             Returns:
                 None.
             """
             needle = (search_input.value or "").strip().lower()
-            table.rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
-            table.update()
+            list_container.clear()
+            with list_container:
+                for person, search_text in all_entries:
+                    if not needle or needle in search_text:
+                        render_card(person)
 
         def refresh() -> None:
             """Reload all persons from the database and re-apply the filter.
@@ -151,10 +157,10 @@ def personen_page() -> None:
             Returns:
                 None.
             """
-            nonlocal all_rows
+            nonlocal all_entries
             with connection_scope() as connection:
                 persons = person_repo.list_all(connection)
-                all_rows = [_to_row(p, _search_text_for_person(connection, p)) for p in persons]
+                all_entries = [(p, _search_text_for_person(connection, p)) for p in persons]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
@@ -168,7 +174,7 @@ def personen_page() -> None:
             Returns:
                 None.
             """
-            with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
+            with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
                 ui.label("Person bearbeiten" if existing else "Neue Person").classes(
                     "text-lg font-bold"
                 )
@@ -176,36 +182,60 @@ def personen_page() -> None:
                     ui.label(f"Kunden-Nr.: {existing.kundennummer_formatiert}").classes(
                         "text-body2 text-grey-8"
                     )
+                    ui.label(
+                        "Die Kunden-Nr. wurde bei der Anlage automatisch und "
+                        "zufällig vergeben und kann nicht geändert werden."
+                    ).classes("text-caption text-grey-6")
                 else:
                     ui.label(
-                        "Kunden-Nr. wird beim Speichern automatisch vergeben."
+                        "Die Kunden-Nr. wird beim Speichern automatisch und "
+                        "zufällig vergeben (keine fortlaufende Nummer, um "
+                        "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
+                        "verhindern) und ist danach nicht mehr änderbar."
                     ).classes("text-body2 text-grey-8")
-                anrede = ui.select(
-                    ["", *ANREDE_OPTIONS],
-                    label="Anrede",
-                    value=existing.anrede if existing else "",
+                firma = ui.input(
+                    "Firma (optional -- leer lassen für eine Privatperson)",
+                    value=existing.firma if existing else "",
                 ).classes("w-full")
-                name = ui.input("Name / Firma", value=existing.name if existing else "").classes("w-full")
-                email = ui.input(
-                    "E-Mail", value=existing.kontakt_email if existing else ""
-                ).classes("w-full")
-                telefon = ui.input(
-                    "Telefon (optional)", value=existing.kontakt_telefon if existing else ""
-                ).classes("w-full")
-                strasse = ui.input(
-                    "Rechnungsadresse: Strasse",
-                    value=existing.rechnungsadresse_strasse if existing else "",
-                ).classes("w-full")
+                ui.label(
+                    "Vorname/Nachname: der Person selbst, oder der "
+                    "Ansprechsperson bei einer Firma (kann bei einer reinen "
+                    "Firmenadresse ohne Ansprechsperson leer bleiben)."
+                ).classes("text-caption text-grey-6")
                 with ui.row().classes("w-full gap-2"):
+                    anrede = ui.select(
+                        ["", *ANREDE_OPTIONS],
+                        label="Anrede",
+                        value=existing.anrede if existing else "",
+                    ).classes("w-32")
+                    vorname = ui.input(
+                        "Vorname", value=existing.vorname if existing else ""
+                    ).classes("flex-grow")
+                    nachname = ui.input(
+                        "Nachname", value=existing.nachname if existing else ""
+                    ).classes("flex-grow")
+                with ui.row().classes("w-full gap-2"):
+                    email = ui.input(
+                        "E-Mail", value=existing.kontakt_email if existing else ""
+                    ).classes("flex-grow")
+                    telefon = ui.input(
+                        "Telefon (optional)", value=existing.kontakt_telefon if existing else ""
+                    ).classes("flex-grow")
+                with ui.row().classes("w-full gap-2"):
+                    strasse = ui.input(
+                        "Rechnungsadresse: Strasse",
+                        value=existing.rechnungsadresse_strasse if existing else "",
+                    ).classes("flex-grow")
                     plz = ui.input(
                         "PLZ", value=existing.rechnungsadresse_plz if existing else ""
                     ).classes("w-24")
+                with ui.row().classes("w-full gap-2"):
                     ort = ui.input(
                         "Ort", value=existing.rechnungsadresse_ort if existing else ""
                     ).classes("flex-grow")
-                land = ui.input(
-                    "Land", value=existing.rechnungsadresse_land if existing else "CH"
-                ).classes("w-full")
+                    land = ui.input(
+                        "Land", value=existing.rechnungsadresse_land if existing else "CH"
+                    ).classes("w-24")
                 iban = ui.input(
                     "IBAN (für Gutschriften)", value=existing.iban if existing else ""
                 ).classes("w-full")
@@ -221,15 +251,17 @@ def personen_page() -> None:
                     Returns:
                         None.
                     """
-                    if not name.value.strip():
-                        error_label.text = "Name darf nicht leer sein."
+                    if not firma.value.strip() and not (vorname.value.strip() or nachname.value.strip()):
+                        error_label.text = "Firma oder Vorname/Nachname sind erforderlich."
                         return
                     with connection_scope() as connection:
                         if existing:
                             updated = Person(
                                 id=existing.id,
                                 anrede=anrede.value or "",
-                                name=name.value.strip(),
+                                firma=firma.value.strip(),
+                                vorname=vorname.value.strip(),
+                                nachname=nachname.value.strip(),
                                 kontakt_email=email.value.strip(),
                                 kontakt_telefon=telefon.value.strip(),
                                 rechnungsadresse_strasse=strasse.value.strip(),
@@ -246,7 +278,9 @@ def personen_page() -> None:
                             new_person = Person(
                                 id=None,
                                 anrede=anrede.value or "",
-                                name=name.value.strip(),
+                                firma=firma.value.strip(),
+                                vorname=vorname.value.strip(),
+                                nachname=nachname.value.strip(),
                                 kontakt_email=email.value.strip(),
                                 kontakt_telefon=telefon.value.strip(),
                                 rechnungsadresse_strasse=strasse.value.strip(),
@@ -268,60 +302,58 @@ def personen_page() -> None:
                     ui.button("Speichern", on_click=save)
             dialog.open()
 
-        def on_view(event) -> None:
-            """Table row-view handler: navigate to the person's detail page.
+        def on_view(person: Person) -> None:
+            """Card view-button handler: navigate to the person's detail page.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                person: Person whose detail page to open.
 
             Returns:
                 None.
             """
-            ui.navigate.to(f"/personen/{event.args['id']}")
+            ui.navigate.to(f"/personen/{person.id}")
 
-        def on_edit(event) -> None:
-            """Table row-edit handler: open the edit dialog for the clicked row.
+        def on_edit(person: Person) -> None:
+            """Card edit-button handler: open the edit dialog for this person.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                person: Person to edit.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                existing = person_repo.get(connection, event.args["id"])
+                existing = person_repo.get(connection, person.id)
             open_form(existing)
 
-        def on_remove(event) -> None:
-            """Table row-delete handler: delete the person after confirmation.
+        def on_remove(person: Person) -> None:
+            """Card delete-button handler: delete the person after confirmation.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                person: Person to delete.
 
             Returns:
                 None.
             """
-            person_id = event.args["id"]
-            name = event.args["name"]
-
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'"{name}" wirklich löschen?')
+                ui.label(f'"{person.anzeige_name}" wirklich löschen?')
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
                     def do_delete() -> None:
-                        with connection_scope() as connection:
-                            person_repo.delete(connection, person_id)
+                        try:
+                            with connection_scope() as connection:
+                                person_repo.delete(connection, person.id)
+                        except PersonInUseError as exc:
+                            confirm.close()
+                            ui.notify(str(exc), type="negative")
+                            return
                         confirm.close()
                         refresh()
                         ui.notify("Gelöscht.", type="warning")
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
-
-        table.on("view", on_view)
-        table.on("edit", on_edit)
-        table.on("remove", on_remove)
 
         ui.button("+ Neue Person", on_click=lambda: open_form(None)).classes("mt-2")
 
@@ -341,17 +373,20 @@ def person_detail_page(person_id: int) -> None:
     with connection_scope() as connection:
         person = person_repo.get(connection, person_id)
 
-    with page_frame("/personen", "Person" if person is None else person.name):
+    with page_frame("/personen", "Person" if person is None else person.anzeige_name):
         if person is None:
             ui.label("Person nicht gefunden.").classes("text-negative")
             ui.link("← Zurück zu Personen", "/personen")
             return
 
         ui.link("← Zurück zu Personen", "/personen")
-        ui.label(person.name).classes("text-xl font-bold mt-2")
+        ui.label(person.anzeige_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Kunden-Nr.: {person.kundennummer_formatiert}")
+            if person.firma:
+                ui.label(f"Firma: {person.firma}")
             ui.label(f"Anrede: {person.anrede or '-'}")
+            ui.label(f"Vorname/Nachname: {person.voller_name or '-'}")
             ui.label(f"E-Mail: {person.kontakt_email or '-'}")
             ui.label(f"Telefon: {person.kontakt_telefon or '-'}")
             ui.label(

@@ -6,14 +6,18 @@ from datetime import date
 import pytest
 
 from app.domain.leg_composition import compute_leg_composition
+from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
+from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
-from app.models.person import Person
+from app.models.person import Person, PersonInUseError
+from app.models.standort import Standort
 from app.models.trafokreis import Trafokreis
 from app.models.zuordnung import Zuordnung
 
@@ -22,7 +26,9 @@ def _make_person(name: str = "Test Person") -> Person:
     """Build an unpersisted `Person` for use in tests.
 
     Args:
-        name: Name to assign.
+        name: Full name to assign, stored entirely in `vorname` (tests
+            only ever compare against the combined `voller_name`/
+            `anzeige_name`, never the individual parts).
 
     Returns:
         A `Person` with `id=None`.
@@ -30,7 +36,9 @@ def _make_person(name: str = "Test Person") -> Person:
     return Person(
         id=None,
         anrede="",
-        name=name,
+        firma="",
+        vorname=name,
+        nachname="",
         kontakt_email="test@example.ch",
         kontakt_telefon="",
         rechnungsadresse_strasse="Musterstrasse 1",
@@ -67,6 +75,8 @@ def _make_messpunkt(
         messrichtung=messrichtung,
         standort_id=standort_id,
         leg_id=leg_id,
+        pv_leistung_kwp=None,
+        batteriespeicher_kwh=None,
         created_at="",
     )
 
@@ -82,28 +92,34 @@ def _make_trafokreis(db, name: str = "Bern_TRA00001") -> int:
         The new Trafokreis's id.
     """
     return trafokreis_repo.create(
-        db, Trafokreis(id=None, name=name, gemeinde="Bern", bemerkung="", created_at="")
+        db, Trafokreis(id=None, name=name, bkw_bezeichnung="", bemerkung="", created_at="")
     )
 
 
-def _make_standort(db, trafokreis_id: int | None = None) -> int:
+def _make_standort(
+    db,
+    trafokreis_id: int | None = None,
+    adresse: str = "Musterstrasse",
+    hausnummer: str = "1",
+    plz: str = "3000",
+) -> int:
     """Create a minimal Standort and return its id.
 
     Args:
         db: Database connection fixture.
         trafokreis_id: Foreign key of the assigned Trafokreis, or `None`.
+        adresse: Street name.
+        hausnummer: House number.
+        plz: Postal code.
 
     Returns:
         The new Standort's id.
     """
-    from app.models import standort as standort_repo
-    from app.models.standort import Standort
-
     return standort_repo.create(
         db,
         Standort(
-            id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis_id, netzebene="NE7", created_at="",
+            id=None, adresse=adresse, hausnummer=hausnummer, plz=plz, gemeinde="Bern", lage="",
+            trafokreis_id=trafokreis_id, created_at="",
         ),
     )
 
@@ -113,14 +129,37 @@ def test_person_crud_roundtrip(db):
     person_id = person_repo.create(db, _make_person())
     fetched = person_repo.get(db, person_id)
     assert fetched is not None
-    assert fetched.name == "Test Person"
+    assert fetched.anzeige_name == "Test Person"
 
-    fetched.name = "Geänderter Name"
+    fetched.nachname = "Geändert"
     person_repo.update(db, fetched)
-    assert person_repo.get(db, person_id).name == "Geänderter Name"
+    assert person_repo.get(db, person_id).anzeige_name == "Test Person Geändert"
 
     person_repo.delete(db, person_id)
     assert person_repo.get(db, person_id) is None
+
+
+def test_person_anzeige_name_combines_firma_and_contact(db):
+    """A Person with both Firma and a contact person shows both, company first."""
+    person = _make_person("Ansprech Person")
+    person.firma = "Muster AG"
+    person_id = person_repo.create(db, person)
+
+    fetched = person_repo.get(db, person_id)
+    assert fetched.anzeige_name == "Muster AG (Ansprech Person)"
+
+
+def test_person_adressblock_zeilen_includes_anrede_only_with_a_name(db):
+    """The recipient address block shows Anrede only alongside a personal name."""
+    firma_only = _make_person("")
+    firma_only.firma = "Nur Firma AG"
+    firma_only.anrede = "Herr"
+    assert firma_only.adressblock_zeilen == ["Nur Firma AG"]
+
+    with_contact = _make_person("Max Muster")
+    with_contact.firma = "Muster AG"
+    with_contact.anrede = "Herr"
+    assert with_contact.adressblock_zeilen == ["Muster AG", "Herr", "Max Muster"]
 
 
 def test_person_kundennummer_is_auto_assigned_and_unique(db):
@@ -152,7 +191,7 @@ def test_person_kundennummer_survives_update(db):
     person_id = person_repo.create(db, _make_person())
     original = person_repo.get(db, person_id)
 
-    original.name = "Neuer Name"
+    original.vorname = "Neuer Name"
     person_repo.update(db, original)
 
     assert person_repo.get(db, person_id).kundennummer == original.kundennummer
@@ -340,7 +379,7 @@ def test_leg_name_is_unique(db):
 def test_trafokreis_get_by_name_finds_exact_match(db):
     """`get_by_name` finds a Trafokreis by its exact name."""
     trafokreis_repo.create(
-        db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+        db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
     )
 
     found = trafokreis_repo.get_by_name(db, "Bern_TRA00001")
@@ -356,11 +395,11 @@ def test_trafokreis_get_by_name_returns_none_for_unknown_name(db):
 def test_trafokreis_name_is_unique(db):
     """Two Trafokreise cannot share the same name."""
     trafokreis_repo.create(
-        db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+        db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
     )
     with pytest.raises(Exception):
         trafokreis_repo.create(
-            db, Trafokreis(id=None, name="Bern_TRA00001", gemeinde="Bern", bemerkung="", created_at="")
+            db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
         )
 
 
@@ -407,3 +446,86 @@ def test_leg_composition_ignores_other_legs_messpunkte(db):
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
     assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001"]
+
+
+def test_standort_find_by_address_finds_exact_match(db):
+    """`find_by_address` finds a Standort by Adresse/Hausnummer/PLZ, case-insensitively."""
+    _make_standort(db, adresse="Bergstrasse", hausnummer="3", plz="3001")
+
+    found = standort_repo.find_by_address(db, "bergstrasse", "3", "3001")
+    assert found is not None
+    assert found.adresse == "Bergstrasse"
+
+
+def test_standort_find_by_address_returns_none_for_no_match(db):
+    """`find_by_address` returns `None` when no Standort has that address."""
+    _make_standort(db, adresse="Bergstrasse", hausnummer="3", plz="3001")
+
+    assert standort_repo.find_by_address(db, "Bergstrasse", "4", "3001") is None
+
+
+def test_standort_list_all_sorts_hausnummer_numerically(db):
+    """House numbers sort numerically (2 before 10), not lexicographically."""
+    _make_standort(db, adresse="Bergstrasse", hausnummer="10", plz="3001")
+    _make_standort(db, adresse="Bergstrasse", hausnummer="2", plz="3001")
+    _make_standort(db, adresse="Bergstrasse", hausnummer="1", plz="3001")
+
+    hausnummern = [s.hausnummer for s in standort_repo.list_all(db)]
+    assert hausnummern == ["1", "2", "10"]
+
+
+def test_messpunkt_pv_and_batterie_fields_roundtrip(db):
+    """PV-Leistung and Batteriespeicher survive create/update, and default to `None`."""
+    standort_id = _make_standort(db)
+    messpunkt = _make_messpunkt("CH-PV", standort_id=standort_id)
+    messpunkt.pv_leistung_kwp = 6.4
+    messpunkt.batteriespeicher_kwh = 10.0
+    messpunkt_id = messpunkt_repo.create(db, messpunkt)
+
+    fetched = messpunkt_repo.get(db, messpunkt_id)
+    assert fetched.pv_leistung_kwp == pytest.approx(6.4)
+    assert fetched.batteriespeicher_kwh == pytest.approx(10.0)
+
+    fetched.pv_leistung_kwp = 9.9
+    fetched.batteriespeicher_kwh = None
+    messpunkt_repo.update(db, fetched)
+
+    updated = messpunkt_repo.get(db, messpunkt_id)
+    assert updated.pv_leistung_kwp == pytest.approx(9.9)
+    assert updated.batteriespeicher_kwh is None
+
+
+def test_person_delete_raises_when_billing_history_exists(db):
+    """A Person with a billing_run_items record cannot be deleted (accounting trail)."""
+    leg_id = leg_repo.create(db, _make_leg())
+    person_id = person_repo.create(db, _make_person())
+    run_id = billing_run_repo.create_run(
+        db,
+        BillingRun(
+            id=None, leg_id=leg_id, period_year=2025, period_quarter=1,
+            created_at="", price_rp_per_kwh=12.0, status="erstellt", notes="",
+        ),
+    )
+    billing_run_repo.add_items(
+        db,
+        [
+            BillingRunItem(
+                id=None, billing_run_id=run_id, person_id=person_id,
+                consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=12.0,
+                verwaltungsaufwand_rappen=0, papierrechnung_rappen=0,
+                net_amount_rappen=120, pdf_path=None, created_at="",
+            ),
+        ],
+    )
+
+    with pytest.raises(PersonInUseError):
+        person_repo.delete(db, person_id)
+    # The person must still exist -- the failed delete is not half-applied.
+    assert person_repo.get(db, person_id) is not None
+
+
+def test_person_delete_succeeds_without_billing_history(db):
+    """A Person with no billing history can be deleted normally."""
+    person_id = person_repo.create(db, _make_person())
+    person_repo.delete(db, person_id)
+    assert person_repo.get(db, person_id) is None

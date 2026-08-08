@@ -46,20 +46,30 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
 - **Übersicht** — Startseite mit Kennzahlen und ersten Schritten.
 - **Personen** — Personen/Firmen, die an einer LEG teilnehmen, inkl.
   Detailansicht mit allen ihnen zugeordneten Messpunkten (und deren LEG /
-  Trafokreis).
+  Trafokreis). Erfasst werden optional eine Firma sowie Vorname/Nachname
+  (Privatperson, oder Ansprechsperson bei einer Firma) — mindestens eines
+  von beidem ist nötig. Die Liste zeigt pro Person eine Karte statt einer
+  Tabellenzeile, damit auch IBAN und Adresse ohne horizontales Scrollen
+  Platz haben.
 - **Messpunkte** — Messpunkte des Netzbetreibers (Bezug oder Einspeisung),
   jeder fix an einem Standort. Die **LEG wird hier pro Messpunkt
   zugewiesen** — zwei Messpunkte am selben Standort können
   unterschiedlichen LEGs angehören, falls deren Eigentümer sich mit
   Personen an einem anderen Standort zu einer gemeinsamen Abrechnung
-  zusammenschliessen.
+  zusammenschliessen. Optional erfassbar: PV-Leistung (kWp) und
+  Batteriespeicherkapazität (kWh) — rein informativ, fliessen nicht in
+  Verteilung oder Abrechnung ein.
 - **Standorte** — physische Netzanschlusspunkte (Adresse, Lage,
   Trafokreis). Der Trafokreis wird manuell zugewiesen: im Dropdown genügt
   es, einen Teil der Bezeichnung einzutippen, um passende Trafokreise zu
-  finden.
+  finden. Beim Erfassen wird live gewarnt, falls Adresse, Hausnummer und
+  PLZ bereits bei einem anderen Standort vorkommen (Doppelspurigkeit).
+  Die Liste sortiert Hausnummern numerisch (2 vor 10).
 - **Trafokreise** — Transformatorkreise, die physische Gruppierung durch
   den Netzbetreiber (BKW), eine Eigenschaft des Standorts (nie einer
-  Person, eines Messpunkts oder einer LEG direkt).
+  Person, eines Messpunkts oder einer LEG direkt). „Name“ ist ein frei
+  wählbarer (Pseudo-)Name; die offizielle BKW-Nummer (z. B. „TRA21359“)
+  gehört ins separate Feld „BKW-Bezeichnung“ (optional).
 - **LEGs** — lokale Elektrizitätsgemeinschaften, die administrative
   Abrechnungsgruppe eines Messpunkts. Per Default entspricht eine LEG
   genau einem physischen Trafokreis der BKW — sie kann aber auch gezielt
@@ -116,11 +126,11 @@ Bevor Sie echte Rechnungen erzeugen:
 4. **Messpunkte** anlegen, mit der Messpunkt-Bezeichnung aus den
    BKW-Unterlagen, der korrekten Messrichtung (Bezug / Einspeisung), dem
    zugehörigen Standort und der zugehörigen LEG.
-5. **Personen** anlegen (Anrede, Name, Kontakt, Rechnungsadresse, IBAN für
-   Gutschriften, ob Papierrechnung gewünscht ist). Die Kundennummer wird
-   beim Anlegen automatisch und zufällig vergeben (keine fortlaufende
-   Nummer, um Rückschlüsse auf Kundenanzahl oder -reihenfolge zu
-   verhindern) und bleibt danach unveränderlich.
+5. **Personen** anlegen (Firma und/oder Anrede + Vorname/Nachname, Kontakt,
+   Rechnungsadresse, IBAN für Gutschriften, ob Papierrechnung gewünscht
+   ist). Die Kundennummer wird beim Anlegen automatisch und zufällig
+   vergeben (keine fortlaufende Nummer, um Rückschlüsse auf Kundenanzahl
+   oder -reihenfolge zu verhindern) und bleibt danach unveränderlich.
 6. **Zuordnungen** anlegen: welche Person welchen Messpunkt ab welchem
    Datum nutzt. Bei einem Mieterwechsel zwei Zuordnungen mit passendem
    End-/Startdatum anlegen — die App teilt die Messwerte dann automatisch
