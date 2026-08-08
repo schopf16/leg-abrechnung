@@ -32,7 +32,7 @@ def _make_live_db(path) -> None:
         Person(
             id=None, anrede="", firma="", vorname="Original", nachname="",
             kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_plz="",
+            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
             iban="", kundennummer=None, papierrechnung=False, created_at="",
         ),
@@ -83,7 +83,7 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
         Person(
             id=None, anrede="", firma="", vorname="Added later", nachname="",
             kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_plz="",
+            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
             iban="", kundennummer=None, papierrechnung=False, created_at="",
         ),

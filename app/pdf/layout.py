@@ -71,7 +71,7 @@ def draw_recipient_block(canvas: Canvas, person: Person) -> None:
     canvas.setFont("Helvetica", 10)
     lines = [
         *person.adressblock_zeilen,
-        person.rechnungsadresse_strasse,
+        person.rechnungsadresse_strasse_vollstaendig,
         f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}",
     ]
     for line in lines:

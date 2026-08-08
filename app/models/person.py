@@ -45,7 +45,10 @@ class Person:
             named contact person.
         kontakt_email: Contact email address.
         kontakt_telefon: Optional contact phone number.
-        rechnungsadresse_strasse: Billing address street and house number.
+        rechnungsadresse_strasse: Billing address street name (without
+            house number -- banks require the house number as its own
+            field, see `rechnungsadresse_hausnummer`).
+        rechnungsadresse_hausnummer: Billing address house number.
         rechnungsadresse_plz: Billing address postal code.
         rechnungsadresse_ort: Billing address city.
         rechnungsadresse_land: Billing address ISO-3166 alpha-2 country code.
@@ -68,6 +71,7 @@ class Person:
     kontakt_email: str
     kontakt_telefon: str
     rechnungsadresse_strasse: str
+    rechnungsadresse_hausnummer: str
     rechnungsadresse_plz: str
     rechnungsadresse_ort: str
     rechnungsadresse_land: str
@@ -84,6 +88,15 @@ class Person:
             The natural person's full name, or `""` if both are empty.
         """
         return " ".join(p for p in (self.vorname, self.nachname) if p)
+
+    @property
+    def rechnungsadresse_strasse_vollstaendig(self) -> str:
+        """`"Strasse Hausnummer"`, with either part omitted if empty.
+
+        Returns:
+            The billing address's street line, or `""` if both are empty.
+        """
+        return " ".join(p for p in (self.rechnungsadresse_strasse, self.rechnungsadresse_hausnummer) if p)
 
     @property
     def anzeige_name(self) -> str:
@@ -150,6 +163,7 @@ class Person:
             kontakt_email=row["kontakt_email"],
             kontakt_telefon=row["kontakt_telefon"],
             rechnungsadresse_strasse=row["rechnungsadresse_strasse"],
+            rechnungsadresse_hausnummer=row["rechnungsadresse_hausnummer"],
             rechnungsadresse_plz=row["rechnungsadresse_plz"],
             rechnungsadresse_ort=row["rechnungsadresse_ort"],
             rechnungsadresse_land=row["rechnungsadresse_land"],
@@ -247,9 +261,9 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
         """
         INSERT INTO person
             (anrede, firma, vorname, nachname, kontakt_email, kontakt_telefon,
-             rechnungsadresse_strasse, rechnungsadresse_plz, rechnungsadresse_ort,
-             rechnungsadresse_land, iban, kundennummer, papierrechnung, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             rechnungsadresse_strasse, rechnungsadresse_hausnummer, rechnungsadresse_plz,
+             rechnungsadresse_ort, rechnungsadresse_land, iban, kundennummer, papierrechnung, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             person.anrede,
@@ -259,6 +273,7 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
             person.kontakt_email,
             person.kontakt_telefon,
             person.rechnungsadresse_strasse,
+            person.rechnungsadresse_hausnummer,
             person.rechnungsadresse_plz,
             person.rechnungsadresse_ort,
             person.rechnungsadresse_land,
@@ -294,8 +309,8 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
         """
         UPDATE person SET
             anrede = ?, firma = ?, vorname = ?, nachname = ?, kontakt_email = ?,
-            kontakt_telefon = ?, rechnungsadresse_strasse = ?, rechnungsadresse_plz = ?,
-            rechnungsadresse_ort = ?, rechnungsadresse_land = ?, iban = ?,
+            kontakt_telefon = ?, rechnungsadresse_strasse = ?, rechnungsadresse_hausnummer = ?,
+            rechnungsadresse_plz = ?, rechnungsadresse_ort = ?, rechnungsadresse_land = ?, iban = ?,
             papierrechnung = ?
         WHERE id = ?
         """,
@@ -307,6 +322,7 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
             person.kontakt_email,
             person.kontakt_telefon,
             person.rechnungsadresse_strasse,
+            person.rechnungsadresse_hausnummer,
             person.rechnungsadresse_plz,
             person.rechnungsadresse_ort,
             person.rechnungsadresse_land,

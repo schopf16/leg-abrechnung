@@ -41,7 +41,8 @@ def _make_person(name: str = "Test Person") -> Person:
         nachname="",
         kontakt_email="test@example.ch",
         kontakt_telefon="",
-        rechnungsadresse_strasse="Musterstrasse 1",
+        rechnungsadresse_strasse="Musterstrasse",
+        rechnungsadresse_hausnummer="1",
         rechnungsadresse_plz="3000",
         rechnungsadresse_ort="Bern",
         rechnungsadresse_land="CH",
@@ -160,6 +161,17 @@ def test_person_adressblock_zeilen_includes_anrede_only_with_a_name(db):
     with_contact.firma = "Muster AG"
     with_contact.anrede = "Herr"
     assert with_contact.adressblock_zeilen == ["Muster AG", "Herr", "Max Muster"]
+
+
+def test_person_rechnungsadresse_strasse_vollstaendig_combines_strasse_and_hausnummer(db):
+    """The combined street line omits a missing Strasse or Hausnummer gracefully."""
+    person = _make_person("Test")
+    person.rechnungsadresse_strasse = "Musterstrasse"
+    person.rechnungsadresse_hausnummer = "12a"
+    assert person.rechnungsadresse_strasse_vollstaendig == "Musterstrasse 12a"
+
+    person.rechnungsadresse_hausnummer = ""
+    assert person.rechnungsadresse_strasse_vollstaendig == "Musterstrasse"
 
 
 def test_person_kundennummer_is_auto_assigned_and_unique(db):

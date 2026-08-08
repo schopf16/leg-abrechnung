@@ -62,6 +62,7 @@ def _search_text_for_person(connection, person: Person) -> str:
         person.kontakt_email,
         person.kontakt_telefon,
         person.rechnungsadresse_strasse,
+        person.rechnungsadresse_hausnummer,
         person.rechnungsadresse_plz,
         person.rechnungsadresse_ort,
         person.kundennummer_formatiert,
@@ -120,9 +121,7 @@ def personen_page() -> None:
                         ui.label(person.kontakt_email or "-")
                         ui.label(person.kontakt_telefon or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(
-                            f"{person.rechnungsadresse_strasse}".strip() or "-"
-                        )
+                        ui.label(person.rechnungsadresse_strasse_vollstaendig or "-")
                         ui.label(
                             f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}".strip()
                         )
@@ -226,10 +225,13 @@ def personen_page() -> None:
                         "Rechnungsadresse: Strasse",
                         value=existing.rechnungsadresse_strasse if existing else "",
                     ).classes("flex-grow")
+                    hausnummer = ui.input(
+                        "Hausnummer", value=existing.rechnungsadresse_hausnummer if existing else ""
+                    ).classes("w-24")
+                with ui.row().classes("w-full gap-2"):
                     plz = ui.input(
                         "PLZ", value=existing.rechnungsadresse_plz if existing else ""
                     ).classes("w-24")
-                with ui.row().classes("w-full gap-2"):
                     ort = ui.input(
                         "Ort", value=existing.rechnungsadresse_ort if existing else ""
                     ).classes("flex-grow")
@@ -265,6 +267,7 @@ def personen_page() -> None:
                                 kontakt_email=email.value.strip(),
                                 kontakt_telefon=telefon.value.strip(),
                                 rechnungsadresse_strasse=strasse.value.strip(),
+                                rechnungsadresse_hausnummer=hausnummer.value.strip(),
                                 rechnungsadresse_plz=plz.value.strip(),
                                 rechnungsadresse_ort=ort.value.strip(),
                                 rechnungsadresse_land=land.value.strip() or "CH",
@@ -284,6 +287,7 @@ def personen_page() -> None:
                                 kontakt_email=email.value.strip(),
                                 kontakt_telefon=telefon.value.strip(),
                                 rechnungsadresse_strasse=strasse.value.strip(),
+                                rechnungsadresse_hausnummer=hausnummer.value.strip(),
                                 rechnungsadresse_plz=plz.value.strip(),
                                 rechnungsadresse_ort=ort.value.strip(),
                                 rechnungsadresse_land=land.value.strip() or "CH",
@@ -391,7 +395,7 @@ def person_detail_page(person_id: int) -> None:
             ui.label(f"Telefon: {person.kontakt_telefon or '-'}")
             ui.label(
                 "Rechnungsadresse: "
-                f"{person.rechnungsadresse_strasse}, "
+                f"{person.rechnungsadresse_strasse_vollstaendig}, "
                 f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort} "
                 f"({person.rechnungsadresse_land})"
             )

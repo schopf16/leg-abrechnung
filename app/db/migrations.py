@@ -613,4 +613,17 @@ MIGRATIONS: list[Migration] = [
             ALTER TABLE person DROP COLUMN name;
         """,
     ),
+    Migration(
+        version=13,
+        description="Add Person.rechnungsadresse_hausnummer, split out of "
+        "rechnungsadresse_strasse (same reasoning as Standort.hausnummer, "
+        "migration 5): banks require the house number as its own field on "
+        "payment forms. Purely additive; existing rows keep the house "
+        "number embedded in rechnungsadresse_strasse until edited -- no "
+        "reliable way to split free-text 'Strasse 12a' back out "
+        "mechanically.",
+        sql="""
+            ALTER TABLE person ADD COLUMN rechnungsadresse_hausnummer TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 ]

@@ -99,7 +99,7 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
         id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
-        rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",
+        rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
         kundennummer=12345678, papierrechnung=False, created_at="",
     )
@@ -135,7 +135,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
         id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
-        rechnungsadresse_strasse="Strasse 1", rechnungsadresse_plz="8000",
+        rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
         kundennummer=12345678, papierrechnung=False, created_at="",
     )
