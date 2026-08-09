@@ -84,6 +84,11 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   eindeutig sein) und optionale Bemerkung.
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
+- **Web-Registrierungen** — Posteingang für Anmeldungen über das
+  öffentliche Formular auf leg-ittigen.ch (siehe Abschnitt 4). Die
+  Übernahme in Personen/Messpunkte/Zuordnungen bleibt ein manueller
+  Schritt in den jeweiligen Ansichten; hier dienen die Angaben nur als
+  Vorlage.
 - **Import** — Messdaten der BKW einlesen (EBIX-XML oder CSV).
 - **Abrechnung** — für eine LEG und ein Quartal je Person eine kombinierte
   Abrechnung berechnen und als PDF erzeugen (siehe unten). Jede LEG wird
@@ -156,13 +161,14 @@ sie nur Strom bezieht, nur einspeist, oder beides tut (Prosumer):
 - Erst am Schluss werden Bezug, Vergütung und allfällige Gebühren
   verrechnet — **nur dort wird gerundet** (auf den Rappen genau), alle
   Zwischenwerte sind ungerundete Anzeigewerte.
-- Jedes PDF enthält einen Schweizer QR-Einzahlungsschein mit Zahlungsfrist
-  (45 Tage). Muss die Person der LEG Geld schulden (Netto-Betrag positiv),
-  ist er normal benutzbar. Schuldet umgekehrt die LEG der Person Geld
-  (Netto-Betrag negativ), wird der Betrag auf dem Einzahlungsschein durch
-  `***.**` ersetzt und ist damit absichtlich **nicht als Zahlungsmittel
-  nutzbar** — die Auszahlung erfolgt stattdessen durch den Verwalter über
-  die Auszahlungsliste (CSV, siehe unten).
+- Muss die Person der LEG Geld schulden (Netto-Betrag positiv), enthält
+  das PDF zusätzlich einen Schweizer QR-Einzahlungsschein mit
+  Zahlungsfrist (45 Tage); die Referenznummer enthält die Kundennummer der
+  Person, damit eingehende Zahlungen einfach zugeordnet werden können.
+  Schuldet umgekehrt die LEG der Person Geld (Netto-Betrag negativ) oder
+  ist die Periode ausgeglichen, entfällt der Einzahlungsschein ganz — es
+  gibt nichts zu bezahlen, die Auszahlung erfolgt stattdessen durch den
+  Verwalter über die Auszahlungsliste (CSV, siehe unten).
 
 ### Hinweis zum EBIX-Import
 
@@ -176,7 +182,35 @@ diese eine Datei angepasst werden. Bis dahin funktioniert zuverlässig der
 
 ---
 
-## 4. Backup
+## 4. Web-Registrierungen von leg-ittigen.ch
+
+Die Website leg-ittigen.ch hat ein eigenes Anmeldeformular für
+Interessierte; deren Einträge lassen sich hier abrufen und landen als
+Posteingang auf der Seite **„Web-Registrierungen"** — die Übernahme in
+Personen/Messpunkte/Zuordnungen bleibt danach ein manueller Schritt.
+
+**Einmalig einrichten:**
+
+1. `config.example.json` im Projektordner zu `config.local.json` kopieren
+   (diese Datei ist in `.gitignore` eingetragen und wird nie mitversioniert).
+2. Darin den API-Token eintragen, der für dieses Projekt bereitgestellt wurde:
+   ```json
+   { "leg_api_token": "<ihr-token>" }
+   ```
+
+**Abrufen:** Auf der Seite „Web-Registrierungen" den Knopf
+**„Registrierungen abrufen"** anklicken. Neue Anmeldungen erscheinen mit
+dem Vermerk „offen"; wird dieselbe Zählernummer später erneut mit
+geänderten Angaben eingereicht, wird der bestehende Eintrag aktualisiert
+und wieder als offen markiert — auch wenn er zuvor schon geprüft war.
+**„Als geprüft markieren"** entfernt einen Eintrag aus der offenen Liste,
+löscht ihn aber nicht (Umschalter „Auch geprüfte anzeigen" blendet die
+Historie wieder ein). Solange offene Registrierungen bestehen, weist die
+Übersichtsseite mit einem Link darauf hin.
+
+---
+
+## 5. Backup
 
 - **„Backup erstellen"** (Seite „Backup"): schreibt die komplette Datenbank
   als eine einzelne, mit Zeitstempel benannte Datei in den Ordner
@@ -196,7 +230,7 @@ sich also mit einer neueren App-Version noch öffnen.
 
 ---
 
-## 5. Tests ausführen
+## 6. Tests ausführen
 
 Die Kernlogik (Verteilung, Abrechnung, Import, Migrationen) ist durch
 automatisierte Tests abgesichert. Zum Ausführen:
@@ -209,7 +243,7 @@ automatisierte Tests abgesichert. Zum Ausführen:
 
 ---
 
-## 6. Code auf GitHub sichern
+## 7. Code auf GitHub sichern
 
 Der Code liegt in einem **öffentlichen** GitHub-Repository. Damit dabei
 niemals versehentlich persönliche Daten (Datenbank, PDFs, Adressen, IBANs)
@@ -220,6 +254,8 @@ und werden nie mitversioniert:
 - `output/` — erzeugte Abrechnungen (PDFs je Person), Rechnungs-/
   Auszahlungslisten (CSV)
 - `backups/` — Datenbank-Backups
+- `config.local.json` — der API-Token für die Web-Registrierungen
+  (Abschnitt 4)
 - `.venv/` — die lokale Python-Umgebung
 
 **Einmalig einrichten** (in der Kommandozeile im Projektordner):
@@ -236,7 +272,7 @@ sendet die Änderungen an GitHub.
 
 ---
 
-## 7. Technischer Überblick (für Entwickler)
+## 8. Technischer Überblick (für Entwickler)
 
 - **Sprache/Oberfläche:** Python + [NiceGUI](https://nicegui.io) (läuft als
   eigenständiges Desktop-Fenster, kein separater Server nötig).
@@ -248,13 +284,17 @@ sendet die Änderungen an GitHub.
   Erkennung gemischter Trafokreise innerhalb einer LEG
   (`leg_composition.py`), Demo-Daten (`demo_data.py`).
 - **Import:** `app/importers/` — EBIX- und CSV-Parser, klar getrennt vom
-  Rest der App.
+  Rest der App; ausserdem der Client für die leg-ittigen.ch-Registrierungs-
+  API (`cloudflare_client.py`) und dessen Abgleichs-Logik
+  (`registration_sync.py`), siehe Abschnitt 4.
+- **Lokale Secrets:** `app/config.py` liest den API-Token für die
+  Web-Registrierungen aus der gitignorten `config.local.json`.
 - **PDF/QR-Rechnung + CSV-Listen:** `app/pdf/` (Bibliotheken `qrbill` +
   `reportlab` + `svglib` für die PDFs; die Rechnungs-/Auszahlungslisten
   sind reines CSV, siehe `csv_export.py`).
 - **Persistenz:** `app/models/` — ein Modul pro Tabelle (`trafokreis.py`,
-  `leg.py`, `standort.py`, `messpunkt.py`, `person.py`, `zuordnung.py`),
-  reine CRUD-Funktionen ohne Geschäftslogik.
+  `leg.py`, `standort.py`, `messpunkt.py`, `person.py`, `zuordnung.py`,
+  `web_registration.py`), reine CRUD-Funktionen ohne Geschäftslogik.
 - **Oberfläche:** `app/gui/pages/` — ein Modul pro Seite.
 - **Backup:** `app/backup/`.
 

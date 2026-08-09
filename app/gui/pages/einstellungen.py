@@ -106,6 +106,7 @@ def einstellungen_page() -> None:
                     extra_backup_dir=current.extra_backup_dir,
                     messpunkt_land=current.messpunkt_land,
                     messpunkt_identifikator=current.messpunkt_identifikator,
+                    web_registration_cursor=current.web_registration_cursor,
                     updated_at="",
                 )
                 with connection_scope() as connection:

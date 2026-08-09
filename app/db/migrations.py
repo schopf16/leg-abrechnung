@@ -671,4 +671,54 @@ MIGRATIONS: list[Migration] = [
             ALTER TABLE leg_settings ADD COLUMN messpunkt_identifikator TEXT NOT NULL DEFAULT '';
         """,
     ),
+    Migration(
+        version=18,
+        description="Add web_registration: an inbox for registrations "
+        "submitted through the public form on leg-ittigen.ch (one row per "
+        "Cloudflare submission, matched on email since a registration can "
+        "report zero, one or several meters), plus web_registration_meter "
+        "for its reported Zählernummern and LegSettings."
+        "web_registration_cursor tracking the highest Cloudflare "
+        "submission id already fetched. See app.importers."
+        "registration_sync -- taking these into person/messpunkt/"
+        "zuordnung stays a manual step via the existing CRUD pages, this "
+        "is only the review inbox. (This migration's shape changed once "
+        "before it ever shipped -- see git history -- safe to edit in "
+        "place since no release ever depended on the earlier version.)",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN web_registration_cursor INTEGER NOT NULL DEFAULT 0;
+
+            CREATE TABLE web_registration (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cloudflare_id INTEGER NOT NULL UNIQUE,
+                firma TEXT NOT NULL DEFAULT '',
+                anrede TEXT NOT NULL DEFAULT '',
+                vorname TEXT NOT NULL DEFAULT '',
+                nachname TEXT NOT NULL DEFAULT '',
+                strasse TEXT NOT NULL DEFAULT '',
+                hausnummer TEXT NOT NULL DEFAULT '',
+                plz TEXT NOT NULL DEFAULT '',
+                ort TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                telefon TEXT NOT NULL DEFAULT '',
+                bkw_kundennummer TEXT NOT NULL DEFAULT '',
+                iban TEXT NOT NULL DEFAULT '',
+                message TEXT NOT NULL DEFAULT '',
+                submitted_at TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                needs_review INTEGER NOT NULL DEFAULT 1,
+                reviewed_at TEXT
+            );
+            CREATE INDEX idx_web_registration_needs_review ON web_registration(needs_review);
+            CREATE INDEX idx_web_registration_email ON web_registration(email);
+
+            CREATE TABLE web_registration_meter (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                web_registration_id INTEGER NOT NULL REFERENCES web_registration(id) ON DELETE CASCADE,
+                meter_number TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX idx_web_registration_meter_registration ON web_registration_meter(web_registration_id);
+        """,
+    ),
 ]

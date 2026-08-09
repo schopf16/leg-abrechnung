@@ -14,9 +14,10 @@ from datetime import date
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.iban_validation import format_iban, normalize_iban, validate_iban
+from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.person_form import open_person_form
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
@@ -25,7 +26,7 @@ from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
-from app.models.person import ANREDE_OPTIONS, Person
+from app.models.person import Person
 
 MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_BEZUG: "Bezug",
@@ -96,7 +97,9 @@ def personen_page() -> None:
                 "erfolgt unter „Zuordnungen“. Die Kunden-Nr. wird beim "
                 "Anlegen automatisch und eindeutig vergeben."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neue Person", on_click=lambda: open_form(None)).classes("shrink-0")
+            ui.button(
+                "+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh())
+            ).classes("shrink-0")
 
         with ui.row().classes("w-full items-center gap-4"):
             search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
@@ -189,183 +192,6 @@ def personen_page() -> None:
         search_input.on_value_change(lambda _: apply_filter())
         show_inactive_switch.on_value_change(lambda _: apply_filter())
 
-        def open_form(existing: Person | None) -> None:
-            """Open the create/edit dialog for a person.
-
-            Args:
-                existing: Person to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
-            with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
-                ui.label("Person bearbeiten" if existing else "Neue Person").classes(
-                    "text-lg font-bold"
-                )
-                firma = ui.input(
-                    "Firma (optional -- leer lassen für eine Privatperson)",
-                    value=existing.firma if existing else "",
-                ).classes("w-full")
-                ui.label(
-                    "Vorname/Nachname: der Person selbst, oder der "
-                    "Ansprechsperson bei einer Firma (kann bei einer reinen "
-                    "Firmenadresse ohne Ansprechsperson leer bleiben)."
-                ).classes("text-caption text-grey-6")
-                with ui.row().classes("w-full gap-2"):
-                    anrede = ui.select(
-                        ["", *ANREDE_OPTIONS],
-                        label="Anrede",
-                        value=existing.anrede if existing else "",
-                    ).classes("w-32")
-                    vorname = ui.input(
-                        "Vorname", value=existing.vorname if existing else ""
-                    ).classes("flex-grow")
-                    nachname = ui.input(
-                        "Nachname", value=existing.nachname if existing else ""
-                    ).classes("flex-grow")
-                with ui.row().classes("w-full gap-2"):
-                    strasse = ui.input(
-                        "Adresse: Strasse",
-                        value=existing.rechnungsadresse_strasse if existing else "",
-                    ).classes("flex-grow")
-                    hausnummer = ui.input(
-                        "Hausnummer", value=existing.rechnungsadresse_hausnummer if existing else ""
-                    ).classes("w-24")
-                with ui.row().classes("w-full gap-2"):
-                    plz = ui.input(
-                        "PLZ", value=existing.rechnungsadresse_plz if existing else ""
-                    ).classes("w-24")
-                    ort = ui.input(
-                        "Ort", value=existing.rechnungsadresse_ort if existing else ""
-                    ).classes("flex-grow")
-                    land = ui.input(
-                        "Land", value=existing.rechnungsadresse_land if existing else "CH"
-                    ).classes("w-24")
-
-                ui.separator().classes("my-2")
-                ui.label("Weitere Angaben").classes("text-body1 font-bold")
-                with ui.row().classes("w-full gap-2"):
-                    email = ui.input(
-                        "E-Mail", value=existing.kontakt_email if existing else ""
-                    ).classes("flex-grow")
-                    telefon = ui.input(
-                        "Telefon (optional)", value=existing.kontakt_telefon if existing else ""
-                    ).classes("flex-grow")
-                with ui.row().classes("w-full gap-2"):
-                    iban = ui.input(
-                        "IBAN (für Gutschriften)", value=existing.iban if existing else ""
-                    ).classes("flex-grow")
-                    bkw_kundennummer = ui.number(
-                        "BKW-Kundennummer (optional)",
-                        value=existing.bkw_kundennummer if existing else None,
-                        format="%.0f",
-                    ).classes("w-48")
-                iban_error = ui.label("").classes("text-negative text-caption")
-
-                def check_iban() -> None:
-                    """Validate the IBAN once the field loses focus (not on every keystroke).
-
-                    Returns:
-                        None.
-                    """
-                    iban_error.text = validate_iban(iban.value) or ""
-
-                iban.on("blur", check_iban)
-                papierrechnung = ui.checkbox(
-                    "Papierrechnung (statt elektronisch, kostenpflichtig)",
-                    value=existing.papierrechnung if existing else False,
-                )
-                if existing:
-                    ui.label(
-                        f"Kunden-Nr.: {existing.kundennummer_formatiert} "
-                        "(automatisch vergeben, nicht änderbar)"
-                    ).classes("text-caption text-grey-6")
-                else:
-                    ui.label(
-                        "Die Kunden-Nr. wird beim Speichern automatisch und "
-                        "zufällig vergeben (keine fortlaufende Nummer, um "
-                        "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
-                        "verhindern) und ist danach nicht mehr änderbar."
-                    ).classes("text-caption text-grey-6")
-                error_label = ui.label("").classes("text-negative")
-
-                def save() -> None:
-                    """Validate the form and persist the person.
-
-                    Returns:
-                        None.
-                    """
-                    if not firma.value.strip() and not (vorname.value.strip() or nachname.value.strip()):
-                        error_label.text = "Firma oder Vorname/Nachname sind erforderlich."
-                        return
-                    iban_problem = validate_iban(iban.value)
-                    if iban_problem:
-                        iban_error.text = iban_problem
-                        error_label.text = iban_problem
-                        return
-                    iban_normalized = normalize_iban(iban.value)
-                    with connection_scope() as connection:
-                        if existing:
-                            updated = Person(
-                                id=existing.id,
-                                anrede=anrede.value or "",
-                                firma=firma.value.strip(),
-                                vorname=vorname.value.strip(),
-                                nachname=nachname.value.strip(),
-                                kontakt_email=email.value.strip(),
-                                kontakt_telefon=telefon.value.strip(),
-                                rechnungsadresse_strasse=strasse.value.strip(),
-                                rechnungsadresse_hausnummer=hausnummer.value.strip(),
-                                rechnungsadresse_plz=plz.value.strip(),
-                                rechnungsadresse_ort=ort.value.strip(),
-                                rechnungsadresse_land=land.value.strip() or "CH",
-                                iban=iban_normalized,
-                                kundennummer=existing.kundennummer,
-                                bkw_kundennummer=int(bkw_kundennummer.value)
-                                if bkw_kundennummer.value is not None
-                                else None,
-                                papierrechnung=papierrechnung.value,
-                                aktiv=existing.aktiv,
-                                created_at=existing.created_at,
-                            )
-                            person_repo.update(connection, updated)
-                        else:
-                            new_person = Person(
-                                id=None,
-                                anrede=anrede.value or "",
-                                firma=firma.value.strip(),
-                                vorname=vorname.value.strip(),
-                                nachname=nachname.value.strip(),
-                                kontakt_email=email.value.strip(),
-                                kontakt_telefon=telefon.value.strip(),
-                                rechnungsadresse_strasse=strasse.value.strip(),
-                                rechnungsadresse_hausnummer=hausnummer.value.strip(),
-                                rechnungsadresse_plz=plz.value.strip(),
-                                rechnungsadresse_ort=ort.value.strip(),
-                                rechnungsadresse_land=land.value.strip() or "CH",
-                                iban=iban_normalized,
-                                kundennummer=None,
-                                bkw_kundennummer=int(bkw_kundennummer.value)
-                                if bkw_kundennummer.value is not None
-                                else None,
-                                papierrechnung=papierrechnung.value,
-                                aktiv=True,
-                                created_at="",
-                            )
-                            person_repo.create(connection, new_person)
-                    dialog.close()
-                    # Notify before refresh() and via safe_notify(): the card
-                    # whose button opened this dialog gets deleted by refresh()'s
-                    # list_container rebuild, which can tear down this dialog's
-                    # own UI context first -- see app.gui.safe_notify.
-                    safe_notify("Gespeichert.", type="positive")
-                    refresh()
-
-                with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                    ui.button("Speichern", on_click=save)
-            dialog.open()
-
         def on_view(person: Person) -> None:
             """Card view-button handler: navigate to the person's detail page.
 
@@ -388,7 +214,7 @@ def personen_page() -> None:
             """
             with connection_scope() as connection:
                 existing = person_repo.get(connection, person.id)
-            open_form(existing)
+            open_person_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_remove(person: Person) -> None:
             """Card delete-button handler: delete the person after confirmation.

@@ -27,6 +27,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/messpunkte", "Messpunkte"),
             ("/personen", "Personen"),
             ("/zuordnungen", "Zuordnungen"),
+            ("/web-registrierungen", "Web-Registrierungen"),
         ],
     ),
     (

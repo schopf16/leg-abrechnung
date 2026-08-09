@@ -15,5 +15,6 @@ from app.gui.pages import (  # noqa: F401
     standorte,
     statistik,
     trafokreise,
+    web_registrierungen,
     zuordnungen,
 )

@@ -5,4 +5,5 @@ svglib==2.1.0
 lxml==6.1.1
 python-dateutil==2.9.0.post0
 pywebview==6.2.1
+httpx==0.28.1
 pytest==9.1.1

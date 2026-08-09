@@ -22,6 +22,7 @@ from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
+from app.models import web_registration as web_registration_repo
 
 
 def _load_overview(connection) -> dict:
@@ -32,8 +33,9 @@ def _load_overview(connection) -> dict:
 
     Returns:
         A dict with "counts" (headline numbers), "action_items" (German
-        warning strings needing attention) and "legs" (per-LEG summary
-        rows) keys.
+        warning strings needing attention), "legs" (per-LEG summary rows)
+        and "offene_registrierungen" (count of unreviewed Web-Registrierungen)
+        keys.
     """
     trafokreise = trafokreis_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
@@ -42,6 +44,7 @@ def _load_overview(connection) -> dict:
     persons = person_repo.list_all(connection)
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
+    offene_registrierungen = len(web_registration_repo.list_needs_review(connection))
 
     action_items: list[str] = []
     if not settings.qr_iban.strip():
@@ -91,6 +94,7 @@ def _load_overview(connection) -> dict:
         },
         "action_items": action_items,
         "legs": leg_rows,
+        "offene_registrierungen": offene_registrierungen,
     }
 
 
@@ -107,15 +111,22 @@ def dashboard_page() -> None:
         counts = overview["counts"]
 
         # -- Handlungsbedarf: whatever needs attention, front and centre. --
-        with ui.card().classes(
-            "w-full " + ("bg-red-1" if overview["action_items"] else "bg-green-1")
-        ):
+        has_issues = bool(overview["action_items"]) or overview["offene_registrierungen"] > 0
+        with ui.card().classes("w-full " + ("bg-red-1" if has_issues else "bg-green-1")):
             ui.label("Handlungsbedarf").classes("font-bold")
             if overview["action_items"]:
                 for message in overview["action_items"]:
                     ui.label(f"⚠ {message}").classes("text-negative text-body2")
                 ui.link("→ Details in den Auswertungen", "/auswertungen").classes("text-body2")
-            else:
+            if overview["offene_registrierungen"]:
+                with ui.row().classes("items-center gap-2"):
+                    ui.label(
+                        f"📥 {overview['offene_registrierungen']} offene Web-Registrierung(en)."
+                    ).classes("text-body2")
+                    ui.link("→ Zu den Web-Registrierungen", "/web-registrierungen").classes(
+                        "text-body2"
+                    )
+            if not has_issues:
                 ui.label("✓ Keine offenen Punkte.").classes("text-body2")
 
         # -- Kennzahlen: what the data currently looks like. --
