@@ -25,6 +25,23 @@ class LegSettings:
             locally-sourced consumption only (never on production).
         papierrechnung_rappen: Flat fee in Rappen charged to persons with
             `Person.papierrechnung` set (paper invoice by post).
+        extra_backup_dir: Optional second directory every backup is also
+            copied into (e.g. a network drive), in addition to the fixed
+            `backups/` folder -- see `app.backup.backup_service`. Empty
+            string means no extra copy is made. Stays as set until
+            explicitly changed; if the path is unreachable when a backup
+            runs (e.g. while travelling), that copy is simply skipped
+            with a warning, the primary backup in `backups/` is
+            unaffected.
+        messpunkt_land: Default 2-letter country code for new Messpunkte's
+            Messpunktbezeichnung (see `app.domain.messpunkt_validation`)
+            -- always the same grid operator's country for a single LEG
+            deployment, e.g. `"CH"`.
+        messpunkt_identifikator: Default 11-character VSE grid-operator
+            identifier for new Messpunkte -- also always the same across
+            a single LEG deployment (one grid operator), so storing it
+            here saves re-entering it for every Messpunkt. Editable per
+            Messpunkt regardless.
         updated_at: ISO-8601 timestamp of the last update.
     """
 
@@ -36,6 +53,9 @@ class LegSettings:
     price_rp_per_kwh: float
     verwaltungsaufwand_rp_per_kwh: float
     papierrechnung_rappen: int
+    extra_backup_dir: str
+    messpunkt_land: str
+    messpunkt_identifikator: str
     updated_at: str
 
     @staticmethod
@@ -57,6 +77,9 @@ class LegSettings:
             price_rp_per_kwh=row["price_rp_per_kwh"],
             verwaltungsaufwand_rp_per_kwh=row["verwaltungsaufwand_rp_per_kwh"],
             papierrechnung_rappen=row["papierrechnung_rappen"],
+            extra_backup_dir=row["extra_backup_dir"],
+            messpunkt_land=row["messpunkt_land"],
+            messpunkt_identifikator=row["messpunkt_identifikator"],
             updated_at=row["updated_at"],
         )
 
@@ -99,6 +122,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             address_street = ?, address_zip = ?, address_city = ?,
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             verwaltungsaufwand_rp_per_kwh = ?, papierrechnung_rappen = ?,
+            extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
             updated_at = ?
         WHERE id = 1
         """,
@@ -111,6 +135,9 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.price_rp_per_kwh,
             settings.verwaltungsaufwand_rp_per_kwh,
             settings.papierrechnung_rappen,
+            settings.extra_backup_dir,
+            settings.messpunkt_land,
+            settings.messpunkt_identifikator,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

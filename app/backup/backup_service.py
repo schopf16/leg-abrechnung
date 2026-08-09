@@ -7,10 +7,12 @@ it up to the current schema version, so old backups stay usable across
 app upgrades.
 """
 
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from app.db.connection import connection_scope
 from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version, initialize_database
@@ -90,6 +92,36 @@ def create_backup(
         source.close()
 
     return backup_path
+
+
+def mirror_backup(backup_path: Path, extra_dir: Path) -> Optional[str]:
+    """Copy an already-created backup file into a second, optional directory.
+
+    Lets the administrator keep a copy on an external location (e.g. a
+    mapped network drive) in addition to the primary copy in `backups/`.
+    Deliberately never raises: if the extra location is temporarily
+    unreachable (e.g. while travelling), the primary backup already
+    written to `backups/` is unaffected -- this only reports the problem
+    back to the caller instead of crashing.
+
+    Args:
+        backup_path: Backup file already written to `backups/`.
+        extra_dir: Directory to also copy it into.
+
+    Returns:
+        `None` if the copy succeeded, or a short German warning message
+        describing why it did not.
+    """
+    try:
+        extra_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup_path, extra_dir / backup_path.name)
+    except OSError as exc:
+        return (
+            f"Zusätzlicher Backup-Pfad „{extra_dir}“ ist momentan nicht "
+            f"erreichbar -- das Backup wurde trotzdem in backups/ "
+            f"gespeichert. ({exc})"
+        )
+    return None
 
 
 def list_backups(backups_dir: Path = BACKUPS_DIR) -> list[BackupFileInfo]:

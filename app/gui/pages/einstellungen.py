@@ -1,12 +1,14 @@
 """LEG-wide settings page: sender address, QR-IBAN, price, admin fees
 (shared across all LEGs -- see `app.models.leg` for the per-LEG name),
-and demo data generation.
+Messpunkt Land/Identifikator defaults, and demo data generation.
 """
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
+from app.domain.iban_validation import normalize_iban, validate_qr_iban
+from app.domain.messpunkt_validation import validate_identifikator, validate_land
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
 from app.models.settings import LegSettings
@@ -38,6 +40,17 @@ def einstellungen_page() -> None:
                 city = ui.input("Ort", value=current.address_city).classes("flex-grow")
             country = ui.input("Land", value=current.address_country or "CH").classes("w-full")
             qr_iban = ui.input("QR-IBAN", value=current.qr_iban).classes("w-full")
+            qr_iban_error = ui.label("").classes("text-negative text-caption")
+
+            def check_qr_iban() -> None:
+                """Validate the QR-IBAN once the field loses focus.
+
+                Returns:
+                    None.
+                """
+                qr_iban_error.text = validate_qr_iban(qr_iban.value) or ""
+
+            qr_iban.on("blur", check_qr_iban)
             price = ui.number(
                 "Interner Strompreis (Rp./kWh)",
                 value=current.price_rp_per_kwh,
@@ -76,15 +89,23 @@ def einstellungen_page() -> None:
                 if papierrechnung_fee.value is None or papierrechnung_fee.value < 0:
                     error_label.text = "Kosten Papierrechnung müssen positiv sein."
                     return
+                qr_iban_problem = validate_qr_iban(qr_iban.value)
+                if qr_iban_problem:
+                    qr_iban_error.text = qr_iban_problem
+                    error_label.text = qr_iban_problem
+                    return
                 updated = LegSettings(
                     address_street=street.value.strip(),
                     address_zip=zip_code.value.strip(),
                     address_city=city.value.strip(),
                     address_country=country.value.strip() or "CH",
-                    qr_iban=qr_iban.value.strip().replace(" ", ""),
+                    qr_iban=normalize_iban(qr_iban.value),
                     price_rp_per_kwh=float(price.value),
                     verwaltungsaufwand_rp_per_kwh=float(verwaltungsaufwand.value),
                     papierrechnung_rappen=round(float(papierrechnung_fee.value) * 100),
+                    extra_backup_dir=current.extra_backup_dir,
+                    messpunkt_land=current.messpunkt_land,
+                    messpunkt_identifikator=current.messpunkt_identifikator,
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -93,6 +114,52 @@ def einstellungen_page() -> None:
                 ui.notify("Einstellungen gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("Messpunkt-Vorgaben").classes("text-lg font-bold")
+        ui.label(
+            "Land und VSE-Identifikator des Netzbetreibers sind bei allen "
+            "Messpunkten dieser LEG identisch. Hier hinterlegt, werden sie "
+            "beim Anlegen eines neuen Messpunkts als Vorschlag "
+            "eingesetzt (dort weiterhin veränderbar)."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            with ui.row().classes("w-full gap-2"):
+                messpunkt_land = ui.input(
+                    "Land", value=current.messpunkt_land or "CH"
+                ).classes("w-24")
+                messpunkt_identifikator = ui.input(
+                    "VSE-Identifikator (11-stellig)",
+                    value=current.messpunkt_identifikator,
+                ).classes("flex-grow")
+            messpunkt_defaults_error = ui.label("").classes("text-negative")
+
+            def save_messpunkt_defaults() -> None:
+                """Validate and persist the Messpunkt Land/Identifikator defaults.
+
+                Returns:
+                    None.
+                """
+                land_value = messpunkt_land.value.strip().upper()
+                identifikator_value = messpunkt_identifikator.value.strip().upper()
+                land_problem = validate_land(land_value)
+                if land_problem:
+                    messpunkt_defaults_error.text = land_problem
+                    return
+                identifikator_problem = validate_identifikator(identifikator_value)
+                if identifikator_problem:
+                    messpunkt_defaults_error.text = identifikator_problem
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.messpunkt_land = land_value or "CH"
+                    settings.messpunkt_identifikator = identifikator_value
+                    settings_repo.update_settings(connection, settings)
+                messpunkt_defaults_error.text = ""
+                ui.notify("Messpunkt-Vorgaben gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_messpunkt_defaults).classes("mt-2")
 
         ui.separator().classes("my-6")
 

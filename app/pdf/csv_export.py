@@ -51,7 +51,8 @@ def generate_invoice_list_csv(
         )
         for item in invoice_items:
             person = persons.get(item.person_id)
-            reference = generate_qrr_reference(item.person_id, run.id, item.id)
+            kundennummer = person.kundennummer if person else item.person_id
+            reference = generate_qrr_reference(kundennummer, run.id, item.id)
             writer.writerow(
                 [
                     item.id,

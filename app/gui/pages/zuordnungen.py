@@ -15,6 +15,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
@@ -45,11 +46,13 @@ def zuordnungen_page() -> None:
         None.
     """
     with page_frame("/zuordnungen", "Zuordnungen"):
-        ui.label(
-            "Legt fest, welcher Person ein Messpunkt in welchem Zeitraum "
-            "zugeordnet ist. Bei einem Umzug mitten im Quartal zwei "
-            "Zuordnungen mit passendem Enddatum/Startdatum anlegen."
-        ).classes("text-body2 text-grey-8")
+        with ui.row().classes("w-full items-start justify-between gap-4"):
+            ui.label(
+                "Legt fest, welcher Person ein Messpunkt in welchem Zeitraum "
+                "zugeordnet ist. Bei einem Umzug mitten im Quartal zwei "
+                "Zuordnungen mit passendem Enddatum/Startdatum anlegen."
+            ).classes("text-body2 text-grey-8")
+            ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None)).classes("shrink-0")
 
         warnings_column = ui.column().classes("w-full")
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -303,8 +306,12 @@ def zuordnungen_page() -> None:
                             )
                             zuordnung_repo.create(connection, new_zuordnung)
                     dialog.close()
+                    # Notify before refresh() and via safe_notify(): the card
+                    # whose button opened this dialog gets deleted by refresh()'s
+                    # list_container rebuild, which can tear down this dialog's
+                    # own UI context first -- see app.gui.safe_notify.
+                    safe_notify("Gespeichert.", type="positive")
                     refresh()
-                    ui.notify("Gespeichert.", type="positive")
 
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
@@ -340,12 +347,11 @@ def zuordnungen_page() -> None:
                         with connection_scope() as connection:
                             zuordnung_repo.delete(connection, zuordnung.id)
                         confirm.close()
+                        # notify before refresh() -- see save() above for why
+                        safe_notify("Gelöscht.", type="warning")
                         refresh()
-                        ui.notify("Gelöscht.", type="warning")
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
-
-        ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()

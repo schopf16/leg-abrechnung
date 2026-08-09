@@ -648,4 +648,27 @@ MIGRATIONS: list[Migration] = [
             ALTER TABLE person ADD COLUMN bkw_kundennummer INTEGER;
         """,
     ),
+    Migration(
+        version=16,
+        description="Add LegSettings.extra_backup_dir: an optional second "
+        "directory (e.g. a network drive) every backup is also copied "
+        "into, in addition to the fixed backups/ folder. Empty string "
+        "means no extra copy. Purely additive.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN extra_backup_dir TEXT NOT NULL DEFAULT '';
+        """,
+    ),
+    Migration(
+        version=17,
+        description="Add LegSettings.messpunkt_land/messpunkt_identifikator: "
+        "default values for a new Messpunkt's Land and (11-stellig) "
+        "VSE-Identifikator -- always the same grid operator for a single "
+        "LEG deployment, so entering them once in the settings saves "
+        "re-typing them for every Messpunkt (still editable per "
+        "Messpunkt). Purely additive; messpunkt_land defaults to 'CH'.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN messpunkt_land TEXT NOT NULL DEFAULT 'CH';
+            ALTER TABLE leg_settings ADD COLUMN messpunkt_identifikator TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 ]

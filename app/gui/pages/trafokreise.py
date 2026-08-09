@@ -51,13 +51,15 @@ def trafokreise_page() -> None:
         None.
     """
     with page_frame("/trafokreise", "Trafokreise"):
-        ui.label(
-            "Ein Trafokreis ist eine Eigenschaft des Standorts, nie einer "
-            "Person, eines Messpunkts oder einer LEG direkt. Er entspricht "
-            "der physischen Gruppierung durch den Netzbetreiber (BKW). Der "
-            "„Name“ ist ein frei wählbarer (Pseudo-)Name; die offizielle "
-            "BKW-Nummer gehört ins Feld „BKW-Bezeichnung“."
-        ).classes("text-body2 text-grey-8")
+        with ui.row().classes("w-full items-start justify-between gap-4"):
+            ui.label(
+                "Ein Trafokreis ist eine Eigenschaft des Standorts, nie einer "
+                "Person, eines Messpunkts oder einer LEG direkt. Er entspricht "
+                "der physischen Gruppierung durch den Netzbetreiber (BKW). Der "
+                "„Name“ ist ein frei wählbarer (Pseudo-)Name; die offizielle "
+                "BKW-Nummer gehört ins Feld „BKW-Bezeichnung“."
+            ).classes("text-body2 text-grey-8")
+            ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None)).classes("shrink-0")
 
         search_input = ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)").classes(
             "w-full max-w-md"
@@ -243,7 +245,5 @@ def trafokreise_page() -> None:
 
         table.on("edit", on_edit)
         table.on("remove", on_remove)
-
-        ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()

@@ -62,12 +62,14 @@ def legs_page() -> None:
         None.
     """
     with page_frame("/legs", "LEGs"):
-        ui.label(
-            "Eine LEG wird pro Messpunkt zugewiesen (siehe „Messpunkte“), "
-            "nie einer Person oder einem Standort direkt. Lokale "
-            "Verteilung findet nur innerhalb derselben LEG statt (siehe "
-            "Abrechnung). Der Name erscheint auf den Rechnungen dieser LEG."
-        ).classes("text-body2 text-grey-8")
+        with ui.row().classes("w-full items-start justify-between gap-4"):
+            ui.label(
+                "Eine LEG wird pro Messpunkt zugewiesen (siehe „Messpunkte“), "
+                "nie einer Person oder einem Standort direkt. Lokale "
+                "Verteilung findet nur innerhalb derselben LEG statt (siehe "
+                "Abrechnung). Der Name erscheint auf den Rechnungen dieser LEG."
+            ).classes("text-body2 text-grey-8")
+            ui.button("+ Neue LEG", on_click=lambda: open_form(None)).classes("shrink-0")
 
         search_input = ui.input("Suche (Name, Bemerkung, Trafokreis...)").classes(
             "w-full max-w-md"
@@ -263,7 +265,5 @@ def legs_page() -> None:
 
         table.on("edit", on_edit)
         table.on("remove", on_remove)
-
-        ui.button("+ Neue LEG", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()

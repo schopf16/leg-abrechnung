@@ -1,14 +1,19 @@
 """Backup / restore page."""
 
+from pathlib import Path
+
 from nicegui import ui
 
 from app.backup.backup_service import (
     BackupValidationError,
     create_backup,
     list_backups,
+    mirror_backup,
     restore_backup,
 )
+from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
+from app.models import settings as settings_repo
 
 
 def _format_size(size_bytes: int) -> str:
@@ -38,9 +43,40 @@ def backup_page() -> None:
     with page_frame("/backup", "Backup"):
         ui.label(
             "Ein Backup ist eine einzelne Datei mit der gesamten Datenbank. "
-            "Bewahren Sie Backups an einem sicheren, separaten Ort auf (z. B. "
-            "einem externen Laufwerk oder Cloud-Speicher)."
+            "Sie wird immer in „backups/“ abgelegt."
         ).classes("text-body2 text-grey-8")
+
+        with connection_scope() as connection:
+            current_settings = settings_repo.get_settings(connection)
+
+        with ui.card().classes("w-full max-w-lg mt-2"):
+            ui.label("Zusätzlicher Backup-Pfad").classes("font-bold")
+            ui.label(
+                "Optional: jedes neu erstellte Backup wird zusätzlich in "
+                "diesen Ordner kopiert (z. B. ein externes Netzlaufwerk). "
+                "Der Pfad bleibt bis auf Änderung unverändert gespeichert. "
+                "Ist er gerade nicht erreichbar (z. B. auf Reisen), wird "
+                "das nur als Hinweis gemeldet -- das reguläre Backup in "
+                "„backups/“ wird davon nicht beeinträchtigt."
+            ).classes("text-caption text-grey-6")
+            extra_path_input = ui.input(
+                "Pfad (leer lassen = keine Kopie)",
+                value=current_settings.extra_backup_dir,
+            ).classes("w-full")
+
+            def save_extra_path() -> None:
+                """Persist the extra backup path setting.
+
+                Returns:
+                    None.
+                """
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.extra_backup_dir = extra_path_input.value.strip()
+                    settings_repo.update_settings(connection, settings)
+                ui.notify("Pfad gespeichert.", type="positive")
+
+            ui.button("Pfad speichern", on_click=save_extra_path).classes("mt-2")
 
         backups_table = ui.table(
             columns=[
@@ -80,12 +116,18 @@ def backup_page() -> None:
             backups_table.update()
 
         def do_create_backup() -> None:
-            """Create a new backup and refresh the list.
+            """Create a new backup, mirror it to the extra path if configured, and refresh the list.
 
             Returns:
                 None.
             """
             backup_path = create_backup()
+            with connection_scope() as connection:
+                extra_dir = settings_repo.get_settings(connection).extra_backup_dir
+            if extra_dir:
+                mirror_warning = mirror_backup(backup_path, Path(extra_dir))
+                if mirror_warning:
+                    ui.notify(mirror_warning, type="warning", timeout=8000)
             refresh_backups_table()
             ui.notify(f"Backup erstellt: {backup_path.name}", type="positive")
 

@@ -84,14 +84,16 @@ def standorte_page() -> None:
         None.
     """
     with page_frame("/standorte", "Standorte"):
-        ui.label(
-            "Standorte sind physische Netzanschlusspunkte. Ein Standort "
-            "gehört zu genau einem Trafokreis; die Zuordnung erfolgt "
-            "manuell -- im Trafokreis-Feld die (Teil-)Bezeichnung "
-            "eintippen, um passende Trafokreise zu finden. Die LEG wird "
-            "nicht hier, sondern pro Messpunkt zugewiesen (siehe "
-            "„Messpunkte“)."
-        ).classes("text-body2 text-grey-8")
+        with ui.row().classes("w-full items-start justify-between gap-4"):
+            ui.label(
+                "Standorte sind physische Netzanschlusspunkte. Ein Standort "
+                "gehört zu genau einem Trafokreis; die Zuordnung erfolgt "
+                "manuell -- im Trafokreis-Feld die (Teil-)Bezeichnung "
+                "eintippen, um passende Trafokreise zu finden. Die LEG wird "
+                "nicht hier, sondern pro Messpunkt zugewiesen (siehe "
+                "„Messpunkte“)."
+            ).classes("text-body2 text-grey-8")
+            ui.button("+ Neuer Standort", on_click=lambda: open_form(None)).classes("shrink-0")
 
         search_input = ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)").classes(
             "w-full max-w-md"
@@ -309,8 +311,6 @@ def standorte_page() -> None:
         table.on("view", on_view)
         table.on("edit", on_edit)
         table.on("remove", on_remove)
-
-        ui.button("+ Neuer Standort", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()
 

@@ -14,8 +14,10 @@ from datetime import date
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.iban_validation import format_iban, normalize_iban, validate_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
@@ -87,12 +89,14 @@ def personen_page() -> None:
         None.
     """
     with page_frame("/personen", "Personen"):
-        ui.label(
-            "Personen oder Firmen, die an der LEG teilnehmen (Bezüger, "
-            "Produzenten oder beides). Die Zuordnung zu Messpunkten "
-            "erfolgt unter „Zuordnungen“. Die Kunden-Nr. wird beim "
-            "Anlegen automatisch und eindeutig vergeben."
-        ).classes("text-body2 text-grey-8")
+        with ui.row().classes("w-full items-start justify-between gap-4"):
+            ui.label(
+                "Personen oder Firmen, die an der LEG teilnehmen (Bezüger, "
+                "Produzenten oder beides). Die Zuordnung zu Messpunkten "
+                "erfolgt unter „Zuordnungen“. Die Kunden-Nr. wird beim "
+                "Anlegen automatisch und eindeutig vergeben."
+            ).classes("text-body2 text-grey-8")
+            ui.button("+ Neue Person", on_click=lambda: open_form(None)).classes("shrink-0")
 
         with ui.row().classes("w-full items-center gap-4"):
             search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
@@ -136,7 +140,7 @@ def personen_page() -> None:
                             f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}".strip()
                         )
                     with ui.column().classes("gap-0 min-w-[200px]"):
-                        ui.label(f"IBAN: {person.iban or '-'}")
+                        ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
                         ui.label(
                             "Papierrechnung: " + ("ja" if person.papierrechnung else "nein")
                         ).classes("text-grey-7")
@@ -198,26 +202,6 @@ def personen_page() -> None:
                 ui.label("Person bearbeiten" if existing else "Neue Person").classes(
                     "text-lg font-bold"
                 )
-                if existing:
-                    ui.label(f"Kunden-Nr.: {existing.kundennummer_formatiert}").classes(
-                        "text-body2 text-grey-8"
-                    )
-                    ui.label(
-                        "Die Kunden-Nr. wurde bei der Anlage automatisch und "
-                        "zufällig vergeben und kann nicht geändert werden."
-                    ).classes("text-caption text-grey-6")
-                else:
-                    ui.label(
-                        "Die Kunden-Nr. wird beim Speichern automatisch und "
-                        "zufällig vergeben (keine fortlaufende Nummer, um "
-                        "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
-                        "verhindern) und ist danach nicht mehr änderbar."
-                    ).classes("text-body2 text-grey-8")
-                bkw_kundennummer = ui.number(
-                    "BKW-Kundennummer (optional)",
-                    value=existing.bkw_kundennummer if existing else None,
-                    format="%.0f",
-                ).classes("w-full")
                 firma = ui.input(
                     "Firma (optional -- leer lassen für eine Privatperson)",
                     value=existing.firma if existing else "",
@@ -240,15 +224,8 @@ def personen_page() -> None:
                         "Nachname", value=existing.nachname if existing else ""
                     ).classes("flex-grow")
                 with ui.row().classes("w-full gap-2"):
-                    email = ui.input(
-                        "E-Mail", value=existing.kontakt_email if existing else ""
-                    ).classes("flex-grow")
-                    telefon = ui.input(
-                        "Telefon (optional)", value=existing.kontakt_telefon if existing else ""
-                    ).classes("flex-grow")
-                with ui.row().classes("w-full gap-2"):
                     strasse = ui.input(
-                        "Rechnungsadresse: Strasse",
+                        "Adresse: Strasse",
                         value=existing.rechnungsadresse_strasse if existing else "",
                     ).classes("flex-grow")
                     hausnummer = ui.input(
@@ -264,13 +241,52 @@ def personen_page() -> None:
                     land = ui.input(
                         "Land", value=existing.rechnungsadresse_land if existing else "CH"
                     ).classes("w-24")
-                iban = ui.input(
-                    "IBAN (für Gutschriften)", value=existing.iban if existing else ""
-                ).classes("w-full")
+
+                ui.separator().classes("my-2")
+                ui.label("Weitere Angaben").classes("text-body1 font-bold")
+                with ui.row().classes("w-full gap-2"):
+                    email = ui.input(
+                        "E-Mail", value=existing.kontakt_email if existing else ""
+                    ).classes("flex-grow")
+                    telefon = ui.input(
+                        "Telefon (optional)", value=existing.kontakt_telefon if existing else ""
+                    ).classes("flex-grow")
+                with ui.row().classes("w-full gap-2"):
+                    iban = ui.input(
+                        "IBAN (für Gutschriften)", value=existing.iban if existing else ""
+                    ).classes("flex-grow")
+                    bkw_kundennummer = ui.number(
+                        "BKW-Kundennummer (optional)",
+                        value=existing.bkw_kundennummer if existing else None,
+                        format="%.0f",
+                    ).classes("w-48")
+                iban_error = ui.label("").classes("text-negative text-caption")
+
+                def check_iban() -> None:
+                    """Validate the IBAN once the field loses focus (not on every keystroke).
+
+                    Returns:
+                        None.
+                    """
+                    iban_error.text = validate_iban(iban.value) or ""
+
+                iban.on("blur", check_iban)
                 papierrechnung = ui.checkbox(
                     "Papierrechnung (statt elektronisch, kostenpflichtig)",
                     value=existing.papierrechnung if existing else False,
                 )
+                if existing:
+                    ui.label(
+                        f"Kunden-Nr.: {existing.kundennummer_formatiert} "
+                        "(automatisch vergeben, nicht änderbar)"
+                    ).classes("text-caption text-grey-6")
+                else:
+                    ui.label(
+                        "Die Kunden-Nr. wird beim Speichern automatisch und "
+                        "zufällig vergeben (keine fortlaufende Nummer, um "
+                        "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
+                        "verhindern) und ist danach nicht mehr änderbar."
+                    ).classes("text-caption text-grey-6")
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
@@ -282,6 +298,12 @@ def personen_page() -> None:
                     if not firma.value.strip() and not (vorname.value.strip() or nachname.value.strip()):
                         error_label.text = "Firma oder Vorname/Nachname sind erforderlich."
                         return
+                    iban_problem = validate_iban(iban.value)
+                    if iban_problem:
+                        iban_error.text = iban_problem
+                        error_label.text = iban_problem
+                        return
+                    iban_normalized = normalize_iban(iban.value)
                     with connection_scope() as connection:
                         if existing:
                             updated = Person(
@@ -297,7 +319,7 @@ def personen_page() -> None:
                                 rechnungsadresse_plz=plz.value.strip(),
                                 rechnungsadresse_ort=ort.value.strip(),
                                 rechnungsadresse_land=land.value.strip() or "CH",
-                                iban=iban.value.strip(),
+                                iban=iban_normalized,
                                 kundennummer=existing.kundennummer,
                                 bkw_kundennummer=int(bkw_kundennummer.value)
                                 if bkw_kundennummer.value is not None
@@ -321,7 +343,7 @@ def personen_page() -> None:
                                 rechnungsadresse_plz=plz.value.strip(),
                                 rechnungsadresse_ort=ort.value.strip(),
                                 rechnungsadresse_land=land.value.strip() or "CH",
-                                iban=iban.value.strip(),
+                                iban=iban_normalized,
                                 kundennummer=None,
                                 bkw_kundennummer=int(bkw_kundennummer.value)
                                 if bkw_kundennummer.value is not None
@@ -332,8 +354,12 @@ def personen_page() -> None:
                             )
                             person_repo.create(connection, new_person)
                     dialog.close()
+                    # Notify before refresh() and via safe_notify(): the card
+                    # whose button opened this dialog gets deleted by refresh()'s
+                    # list_container rebuild, which can tear down this dialog's
+                    # own UI context first -- see app.gui.safe_notify.
+                    safe_notify("Gespeichert.", type="positive")
                     refresh()
-                    ui.notify("Gespeichert.", type="positive")
 
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
@@ -394,15 +420,16 @@ def personen_page() -> None:
                         with connection_scope() as connection:
                             deleted = person_repo.delete(connection, person.id)
                         confirm.close()
-                        refresh()
+                        # notify before refresh() -- see save() above for why
                         if deleted:
-                            ui.notify("Gelöscht.", type="warning")
+                            safe_notify("Gelöscht.", type="warning")
                         else:
-                            ui.notify(
+                            safe_notify(
                                 "Es bestehen bereits Abrechnungsbelege für diese "
                                 "Person -- sie wurde deaktiviert statt gelöscht.",
                                 type="warning",
                             )
+                        refresh()
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
@@ -418,10 +445,9 @@ def personen_page() -> None:
             """
             with connection_scope() as connection:
                 person_repo.set_aktiv(connection, person.id, True)
+            # notify before refresh() -- see save() above for why
+            safe_notify("Person wieder aktiviert.", type="positive")
             refresh()
-            ui.notify("Person wieder aktiviert.", type="positive")
-
-        ui.button("+ Neue Person", on_click=lambda: open_form(None)).classes("mt-2")
 
         refresh()
 
@@ -465,7 +491,7 @@ def person_detail_page(person_id: int) -> None:
                 f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort} "
                 f"({person.rechnungsadresse_land})"
             )
-            ui.label(f"IBAN: {person.iban or '-'}")
+            ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
             ui.label(f"Papierrechnung: {'ja' if person.papierrechnung else 'nein'}")
 
         ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")

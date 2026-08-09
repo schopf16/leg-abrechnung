@@ -1,8 +1,9 @@
-"""Tests for the combined per-person billing PDF, QR-bill voiding, the CSV
-reconciliation lists and export generation."""
+"""Tests for the combined per-person billing PDF, its credit-note handling,
+the CSV reconciliation lists and export generation."""
 
 import csv
 import re
+from dataclasses import replace
 from decimal import Decimal
 
 from app.domain.billing import create_or_replace_billing_run
@@ -94,7 +95,8 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, updated_at="",
+        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
+        messpunkt_land="CH", messpunkt_identifikator="", updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
@@ -130,7 +132,8 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, updated_at="",
+        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
+        messpunkt_land="CH", messpunkt_identifikator="", updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
     person = Person(
@@ -154,9 +157,14 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     assert drawing.height < 320
 
 
-def test_generate_person_bill_pdf_for_prosumer_overflows_to_second_page(db, tmp_path):
+def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(db, tmp_path):
     """A prosumer's document (both Bezug and Vergütung tables) is long enough to
     push the QR-bill onto a second page rather than overlapping the content.
+
+    The demo data's prosumers are net credits (see the credit-note test
+    below), so this forces the same item into an invoice (positive net,
+    same magnitude) purely to exercise the page-break geometry -- the
+    person/tables/fees involved are otherwise identical.
 
     Regression test: the QR-bill must never be drawn on top of content that
     reaches into its reserved bottom area -- see app.pdf.layout.CONTENT_BOTTOM_Y
@@ -164,20 +172,24 @@ def test_generate_person_bill_pdf_for_prosumer_overflows_to_second_page(db, tmp_
     """
     run, items, distribution, leg, settings = _billing_context(db)
     prosumer_item = next(i for i in items if i.consumed_kwh > 0 and i.produced_kwh > 0)
-    person = person_repo.get(db, prosumer_item.person_id)
-    person_result = distribution.person_results[prosumer_item.person_id]
+    invoice_item = replace(prosumer_item, net_amount_rappen=abs(prosumer_item.net_amount_rappen))
+    assert invoice_item.is_owed_to_leg, "test setup must produce an invoice, not a credit"
+    person = person_repo.get(db, invoice_item.person_id)
+    person_result = distribution.person_results[invoice_item.person_id]
 
     output_path = tmp_path / "prosumer.pdf"
     generate_person_bill_pdf(
-        run, prosumer_item, person_result, person, leg, settings, output_path
+        run, invoice_item, person_result, person, leg, settings, output_path
     )
 
     _assert_is_pdf(output_path)
     assert _page_count(output_path) == 2
 
 
-def test_generate_person_bill_pdf_for_credit_item_has_voided_amount(db, tmp_path):
-    """A person with a negative net (owed money by the LEG) gets a voided QR-bill."""
+def test_generate_person_bill_pdf_for_credit_item_omits_payment_slip(db, tmp_path):
+    """A person with a negative net (owed money by the LEG) gets no QR-bill/
+    Einzahlungsschein at all -- there is nothing to pay via a payment slip,
+    the LEG settles the credit directly (see the payout list)."""
     run, items, distribution, leg, settings = _billing_context(db)
     credit_item = next(i for i in items if i.is_owed_by_leg)
     person = person_repo.get(db, credit_item.person_id)
@@ -189,6 +201,9 @@ def test_generate_person_bill_pdf_for_credit_item_has_voided_amount(db, tmp_path
     )
 
     _assert_is_pdf(output_path)
+    # No QR-bill section means no forced page break for its reserved area --
+    # the document is exactly one page for this dataset.
+    assert _page_count(output_path) == 1
 
 
 def test_generate_person_bill_pdf_for_pure_consumer_has_payable_qr_bill(db, tmp_path):
@@ -265,7 +280,7 @@ def test_generate_invoice_list_csv_lists_debtors_with_matching_reference_numbers
     assert len(rows) == len(debtor_items)
     rows_by_reference = {row["Referenznummer"]: row for row in rows}
     for item in debtor_items:
-        reference = generate_qrr_reference(item.person_id, run.id, item.id)
+        reference = generate_qrr_reference(persons[item.person_id].kundennummer, run.id, item.id)
         row = rows_by_reference[reference]
         assert row["Name"] == persons[item.person_id].anzeige_name
         assert round(float(row["Betrag (CHF)"]), 2) == round(item.net_amount_rappen / 100, 2)

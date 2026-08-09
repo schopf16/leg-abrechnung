@@ -14,12 +14,12 @@ shows, in order:
    energy portion (the fees are their own already-rounded/exact lines --
    see `app.domain.billing`'s module docstring).
 
-A Swiss QR-bill is always printed. If the net settlement is a credit (the
-LEG owes the person, `net_amount_rappen <= 0`), the QR-bill carries no
-fixed amount and its amount fields are visibly overprinted with "***.**"
-so it can never be used to actually transfer money -- the LEG pays the
-person directly (see the payment list), the person never pays via this
-document in that case.
+A Swiss QR-bill (Einzahlungsschein) is only printed when the person
+actually owes the LEG money (`net_amount_rappen > 0`). When the net
+settlement is a credit or zero (the LEG owes the person, or nothing is
+due), there is nothing to pay via a payment slip -- the LEG pays the
+person directly (see the payout list) -- so the whole QR-bill section,
+and the extra page it would otherwise need, is omitted entirely.
 """
 
 from datetime import date, timedelta
@@ -42,11 +42,7 @@ from app.pdf.layout import (
     draw_title,
     new_canvas,
 )
-from app.pdf.qr_bill_render import (
-    build_qr_bill,
-    draw_qr_bill,
-    draw_void_amount_overlay,
-)
+from app.pdf.qr_bill_render import build_qr_bill, draw_qr_bill
 from app.pdf.qr_reference import generate_qrr_reference
 
 #: How many days after the document date payment is due.
@@ -210,11 +206,7 @@ def generate_person_bill_pdf(
             "Bitte begleichen Sie diesen Betrag mit dem beiliegenden Einzahlungsschein."
         )
     elif item.is_owed_by_leg:
-        note = (
-            "Dieser Betrag wird Ihnen von der Energiegemeinschaft überwiesen.\n"
-            "Der beiliegende Einzahlungsschein ist absichtlich entwertet "
-            "(Betrag ***.**) und darf nicht für eine Zahlung verwendet werden."
-        )
+        note = "Dieser Betrag wird Ihnen von der Energiegemeinschaft überwiesen."
     else:
         note = "Für diese Periode ist kein Betrag fällig."
 
@@ -226,19 +218,23 @@ def generate_person_bill_pdf(
         note,
     )
 
-    # The QR-bill always occupies the bottom 106mm of whatever page it is
-    # drawn on. If the content above would run into that reserved zone
-    # (e.g. a prosumer with both a Bezug and a Vergütung table), start a
-    # fresh page for the QR-bill instead of letting the two collide.
-    if y < CONTENT_BOTTOM_Y:
-        canvas.showPage()
+    # The Einzahlungsschein is only meaningful when the person actually
+    # owes the LEG money -- a credit or zero balance is settled directly
+    # by the LEG (see the payout list), so there is nothing to pay via a
+    # payment slip and the whole QR-bill section (and the extra page it
+    # would otherwise force) is skipped entirely.
+    if item.is_owed_to_leg:
+        # The QR-bill always occupies the bottom 106mm of whatever page it
+        # is drawn on. If the content above would run into that reserved
+        # zone (e.g. a prosumer with both a Bezug and a Vergütung table),
+        # start a fresh page for the QR-bill instead of letting the two
+        # collide.
+        if y < CONTENT_BOTTOM_Y:
+            canvas.showPage()
 
-    reference = generate_qrr_reference(person.id, run.id, item.id)
-    payable_amount = net_amount_chf if item.is_owed_to_leg else None
-    bill = build_qr_bill(settings, leg, person, payable_amount, reference)
-    draw_qr_bill(canvas, bill)
-    if payable_amount is None:
-        draw_void_amount_overlay(canvas)
+        reference = generate_qrr_reference(person.kundennummer, run.id, item.id)
+        bill = build_qr_bill(settings, leg, person, net_amount_chf, reference)
+        draw_qr_bill(canvas, bill)
 
     canvas.showPage()
     canvas.save()
