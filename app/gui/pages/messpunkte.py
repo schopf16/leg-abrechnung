@@ -24,15 +24,6 @@ MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
 }
 
-COLUMNS = [
-    {"name": "messpunkt_bezeichnung", "label": "Messpunkt-Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left", "sortable": True},
-    {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
-    {"name": "standort_adresse", "label": "Standort", "field": "standort_adresse", "align": "left"},
-    {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
-    {"name": "person", "label": "Aktuell zugeordnet", "field": "person", "align": "left"},
-    {"name": "actions", "label": "", "field": "actions", "align": "right"},
-]
-
 
 def _current_person_name(connection, messpunkt_id: int) -> str:
     """Find the name of the Person currently assigned to a Messpunkt.
@@ -53,7 +44,7 @@ def _current_person_name(connection, messpunkt_id: int) -> str:
 
 
 def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
-    """Convert a `Messpunkt` into a row dict for the NiceGUI table.
+    """Convert a `Messpunkt` into a row dict for the card-based list.
 
     Args:
         connection: Open SQLite connection.
@@ -87,6 +78,8 @@ def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
         "standort_adresse": standort_adresse,
         "leg": leg_name,
         "person": person_name,
+        "pv_leistung_kwp": mp.pv_leistung_kwp,
+        "batteriespeicher_kwh": mp.batteriespeicher_kwh,
         "_search": search_text,
     }
 
@@ -111,19 +104,45 @@ def messpunkte_page() -> None:
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
-        table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
-        table.add_slot(
-            "body-cell-actions",
-            r'''
-            <q-td :props="props">
-                <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
-                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
-                <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
-            </q-td>
-            ''',
-        )
+        list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_rows: list[dict] = []
+
+        def render_card(row: dict) -> None:
+            """Render one Messpunkt as a card with wrapping field groups.
+
+            Args:
+                row: Row dict built by `_to_row`.
+
+            Returns:
+                None.
+            """
+            with ui.card().classes("w-full"):
+                with ui.row().classes("w-full items-start gap-6 flex-wrap"):
+                    with ui.column().classes("gap-0 min-w-[220px]"):
+                        ui.label(row["messpunkt_bezeichnung"]).classes("font-bold")
+                        ui.label(row["messrichtung"]).classes("text-caption text-grey-6")
+                    with ui.column().classes("gap-0 min-w-[220px]"):
+                        ui.label(row["standort_adresse"])
+                        ui.label(f"LEG: {row['leg']}").classes("text-grey-7")
+                    with ui.column().classes("gap-0 min-w-[180px]"):
+                        ui.label(f"Zugeordnet: {row['person']}")
+                        extras = []
+                        if row["pv_leistung_kwp"] is not None:
+                            extras.append(f"PV {row['pv_leistung_kwp']:g} kWp")
+                        if row["batteriespeicher_kwh"] is not None:
+                            extras.append(f"Speicher {row['batteriespeicher_kwh']:g} kWh")
+                        if extras:
+                            ui.label(", ".join(extras)).classes("text-grey-7 text-caption")
+                    with ui.row().classes("gap-1 ml-auto"):
+                        ui.button(
+                            icon="visibility",
+                            on_click=lambda r=row: ui.navigate.to(f"/messpunkte/{r['id']}"),
+                        ).props("dense flat")
+                        ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
+                        ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
+                            "dense flat color=negative"
+                        )
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value.
@@ -132,8 +151,13 @@ def messpunkte_page() -> None:
                 None.
             """
             needle = (search_input.value or "").strip().lower()
-            table.rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
-            table.update()
+            list_container.clear()
+            with list_container:
+                rows = [r for r in all_rows if needle in r["_search"]] if needle else all_rows
+                if not rows:
+                    ui.label("Keine Messpunkte gefunden.")
+                for row in rows:
+                    render_card(row)
 
         def refresh() -> None:
             """Reload all Messpunkte from the database and re-apply the filter.
@@ -254,41 +278,30 @@ def messpunkte_page() -> None:
                     ui.button("Speichern", on_click=save)
             dialog.open()
 
-        def on_view(event) -> None:
-            """Table row-view handler: navigate to the Messpunkt's detail page.
+        def on_edit(row: dict) -> None:
+            """Card edit-button handler: open the edit dialog for this Messpunkt.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
-            ui.navigate.to(f"/messpunkte/{event.args['id']}")
-
-        def on_edit(event) -> None:
-            """Table row-edit handler: open the edit dialog for the clicked row.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                row: Row dict built by `_to_row`.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                existing = messpunkt_repo.get(connection, event.args["id"])
+                existing = messpunkt_repo.get(connection, row["id"])
             open_form(existing)
 
-        def on_remove(event) -> None:
-            """Table row-delete handler: delete the Messpunkt after confirmation.
+        def on_remove(row: dict) -> None:
+            """Card delete-button handler: delete the Messpunkt after confirmation.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                row: Row dict built by `_to_row`.
 
             Returns:
                 None.
             """
-            messpunkt_id = event.args["id"]
-            bezeichnung_text = event.args["messpunkt_bezeichnung"]
+            messpunkt_id = row["id"]
+            bezeichnung_text = row["messpunkt_bezeichnung"]
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(
@@ -307,10 +320,6 @@ def messpunkte_page() -> None:
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
-
-        table.on("view", on_view)
-        table.on("edit", on_edit)
-        table.on("remove", on_remove)
 
         ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None)).classes("mt-2")
 

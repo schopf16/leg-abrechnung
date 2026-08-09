@@ -626,4 +626,26 @@ MIGRATIONS: list[Migration] = [
             ALTER TABLE person ADD COLUMN rechnungsadresse_hausnummer TEXT NOT NULL DEFAULT '';
         """,
     ),
+    Migration(
+        version=14,
+        description="Add Person.aktiv: instead of blocking deletion outright "
+        "once billing history exists (ON DELETE RESTRICT on "
+        "billing_run_items.person_id), the person is now deactivated "
+        "instead -- kept for accounting/statistics but hidden from "
+        "selection for new Zuordnungen. Purely additive; existing rows "
+        "default to active.",
+        sql="""
+            ALTER TABLE person ADD COLUMN aktiv INTEGER NOT NULL DEFAULT 1;
+        """,
+    ),
+    Migration(
+        version=15,
+        description="Add Person.bkw_kundennummer: the customer number BKW "
+        "itself assigns, entered manually -- distinct from the app's own "
+        "auto-generated Kundennummer. Nullable integer, optional (not "
+        "known for every person yet). Purely additive.",
+        sql="""
+            ALTER TABLE person ADD COLUMN bkw_kundennummer INTEGER;
+        """,
+    ),
 ]

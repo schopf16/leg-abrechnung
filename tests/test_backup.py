@@ -34,7 +34,7 @@ def _make_live_db(path) -> None:
             kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False, created_at="",
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
         ),
     )
     connection.close()
@@ -85,7 +85,7 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
             kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False, created_at="",
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
         ),
     )
     connection.close()

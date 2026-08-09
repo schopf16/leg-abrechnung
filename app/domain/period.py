@@ -144,6 +144,31 @@ def month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
+def trailing_months(end: date, count: int = 12) -> list[tuple[int, int]]:
+    """List `count` consecutive calendar months ending with `end`'s month.
+
+    Used by `app.domain.statistics` to build a fixed-width trailing window
+    (e.g. "the last 12 months") regardless of which months actually have
+    data -- months with nothing recorded still appear, with zero values.
+
+    Args:
+        end: Reference date; its `(year, month)` is the last entry.
+        count: Number of months to list.
+
+    Returns:
+        `(year, month)` pairs in chronological order (oldest first).
+    """
+    months = []
+    year, month = end.year, end.month
+    for _ in range(count):
+        months.append((year, month))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    return list(reversed(months))
+
+
 def month_label_de(year: int, month: int) -> str:
     """Format a calendar month as a German label with its date range.
 

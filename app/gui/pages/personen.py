@@ -23,7 +23,7 @@ from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
-from app.models.person import ANREDE_OPTIONS, Person, PersonInUseError
+from app.models.person import ANREDE_OPTIONS, Person
 
 MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_BEZUG: "Bezug",
@@ -66,6 +66,7 @@ def _search_text_for_person(connection, person: Person) -> str:
         person.rechnungsadresse_plz,
         person.rechnungsadresse_ort,
         person.kundennummer_formatiert,
+        str(person.bkw_kundennummer) if person.bkw_kundennummer is not None else "",
     ]
     for z in zuordnung_repo.list_for_person(connection, person.id):
         mp = messpunkt_repo.get(connection, z.messpunkt_id)
@@ -93,9 +94,11 @@ def personen_page() -> None:
             "Anlegen automatisch und eindeutig vergeben."
         ).classes("text-body2 text-grey-8")
 
-        search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
-            "w-full max-w-md"
-        ).props("debounce=300 clearable")
+        with ui.row().classes("w-full items-center gap-4"):
+            search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
+                "w-full max-w-md"
+            ).props("debounce=300 clearable")
+            show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -110,13 +113,20 @@ def personen_page() -> None:
             Returns:
                 None.
             """
-            with ui.card().classes("w-full"):
+            with ui.card().classes("w-full" + ("" if person.aktiv else " opacity-60")):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[200px]"):
-                        ui.label(person.anzeige_name).classes("font-bold")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label(person.anzeige_name).classes("font-bold")
+                            if not person.aktiv:
+                                ui.badge("Inaktiv", color="grey")
                         ui.label(f"Kunden-Nr. {person.kundennummer_formatiert}").classes(
                             "text-caption text-grey-6"
                         )
+                        if person.bkw_kundennummer is not None:
+                            ui.label(f"BKW-Kunden-Nr. {person.bkw_kundennummer}").classes(
+                                "text-caption text-grey-6"
+                            )
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(person.kontakt_email or "-")
                         ui.label(person.kontakt_telefon or "-").classes("text-grey-7")
@@ -133,12 +143,20 @@ def personen_page() -> None:
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
                         ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
-                        ui.button(icon="delete", on_click=lambda: on_remove(person)).props(
-                            "dense flat color=negative"
-                        )
+                        if person.aktiv:
+                            ui.button(icon="delete", on_click=lambda: on_remove(person)).props(
+                                "dense flat color=negative"
+                            )
+                        else:
+                            ui.button(
+                                icon="restore", on_click=lambda: on_reactivate(person)
+                            ).props("dense flat color=primary").tooltip("Wieder aktivieren")
 
         def apply_filter() -> None:
-            """Filter the currently loaded persons by the search input's value.
+            """Filter the currently loaded persons by search text and active state.
+
+            Deactivated persons are hidden by default -- "weg ist weg" --
+            and only shown if `show_inactive_switch` is toggled on.
 
             Returns:
                 None.
@@ -147,6 +165,8 @@ def personen_page() -> None:
             list_container.clear()
             with list_container:
                 for person, search_text in all_entries:
+                    if not person.aktiv and not show_inactive_switch.value:
+                        continue
                     if not needle or needle in search_text:
                         render_card(person)
 
@@ -163,6 +183,7 @@ def personen_page() -> None:
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
+        show_inactive_switch.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: Person | None) -> None:
             """Open the create/edit dialog for a person.
@@ -192,6 +213,11 @@ def personen_page() -> None:
                         "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
                         "verhindern) und ist danach nicht mehr änderbar."
                     ).classes("text-body2 text-grey-8")
+                bkw_kundennummer = ui.number(
+                    "BKW-Kundennummer (optional)",
+                    value=existing.bkw_kundennummer if existing else None,
+                    format="%.0f",
+                ).classes("w-full")
                 firma = ui.input(
                     "Firma (optional -- leer lassen für eine Privatperson)",
                     value=existing.firma if existing else "",
@@ -273,7 +299,11 @@ def personen_page() -> None:
                                 rechnungsadresse_land=land.value.strip() or "CH",
                                 iban=iban.value.strip(),
                                 kundennummer=existing.kundennummer,
+                                bkw_kundennummer=int(bkw_kundennummer.value)
+                                if bkw_kundennummer.value is not None
+                                else None,
                                 papierrechnung=papierrechnung.value,
+                                aktiv=existing.aktiv,
                                 created_at=existing.created_at,
                             )
                             person_repo.update(connection, updated)
@@ -293,7 +323,11 @@ def personen_page() -> None:
                                 rechnungsadresse_land=land.value.strip() or "CH",
                                 iban=iban.value.strip(),
                                 kundennummer=None,
+                                bkw_kundennummer=int(bkw_kundennummer.value)
+                                if bkw_kundennummer.value is not None
+                                else None,
                                 papierrechnung=papierrechnung.value,
+                                aktiv=True,
                                 created_at="",
                             )
                             person_repo.create(connection, new_person)
@@ -333,6 +367,11 @@ def personen_page() -> None:
         def on_remove(person: Person) -> None:
             """Card delete-button handler: delete the person after confirmation.
 
+            If the person still has billing history, they are deactivated
+            instead of deleted (see `person_repo.delete`) -- their
+            Kundennummer and Abrechnungshistorie stay intact, but they are
+            hidden from selection for new Zuordnungen.
+
             Args:
                 person: Person to delete.
 
@@ -341,23 +380,46 @@ def personen_page() -> None:
             """
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'"{person.anzeige_name}" wirklich löschen?')
+                ui.label(
+                    "Falls bereits Abrechnungen für diese Person bestehen, "
+                    "wird sie stattdessen nur deaktiviert (nicht gelöscht) -- "
+                    "sie bleibt für Buchhaltung und Statistik erhalten, "
+                    "erscheint aber nicht mehr zur Auswahl bei neuen "
+                    "Zuordnungen."
+                ).classes("text-caption text-grey-7")
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
                     def do_delete() -> None:
-                        try:
-                            with connection_scope() as connection:
-                                person_repo.delete(connection, person.id)
-                        except PersonInUseError as exc:
-                            confirm.close()
-                            ui.notify(str(exc), type="negative")
-                            return
+                        with connection_scope() as connection:
+                            deleted = person_repo.delete(connection, person.id)
                         confirm.close()
                         refresh()
-                        ui.notify("Gelöscht.", type="warning")
+                        if deleted:
+                            ui.notify("Gelöscht.", type="warning")
+                        else:
+                            ui.notify(
+                                "Es bestehen bereits Abrechnungsbelege für diese "
+                                "Person -- sie wurde deaktiviert statt gelöscht.",
+                                type="warning",
+                            )
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
+
+        def on_reactivate(person: Person) -> None:
+            """Card reactivate-button handler: mark a deactivated person active again.
+
+            Args:
+                person: Person to reactivate.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                person_repo.set_aktiv(connection, person.id, True)
+            refresh()
+            ui.notify("Person wieder aktiviert.", type="positive")
 
         ui.button("+ Neue Person", on_click=lambda: open_form(None)).classes("mt-2")
 
@@ -386,7 +448,11 @@ def person_detail_page(person_id: int) -> None:
         ui.link("← Zurück zu Personen", "/personen")
         ui.label(person.anzeige_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
+            if not person.aktiv:
+                ui.label("Status: Inaktiv (deaktiviert)").classes("text-negative")
             ui.label(f"Kunden-Nr.: {person.kundennummer_formatiert}")
+            if person.bkw_kundennummer is not None:
+                ui.label(f"BKW-Kundennummer: {person.bkw_kundennummer}")
             if person.firma:
                 ui.label(f"Firma: {person.firma}")
             ui.label(f"Anrede: {person.anrede or '-'}")

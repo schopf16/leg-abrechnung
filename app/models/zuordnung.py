@@ -109,6 +109,22 @@ def list_for_person(connection: sqlite3.Connection, person_id: int) -> list[Zuor
     return [Zuordnung.from_row(row) for row in rows]
 
 
+def get(connection: sqlite3.Connection, zuordnung_id: int) -> Optional[Zuordnung]:
+    """Fetch a single Zuordnung by id.
+
+    Args:
+        connection: Open SQLite connection.
+        zuordnung_id: Primary key of the assignment.
+
+    Returns:
+        The matching `Zuordnung`, or `None` if no such id exists.
+    """
+    row = connection.execute(
+        "SELECT * FROM zuordnung WHERE id = ?", (zuordnung_id,)
+    ).fetchone()
+    return Zuordnung.from_row(row) if row else None
+
+
 def list_all(connection: sqlite3.Connection) -> list[Zuordnung]:
     """List every Zuordnung in the database.
 

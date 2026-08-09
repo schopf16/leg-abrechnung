@@ -13,6 +13,7 @@ from app.gui.pages import (  # noqa: F401
     messpunkte,
     personen,
     standorte,
+    statistik,
     trafokreise,
     zuordnungen,
 )

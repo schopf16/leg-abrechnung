@@ -394,7 +394,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             kontakt_email="anna.muster@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Sonnenweg", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="3000",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="CH9300762011623852957", kundennummer=None, papierrechnung=False,
+            iban="CH9300762011623852957", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
             created_at="",
         ),
         "beat": Person(
@@ -402,7 +402,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             kontakt_email="beat.beispiel@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Sonnenweg", rechnungsadresse_hausnummer="2", rechnungsadresse_plz="3000",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="CH5604835012345678009", kundennummer=None, papierrechnung=True,
+            iban="CH5604835012345678009", kundennummer=None, bkw_kundennummer=None, papierrechnung=True, aktiv=True,
             created_at="",
         ),
         "carla": Person(
@@ -410,7 +410,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             kontakt_email="carla.consumer@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="3", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False,
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
             created_at="",
         ),
         "david": Person(
@@ -418,7 +418,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             kontakt_email="david.demo@example.ch", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="4", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False,
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
             created_at="",
         ),
         "erika": Person(
@@ -426,7 +426,7 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
             kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="4", rechnungsadresse_plz="3001",
             rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False,
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
             created_at="",
         ),
     }

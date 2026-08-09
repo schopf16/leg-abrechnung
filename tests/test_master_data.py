@@ -16,7 +16,7 @@ from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
-from app.models.person import Person, PersonInUseError
+from app.models.person import Person
 from app.models.standort import Standort
 from app.models.trafokreis import Trafokreis
 from app.models.zuordnung import Zuordnung
@@ -48,7 +48,9 @@ def _make_person(name: str = "Test Person") -> Person:
         rechnungsadresse_land="CH",
         iban="CH9300762011623852957",
         kundennummer=None,
+        bkw_kundennummer=None,
         papierrechnung=False,
+        aktiv=True,
         created_at="",
     )
 
@@ -274,6 +276,26 @@ def _dt(year: int, month: int, day: int):
     from datetime import datetime
 
     return datetime(year, month, day)
+
+
+def test_zuordnung_get_finds_by_id(db):
+    """`get` fetches a single Zuordnung by id, or `None` if unknown."""
+    standort_id = _make_standort(db)
+    person_id = person_repo.create(db, _make_person())
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    zuordnung_id = zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
+        ),
+    )
+
+    found = zuordnung_repo.get(db, zuordnung_id)
+    assert found is not None
+    assert found.person_id == person_id
+
+    assert zuordnung_repo.get(db, zuordnung_id + 999) is None
 
 
 def test_find_warnings_detects_gap(db):
@@ -507,8 +529,8 @@ def test_messpunkt_pv_and_batterie_fields_roundtrip(db):
     assert updated.batteriespeicher_kwh is None
 
 
-def test_person_delete_raises_when_billing_history_exists(db):
-    """A Person with a billing_run_items record cannot be deleted (accounting trail)."""
+def test_person_delete_deactivates_when_billing_history_exists(db):
+    """A Person with a billing_run_items record is deactivated, not deleted (accounting trail)."""
     leg_id = leg_repo.create(db, _make_leg())
     person_id = person_repo.create(db, _make_person())
     run_id = billing_run_repo.create_run(
@@ -530,14 +552,20 @@ def test_person_delete_raises_when_billing_history_exists(db):
         ],
     )
 
-    with pytest.raises(PersonInUseError):
-        person_repo.delete(db, person_id)
-    # The person must still exist -- the failed delete is not half-applied.
-    assert person_repo.get(db, person_id) is not None
+    deleted = person_repo.delete(db, person_id)
+    assert deleted is False
+    # The person and their Kundennummer/history must still exist, just inactive.
+    person = person_repo.get(db, person_id)
+    assert person is not None
+    assert person.aktiv is False
+
+    person_repo.set_aktiv(db, person_id, True)
+    assert person_repo.get(db, person_id).aktiv is True
 
 
 def test_person_delete_succeeds_without_billing_history(db):
     """A Person with no billing history can be deleted normally."""
     person_id = person_repo.create(db, _make_person())
-    person_repo.delete(db, person_id)
+    deleted = person_repo.delete(db, person_id)
+    assert deleted is True
     assert person_repo.get(db, person_id) is None

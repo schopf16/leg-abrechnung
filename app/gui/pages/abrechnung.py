@@ -38,7 +38,7 @@ def abrechnung_page() -> None:
     Returns:
         None.
     """
-    with page_frame("/abrechnung", "Abrechnung"):
+    with page_frame("/abrechnung", "Rechnungslauf"):
         ui.label(
             "Berechnet die lokale Verteilung und erzeugt Rechnungen/"
             "Gutschriften je Person für ein Quartal, innerhalb einer LEG. "

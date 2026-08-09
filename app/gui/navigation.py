@@ -6,25 +6,64 @@ every screen.
 """
 
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, Optional
 
 from nicegui import ui
 
-#: (route, label) pairs shown in the side navigation, in display order.
-NAV_ITEMS = [
-    ("/", "Übersicht"),
-    ("/personen", "Personen"),
-    ("/messpunkte", "Messpunkte"),
-    ("/standorte", "Standorte"),
-    ("/trafokreise", "Trafokreise"),
-    ("/legs", "LEGs"),
-    ("/zuordnungen", "Zuordnungen"),
-    ("/import", "Import"),
-    ("/abrechnung", "Abrechnung"),
-    ("/auswertungen", "Auswertungen"),
-    ("/einstellungen", "Einstellungen"),
-    ("/backup", "Backup"),
+#: Side navigation, grouped by where each page sits in the actual
+#: workflow (master data -> billing -> analysis -> configuration) rather
+#: than the chronological order pages were added in. Each entry is
+#: ``(group_label, [(route, label), ...])``; ``group_label`` of ``None``
+#: renders its items without a collapsible section (used for the single
+#: top-level "Übersicht" entry).
+NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
+    (None, [("/", "Übersicht")]),
+    (
+        "Verwaltung",
+        [
+            ("/trafokreise", "Trafokreise"),
+            ("/standorte", "Standorte"),
+            ("/legs", "LEGs"),
+            ("/messpunkte", "Messpunkte"),
+            ("/personen", "Personen"),
+            ("/zuordnungen", "Zuordnungen"),
+        ],
+    ),
+    (
+        "Abrechnung",
+        [
+            ("/import", "Import"),
+            ("/abrechnung", "Rechnungslauf"),
+            ("/auswertungen", "Auswertungen"),
+        ],
+    ),
+    ("Statistik", [("/statistik", "Statistik")]),
+    (
+        "Einstellungen",
+        [
+            ("/einstellungen", "Stammdaten"),
+            ("/backup", "Backup"),
+        ],
+    ),
 ]
+
+
+def _nav_link(route: str, label: str, active_route: str, *, indent: bool) -> None:
+    """Render one navigation link, highlighted if it matches the current page.
+
+    Args:
+        route: Target route path.
+        label: Visible link text.
+        active_route: Route path of the currently shown page.
+        indent: Whether to indent the link (used for links inside a
+            collapsible group, as opposed to the top-level "Übersicht").
+
+    Returns:
+        None.
+    """
+    classes = "w-full" + (" leg-nav-active text-primary" if route == active_route else "")
+    padding = "6px 12px 6px 28px" if indent else "6px 12px"
+    ui.link(label, route).classes(classes).style(f"display:block; padding:{padding};")
 
 
 @contextmanager
@@ -43,6 +82,8 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
     ui.add_head_html(
         "<style>"
         ".leg-nav-active { font-weight: 700; }"
+        ".leg-nav-group .q-item { padding: 6px 12px; min-height: 0; }"
+        ".leg-nav-group .q-item__label { font-size: 13px; font-weight: 600; }"
         "</style>"
     )
     ui.page_title(f"LEG-Abrechnung – {title}")
@@ -51,10 +92,19 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
         ui.label("LEG-Abrechnung").classes("text-lg font-bold")
         ui.label(title).classes("text-md")
 
-    with ui.left_drawer(fixed=True).classes("bg-grey-1").props("width=220"):
-        for route, label in NAV_ITEMS:
-            classes = "w-full" + (" leg-nav-active text-primary" if route == active_route else "")
-            ui.link(label, route).classes(classes).style("display:block; padding:6px 0;")
+    with ui.left_drawer(fixed=True).classes("bg-grey-1 q-pa-none").props("width=240"):
+        for group_label, items in NAV_GROUPS:
+            if group_label is None:
+                for route, label in items:
+                    _nav_link(route, label, active_route, indent=False)
+                continue
+
+            is_active_group = any(route == active_route for route, _ in items)
+            with ui.expansion(group_label, value=is_active_group).classes(
+                "w-full leg-nav-group"
+            ).props("dense"):
+                for route, label in items:
+                    _nav_link(route, label, active_route, indent=True)
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4") as content:
         yield content

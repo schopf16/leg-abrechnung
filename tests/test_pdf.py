@@ -101,7 +101,7 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
         id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
-        kundennummer=12345678, papierrechnung=False, created_at="",
+        kundennummer=12345678, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
 
@@ -137,7 +137,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
         id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
         rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
         rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
-        kundennummer=12345678, papierrechnung=False, created_at="",
+        kundennummer=12345678, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
     bill = build_qr_bill(settings, leg, person, Decimal("10.00"), ref)

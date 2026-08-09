@@ -33,7 +33,7 @@ def _person(db, name: str = "P") -> int:
             kontakt_email="", kontakt_telefon="",
             rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
             rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, papierrechnung=False, created_at="",
+            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
         ),
     )
 

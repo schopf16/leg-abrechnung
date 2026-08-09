@@ -21,7 +21,7 @@ from typing import Optional
 #: Selectable values for `Person.anrede` (salutation of the natural person
 #: -- the standalone individual, or the named contact at a company), used
 #: on billing documents. Empty string means "no salutation known".
-ANREDE_OPTIONS = ["Herr", "Frau"]
+ANREDE_OPTIONS = ["Herr", "Frau", "Familie"]
 
 #: Digit range for `generate_kundennummer` -- always exactly 8 digits.
 _KUNDENNUMMER_MIN = 10_000_000
@@ -57,9 +57,16 @@ class Person:
             creation (see `generate_kundennummer`) and never editable
             afterwards. Deliberately random rather than sequential so it
             cannot be used to infer customer count or registration order.
+        bkw_kundennummer: The customer number BKW itself assigns to this
+            person, entered manually (unlike `kundennummer`, which this
+            app generates itself), or `None` if not known yet.
         papierrechnung: Whether this person receives a paper invoice by
             post (incurs the flat `LegSettings.papierrechnung_rappen` fee)
             rather than an electronic one.
+        aktiv: Whether this person is active. Set to `False` instead of
+            deleting when billing history exists (see `delete`) -- an
+            inactive person is kept for accounting/statistics but hidden
+            from selection for new Zuordnungen.
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -77,7 +84,9 @@ class Person:
     rechnungsadresse_land: str
     iban: str
     kundennummer: Optional[int]
+    bkw_kundennummer: Optional[int]
     papierrechnung: bool
+    aktiv: bool
     created_at: str
 
     @property
@@ -169,7 +178,9 @@ class Person:
             rechnungsadresse_land=row["rechnungsadresse_land"],
             iban=row["iban"],
             kundennummer=row["kundennummer"],
+            bkw_kundennummer=row["bkw_kundennummer"],
             papierrechnung=bool(row["papierrechnung"]),
+            aktiv=bool(row["aktiv"]),
             created_at=row["created_at"],
         )
 
@@ -262,8 +273,9 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
         INSERT INTO person
             (anrede, firma, vorname, nachname, kontakt_email, kontakt_telefon,
              rechnungsadresse_strasse, rechnungsadresse_hausnummer, rechnungsadresse_plz,
-             rechnungsadresse_ort, rechnungsadresse_land, iban, kundennummer, papierrechnung, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             rechnungsadresse_ort, rechnungsadresse_land, iban, kundennummer, bkw_kundennummer,
+             papierrechnung, aktiv, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             person.anrede,
@@ -279,7 +291,9 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
             person.rechnungsadresse_land,
             person.iban,
             kundennummer,
+            person.bkw_kundennummer,
             person.papierrechnung,
+            True,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -311,7 +325,7 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
             anrede = ?, firma = ?, vorname = ?, nachname = ?, kontakt_email = ?,
             kontakt_telefon = ?, rechnungsadresse_strasse = ?, rechnungsadresse_hausnummer = ?,
             rechnungsadresse_plz = ?, rechnungsadresse_ort = ?, rechnungsadresse_land = ?, iban = ?,
-            papierrechnung = ?
+            bkw_kundennummer = ?, papierrechnung = ?
         WHERE id = ?
         """,
         (
@@ -327,6 +341,7 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
             person.rechnungsadresse_ort,
             person.rechnungsadresse_land,
             person.iban,
+            person.bkw_kundennummer,
             person.papierrechnung,
             person.id,
         ),
@@ -334,40 +349,50 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
     connection.commit()
 
 
-class PersonInUseError(Exception):
-    """Raised when deleting a Person that still has billing history.
+def set_aktiv(connection: sqlite3.Connection, person_id: int, aktiv: bool) -> None:
+    """Activate or deactivate a Person, without touching any other field.
+
+    Args:
+        connection: Open SQLite connection.
+        person_id: Primary key of the person.
+        aktiv: New active state.
+
+    Returns:
+        None.
+    """
+    connection.execute("UPDATE person SET aktiv = ? WHERE id = ?", (aktiv, person_id))
+    connection.commit()
+
+
+def delete(connection: sqlite3.Connection, person_id: int) -> bool:
+    """Delete a Person, or deactivate them if billing history blocks deletion.
 
     `billing_run_items.person_id` is `ON DELETE RESTRICT` deliberately --
     once a person has been billed, that record is part of the accounting
-    trail and must never silently lose its person reference.
-    """
+    trail and must never silently lose its person reference. Rather than
+    surface that as a dead end, a person who cannot be deleted is instead
+    deactivated (`aktiv = 0`): their Kundennummer and history stay intact
+    for accounting/statistics, but they no longer appear as a selectable
+    option for new Zuordnungen. A genuinely new person (even one with the
+    "same" name) always gets a fresh, independent Kundennummer -- see
+    `create`.
 
-
-def delete(connection: sqlite3.Connection, person_id: int) -> None:
-    """Delete a Person.
-
-    Messpunkte remain untouched; any of the person's Zuordnungen are
-    removed via `ON DELETE CASCADE`.
+    Messpunkte remain untouched when a person is actually deleted; any of
+    their Zuordnungen are removed via `ON DELETE CASCADE`.
 
     Args:
         connection: Open SQLite connection.
         person_id: Primary key of the person to delete.
 
     Returns:
-        None.
-
-    Raises:
-        PersonInUseError: If the person still has one or more billing run
-            items (i.e. was ever included in a billing run) -- those
-            records are kept for accounting purposes and block deletion.
+        `True` if the person was permanently deleted, `False` if they
+        were deactivated instead because billing history exists.
     """
     try:
         connection.execute("DELETE FROM person WHERE id = ?", (person_id,))
         connection.commit()
-    except sqlite3.IntegrityError as exc:
+        return True
+    except sqlite3.IntegrityError:
         connection.rollback()
-        raise PersonInUseError(
-            "Person kann nicht gelöscht werden: es bestehen bereits "
-            "Abrechnungsbelege für diese Person (Buchhaltungs-/"
-            "Revisionssicherheit)."
-        ) from exc
+        set_aktiv(connection, person_id, False)
+        return False

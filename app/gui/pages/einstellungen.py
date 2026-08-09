@@ -19,7 +19,7 @@ def einstellungen_page() -> None:
     Returns:
         None.
     """
-    with page_frame("/einstellungen", "Einstellungen"):
+    with page_frame("/einstellungen", "Stammdaten"):
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
 
