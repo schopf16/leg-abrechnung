@@ -7,11 +7,14 @@ from datetime import date, datetime, timedelta
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
+    check_onboarding_progress,
     check_reading_completeness,
 )
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import person_onboarding as person_onboarding_repo
+from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
@@ -194,3 +197,62 @@ def test_check_leg_assignment_ignores_other_messpunkte_with_leg(db):
     _messpunkt(db, "CH-A", standort, leg_id=leg_id)
 
     assert check_leg_assignment(db) == []
+
+
+def test_check_onboarding_progress_flags_overdue_step(db):
+    """An onboarding stuck for longer than the (default 30-day) threshold is flagged."""
+    person_id = _person(db, "Overdue")
+    person_onboarding_repo.start_for_person(
+        db, person_id, angemeldet_am=date.today() - timedelta(days=40)
+    )
+
+    warnings = check_onboarding_progress(db)
+    assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
+    assert "Overdue" in warnings[0].message
+
+
+def test_check_onboarding_progress_ignores_step_within_threshold(db):
+    """An onboarding well within the threshold produces no warning."""
+    person_id = _person(db, "OnTrack")
+    person_onboarding_repo.start_for_person(
+        db, person_id, angemeldet_am=date.today() - timedelta(days=5)
+    )
+
+    assert check_onboarding_progress(db) == []
+
+
+def test_check_onboarding_progress_ignores_completed_onboarding(db):
+    """A fully completed onboarding is never flagged, however old it is."""
+    person_id = _person(db, "Done")
+    onboarding = person_onboarding_repo.start_for_person(
+        db, person_id, angemeldet_am=date.today() - timedelta(days=100)
+    )
+    onboarding.leg_zugewiesen_am = date.today() - timedelta(days=90)
+    onboarding.vertrag_unterzeichnet_am = date.today() - timedelta(days=80)
+    onboarding.bkw_angemeldet_am = date.today() - timedelta(days=70)
+    onboarding.bkw_bestaetigt_am = date.today() - timedelta(days=60)
+    person_onboarding_repo.update(db, onboarding)
+
+    assert check_onboarding_progress(db) == []
+
+
+def test_check_onboarding_progress_respects_configurable_threshold(db):
+    """A lowered threshold flags an onboarding that the default would not."""
+    person_id = _person(db, "Custom")
+    person_onboarding_repo.start_for_person(
+        db, person_id, angemeldet_am=date.today() - timedelta(days=10)
+    )
+    assert check_onboarding_progress(db) == []  # still fine at the default 30 days
+
+    settings = settings_repo.get_settings(db)
+    settings.onboarding_ueberfaellig_tage = 5
+    settings_repo.update_settings(db, settings)
+
+    warnings = check_onboarding_progress(db)
+    assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
+
+
+def test_check_onboarding_progress_ignores_person_without_tracker(db):
+    """A person never routed through the onboarding pipeline is never flagged."""
+    _person(db, "NoTracker")
+    assert check_onboarding_progress(db) == []

@@ -17,11 +17,15 @@ from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form
+from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import person_onboarding as person_onboarding_repo
+from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
@@ -33,6 +37,51 @@ MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
 }
 
+
+def _copy_kundennummer(person: Person) -> None:
+    """Copy a person's formatted Kundennummer to the clipboard and confirm.
+
+    Args:
+        person: Person whose Kundennummer to copy.
+
+    Returns:
+        None.
+    """
+    ui.clipboard.write(person.kundennummer_formatiert)
+    safe_notify("Kundennummer kopiert.")
+
+
+def _kundennummer_row(person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6") -> None:
+    """Render the Kunden-Nr. label with an inline copy-to-clipboard button.
+
+    Args:
+        person: Person whose Kundennummer to show.
+        label: Text preceding the formatted number (e.g. "Kunden-Nr." or
+            "Kunden-Nr.:", to match the two slightly different label
+            styles used on the list and detail pages).
+        classes: CSS classes applied to the label itself.
+
+    Returns:
+        None.
+    """
+    with ui.row().classes("items-center gap-1"):
+        ui.label(f"{label} {person.kundennummer_formatiert}").classes(classes)
+        ui.button(icon="content_copy", on_click=lambda: _copy_kundennummer(person)).props(
+            "dense flat size=sm"
+        ).tooltip("Kundennummer kopieren")
+
+
+#: `(label, field)` pairs for the printed table.
+PRINT_COLUMNS = [
+    ("Kunden-Nr.", "kundennummer"),
+    ("Name", "name"),
+    ("E-Mail", "email"),
+    ("Telefon", "telefon"),
+    ("Rechnungsadresse", "adresse"),
+    ("IBAN", "iban"),
+    ("Status", "status"),
+]
+
 DETAIL_COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt", "field": "messpunkt_bezeichnung", "align": "left"},
     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
@@ -42,6 +91,29 @@ DETAIL_COLUMNS = [
     {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left"},
     {"name": "gueltig_bis", "label": "Gültig bis", "field": "gueltig_bis", "align": "left"},
 ]
+
+
+def _print_row(person: Person) -> dict:
+    """Convert a `Person` into a row dict for the printed table.
+
+    Args:
+        person: Person to convert.
+
+    Returns:
+        A dict with the fields required by `PRINT_COLUMNS`.
+    """
+    return {
+        "kundennummer": person.kundennummer_formatiert,
+        "name": person.anzeige_name,
+        "email": person.kontakt_email,
+        "telefon": person.kontakt_telefon,
+        "adresse": (
+            f"{person.rechnungsadresse_strasse_vollstaendig}, "
+            f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}"
+        ),
+        "iban": format_iban(person.iban) if person.iban else "",
+        "status": "Aktiv" if person.aktiv else "Inaktiv",
+    }
 
 
 def _search_text_for_person(connection, person: Person) -> str:
@@ -69,6 +141,10 @@ def _search_text_for_person(connection, person: Person) -> str:
         person.rechnungsadresse_plz,
         person.rechnungsadresse_ort,
         person.kundennummer_formatiert,
+        # Also index the Kundennummer without its grouping space, so a
+        # search entered without spaces (e.g. pasted from elsewhere) still
+        # matches the formatted "XXX XXX" display value.
+        str(person.kundennummer) if person.kundennummer is not None else "",
         str(person.bkw_kundennummer) if person.bkw_kundennummer is not None else "",
     ]
     for z in zuordnung_repo.list_for_person(connection, person.id):
@@ -97,9 +173,16 @@ def personen_page() -> None:
                 "erfolgt unter „Zuordnungen“. Die Kunden-Nr. wird beim "
                 "Anlegen automatisch und eindeutig vergeben."
             ).classes("text-body2 text-grey-8")
-            ui.button(
-                "+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh())
-            ).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="Personen",
+                    get_columns=lambda: PRINT_COLUMNS,
+                    get_rows=lambda: [_print_row(p) for p in visible_persons],
+                    get_filter_description=lambda: _filter_description(),
+                )
+                ui.button(
+                    "+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh())
+                )
 
         with ui.row().classes("w-full items-center gap-4"):
             search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
@@ -110,6 +193,20 @@ def personen_page() -> None:
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_entries: list[tuple[Person, str]] = []
+        visible_persons: list[Person] = []
+
+        def _filter_description() -> str | None:
+            """Build a short description of the currently active search/filter.
+
+            Returns:
+                A human-readable summary, or `None` if no filter is active.
+            """
+            parts = []
+            if search_input.value:
+                parts.append(f'Suche: "{search_input.value.strip()}"')
+            if show_inactive_switch.value:
+                parts.append("inkl. deaktivierte Personen")
+            return ", ".join(parts) if parts else None
 
         def render_card(person: Person) -> None:
             """Render one Person as a card with wrapping field groups.
@@ -127,9 +224,7 @@ def personen_page() -> None:
                             ui.label(person.anzeige_name).classes("font-bold")
                             if not person.aktiv:
                                 ui.badge("Inaktiv", color="grey")
-                        ui.label(f"Kunden-Nr. {person.kundennummer_formatiert}").classes(
-                            "text-caption text-grey-6"
-                        )
+                        _kundennummer_row(person)
                         if person.bkw_kundennummer is not None:
                             ui.label(f"BKW-Kunden-Nr. {person.bkw_kundennummer}").classes(
                                 "text-caption text-grey-6"
@@ -168,14 +263,17 @@ def personen_page() -> None:
             Returns:
                 None.
             """
+            nonlocal visible_persons
             needle = (search_input.value or "").strip().lower()
+            visible_persons = [
+                person
+                for person, search_text in all_entries
+                if (person.aktiv or show_inactive_switch.value) and (not needle or needle in search_text)
+            ]
             list_container.clear()
             with list_container:
-                for person, search_text in all_entries:
-                    if not person.aktiv and not show_inactive_switch.value:
-                        continue
-                    if not needle or needle in search_text:
-                        render_card(person)
+                for person in visible_persons:
+                    render_card(person)
 
         def refresh() -> None:
             """Reload all persons from the database and re-apply the filter.
@@ -302,7 +400,7 @@ def person_detail_page(person_id: int) -> None:
         with ui.card().classes("w-full max-w-lg"):
             if not person.aktiv:
                 ui.label("Status: Inaktiv (deaktiviert)").classes("text-negative")
-            ui.label(f"Kunden-Nr.: {person.kundennummer_formatiert}")
+            _kundennummer_row(person, label="Kunden-Nr.:", classes="")
             if person.bkw_kundennummer is not None:
                 ui.label(f"BKW-Kundennummer: {person.bkw_kundennummer}")
             if person.firma:
@@ -319,6 +417,41 @@ def person_detail_page(person_id: int) -> None:
             )
             ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
             ui.label(f"Papierrechnung: {'ja' if person.papierrechnung else 'nein'}")
+
+        with connection_scope() as connection:
+            onboarding = person_onboarding_repo.get_by_person(connection, person_id)
+            onboarding_threshold = settings_repo.get_settings(connection).onboarding_ueberfaellig_tage
+
+        if onboarding is not None:
+            ui.label("Aufnahmeprozess").classes("text-lg font-bold mt-6")
+            onboarding_card = ui.column().classes("w-full max-w-lg")
+
+            def render_onboarding_status() -> None:
+                """(Re-)render the onboarding status card from the current
+                (possibly just-edited) `onboarding` object.
+
+                Returns:
+                    None.
+                """
+                onboarding_card.clear()
+                with onboarding_card, ui.card().classes("w-full"):
+                    if onboarding.is_complete:
+                        ui.label("✓ Abgeschlossen").classes("text-positive")
+                    else:
+                        _, step_label = onboarding.current_step
+                        overdue = onboarding.is_overdue(onboarding_threshold)
+                        ui.label(
+                            f"Aktueller Schritt: {step_label} "
+                            f"(seit {onboarding.days_open()} Tagen)"
+                        ).classes("text-negative" if overdue else "")
+                    ui.button(
+                        "Bearbeiten",
+                        on_click=lambda: open_onboarding_form(
+                            onboarding, person, on_saved=lambda _: render_onboarding_status()
+                        ),
+                    ).props("dense flat").classes("mt-2")
+
+            render_onboarding_status()
 
         ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")

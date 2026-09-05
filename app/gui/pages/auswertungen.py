@@ -9,6 +9,7 @@ from app.domain.period import list_available_periods
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
+    check_onboarding_progress,
     check_reading_completeness,
 )
 from app.gui.navigation import page_frame
@@ -22,6 +23,7 @@ CATEGORY_LABELS = {
     "zuordnung_luecke": "Lücke in Zuordnung",
     "messdaten_luecke": "Lücke in Messdaten",
     "leg_nicht_zugeordnet": "Messpunkt ohne LEG",
+    "aufnahme_ueberfaellig": "Aufnahme überfällig",
 }
 
 
@@ -105,6 +107,7 @@ def auswertungen_page() -> None:
                 assignment_warnings = check_assignment_consistency(connection)
                 completeness_warnings = check_reading_completeness(connection, year, quarter)
                 leg_warnings = check_leg_assignment(connection)
+                onboarding_warnings = check_onboarding_progress(connection)
 
             overview_column.clear()
             with overview_column:
@@ -176,7 +179,9 @@ def auswertungen_page() -> None:
             warnings_column.clear()
             with warnings_column:
                 ui.label("Plausibilitätsprüfungen").classes("text-lg font-bold")
-                all_warnings = assignment_warnings + completeness_warnings + leg_warnings
+                all_warnings = (
+                    assignment_warnings + completeness_warnings + leg_warnings + onboarding_warnings
+                )
                 if not all_warnings:
                     ui.label("✓ Keine Auffälligkeiten gefunden.").classes("text-positive")
                 else:

@@ -51,9 +51,9 @@ def _submission(
     )
 
 
-def test_migration_18_creates_web_registration_tables_and_cursor(db):
-    """A fresh database (migrated by the `db` fixture) has the new tables/column."""
-    assert get_schema_version(db) == 18
+def test_migrations_18_and_19_create_web_registration_tables_and_columns(db):
+    """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
+    assert get_schema_version(db) == 21
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -86,6 +86,70 @@ def test_mark_reviewed_is_idempotent(db):
     reviewed = web_registration_repo.get(db, reg_id)
     assert reviewed.needs_review is False
     assert reviewed.reviewed_at is not None
+
+
+def test_mark_person_created_is_idempotent(db):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
+        sync_registrations(db, "token")
+    reg_id = web_registration_repo.list_all(db)[0].id
+    assert web_registration_repo.get(db, reg_id).person_created is False
+
+    web_registration_repo.mark_person_created(db, reg_id)
+    web_registration_repo.mark_person_created(db, reg_id)
+
+    assert web_registration_repo.get(db, reg_id).person_created is True
+
+
+def test_mark_person_created_is_independent_of_mark_reviewed(db):
+    """person_created must survive being unrelated to needs_review/reviewed_at."""
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
+        sync_registrations(db, "token")
+    reg_id = web_registration_repo.list_all(db)[0].id
+
+    web_registration_repo.mark_person_created(db, reg_id)
+    reg = web_registration_repo.get(db, reg_id)
+    assert reg.person_created is True
+    # mark_reviewed alone (the "dismiss without taking over" path) must
+    # never set person_created on its own.
+    assert reg.needs_review is True
+
+    web_registration_repo.mark_reviewed(db, reg_id)
+    still_created = web_registration_repo.get(db, reg_id)
+    assert still_created.person_created is True
+    assert still_created.needs_review is False
+
+
+def test_person_created_survives_a_content_update_via_upsert(db):
+    """A repeat submission with changed content must not reset person_created."""
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="p@example.ch", telefon="111")], []]):
+        sync_registrations(db, "token")
+    reg = web_registration_repo.get_by_email(db, "p@example.ch")
+    web_registration_repo.mark_person_created(db, reg.id)
+
+    with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="p@example.ch", telefon="222")], []]):
+        result = sync_registrations(db, "token")
+
+    assert result.aktualisiert == 1
+    updated = web_registration_repo.get_by_email(db, "p@example.ch")
+    assert updated.telefon == "222"
+    assert updated.person_created is True
+
+
+def test_delete_removes_registration_and_its_meters(db):
+    meters = [("CH-X", "PV")]
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="del@example.ch", meters=meters)], []]):
+        sync_registrations(db, "token")
+    reg = web_registration_repo.get_by_email(db, "del@example.ch")
+    assert db.execute(
+        "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
+    ).fetchone()[0] == 1
+
+    web_registration_repo.delete(db, reg.id)
+
+    assert web_registration_repo.get(db, reg.id) is None
+    assert db.execute(
+        "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
+    ).fetchone()[0] == 0
 
 
 def test_sync_registrations_creates_new_row_needing_review(db):

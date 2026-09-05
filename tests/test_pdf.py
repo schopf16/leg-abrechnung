@@ -79,10 +79,13 @@ def _billing_context(db):
 
 
 def test_generate_qrr_reference_is_unique_per_item():
-    """Different item ids produce different, valid-length references."""
+    """Different item ids produce different, valid ESR references."""
+    from stdnum.ch import esr
+
     ref1 = generate_qrr_reference(1, 1, 1)
     ref2 = generate_qrr_reference(1, 1, 2)
-    assert len(ref1) == 27
+    assert esr.is_valid(ref1)
+    assert esr.is_valid(ref2)
     assert ref1 != ref2
 
 
@@ -97,6 +100,7 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
+        onboarding_ueberfaellig_tage=30,
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
@@ -135,6 +139,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
+        onboarding_ueberfaellig_tage=30,
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")

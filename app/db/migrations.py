@@ -721,4 +721,66 @@ MIGRATIONS: list[Migration] = [
             CREATE INDEX idx_web_registration_meter_registration ON web_registration_meter(web_registration_id);
         """,
     ),
+    Migration(
+        version=19,
+        description="Add web_registration.person_created: whether a Person "
+        "was actually created from this registration via \"Person "
+        "übernehmen\" (see app.gui.pages.web_registrierungen) -- distinct "
+        "from needs_review/reviewed_at, which are also cleared by simply "
+        "dismissing a registration without taking it over. Used to decide "
+        "whether deleting the registration (which also deletes it from "
+        "the remote leg-ittigen.ch Worker database, see app.importers."
+        "cloudflare_client.delete_submissions) needs the strong "
+        "irrevocable-data-loss warning: not needed once the data already "
+        "lives on in a Person record. Purely additive.",
+        sql="""
+            ALTER TABLE web_registration ADD COLUMN person_created INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
+    Migration(
+        version=20,
+        description="Add person_onboarding: tracks a person's progress "
+        "through the five real-world steps between an interested party's "
+        "registration and full LEG membership (Anmeldung bei uns -> "
+        "Einteilung in LEG -> Gesellschaftsvertrag -> Anmeldung bei der "
+        "BKW -> Bestätigung durch die BKW), see app.models.person_onboarding. "
+        "Deliberately a separate, optional table rather than columns on "
+        "person: a tracking row only exists once explicitly started (auto- "
+        "started by \"Person übernehmen\", or manually), so existing "
+        "persons never retroactively appear as having an overdue step. "
+        "Also adds LegSettings.onboarding_ueberfaellig_tage, the "
+        "configurable threshold (default 30 days) for flagging a step as "
+        "open too long. Purely additive.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN onboarding_ueberfaellig_tage INTEGER NOT NULL DEFAULT 30;
+
+            CREATE TABLE person_onboarding (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL UNIQUE REFERENCES person(id) ON DELETE CASCADE,
+                angemeldet_am TEXT,
+                leg_zugewiesen_am TEXT,
+                leg_id INTEGER REFERENCES leg(id) ON DELETE SET NULL,
+                vertrag_unterzeichnet_am TEXT,
+                bkw_angemeldet_am TEXT,
+                bkw_bestaetigt_am TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_person_onboarding_person ON person_onboarding(person_id);
+        """,
+    ),
+    Migration(
+        version=21,
+        description="Shorten Person.kundennummer from 8 to 6 digits (see "
+        "app.models.person.generate_kundennummer), shown in two "
+        "3-digit blocks. Reassigns a fresh, unique 6-digit Kundennummer "
+        "to every already-existing Person -- only ever affects future "
+        "invoices/QR references, never ones already sent out, since "
+        "generate_qrr_reference reads the Kundennummer fresh at PDF "
+        "generation time rather than storing it on past billing rows.",
+        sql="""
+            UPDATE person
+            SET kundennummer = 100000 + (ABS(RANDOM()) % 900000)
+            WHERE kundennummer IS NOT NULL;
+        """,
+    ),
 ]

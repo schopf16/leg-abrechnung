@@ -2,8 +2,10 @@
 
 Covers gaps in the Zuordnung history, missing reading periods, the
 invoice/credit-note sum balance (lives in `app.domain.billing.
-verify_sum_balance`, re-exposed here for a single import point), and
-Messpunkte that have no LEG assigned yet.
+verify_sum_balance`, re-exposed here for a single import point),
+Messpunkte that have no LEG assigned yet, and interested persons whose
+onboarding (`app.models.person_onboarding`) has been stuck on its current
+step for too long.
 """
 
 import sqlite3
@@ -12,6 +14,9 @@ from datetime import datetime, time, timedelta
 
 from app.domain.period import quarter_bounds
 from app.models import messpunkt as messpunkt_repo
+from app.models import person as person_repo
+from app.models import person_onboarding as person_onboarding_repo
+from app.models import settings as settings_repo
 from app.models import zuordnung as zuordnung_repo
 
 #: Expected number of 15-minute readings per Messpunkt per full calendar day.
@@ -24,7 +29,8 @@ class QualityWarning:
 
     Attributes:
         category: One of "zuordnung_ueberlappung", "zuordnung_luecke",
-            "messdaten_luecke" or "leg_nicht_zugeordnet".
+            "messdaten_luecke", "leg_nicht_zugeordnet" or
+            "aufnahme_ueberfaellig".
         message: Human-readable (German) description.
     """
 
@@ -138,6 +144,44 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
             QualityWarning(
                 category="leg_nicht_zugeordnet",
                 message=f"Messpunkt „{messpunkt.messpunkt_bezeichnung}“ hat noch keine zugeordnete LEG.",
+            )
+        )
+
+    return warnings
+
+
+def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag interested persons stuck too long on their current onboarding step.
+
+    "Too long" is `LegSettings.onboarding_ueberfaellig_tage` days (default
+    30) since the current step (see `PersonOnboarding.current_step`)
+    became active -- see `app.models.person_onboarding` for how that
+    reference date is derived. Completed onboardings, and persons never
+    routed through this pipeline at all (no tracker exists), never
+    produce a warning.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A `QualityWarning` per overdue onboarding. Empty if none are overdue.
+    """
+    threshold_days = settings_repo.get_settings(connection).onboarding_ueberfaellig_tage
+    warnings: list[QualityWarning] = []
+    for onboarding in person_onboarding_repo.list_in_progress(connection):
+        if not onboarding.is_overdue(threshold_days):
+            continue
+        person = person_repo.get(connection, onboarding.person_id)
+        person_name = person.anzeige_name if person else f"Person #{onboarding.person_id}"
+        _, step_label = onboarding.current_step
+        warnings.append(
+            QualityWarning(
+                category="aufnahme_ueberfaellig",
+                message=(
+                    f'Aufnahme von "{person_name}" hängt seit '
+                    f"{onboarding.days_open()} Tagen bei Schritt "
+                    f'"{step_label}".'
+                ),
             )
         )
 

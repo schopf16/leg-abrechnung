@@ -12,6 +12,7 @@ from app.domain.messpunkt_validation import (
     validate_messpunkt_bezeichnung,
 )
 from app.gui.navigation import page_frame
+from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
@@ -29,6 +30,19 @@ MESSRICHTUNG_LABELS = {
     MESSRICHTUNG_BEZUG: "Bezug",
     MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
 }
+
+
+#: `(label, field)` pairs for the printed table -- `field` matches the
+#: keys `_to_row` puts into each row dict.
+PRINT_COLUMNS = [
+    ("Messpunkt", "messpunkt_bezeichnung"),
+    ("Messrichtung", "messrichtung"),
+    ("Standort-Adresse", "standort_adresse"),
+    ("LEG", "leg"),
+    ("Zugeordnet", "person"),
+    ("PV-Leistung (kWp)", "pv_leistung_kwp"),
+    ("Batteriespeicher (kWh)", "batteriespeicher_kwh"),
+]
 
 
 def _current_person_name(connection, messpunkt_id: int) -> str:
@@ -106,7 +120,16 @@ def messpunkte_page() -> None:
                 "einen Messpunkt abgerechnet wird, legen Sie unter "
                 "„Zuordnungen“ fest."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None)).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="Messpunkte",
+                    get_columns=lambda: PRINT_COLUMNS,
+                    get_rows=lambda: visible_rows,
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    ),
+                )
+                ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
         search_input = ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)").classes(
             "w-full max-w-md"
@@ -115,6 +138,7 @@ def messpunkte_page() -> None:
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_rows: list[dict] = []
+        visible_rows: list[dict] = []
 
         def render_card(row: dict) -> None:
             """Render one Messpunkt as a card with wrapping field groups.
@@ -158,13 +182,14 @@ def messpunkte_page() -> None:
             Returns:
                 None.
             """
+            nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
+            visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             list_container.clear()
             with list_container:
-                rows = [r for r in all_rows if needle in r["_search"]] if needle else all_rows
-                if not rows:
+                if not visible_rows:
                     ui.label("Keine Messpunkte gefunden.")
-                for row in rows:
+                for row in visible_rows:
                     render_card(row)
 
         def refresh() -> None:

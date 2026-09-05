@@ -107,6 +107,7 @@ def einstellungen_page() -> None:
                     messpunkt_land=current.messpunkt_land,
                     messpunkt_identifikator=current.messpunkt_identifikator,
                     web_registration_cursor=current.web_registration_cursor,
+                    onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -161,6 +162,45 @@ def einstellungen_page() -> None:
                 ui.notify("Messpunkt-Vorgaben gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save_messpunkt_defaults).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("Aufnahmeprozess").classes("text-lg font-bold")
+        ui.label(
+            "Ab wie vielen Tagen ohne Fortschritt beim aktuellen Schritt "
+            "einer Aufnahme (siehe „Aufnahmen“) diese in den Auswertungen "
+            "und auf der Übersicht als überfällig gemeldet wird."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            onboarding_ueberfaellig_tage = ui.number(
+                "Überfällig nach (Tagen)",
+                value=current.onboarding_ueberfaellig_tage,
+                min=1,
+                step=1,
+                format="%.0f",
+            ).classes("w-full")
+            onboarding_error = ui.label("").classes("text-negative")
+
+            def save_onboarding_threshold() -> None:
+                """Validate and persist the onboarding overdue threshold.
+
+                Returns:
+                    None.
+                """
+                if (
+                    onboarding_ueberfaellig_tage.value is None
+                    or onboarding_ueberfaellig_tage.value < 1
+                ):
+                    onboarding_error.text = "Muss mindestens 1 Tag sein."
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.onboarding_ueberfaellig_tage = int(onboarding_ueberfaellig_tage.value)
+                    settings_repo.update_settings(connection, settings)
+                onboarding_error.text = ""
+                ui.notify("Aufnahmeprozess-Einstellung gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_onboarding_threshold).classes("mt-2")
 
         ui.separator().classes("my-6")
 

@@ -9,6 +9,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
+from app.gui.print_list import render_print_button, table_columns
 from app.models import trafokreis as trafokreis_repo
 from app.models.trafokreis import Trafokreis, TrafokreisInUseError
 
@@ -59,7 +60,16 @@ def trafokreise_page() -> None:
                 "„Name“ ist ein frei wählbarer (Pseudo-)Name; die offizielle "
                 "BKW-Nummer gehört ins Feld „BKW-Bezeichnung“."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None)).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="Trafokreise",
+                    get_columns=lambda: table_columns(table),
+                    get_rows=lambda: table.rows,
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    ),
+                )
+                ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
         search_input = ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)").classes(
             "w-full max-w-md"

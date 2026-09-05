@@ -1,10 +1,13 @@
 """Tests for Person/Messpunkt/Zuordnung/Leg/Trafokreis CRUD, consistency
 warnings, and LEG/Trafokreis composition."""
 
+import sqlite3
 from datetime import date
 
 import pytest
 
+import app.db.schema as schema_module
+from app.db.migrations import MIGRATIONS
 from app.domain.leg_composition import compute_leg_composition
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
@@ -177,7 +180,7 @@ def test_person_rechnungsadresse_strasse_vollstaendig_combines_strasse_and_hausn
 
 
 def test_person_kundennummer_is_auto_assigned_and_unique(db):
-    """`create` always assigns a fresh, unique 8-digit Kundennummer."""
+    """`create` always assigns a fresh, unique 6-digit Kundennummer."""
     first_id = person_repo.create(db, _make_person("A"))
     second_id = person_repo.create(db, _make_person("B"))
 
@@ -186,7 +189,7 @@ def test_person_kundennummer_is_auto_assigned_and_unique(db):
 
     assert first.kundennummer is not None
     assert second.kundennummer is not None
-    assert 10_000_000 <= first.kundennummer <= 99_999_999
+    assert 100_000 <= first.kundennummer <= 999_999
     assert first.kundennummer != second.kundennummer
 
 
@@ -212,12 +215,38 @@ def test_person_kundennummer_survives_update(db):
 
 
 def test_person_kundennummer_formatiert_groups_digits(db):
-    """`kundennummer_formatiert` groups the 8 digits as "XX XXX XXX"."""
+    """`kundennummer_formatiert` groups the 6 digits as "XXX XXX"."""
     person_id = person_repo.create(db, _make_person())
     person = person_repo.get(db, person_id)
     formatted = person.kundennummer_formatiert
-    digits = f"{person.kundennummer:08d}"
-    assert formatted == f"{digits[:2]} {digits[2:5]} {digits[5:]}"
+    digits = f"{person.kundennummer:06d}"
+    assert formatted == f"{digits[:3]} {digits[3:]}"
+
+
+def test_migration_21_reassigns_existing_8_digit_kundennummer_to_6_digits(monkeypatch):
+    """Migration 21 gives every pre-existing Person a fresh, unique 6-digit
+    Kundennummer -- simulates a real database that still has old 8-digit
+    numbers from before the format change."""
+    migrations_before_21 = [m for m in MIGRATIONS if m.version < 21]
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+
+    monkeypatch.setattr(schema_module, "MIGRATIONS", migrations_before_21)
+    schema_module.initialize_database(connection)
+
+    person_id = person_repo.create(connection, _make_person("Alt"))
+    connection.execute(
+        "UPDATE person SET kundennummer = 80083138 WHERE id = ?", (person_id,)
+    )
+    connection.commit()
+
+    monkeypatch.setattr(schema_module, "MIGRATIONS", MIGRATIONS)
+    schema_module.migrate_to_latest(connection)
+
+    migrated = person_repo.get(connection, person_id)
+    assert 100_000 <= migrated.kundennummer <= 999_999
+    assert migrated.kundennummer != 80083138
 
 
 def test_messpunkt_rejects_unknown_messrichtung(db):

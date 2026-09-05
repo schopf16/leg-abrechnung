@@ -46,6 +46,9 @@ class LegSettings:
             already fetched from the leg-ittigen.ch registration API --
             see `app.importers.registration_sync`. Managed exclusively by
             that sync, never edited through the settings form.
+        onboarding_ueberfaellig_tage: Number of days a person's current
+            onboarding step (see `app.models.person_onboarding`) may stay
+            open before it is flagged as overdue in the quality checks.
         updated_at: ISO-8601 timestamp of the last update.
     """
 
@@ -61,6 +64,7 @@ class LegSettings:
     messpunkt_land: str
     messpunkt_identifikator: str
     web_registration_cursor: int
+    onboarding_ueberfaellig_tage: int
     updated_at: str
 
     @staticmethod
@@ -86,6 +90,7 @@ class LegSettings:
             messpunkt_land=row["messpunkt_land"],
             messpunkt_identifikator=row["messpunkt_identifikator"],
             web_registration_cursor=row["web_registration_cursor"],
+            onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
             updated_at=row["updated_at"],
         )
 
@@ -129,7 +134,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             verwaltungsaufwand_rp_per_kwh = ?, papierrechnung_rappen = ?,
             extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
-            web_registration_cursor = ?, updated_at = ?
+            web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?, updated_at = ?
         WHERE id = 1
         """,
         (
@@ -145,6 +150,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.messpunkt_land,
             settings.messpunkt_identifikator,
             settings.web_registration_cursor,
+            settings.onboarding_ueberfaellig_tage,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

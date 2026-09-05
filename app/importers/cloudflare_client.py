@@ -134,6 +134,60 @@ def fetch_new_registrations(since: int, token: str) -> list[RegistrationSubmissi
     ]
 
 
+def delete_submissions(ids: list[int], token: str) -> int:
+    """Delete submissions from the leg-ittigen.ch Worker database by id.
+
+    This is a genuine, irrevocable delete on the remote D1 database --
+    there is no undo. See `app.gui.pages.web_registrierungen.on_delete`
+    for the confirmation flow built around this.
+
+    Args:
+        ids: Cloudflare submission ids to delete (`WebRegistration.
+            cloudflare_id`, not the local `web_registration.id`).
+        token: Bearer token for the API (see `app.config.get_leg_api_token`).
+
+    Returns:
+        The number of submissions actually deleted, as reported by the
+        API (0 if `ids` is empty -- no request is made in that case).
+
+    Raises:
+        CloudflareAuthError: If the token is missing or invalid (HTTP 401).
+        CloudflareApiError: For any other network or HTTP failure, or an
+            unparseable response body.
+    """
+    if not ids:
+        return 0
+
+    try:
+        response = httpx.request(
+            "DELETE",
+            f"{API_BASE_URL}/submissions",
+            json={"ids": ids},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+    except httpx.RequestError as exc:
+        raise CloudflareApiError(f"Registrierungs-API nicht erreichbar: {exc}") from exc
+
+    if response.status_code == 401:
+        raise CloudflareAuthError(
+            "Registrierungs-API hat den Zugriff verweigert (401) -- "
+            "API-Token in config.local.json prüfen."
+        )
+    if response.status_code != 200:
+        raise CloudflareApiError(
+            f"Registrierungs-API antwortete mit Status {response.status_code}: "
+            f"{response.text[:200]}"
+        )
+
+    try:
+        return response.json()["deleted"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise CloudflareApiError(
+            f"Registrierungs-API lieferte keine gültige Löschbestätigung: {exc}"
+        ) from exc
+
+
 def _to_meters(raw_meters: object) -> list[tuple[str, str]]:
     """Parse the `meters` list of one submission's payload.
 

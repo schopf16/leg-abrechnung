@@ -13,12 +13,17 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
-from app.domain.quality_checks import check_assignment_consistency, check_leg_assignment
+from app.domain.quality_checks import (
+    check_assignment_consistency,
+    check_leg_assignment,
+    check_onboarding_progress,
+)
 from app.gui.navigation import page_frame
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
@@ -33,9 +38,10 @@ def _load_overview(connection) -> dict:
 
     Returns:
         A dict with "counts" (headline numbers), "action_items" (German
-        warning strings needing attention), "legs" (per-LEG summary rows)
-        and "offene_registrierungen" (count of unreviewed Web-Registrierungen)
-        keys.
+        warning strings needing attention), "legs" (per-LEG summary rows),
+        "offene_registrierungen" (count of unreviewed Web-Registrierungen)
+        and "offene_aufnahmen" (count of in-progress onboarding trackers,
+        see `app.models.person_onboarding`) keys.
     """
     trafokreise = trafokreis_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
@@ -45,6 +51,7 @@ def _load_overview(connection) -> dict:
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
     offene_registrierungen = len(web_registration_repo.list_needs_review(connection))
+    offene_aufnahmen = len(person_onboarding_repo.list_in_progress(connection))
 
     action_items: list[str] = []
     if not settings.qr_iban.strip():
@@ -58,6 +65,8 @@ def _load_overview(connection) -> dict:
     for warning in check_assignment_consistency(connection):
         action_items.append(warning.message)
     for warning in check_leg_assignment(connection):
+        action_items.append(warning.message)
+    for warning in check_onboarding_progress(connection):
         action_items.append(warning.message)
 
     leg_rows = []
@@ -95,6 +104,7 @@ def _load_overview(connection) -> dict:
         "action_items": action_items,
         "legs": leg_rows,
         "offene_registrierungen": offene_registrierungen,
+        "offene_aufnahmen": offene_aufnahmen,
     }
 
 
@@ -126,6 +136,12 @@ def dashboard_page() -> None:
                     ui.link("→ Zu den Web-Registrierungen", "/web-registrierungen").classes(
                         "text-body2"
                     )
+            if overview["offene_aufnahmen"]:
+                with ui.row().classes("items-center gap-2"):
+                    ui.label(
+                        f"📋 {overview['offene_aufnahmen']} Aufnahme(n) in Bearbeitung."
+                    ).classes("text-body2")
+                    ui.link("→ Zu den Aufnahmen", "/aufnahmen").classes("text-body2")
             if not has_issues:
                 ui.label("✓ Keine offenen Punkte.").classes("text-body2")
 

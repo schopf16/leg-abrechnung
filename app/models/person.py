@@ -23,9 +23,9 @@ from typing import Optional
 #: on billing documents. Empty string means "no salutation known".
 ANREDE_OPTIONS = ["Herr", "Frau", "Familie"]
 
-#: Digit range for `generate_kundennummer` -- always exactly 8 digits.
-_KUNDENNUMMER_MIN = 10_000_000
-_KUNDENNUMMER_MAX = 99_999_999
+#: Digit range for `generate_kundennummer` -- always exactly 6 digits.
+_KUNDENNUMMER_MIN = 100_000
+_KUNDENNUMMER_MAX = 999_999
 
 
 @dataclass
@@ -53,7 +53,7 @@ class Person:
         rechnungsadresse_ort: Billing address city.
         rechnungsadresse_land: Billing address ISO-3166 alpha-2 country code.
         iban: Bank IBAN used for credit note payouts.
-        kundennummer: An 8-digit customer number, auto-assigned at
+        kundennummer: A 6-digit customer number, auto-assigned at
             creation (see `generate_kundennummer`) and never editable
             afterwards. Deliberately random rather than sequential so it
             cannot be used to infer customer count or registration order.
@@ -142,16 +142,16 @@ class Person:
 
     @property
     def kundennummer_formatiert(self) -> str:
-        """The Kundennummer grouped for display, e.g. `"80 083 138"`.
+        """The Kundennummer grouped for display, e.g. `"083 138"`.
 
         Returns:
-            The 8-digit number as `"XX XXX XXX"`, or `""` if not yet
+            The 6-digit number as `"XXX XXX"`, or `""` if not yet
             assigned (should not normally happen for a persisted Person).
         """
         if self.kundennummer is None:
             return ""
-        digits = f"{self.kundennummer:08d}"
-        return f"{digits[:2]} {digits[2:5]} {digits[5:]}"
+        digits = f"{self.kundennummer:06d}"
+        return f"{digits[:3]} {digits[3:]}"
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Person":
@@ -236,18 +236,17 @@ def get_by_kundennummer(connection: sqlite3.Connection, kundennummer: int) -> Op
 
 
 def generate_kundennummer(connection: sqlite3.Connection) -> int:
-    """Generate a random, unique 8-digit Kundennummer.
+    """Generate a random, unique 6-digit Kundennummer.
 
-    Deliberately random rather than sequential (retried on the
-    astronomically unlikely event of a collision), so a Kundennummer alone
-    can never be used to infer how many customers exist or in what order
-    they registered.
+    Deliberately random rather than sequential (retried on the unlikely
+    event of a collision), so a Kundennummer alone can never be used to
+    infer how many customers exist or in what order they registered.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        A new, unique 8-digit customer number, not yet persisted.
+        A new, unique 6-digit customer number, not yet persisted.
     """
     while True:
         candidate = random.randint(_KUNDENNUMMER_MIN, _KUNDENNUMMER_MAX)

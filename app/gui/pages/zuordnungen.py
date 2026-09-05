@@ -15,6 +15,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
@@ -22,6 +23,16 @@ from app.models import person as person_repo
 from app.models import standort as standort_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.zuordnung import Zuordnung
+
+
+#: `(label, field)` pairs for the printed table -- one row per Zuordnung,
+#: flattened out of the on-screen per-Messpunkt card grouping.
+PRINT_COLUMNS = [
+    ("Messpunkt", "messpunkt"),
+    ("Person", "person_name"),
+    ("Gültig von", "gueltig_von"),
+    ("Gültig bis", "gueltig_bis"),
+]
 
 
 def _parse_date(value: str) -> Optional[date]:
@@ -52,10 +63,18 @@ def zuordnungen_page() -> None:
                 "zugeordnet ist. Bei einem Umzug mitten im Quartal zwei "
                 "Zuordnungen mit passendem Enddatum/Startdatum anlegen."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None)).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="Zuordnungen",
+                    get_columns=lambda: PRINT_COLUMNS,
+                    get_rows=lambda: print_rows,
+                )
+                ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 
         warnings_column = ui.column().classes("w-full")
         list_container = ui.column().classes("w-full gap-2 mt-2")
+
+        print_rows: list[dict] = []
 
         def render_group(messpunkt_label: str, group: list[dict]) -> None:
             """Render one Messpunkt's card with all of its Zuordnungen.
@@ -91,6 +110,7 @@ def zuordnungen_page() -> None:
             Returns:
                 None.
             """
+            nonlocal print_rows
             with connection_scope() as connection:
                 messpunkte = {mp.id: mp for mp in messpunkt_repo.list_all(connection)}
                 standorte = {s.id: s for s in standort_repo.list_all(connection)}
@@ -113,6 +133,7 @@ def zuordnungen_page() -> None:
                     }
                 )
 
+            print_rows = []
             list_container.clear()
             with list_container:
                 if not groups:
@@ -126,6 +147,15 @@ def zuordnungen_page() -> None:
                         standort_text = standort.adresse_vollstaendig if standort else "?"
                         label = f"{mp.messpunkt_bezeichnung} — {standort_text}"
                     render_group(label, group)
+                    for row in group:
+                        print_rows.append(
+                            {
+                                "messpunkt": label,
+                                "person_name": row["person_name"],
+                                "gueltig_von": row["gueltig_von"],
+                                "gueltig_bis": row["gueltig_bis"],
+                            }
+                        )
 
             warnings_column.clear()
             with warnings_column:

@@ -8,10 +8,12 @@ import pytest
 from app.importers.cloudflare_client import (
     CloudflareApiError,
     CloudflareAuthError,
+    delete_submissions,
     fetch_new_registrations,
 )
 
 _GET_TARGET = "app.importers.cloudflare_client.httpx.get"
+_REQUEST_TARGET = "app.importers.cloudflare_client.httpx.request"
 
 
 def _api_entry(entry_id: int, form_type: str = "registration", **payload_overrides: object) -> dict:
@@ -145,3 +147,51 @@ def test_fetch_new_registrations_returns_empty_list_for_empty_response():
         submissions = fetch_new_registrations(0, "token")
 
     assert submissions == []
+
+
+def test_delete_submissions_returns_deleted_count():
+    response = httpx.Response(200, json={"deleted": 2})
+    with patch(_REQUEST_TARGET, return_value=response) as mock_request:
+        deleted = delete_submissions([1, 2], "token")
+
+    assert deleted == 2
+    mock_request.assert_called_once()
+    args, kwargs = mock_request.call_args
+    assert args[0] == "DELETE"
+    assert kwargs["json"] == {"ids": [1, 2]}
+    assert kwargs["headers"]["Authorization"] == "Bearer token"
+
+
+def test_delete_submissions_makes_no_request_for_empty_ids():
+    with patch(_REQUEST_TARGET) as mock_request:
+        deleted = delete_submissions([], "token")
+
+    assert deleted == 0
+    mock_request.assert_not_called()
+
+
+def test_delete_submissions_raises_on_401():
+    response = httpx.Response(401, json={"error": "unauthorized"})
+    with patch(_REQUEST_TARGET, return_value=response):
+        with pytest.raises(CloudflareAuthError):
+            delete_submissions([1], "wrong-token")
+
+
+def test_delete_submissions_raises_on_other_http_error():
+    response = httpx.Response(500, text="internal error")
+    with patch(_REQUEST_TARGET, return_value=response):
+        with pytest.raises(CloudflareApiError):
+            delete_submissions([1], "token")
+
+
+def test_delete_submissions_raises_on_network_error():
+    with patch(_REQUEST_TARGET, side_effect=httpx.ConnectError("no route")):
+        with pytest.raises(CloudflareApiError):
+            delete_submissions([1], "token")
+
+
+def test_delete_submissions_raises_on_malformed_response_body():
+    response = httpx.Response(200, json={"unexpected": "shape"})
+    with patch(_REQUEST_TARGET, return_value=response):
+        with pytest.raises(CloudflareApiError):
+            delete_submissions([1], "token")

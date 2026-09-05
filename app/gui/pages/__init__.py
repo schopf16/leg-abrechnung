@@ -4,6 +4,7 @@ all `@ui.page` routes with NiceGUI.
 
 from app.gui.pages import (  # noqa: F401
     abrechnung,
+    aufnahmen,
     auswertungen,
     backup,
     dashboard,

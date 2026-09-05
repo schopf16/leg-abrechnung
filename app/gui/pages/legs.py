@@ -19,6 +19,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.print_list import render_print_button, table_columns
 from app.models import leg as leg_repo
 from app.models.leg import Leg, LegInUseError
 
@@ -69,7 +70,16 @@ def legs_page() -> None:
                 "Verteilung findet nur innerhalb derselben LEG statt (siehe "
                 "Abrechnung). Der Name erscheint auf den Rechnungen dieser LEG."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neue LEG", on_click=lambda: open_form(None)).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="LEGs",
+                    get_columns=lambda: table_columns(table),
+                    get_rows=lambda: table.rows,
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    ),
+                )
+                ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
         search_input = ui.input("Suche (Name, Bemerkung, Trafokreis...)").classes(
             "w-full max-w-md"

@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
+from app.gui.print_list import render_print_button, table_columns
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
@@ -93,7 +94,16 @@ def standorte_page() -> None:
                 "nicht hier, sondern pro Messpunkt zugewiesen (siehe "
                 "„Messpunkte“)."
             ).classes("text-body2 text-grey-8")
-            ui.button("+ Neuer Standort", on_click=lambda: open_form(None)).classes("shrink-0")
+            with ui.row().classes("gap-2 shrink-0"):
+                render_print_button(
+                    rubrik="Standorte",
+                    get_columns=lambda: table_columns(table),
+                    get_rows=lambda: table.rows,
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    ),
+                )
+                ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
         search_input = ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)").classes(
             "w-full max-w-md"

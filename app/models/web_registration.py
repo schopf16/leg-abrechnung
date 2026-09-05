@@ -96,6 +96,13 @@ class WebRegistration:
             sets it again, even if it had already been reviewed.
         reviewed_at: ISO-8601 timestamp of the last `mark_reviewed` call,
             or `None` if never reviewed.
+        person_created: Whether a `Person` was actually created from this
+            registration via "Person übernehmen" (see `app.gui.pages.
+            web_registrierungen`) -- distinct from `needs_review`/
+            `reviewed_at`, which are also cleared by simply dismissing a
+            registration without taking it over. Only `mark_person_created`
+            sets it; used to decide whether deleting this registration (see
+            `delete`) needs the strong irrevocable-data-loss warning.
         meters: Zählernummern reported with this registration, zero, one
             or several.
     """
@@ -119,6 +126,7 @@ class WebRegistration:
     imported_at: str
     needs_review: bool
     reviewed_at: Optional[str]
+    person_created: bool = False
     meters: list[WebRegistrationMeter] = field(default_factory=list)
 
     @property
@@ -167,6 +175,7 @@ class WebRegistration:
             imported_at=row["imported_at"],
             needs_review=bool(row["needs_review"]),
             reviewed_at=row["reviewed_at"],
+            person_created=bool(row["person_created"]),
             meters=meters,
         )
 
@@ -382,4 +391,44 @@ def mark_reviewed(connection: sqlite3.Connection, web_registration_id: int) -> N
         "UPDATE web_registration SET needs_review = 0, reviewed_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(), web_registration_id),
     )
+    connection.commit()
+
+
+def mark_person_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Record that a `Person` was actually created from this registration.
+
+    Idempotent. The only way `person_created` is set -- see the
+    `WebRegistration.person_created` docstring for why this is tracked
+    separately from `needs_review`.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration SET person_created = 1 WHERE id = ?",
+        (web_registration_id,),
+    )
+    connection.commit()
+
+
+def delete(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Delete a registration and its reported meters (cascade).
+
+    Purely local -- callers that also want the corresponding submission
+    removed from the remote leg-ittigen.ch Worker database must call
+    `app.importers.cloudflare_client.delete_submissions` themselves (see
+    `app.gui.pages.web_registrierungen.on_delete`, which does both).
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry to delete.
+
+    Returns:
+        None.
+    """
+    connection.execute("DELETE FROM web_registration WHERE id = ?", (web_registration_id,))
     connection.commit()

@@ -10,6 +10,9 @@ from typing import Iterator, Optional
 
 from nicegui import ui
 
+from app.gui.print_list import PRINT_STYLE
+from app.version import APP_VERSION
+
 #: Side navigation, grouped by where each page sits in the actual
 #: workflow (master data -> billing -> analysis -> configuration) rather
 #: than the chronological order pages were added in. Each entry is
@@ -28,6 +31,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/personen", "Personen"),
             ("/zuordnungen", "Zuordnungen"),
             ("/web-registrierungen", "Web-Registrierungen"),
+            ("/aufnahmen", "Aufnahmen"),
         ],
     ),
     (
@@ -87,6 +91,7 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
         ".leg-nav-group .q-item__label { font-size: 13px; font-weight: 600; }"
         "</style>"
     )
+    ui.add_head_html(PRINT_STYLE)
     ui.page_title(f"LEG-Abrechnung – {title}")
 
     with ui.header().classes("items-center justify-between bg-primary text-white"):
@@ -106,6 +111,14 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
             ).props("dense"):
                 for route, label in items:
                     _nav_link(route, label, active_route, indent=True)
+
+        # Always visible at the bottom, on every page -- lets the
+        # administrator read out a phone-friendly version identifier
+        # (commit date + short hash, see app.version) to check whether
+        # someone else's installation is on the latest push.
+        ui.label(f"Version {APP_VERSION}").classes(
+            "text-caption text-grey-6 q-pa-sm"
+        ).style("position: absolute; bottom: 0; left: 0;")
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4") as content:
         yield content
