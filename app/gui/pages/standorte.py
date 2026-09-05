@@ -9,6 +9,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
+from app.gui.standort_form import open_standort_form
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
@@ -156,113 +157,7 @@ def standorte_page() -> None:
             Returns:
                 None.
             """
-            with connection_scope() as connection:
-                trafokreise = trafokreis_repo.list_all(connection)
-            trafokreis_options = {t.id: t.name for t in trafokreise}
-
-            with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes(
-                    "text-lg font-bold"
-                )
-                with ui.row().classes("w-full gap-2"):
-                    adresse = ui.input(
-                        "Adresse", value=existing.adresse if existing else ""
-                    ).classes("flex-grow").props("debounce=300")
-                    hausnummer = ui.input(
-                        "Hausnummer", value=existing.hausnummer if existing else ""
-                    ).classes("w-24").props("debounce=300")
-                with ui.row().classes("w-full gap-2"):
-                    plz = ui.input(
-                        "PLZ", value=existing.plz if existing else ""
-                    ).classes("w-24").props("debounce=300")
-                    gemeinde = ui.input(
-                        "Gemeinde", value=existing.gemeinde if existing else ""
-                    ).classes("flex-grow")
-                duplicate_warning = ui.label("").classes("text-warning")
-                lage = ui.input(
-                    "Lage (optional, z. B. Stockwerk)", value=existing.lage if existing else ""
-                ).classes("w-full")
-                trafokreis_select = ui.select(
-                    trafokreis_options,
-                    label="Trafokreis",
-                    value=existing.trafokreis_id if existing else None,
-                    with_input=True,
-                ).classes("w-full")
-                error_label = ui.label("").classes("text-negative")
-
-                def check_duplicate() -> bool:
-                    """Check whether Adresse/Hausnummer/PLZ already match another Standort.
-
-                    Updates `duplicate_warning` as a side effect.
-
-                    Returns:
-                        `True` if a different Standort already has this
-                        exact address.
-                    """
-                    if not (adresse.value.strip() and hausnummer.value.strip() and plz.value.strip()):
-                        duplicate_warning.text = ""
-                        return False
-                    with connection_scope() as connection:
-                        found = standort_repo.find_by_address(
-                            connection, adresse.value.strip(), hausnummer.value.strip(), plz.value.strip()
-                        )
-                    is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = (
-                        "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits."
-                        if is_duplicate
-                        else ""
-                    )
-                    return is_duplicate
-
-                adresse.on_value_change(lambda _: check_duplicate())
-                hausnummer.on_value_change(lambda _: check_duplicate())
-                plz.on_value_change(lambda _: check_duplicate())
-
-                def save() -> None:
-                    """Validate the form and persist the Standort.
-
-                    Returns:
-                        None.
-                    """
-                    if not adresse.value.strip():
-                        error_label.text = "Adresse darf nicht leer sein."
-                        return
-                    if check_duplicate():
-                        error_label.text = "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits."
-                        return
-                    with connection_scope() as connection:
-                        if existing:
-                            updated = Standort(
-                                id=existing.id,
-                                adresse=adresse.value.strip(),
-                                hausnummer=hausnummer.value.strip(),
-                                plz=plz.value.strip(),
-                                gemeinde=gemeinde.value.strip(),
-                                lage=lage.value.strip(),
-                                trafokreis_id=trafokreis_select.value,
-                                created_at=existing.created_at,
-                            )
-                            standort_repo.update(connection, updated)
-                        else:
-                            new_standort = Standort(
-                                id=None,
-                                adresse=adresse.value.strip(),
-                                hausnummer=hausnummer.value.strip(),
-                                plz=plz.value.strip(),
-                                gemeinde=gemeinde.value.strip(),
-                                lage=lage.value.strip(),
-                                trafokreis_id=trafokreis_select.value,
-                                created_at="",
-                            )
-                            standort_repo.create(connection, new_standort)
-                    dialog.close()
-                    refresh()
-                    ui.notify("Gespeichert.", type="positive")
-
-                with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                    ui.button("Speichern", on_click=save)
-            dialog.open()
+            open_standort_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_view(event) -> None:
             """Table row-view handler: navigate to the Standort's detail page.

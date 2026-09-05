@@ -214,6 +214,17 @@ def test_person_kundennummer_survives_update(db):
     assert person_repo.get(db, person_id).kundennummer == original.kundennummer
 
 
+def test_person_get_by_email_finds_match(db):
+    person_repo.create(db, _make_person())
+    found = person_repo.get_by_email(db, "test@example.ch")
+    assert found is not None
+    assert found.kontakt_email == "test@example.ch"
+
+
+def test_person_get_by_email_returns_none_for_unknown_email(db):
+    assert person_repo.get_by_email(db, "unknown@example.ch") is None
+
+
 def test_person_kundennummer_formatiert_groups_digits(db):
     """`kundennummer_formatiert` groups the 6 digits as "XXX XXX"."""
     person_id = person_repo.create(db, _make_person())

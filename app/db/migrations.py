@@ -783,4 +783,24 @@ MIGRATIONS: list[Migration] = [
             WHERE kundennummer IS NOT NULL;
         """,
     ),
+    Migration(
+        version=22,
+        description="Extend Web-Registrierungen take-over tracking to "
+        "Standort and Messpunkt (previously only Person, see migration "
+        "19's person_created): add web_registration.standort_created and "
+        "web_registration_meter.messpunkt_created, both set only by "
+        "their own \"... übernehmen\" action. Drop web_registration."
+        "needs_review/reviewed_at: the explicit \"als geprüft "
+        "markieren\" review step is replaced by simply checking whether "
+        "Person/Standort/every reported Messpunkt have been taken over "
+        "(see WebRegistration.is_fully_processed), or deleting the entry "
+        "once nothing more needs doing.",
+        sql="""
+            ALTER TABLE web_registration ADD COLUMN standort_created INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE web_registration_meter ADD COLUMN messpunkt_created INTEGER NOT NULL DEFAULT 0;
+            DROP INDEX idx_web_registration_needs_review;
+            ALTER TABLE web_registration DROP COLUMN needs_review;
+            ALTER TABLE web_registration DROP COLUMN reviewed_at;
+        """,
+    ),
 ]

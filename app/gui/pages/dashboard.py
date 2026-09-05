@@ -39,7 +39,7 @@ def _load_overview(connection) -> dict:
     Returns:
         A dict with "counts" (headline numbers), "action_items" (German
         warning strings needing attention), "legs" (per-LEG summary rows),
-        "offene_registrierungen" (count of unreviewed Web-Registrierungen)
+        "offene_registrierungen" (count of not-yet-fully-processed Web-Registrierungen)
         and "offene_aufnahmen" (count of in-progress onboarding trackers,
         see `app.models.person_onboarding`) keys.
     """
@@ -50,7 +50,9 @@ def _load_overview(connection) -> dict:
     persons = person_repo.list_all(connection)
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
-    offene_registrierungen = len(web_registration_repo.list_needs_review(connection))
+    offene_registrierungen = sum(
+        1 for r in web_registration_repo.list_all(connection) if not r.is_fully_processed
+    )
     offene_aufnahmen = len(person_onboarding_repo.list_in_progress(connection))
 
     action_items: list[str] = []

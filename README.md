@@ -85,10 +85,10 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Web-Registrierungen** — Posteingang für Anmeldungen über das
-  öffentliche Formular auf leg-ittigen.ch (siehe Abschnitt 4). Die
-  Übernahme in Personen/Messpunkte/Zuordnungen bleibt ein manueller
-  Schritt in den jeweiligen Ansichten; hier dienen die Angaben nur als
-  Vorlage.
+  öffentliche Formular auf leg-ittigen.ch (siehe Abschnitt 4). Person,
+  Standort und jeder gemeldete Zähler (als Messpunkt) können hier je
+  einzeln übernommen werden; die Zuordnung zwischen ihnen bleibt ein
+  manueller Schritt unter „Zuordnungen".
 - **Import** — Messdaten der BKW einlesen (EBIX-XML oder CSV).
 - **Abrechnung** — für eine LEG und ein Quartal je Person eine kombinierte
   Abrechnung berechnen und als PDF erzeugen (siehe unten). Jede LEG wird
@@ -186,8 +186,12 @@ diese eine Datei angepasst werden. Bis dahin funktioniert zuverlässig der
 
 Die Website leg-ittigen.ch hat ein eigenes Anmeldeformular für
 Interessierte; deren Einträge lassen sich hier abrufen und landen als
-Posteingang auf der Seite **„Web-Registrierungen"** — die Übernahme in
-Personen/Messpunkte/Zuordnungen bleibt danach ein manueller Schritt.
+Posteingang auf der Seite **„Web-Registrierungen"**. Person, Standort und
+jeder gemeldete Zähler (als Messpunkt) können dort je einzeln über einen
+eigenen **„... übernehmen"**-Knopf übernommen werden — dieser öffnet den
+passenden, mit den Angaben aus der Registrierung vorausgefüllten
+Erfassungsdialog. Die Zuordnung zwischen ihnen bleibt danach ein
+manueller Schritt unter „Zuordnungen".
 
 **Einmalig einrichten:**
 
@@ -199,14 +203,21 @@ Personen/Messpunkte/Zuordnungen bleibt danach ein manueller Schritt.
    ```
 
 **Abrufen:** Auf der Seite „Web-Registrierungen" den Knopf
-**„Registrierungen abrufen"** anklicken. Neue Anmeldungen erscheinen mit
-dem Vermerk „offen"; wird dieselbe Zählernummer später erneut mit
-geänderten Angaben eingereicht, wird der bestehende Eintrag aktualisiert
-und wieder als offen markiert — auch wenn er zuvor schon geprüft war.
-**„Als geprüft markieren"** entfernt einen Eintrag aus der offenen Liste,
-löscht ihn aber nicht (Umschalter „Auch geprüfte anzeigen" blendet die
-Historie wieder ein). Solange offene Registrierungen bestehen, weist die
-Übersichtsseite mit einem Link darauf hin.
+**„Registrierungen abrufen"** anklicken. Wird dieselbe Zählernummer später
+erneut mit geänderten Angaben eingereicht, wird der bestehende Eintrag
+aktualisiert statt dupliziert.
+
+Pro Eintrag zeigt jeder der drei Punkte (Person/Standort/Messpunkt) einen
+von drei Zuständen: **„übernommen"** (grün, über den jeweiligen Knopf
+erfasst), **„existiert bereits"** (blau, es gibt bereits eine
+übereinstimmende Person/einen Standort/einen Messpunkt, aber nicht über
+diesen Knopf erfasst — z. B. weil von Hand angelegt) oder ohne Kennzeichen
+(noch nichts passiert). Sobald Person, Standort und alle gemeldeten
+Messpunkte übernommen sind, gilt der Eintrag als „vollständig übernommen"
+und wird standardmässig ausgeblendet (Umschalter „Auch vollständig
+übernommene anzeigen" blendet sie wieder ein). Solange offene
+Registrierungen bestehen, weist die Übersichtsseite mit einem Link darauf
+hin.
 
 ---
 

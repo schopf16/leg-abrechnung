@@ -235,6 +235,28 @@ def get_by_kundennummer(connection: sqlite3.Connection, kundennummer: int) -> Op
     return Person.from_row(row) if row else None
 
 
+def get_by_email(connection: sqlite3.Connection, email: str) -> Optional[Person]:
+    """Fetch a single Person by their contact email address.
+
+    `kontakt_email` has no uniqueness constraint (unlike `kundennummer`),
+    so this returns the first match if several Personen happen to share
+    an address -- used only for an informational "does this already
+    exist?" lookup (see `app.gui.pages.web_registrierungen`), never as an
+    identity key.
+
+    Args:
+        connection: Open SQLite connection.
+        email: Email address to look up.
+
+    Returns:
+        A matching `Person`, or `None` if no Person has this email.
+    """
+    row = connection.execute(
+        "SELECT * FROM person WHERE kontakt_email = ? LIMIT 1", (email,)
+    ).fetchone()
+    return Person.from_row(row) if row else None
+
+
 def generate_kundennummer(connection: sqlite3.Connection) -> int:
     """Generate a random, unique 6-digit Kundennummer.
 

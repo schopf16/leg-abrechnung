@@ -51,9 +51,9 @@ def _submission(
     )
 
 
-def test_migrations_18_and_19_create_web_registration_tables_and_columns(db):
+def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 21
+    assert get_schema_version(db) == 22
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -61,31 +61,29 @@ def test_migrations_18_and_19_create_web_registration_tables_and_columns(db):
     assert db.execute("SELECT COUNT(*) FROM web_registration_meter").fetchone()[0] == 0
 
 
-def test_mark_reviewed_sets_needs_review_and_reviewed_at(db):
-    with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
-        sync_registrations(db, "token")
-    reg = web_registration_repo.list_all(db)[0]
-    assert reg.needs_review is True
-    assert reg.reviewed_at is None
-
-    web_registration_repo.mark_reviewed(db, reg.id)
-
-    reviewed = web_registration_repo.get(db, reg.id)
-    assert reviewed.needs_review is False
-    assert reviewed.reviewed_at is not None
-
-
-def test_mark_reviewed_is_idempotent(db):
+def test_mark_standort_created_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
+    assert web_registration_repo.get(db, reg_id).standort_created is False
 
-    web_registration_repo.mark_reviewed(db, reg_id)
-    web_registration_repo.mark_reviewed(db, reg_id)
+    web_registration_repo.mark_standort_created(db, reg_id)
+    web_registration_repo.mark_standort_created(db, reg_id)
 
-    reviewed = web_registration_repo.get(db, reg_id)
-    assert reviewed.needs_review is False
-    assert reviewed.reviewed_at is not None
+    assert web_registration_repo.get(db, reg_id).standort_created is True
+
+
+def test_mark_messpunkt_created_is_idempotent(db):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
+        sync_registrations(db, "token")
+    meter = web_registration_repo.list_all(db)[0].meters[0]
+    assert meter.messpunkt_created is False
+
+    web_registration_repo.mark_messpunkt_created(db, meter.id)
+    web_registration_repo.mark_messpunkt_created(db, meter.id)
+
+    reloaded = web_registration_repo.list_all(db)[0].meters[0]
+    assert reloaded.messpunkt_created is True
 
 
 def test_mark_person_created_is_idempotent(db):
@@ -100,23 +98,49 @@ def test_mark_person_created_is_idempotent(db):
     assert web_registration_repo.get(db, reg_id).person_created is True
 
 
-def test_mark_person_created_is_independent_of_mark_reviewed(db):
-    """person_created must survive being unrelated to needs_review/reviewed_at."""
-    with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
+def test_mark_person_created_is_independent_of_standort_and_messpunkt(db):
+    """Each of the three take-over flags is set only by its own action."""
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
 
     web_registration_repo.mark_person_created(db, reg_id)
     reg = web_registration_repo.get(db, reg_id)
     assert reg.person_created is True
-    # mark_reviewed alone (the "dismiss without taking over" path) must
-    # never set person_created on its own.
-    assert reg.needs_review is True
+    assert reg.standort_created is False
+    assert reg.meters[0].messpunkt_created is False
+    assert reg.is_fully_processed is False
 
-    web_registration_repo.mark_reviewed(db, reg_id)
-    still_created = web_registration_repo.get(db, reg_id)
-    assert still_created.person_created is True
-    assert still_created.needs_review is False
+
+def test_is_fully_processed_requires_person_standort_and_every_meter(db):
+    with patch(
+        _SYNC_TARGET,
+        side_effect=[[_submission(1, meters=[("CH-A", ""), ("CH-B", "")])], []],
+    ):
+        sync_registrations(db, "token")
+    reg_id = web_registration_repo.list_all(db)[0].id
+    meter_ids = [m.id for m in web_registration_repo.list_all(db)[0].meters]
+
+    assert web_registration_repo.get(db, reg_id).is_fully_processed is False
+
+    web_registration_repo.mark_person_created(db, reg_id)
+    web_registration_repo.mark_standort_created(db, reg_id)
+    web_registration_repo.mark_messpunkt_created(db, meter_ids[0])
+    assert web_registration_repo.get(db, reg_id).is_fully_processed is False  # meter_ids[1] still open
+
+    web_registration_repo.mark_messpunkt_created(db, meter_ids[1])
+    assert web_registration_repo.get(db, reg_id).is_fully_processed is True
+
+
+def test_is_fully_processed_true_with_no_meters_once_person_and_standort_done(db):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[])], []]):
+        sync_registrations(db, "token")
+    reg_id = web_registration_repo.list_all(db)[0].id
+
+    web_registration_repo.mark_person_created(db, reg_id)
+    web_registration_repo.mark_standort_created(db, reg_id)
+
+    assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 
 
 def test_person_created_survives_a_content_update_via_upsert(db):
@@ -152,7 +176,7 @@ def test_delete_removes_registration_and_its_meters(db):
     ).fetchone()[0] == 0
 
 
-def test_sync_registrations_creates_new_row_needing_review(db):
+def test_sync_registrations_creates_new_row(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="new@example.ch")], []]):
         result = sync_registrations(db, "token")
 
@@ -161,7 +185,7 @@ def test_sync_registrations_creates_new_row_needing_review(db):
     assert result.unveraendert == 0
     reg = web_registration_repo.get_by_email(db, "new@example.ch")
     assert reg is not None
-    assert reg.needs_review is True
+    assert reg.is_fully_processed is False
     assert reg.anzeige_name == "Anna Muster"
 
 
@@ -184,13 +208,12 @@ def test_sync_registrations_creates_multiple_meter_rows(db):
     assert [(m.meter_number, m.note) for m in reg.meters] == meters
 
 
-def test_sync_registrations_unchanged_repeat_keeps_needs_review_false(db):
+def test_sync_registrations_unchanged_repeat_keeps_person_created(db):
     meters = [("CH-A", "PV")]
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="a@example.ch", meters=meters)], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "a@example.ch")
-    web_registration_repo.mark_reviewed(db, reg.id)
-    assert web_registration_repo.get(db, reg.id).needs_review is False
+    web_registration_repo.mark_person_created(db, reg.id)
 
     # Same content, same email, arriving again with a higher cloudflare_id.
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="a@example.ch", meters=meters)], []]):
@@ -198,16 +221,15 @@ def test_sync_registrations_unchanged_repeat_keeps_needs_review_false(db):
 
     assert result.unveraendert == 1
     assert result.aktualisiert == 0
-    still_reviewed = web_registration_repo.get_by_email(db, "a@example.ch")
-    assert still_reviewed.needs_review is False
+    still_created = web_registration_repo.get_by_email(db, "a@example.ch")
+    assert still_created.person_created is True
 
 
-def test_sync_registrations_changed_field_reflags_for_review(db):
+def test_sync_registrations_changed_field_updates_row_in_place(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="b@example.ch", telefon="111")], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "b@example.ch")
-    web_registration_repo.mark_reviewed(db, reg.id)
-    assert web_registration_repo.get(db, reg.id).needs_review is False
+    web_registration_repo.mark_person_created(db, reg.id)
 
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="b@example.ch", telefon="222")], []]):
         result = sync_registrations(db, "token")
@@ -215,33 +237,46 @@ def test_sync_registrations_changed_field_reflags_for_review(db):
     assert result.aktualisiert == 1
     assert result.unveraendert == 0
     updated = web_registration_repo.get_by_email(db, "b@example.ch")
-    assert updated.needs_review is True
-    assert updated.reviewed_at is None
     assert updated.telefon == "222"
+    # person_created is not reset by an unrelated content change.
+    assert updated.person_created is True
     # The row is updated in place, not duplicated.
     assert len(web_registration_repo.list_all(db)) == 1
 
 
-def test_sync_registrations_changed_meter_set_reflags_for_review_and_replaces_rows(db):
+def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_messpunkt_created(db):
+    """Replacing a registration's meter set on a repeat submission must not
+    silently discard messpunkt_created for a meter that persists by
+    meter_number -- see `upsert_from_submission`'s docstring."""
     with patch(
         _SYNC_TARGET,
-        side_effect=[[_submission(1, email="c@example.ch", meters=[("CH-OLD", "")])], []],
+        side_effect=[
+            [_submission(1, email="c@example.ch", meters=[("CH-KEEP", ""), ("CH-DROP", "")])],
+            [],
+        ],
     ):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "c@example.ch")
-    web_registration_repo.mark_reviewed(db, reg.id)
-    assert web_registration_repo.get(db, reg.id).needs_review is False
+    keep_meter = next(m for m in reg.meters if m.meter_number == "CH-KEEP")
+    web_registration_repo.mark_messpunkt_created(db, keep_meter.id)
 
+    # CH-KEEP reappears (with a changed note), CH-DROP is gone, CH-NEW is added.
     with patch(
         _SYNC_TARGET,
-        side_effect=[[_submission(2, email="c@example.ch", meters=[("CH-NEW1", "PV"), ("CH-NEW2", "")])], []],
+        side_effect=[
+            [_submission(2, email="c@example.ch", meters=[("CH-KEEP", "PV"), ("CH-NEW", "")])],
+            [],
+        ],
     ):
         result = sync_registrations(db, "token")
 
     assert result.aktualisiert == 1
     updated = web_registration_repo.get_by_email(db, "c@example.ch")
-    assert updated.needs_review is True
-    assert [(m.meter_number, m.note) for m in updated.meters] == [("CH-NEW1", "PV"), ("CH-NEW2", "")]
+    by_number = {m.meter_number: m for m in updated.meters}
+    assert set(by_number) == {"CH-KEEP", "CH-NEW"}
+    assert by_number["CH-KEEP"].note == "PV"
+    assert by_number["CH-KEEP"].messpunkt_created is True
+    assert by_number["CH-NEW"].messpunkt_created is False
 
 
 def test_sync_registrations_advances_cursor_for_noop_entries_too(db):

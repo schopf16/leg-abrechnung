@@ -239,7 +239,10 @@ def zuordnungen_page() -> None:
                     options = messpunkt_options_for(standort_select.value)
                     messpunkt_select.options = options
                     if messpunkt_select.value not in options:
-                        messpunkt_select.value = next(iter(options), None)
+                        # Never guess a Messpunkt from the newly filtered
+                        # list -- clear the selection and let the
+                        # administrator pick explicitly.
+                        messpunkt_select.value = None
                     messpunkt_select.update()
                     update_leg_warning()
 
@@ -278,9 +281,7 @@ def zuordnungen_page() -> None:
                 person_select = ui.select(
                     person_options,
                     label="Person",
-                    value=existing.person_id
-                    if existing
-                    else (selectable_persons[0].id if selectable_persons else None),
+                    value=existing.person_id if existing else None,
                 ).classes("w-full")
                 gueltig_von = ui.input(
                     "Gültig von",

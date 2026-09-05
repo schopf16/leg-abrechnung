@@ -5,11 +5,12 @@ One row per Cloudflare submission (not per reported meter): the form
 fields were deliberately chosen to mirror `Person` almost 1:1 (`firma`,
 `anrede`, `vorname`, `nachname`, address, contact, `bkw_kundennummer`,
 `iban`), but a registration can report zero, one or several meters
-(`WebRegistrationMeter`) -- matching "which meter belongs to which
-existing or new Messpunkt" is a judgment call for the administrator, not a
-mechanical one. Taking a reviewed row into the real records therefore
-stays a manual step in the existing `/personen`/`/messpunkte`/
-`/zuordnungen` pages, using this row's data as a template.
+(`WebRegistrationMeter`). Person, Standort and each meter's Messpunkt are
+each taken over as their own explicit step (see `app.gui.pages.
+web_registrierungen`) -- matching a reported meter (and its Standort)
+against a *new* record is a judgment call for the administrator, not a
+mechanical one. Zuordnung (linking a taken-over Person to a taken-over
+Messpunkt) stays a manual step in `/zuordnungen`.
 """
 
 import sqlite3
@@ -32,12 +33,20 @@ class WebRegistrationMeter:
         note: Optional free-text purpose label from the submitter (e.g.
             "PV", "Wohnhaus", "Wärmepumpe") -- not a `Messpunkt` field,
             purely a hint for the administrator.
+        messpunkt_created: Whether a `Messpunkt` was actually created for
+            this reported meter via "Messpunkt übernehmen" (see
+            `app.gui.pages.web_registrierungen`). Only
+            `mark_messpunkt_created` sets it; `upsert_from_submission`
+            carries it forward by `meter_number` across a repeat
+            submission, since that call otherwise replaces all of a
+            registration's meter rows wholesale.
     """
 
     id: Optional[int]
     web_registration_id: Optional[int]
     meter_number: str
     note: str
+    messpunkt_created: bool = False
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "WebRegistrationMeter":
@@ -54,6 +63,7 @@ class WebRegistrationMeter:
             web_registration_id=row["web_registration_id"],
             meter_number=row["meter_number"],
             note=row["note"],
+            messpunkt_created=bool(row["messpunkt_created"]),
         )
 
 
@@ -90,21 +100,16 @@ class WebRegistration:
         submitted_at: Submission timestamp as reported by the API.
         imported_at: ISO-8601 timestamp this row was last written here
             (insert or update).
-        needs_review: Whether this entry is still awaiting review by the
-            administrator. Only `mark_reviewed` clears it; any content
-            change (including the reported meters) on a repeat submission
-            sets it again, even if it had already been reviewed.
-        reviewed_at: ISO-8601 timestamp of the last `mark_reviewed` call,
-            or `None` if never reviewed.
         person_created: Whether a `Person` was actually created from this
             registration via "Person übernehmen" (see `app.gui.pages.
-            web_registrierungen`) -- distinct from `needs_review`/
-            `reviewed_at`, which are also cleared by simply dismissing a
-            registration without taking it over. Only `mark_person_created`
-            sets it; used to decide whether deleting this registration (see
+            web_registrierungen`). Only `mark_person_created` sets it;
+            used to decide whether deleting this registration (see
             `delete`) needs the strong irrevocable-data-loss warning.
+        standort_created: Whether a `Standort` was actually created from
+            this registration's reported address via "Standort
+            übernehmen". Only `mark_standort_created` sets it.
         meters: Zählernummern reported with this registration, zero, one
-            or several.
+            or several -- each with its own `messpunkt_created` flag.
     """
 
     id: Optional[int]
@@ -124,9 +129,8 @@ class WebRegistration:
     message: str
     submitted_at: str
     imported_at: str
-    needs_review: bool
-    reviewed_at: Optional[str]
     person_created: bool = False
+    standort_created: bool = False
     meters: list[WebRegistrationMeter] = field(default_factory=list)
 
     @property
@@ -142,6 +146,23 @@ class WebRegistration:
         if self.firma and voller_name:
             return f"{self.firma} ({voller_name})"
         return self.firma or voller_name
+
+    @property
+    def is_fully_processed(self) -> bool:
+        """Whether there is nothing left to take over from this registration.
+
+        `True` once Person, Standort and every reported Messpunkt have
+        all been created via their respective "... übernehmen" action --
+        the only remaining action at that point is deleting the entry.
+
+        Returns:
+            `True` if fully processed, `False` if anything is still open.
+        """
+        return (
+            self.person_created
+            and self.standort_created
+            and all(m.messpunkt_created for m in self.meters)
+        )
 
     @staticmethod
     def from_row(row: sqlite3.Row, meters: list[WebRegistrationMeter]) -> "WebRegistration":
@@ -173,9 +194,8 @@ class WebRegistration:
             message=row["message"],
             submitted_at=row["submitted_at"],
             imported_at=row["imported_at"],
-            needs_review=bool(row["needs_review"]),
-            reviewed_at=row["reviewed_at"],
             person_created=bool(row["person_created"]),
+            standort_created=bool(row["standort_created"]),
             meters=meters,
         )
 
@@ -209,22 +229,6 @@ def list_all(connection: sqlite3.Connection) -> list[WebRegistration]:
     """
     rows = connection.execute(
         "SELECT * FROM web_registration ORDER BY submitted_at DESC"
-    ).fetchall()
-    return [WebRegistration.from_row(row, _load_meters(connection, row["id"])) for row in rows]
-
-
-def list_needs_review(connection: sqlite3.Connection) -> list[WebRegistration]:
-    """List only registrations still awaiting review, most recent first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        Inbox entries with `needs_review = 1` (with their meters loaded),
-        sorted by `submitted_at` descending.
-    """
-    rows = connection.execute(
-        "SELECT * FROM web_registration WHERE needs_review = 1 ORDER BY submitted_at DESC"
     ).fetchall()
     return [WebRegistration.from_row(row, _load_meters(connection, row["id"])) for row in rows]
 
@@ -274,13 +278,11 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
     Always replaces the full set of `web_registration_meter` rows (delete
     then reinsert) rather than diffing them individually -- the number of
     meters per registration is small, and this avoids having to decide
-    which meter row "is the same" across a content change.
-
-    Callers decide `registration.needs_review`/`reviewed_at` before
-    calling this (see `app.importers.registration_sync` for the actual
-    new-vs-changed-vs-unchanged decision, including skipping this call
-    entirely for a genuinely unchanged repeat submission) -- this function
-    always writes exactly what it is given.
+    which meter row "is the same" across a content change -- except for
+    `messpunkt_created`, which is explicitly carried forward by
+    `meter_number` (see the loop below): unlike a brand new meter row,
+    that flag records real administrator work that a same-content resync
+    must not silently discard.
 
     Args:
         connection: Open SQLite connection.
@@ -292,6 +294,9 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
         The primary key of the inserted or updated row.
     """
     existing = get_by_email(connection, registration.email)
+    previously_created_by_meter = (
+        {m.meter_number: m.messpunkt_created for m in existing.meters} if existing else {}
+    )
     now = datetime.now(timezone.utc).isoformat()
 
     if existing is None:
@@ -300,8 +305,8 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
             INSERT INTO web_registration
                 (cloudflare_id, firma, anrede, vorname, nachname, strasse, hausnummer,
                  plz, ort, email, telefon, bkw_kundennummer, iban, message,
-                 submitted_at, imported_at, needs_review, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 submitted_at, imported_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 registration.cloudflare_id,
@@ -320,8 +325,6 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
                 registration.message,
                 registration.submitted_at,
                 now,
-                registration.needs_review,
-                registration.reviewed_at,
             ),
         )
         web_registration_id = cursor.lastrowid
@@ -332,7 +335,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
                 cloudflare_id = ?, firma = ?, anrede = ?, vorname = ?, nachname = ?,
                 strasse = ?, hausnummer = ?, plz = ?, ort = ?, email = ?, telefon = ?,
                 bkw_kundennummer = ?, iban = ?, message = ?, submitted_at = ?,
-                imported_at = ?, needs_review = ?, reviewed_at = ?
+                imported_at = ?
             WHERE id = ?
             """,
             (
@@ -352,8 +355,6 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
                 registration.message,
                 registration.submitted_at,
                 now,
-                registration.needs_review,
-                registration.reviewed_at,
                 existing.id,
             ),
         )
@@ -365,41 +366,24 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
 
     for meter in registration.meters:
         connection.execute(
-            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note) "
-            "VALUES (?, ?, ?)",
-            (web_registration_id, meter.meter_number, meter.note),
+            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note, messpunkt_created) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                web_registration_id,
+                meter.meter_number,
+                meter.note,
+                previously_created_by_meter.get(meter.meter_number, False),
+            ),
         )
 
     connection.commit()
     return web_registration_id
 
 
-def mark_reviewed(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Mark a registration as reviewed, the only way `needs_review` is cleared.
-
-    Idempotent: calling this again on an already-reviewed row just
-    refreshes `reviewed_at`.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
-    connection.execute(
-        "UPDATE web_registration SET needs_review = 0, reviewed_at = ? WHERE id = ?",
-        (datetime.now(timezone.utc).isoformat(), web_registration_id),
-    )
-    connection.commit()
-
-
 def mark_person_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
     """Record that a `Person` was actually created from this registration.
 
-    Idempotent. The only way `person_created` is set -- see the
-    `WebRegistration.person_created` docstring for why this is tracked
-    separately from `needs_review`.
+    Idempotent. The only way `person_created` is set.
 
     Args:
         connection: Open SQLite connection.
@@ -411,6 +395,44 @@ def mark_person_created(connection: sqlite3.Connection, web_registration_id: int
     connection.execute(
         "UPDATE web_registration SET person_created = 1 WHERE id = ?",
         (web_registration_id,),
+    )
+    connection.commit()
+
+
+def mark_standort_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Record that a `Standort` was actually created from this registration.
+
+    Idempotent. The only way `standort_created` is set.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration SET standort_created = 1 WHERE id = ?",
+        (web_registration_id,),
+    )
+    connection.commit()
+
+
+def mark_messpunkt_created(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
+    """Record that a `Messpunkt` was actually created for one reported meter.
+
+    Idempotent. The only way a meter's `messpunkt_created` is set.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_meter_id: Primary key of the `web_registration_meter` row.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration_meter SET messpunkt_created = 1 WHERE id = ?",
+        (web_registration_meter_id,),
     )
     connection.commit()
 

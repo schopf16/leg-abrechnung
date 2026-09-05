@@ -80,7 +80,7 @@ def auswertungen_page() -> None:
         leg_options = {leg.id: leg.name for leg in legs}
 
         with ui.row().classes("items-end gap-2"):
-            leg_select = ui.select(leg_options, label="LEG", value=legs[0].id).classes("w-64")
+            leg_select = ui.select(leg_options, label="LEG", value=None).classes("w-64")
             selector = build_period_selector(available_periods)
             check_button = ui.button("Auswerten")
 

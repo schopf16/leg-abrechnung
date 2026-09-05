@@ -165,11 +165,6 @@ def _to_registration(
 ) -> WebRegistration:
     """Convert a fetched submission into a `WebRegistration` ready to upsert.
 
-    Always flags the result for review (`needs_review=True`,
-    `reviewed_at=None`) -- the caller only actually persists it when the
-    content differs from `existing` (see `_apply_submission`), which is
-    exactly the case that must be (re-)flagged.
-
     Args:
         submission: The fetched submission.
         existing: The currently stored row for this email, if any (so the
@@ -196,8 +191,6 @@ def _to_registration(
         message=submission.message,
         submitted_at=submission.submitted_at,
         imported_at="",
-        needs_review=True,
-        reviewed_at=None,
         meters=[
             WebRegistrationMeter(id=None, web_registration_id=None, meter_number=number, note=note)
             for number, note in submission.meters
