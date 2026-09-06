@@ -25,27 +25,39 @@ from nicegui import ui
 #: entire page except the (normally invisible) `.leg-print-area` while
 #: the browser's print dialog is open.
 #:
-#: `visibility: hidden` is used for the blanket hide (not `display:
-#: none`) so NiceGUI/Quasar's layout doesn't reflow. The print area itself
-#: uses `position: fixed` rather than `absolute`: Quasar's own CSS sets
-#: `.q-layout`/`.q-page` (ancestors of our print area) to `position:
-#: relative`, which would make an `absolute` child size itself against
-#: that inner page box -- still narrowed by the left-drawer's reserved
-#: space even though the drawer is invisible -- producing a tiny usable
-#: width and badly squeezed columns. `fixed` always sizes against the
-#: page/viewport itself, ignoring any `position: relative` ancestor.
-#: Printed landscape by default since these tables tend to be wide
-#: (many columns); the user's print dialog can still override it.
+#: `visibility: hidden` is used for the blanket hide (not `display: none`)
+#: so NiceGUI/Quasar's layout doesn't reflow. The print area itself uses
+#: `position: absolute`, NOT `fixed`: a `position: fixed` element is
+#: (correctly, per the CSS paged-media model -- browsers use this for
+#: running headers/footers) redrawn on *every* printed page, which for a
+#: multi-page table meant the entire table -- every row -- was reprinted
+#: in full on each page, looking like every person appeared many times
+#: over. `absolute` is drawn once and simply continues (is "cut") across
+#: page boundaries like normal content.
+#:
+#: Using `absolute` again reintroduces the bug it originally replaced,
+#: though: Quasar's own CSS sets `.q-layout`/`.q-page` (ancestors of our
+#: print area) to `position: relative`, which makes an `absolute` child
+#: size itself against that inner, still-narrowed-by-the-drawer page box
+#: instead of the actual printed page. Fixed here at that root cause
+#: instead: neutralize those ancestors' `position` during print so our
+#: `absolute` print area resolves against the real page.
+#:
+#: Printed landscape by default since these tables tend to be wide (many
+#: columns); the user's print dialog can still override it.
 PRINT_STYLE = """
 <style>
 .leg-print-area { display: none; }
 @media print {
     @page { size: landscape; margin: 12mm; }
     body * { visibility: hidden; }
+    .q-layout, .q-header, .q-footer, .q-toolbar, .q-page {
+        position: static !important;
+    }
     .leg-print-area, .leg-print-area * { visibility: visible; }
     .leg-print-area {
         display: block !important;
-        position: fixed !important;
+        position: absolute;
         top: 0;
         left: 0;
         width: 100%;
@@ -66,6 +78,14 @@ PRINT_STYLE = """
         text-align: left;
         font-size: 11px;
         overflow-wrap: break-word;
+        word-break: break-word;
+    }
+    /* Keep a row on one page: otherwise a row straddling a page break can
+       show only its first wrapped line on one page and the rest on the
+       next, which looks exactly like a cut-off word. */
+    .leg-print-table tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
     }
 }
 </style>

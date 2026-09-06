@@ -92,6 +92,8 @@ def test_check_assignment_consistency_reports_gaps_across_all_messpunkte(db):
 
     warnings = check_assignment_consistency(db)
     assert any(w.category == "zuordnung_luecke" for w in warnings)
+    # Links straight to the affected Messpunkt's detail page.
+    assert all(w.link == f"/messpunkte/{messpunkt_id}" for w in warnings)
 
 
 def test_check_assignment_consistency_clean_history_has_no_warnings(db):
@@ -132,6 +134,8 @@ def test_check_reading_completeness_flags_days_with_missing_values(db):
 
     warnings = check_reading_completeness(db, YEAR, QUARTER)
     assert any("2025-01-15" in w.message for w in warnings)
+    # Links straight to the affected Messpunkt's detail page.
+    assert all(w.link == f"/messpunkte/{messpunkt_id}" for w in warnings)
 
 
 def test_check_reading_completeness_ignores_days_without_assignment(db):
@@ -188,6 +192,9 @@ def test_check_leg_assignment_flags_unresolved_messpunkt(db):
     warnings = check_leg_assignment(db)
     assert any(w.category == "leg_nicht_zugeordnet" for w in warnings)
     assert len(warnings) == 1
+    # Links straight to the unresolved Messpunkt's detail page.
+    unresolved_id = messpunkt_repo.get_by_bezeichnung(db, "CH-C").id
+    assert warnings[0].link == f"/messpunkte/{unresolved_id}"
 
 
 def test_check_leg_assignment_ignores_other_messpunkte_with_leg(db):
@@ -209,6 +216,8 @@ def test_check_onboarding_progress_flags_overdue_step(db):
     warnings = check_onboarding_progress(db)
     assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
     assert "Overdue" in warnings[0].message
+    # Links straight to the person's detail page.
+    assert warnings[0].link == f"/personen/{person_id}"
 
 
 def test_check_onboarding_progress_ignores_step_within_threshold(db):

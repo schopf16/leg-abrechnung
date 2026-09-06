@@ -43,6 +43,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
         ],
     ),
     ("Statistik", [("/statistik", "Statistik")]),
+    ("Kommunikation", [("/email-versand", "E-Mail versenden")]),
     (
         "Einstellungen",
         [

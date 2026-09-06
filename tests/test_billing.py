@@ -233,3 +233,17 @@ def test_rerunning_billing_replaces_previous_run(db):
     assert len(matching) == 1
     assert matching[0].id == run_2.id
     assert len(billing_run_repo.list_items(db, run_2.id)) == len(items_2)
+
+
+def test_set_item_email_sent_at_round_trips(db):
+    """`email_sent_at` starts unset and is stored/reloaded correctly once set."""
+    create_demo_data(db)
+    leg_id = _demo_leg_id(db)
+    run, items, _, _ = create_or_replace_billing_run(db, leg_id, *SUMMER_QUARTER)
+    item = items[0]
+    assert billing_run_repo.list_items(db, run.id)[0].email_sent_at is None
+
+    billing_run_repo.set_item_email_sent_at(db, item.id, "2026-01-01T12:00:00+00:00")
+
+    reloaded = next(i for i in billing_run_repo.list_items(db, run.id) if i.id == item.id)
+    assert reloaded.email_sent_at == "2026-01-01T12:00:00+00:00"

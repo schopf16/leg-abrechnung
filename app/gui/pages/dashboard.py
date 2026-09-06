@@ -9,6 +9,8 @@ counters; this follows the same "status first" structure used throughout
 `app.domain.quality_checks`.
 """
 
+from typing import Optional
+
 from nicegui import ui
 
 from app.db.connection import connection_scope
@@ -37,8 +39,10 @@ def _load_overview(connection) -> dict:
         connection: Open SQLite connection.
 
     Returns:
-        A dict with "counts" (headline numbers), "action_items" (German
-        warning strings needing attention), "legs" (per-LEG summary rows),
+        A dict with "counts" (headline numbers), "action_items" (list of
+        `(message, link)` tuples needing attention -- `link` is a route
+        path to jump straight to the object in question, or `None` if no
+        detail page exists for it), "legs" (per-LEG summary rows),
         "offene_registrierungen" (count of not-yet-fully-processed Web-Registrierungen)
         and "offene_aufnahmen" (count of in-progress onboarding trackers,
         see `app.models.person_onboarding`) keys.
@@ -55,21 +59,26 @@ def _load_overview(connection) -> dict:
     )
     offene_aufnahmen = len(person_onboarding_repo.list_in_progress(connection))
 
-    action_items: list[str] = []
+    action_items: list[tuple[str, Optional[str]]] = []
     if not settings.qr_iban.strip():
         action_items.append(
-            "QR-IBAN ist in den Einstellungen noch nicht konfiguriert -- "
-            "QR-Rechnungen können nicht erzeugt werden."
+            (
+                "QR-IBAN ist in den Einstellungen noch nicht konfiguriert -- "
+                "QR-Rechnungen können nicht erzeugt werden.",
+                "/einstellungen",
+            )
         )
     if not settings.address_street.strip():
-        action_items.append("Absender-Adresse ist in den Einstellungen noch nicht erfasst.")
+        action_items.append(
+            ("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/einstellungen")
+        )
 
     for warning in check_assignment_consistency(connection):
-        action_items.append(warning.message)
+        action_items.append((warning.message, warning.link))
     for warning in check_leg_assignment(connection):
-        action_items.append(warning.message)
+        action_items.append((warning.message, warning.link))
     for warning in check_onboarding_progress(connection):
-        action_items.append(warning.message)
+        action_items.append((warning.message, warning.link))
 
     leg_rows = []
     for leg in legs:
@@ -79,8 +88,11 @@ def _load_overview(connection) -> dict:
         if composition.is_mixed:
             trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
             action_items.append(
-                f"LEG „{leg.name}“ umfasst mehrere Trafokreise ({trafokreis_names}) "
-                "-- tieferer BKW-Rabatt möglich."
+                (
+                    f"LEG „{leg.name}“ umfasst mehrere Trafokreise ({trafokreis_names}) "
+                    "-- tieferer BKW-Rabatt möglich.",
+                    "/legs",
+                )
             )
         leg_rows.append(
             {
@@ -127,8 +139,11 @@ def dashboard_page() -> None:
         with ui.card().classes("w-full " + ("bg-red-1" if has_issues else "bg-green-1")):
             ui.label("Handlungsbedarf").classes("font-bold")
             if overview["action_items"]:
-                for message in overview["action_items"]:
-                    ui.label(f"⚠ {message}").classes("text-negative text-body2")
+                for message, link in overview["action_items"]:
+                    with ui.row().classes("items-baseline gap-2"):
+                        ui.label(f"⚠ {message}").classes("text-negative text-body2")
+                        if link:
+                            ui.link("→ Ansehen", link).classes("text-body2")
                 ui.link("→ Details in den Auswertungen", "/auswertungen").classes("text-body2")
             if overview["offene_registrierungen"]:
                 with ui.row().classes("items-center gap-2"):

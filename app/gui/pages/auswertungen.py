@@ -185,20 +185,34 @@ def auswertungen_page() -> None:
                 if not all_warnings:
                     ui.label("✓ Keine Auffälligkeiten gefunden.").classes("text-positive")
                 else:
-                    ui.table(
+                    warnings_table = ui.table(
                         columns=[
                             {"name": "category", "label": "Kategorie", "field": "category", "align": "left"},
                             {"name": "message", "label": "Meldung", "field": "message", "align": "left"},
+                            {"name": "link", "label": "", "field": "link", "align": "left"},
                         ],
                         rows=[
                             {
                                 "category": CATEGORY_LABELS.get(w.category, w.category),
                                 "message": w.message,
+                                "link": w.link or "",
                             }
                             for w in all_warnings
                         ],
                         row_key="message",
                     ).classes("w-full")
+                    # Plain <a>, not ui.link: jumps straight to the object
+                    # this row is about (Messpunkt/Person detail page), so
+                    # the administrator doesn't have to search for it by
+                    # the name mentioned in the message text.
+                    warnings_table.add_slot(
+                        "body-cell-link",
+                        r'''
+                        <q-td :props="props">
+                            <a v-if="props.row.link" :href="props.row.link">Ansehen →</a>
+                        </q-td>
+                        ''',
+                    )
 
         check_button.on_click(run_checks)
         run_checks()

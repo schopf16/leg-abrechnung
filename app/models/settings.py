@@ -49,6 +49,13 @@ class LegSettings:
         onboarding_ueberfaellig_tage: Number of days a person's current
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
+        rechnung_email_betreff: Subject template for invoice emails (see
+            `app.emailing.bulk_send.send_invoice_emails`), may contain
+            `{placeholder}`s (see `app.emailing.templates`). Written once
+            in the settings, reused for every billing run instead of
+            retyping it each quarter.
+        rechnung_email_text: Body template for invoice emails, same
+            placeholder support.
         updated_at: ISO-8601 timestamp of the last update.
     """
 
@@ -65,6 +72,8 @@ class LegSettings:
     messpunkt_identifikator: str
     web_registration_cursor: int
     onboarding_ueberfaellig_tage: int
+    rechnung_email_betreff: str
+    rechnung_email_text: str
     updated_at: str
 
     @staticmethod
@@ -91,6 +100,8 @@ class LegSettings:
             messpunkt_identifikator=row["messpunkt_identifikator"],
             web_registration_cursor=row["web_registration_cursor"],
             onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
+            rechnung_email_betreff=row["rechnung_email_betreff"],
+            rechnung_email_text=row["rechnung_email_text"],
             updated_at=row["updated_at"],
         )
 
@@ -134,7 +145,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             verwaltungsaufwand_rp_per_kwh = ?, papierrechnung_rappen = ?,
             extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
-            web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?, updated_at = ?
+            web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
+            rechnung_email_betreff = ?, rechnung_email_text = ?, updated_at = ?
         WHERE id = 1
         """,
         (
@@ -151,6 +163,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.messpunkt_identifikator,
             settings.web_registration_cursor,
             settings.onboarding_ueberfaellig_tage,
+            settings.rechnung_email_betreff,
+            settings.rechnung_email_text,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

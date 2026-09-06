@@ -101,6 +101,8 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
+        rechnung_email_betreff="Ihre Abrechnung",
+        rechnung_email_text="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
@@ -140,6 +142,8 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
         verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
+        rechnung_email_betreff="Ihre Abrechnung",
+        rechnung_email_text="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")

@@ -11,6 +11,7 @@ step for too long.
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
+from typing import Optional
 
 from app.domain.period import quarter_bounds
 from app.models import messpunkt as messpunkt_repo
@@ -32,10 +33,16 @@ class QualityWarning:
             "messdaten_luecke", "leg_nicht_zugeordnet" or
             "aufnahme_ueberfaellig".
         message: Human-readable (German) description.
+        link: Route path to the specific object this warning is about
+            (e.g. `/messpunkte/12`), so the UI can jump straight there
+            instead of just naming it in text -- `None` if no detail page
+            exists for that kind of object, or the specific record could
+            not be resolved.
     """
 
     category: str
     message: str
+    link: Optional[str] = None
 
 
 def check_assignment_consistency(connection: sqlite3.Connection) -> list[QualityWarning]:
@@ -56,7 +63,13 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
                 if zuordnung_warning.kind == "overlap"
                 else "zuordnung_luecke"
             )
-            warnings.append(QualityWarning(category=category, message=zuordnung_warning.message))
+            warnings.append(
+                QualityWarning(
+                    category=category,
+                    message=zuordnung_warning.message,
+                    link=f"/messpunkte/{messpunkt.id}",
+                )
+            )
     return warnings
 
 
@@ -110,6 +123,7 @@ def check_reading_completeness(
                                 f"{current_day.isoformat()} hat "
                                 f"{count}/{_EXPECTED_READINGS_PER_DAY} Messwerten."
                             ),
+                            link=f"/messpunkte/{messpunkt.id}",
                         )
                     )
             current_day += timedelta(days=1)
@@ -144,6 +158,7 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
             QualityWarning(
                 category="leg_nicht_zugeordnet",
                 message=f"Messpunkt „{messpunkt.messpunkt_bezeichnung}“ hat noch keine zugeordnete LEG.",
+                link=f"/messpunkte/{messpunkt.id}",
             )
         )
 
@@ -182,6 +197,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
                     f"{onboarding.days_open()} Tagen bei Schritt "
                     f'"{step_label}".'
                 ),
+                link=f"/personen/{person.id}" if person is not None else None,
             )
         )
 

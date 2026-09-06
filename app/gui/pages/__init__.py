@@ -9,6 +9,7 @@ from app.gui.pages import (  # noqa: F401
     backup,
     dashboard,
     einstellungen,
+    email_versand,
     import_page,
     legs,
     messpunkte,

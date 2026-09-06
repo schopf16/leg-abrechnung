@@ -93,6 +93,12 @@ class BillingRunItem:
             `papierrechnung_rappen`.
         pdf_path: Filesystem path of the generated PDF, once created.
         created_at: ISO-8601 creation timestamp.
+        email_sent_at: ISO-8601 timestamp of the last successful invoice
+            email for this item, or `None` if never emailed. Only
+            `set_item_email_sent_at` sets it; used to skip an already-
+            emailed item on a later bulk send (see `app.emailing.
+            bulk_send.send_invoice_emails`) -- `resend_invoice_email`
+            deliberately bypasses that check for an explicit resend.
     """
 
     id: Optional[int]
@@ -106,6 +112,7 @@ class BillingRunItem:
     net_amount_rappen: int
     pdf_path: Optional[str]
     created_at: str
+    email_sent_at: Optional[str] = None
 
     @property
     def net_amount_chf(self) -> float:
@@ -157,6 +164,7 @@ class BillingRunItem:
             net_amount_rappen=row["net_amount_rappen"],
             pdf_path=row["pdf_path"],
             created_at=row["created_at"],
+            email_sent_at=row["email_sent_at"],
         )
 
 
@@ -363,5 +371,25 @@ def set_item_pdf_path(
     connection.execute(
         "UPDATE billing_run_items SET pdf_path = ? WHERE id = ?",
         (pdf_path, item_id),
+    )
+    connection.commit()
+
+
+def set_item_email_sent_at(
+    connection: sqlite3.Connection, item_id: int, sent_at: str
+) -> None:
+    """Record when the invoice email for a line item was last sent.
+
+    Args:
+        connection: Open SQLite connection.
+        item_id: Primary key of the billing run item.
+        sent_at: ISO-8601 timestamp of the send.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE billing_run_items SET email_sent_at = ? WHERE id = ?",
+        (sent_at, item_id),
     )
     connection.commit()

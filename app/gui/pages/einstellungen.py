@@ -5,13 +5,23 @@ Messpunkt Land/Identifikator defaults, and demo data generation.
 
 from nicegui import ui
 
+from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import normalize_iban, validate_qr_iban
 from app.domain.messpunkt_validation import validate_identifikator, validate_land
+from app.emailing import graph_client
+from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
 from app.models.settings import LegSettings
+
+#: Shown as a hint above the invoice email template fields -- Person
+#: placeholders plus the invoice-only context ones from
+#: `app.emailing.bulk_send._invoice_placeholder_values`.
+_RECHNUNG_PLACEHOLDER_HINT = ", ".join(
+    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "leg", "quartal", "jahr", "betrag")
+)
 
 
 @ui.page("/einstellungen")
@@ -108,6 +118,8 @@ def einstellungen_page() -> None:
                     messpunkt_identifikator=current.messpunkt_identifikator,
                     web_registration_cursor=current.web_registration_cursor,
                     onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
+                    rechnung_email_betreff=current.rechnung_email_betreff,
+                    rechnung_email_text=current.rechnung_email_text,
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -201,6 +213,79 @@ def einstellungen_page() -> None:
                 ui.notify("Aufnahmeprozess-Einstellung gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save_onboarding_threshold).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("E-Mail-Versand").classes("text-lg font-bold")
+        ui.label(
+            "Vorlage für den Rechnungsversand per E-Mail (siehe "
+            "„Rechnungslauf“) -- einmal hier hinterlegt, kein erneutes "
+            "Eintippen pro Quartal nötig, für einen einzelnen Lauf dort "
+            "trotzdem noch anpassbar. Verfügbare Platzhalter: "
+            f"{_RECHNUNG_PLACEHOLDER_HINT}."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            rechnung_betreff = ui.input(
+                "Betreff", value=current.rechnung_email_betreff
+            ).classes("w-full")
+            rechnung_text = ui.textarea(
+                "Nachricht", value=current.rechnung_email_text
+            ).classes("w-full").props("rows=6")
+            rechnung_email_error = ui.label("").classes("text-negative")
+
+            def save_rechnung_email() -> None:
+                """Validate and persist the invoice email template.
+
+                Returns:
+                    None.
+                """
+                if not rechnung_betreff.value.strip():
+                    rechnung_email_error.text = "Betreff darf nicht leer sein."
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.rechnung_email_betreff = rechnung_betreff.value.strip()
+                    settings.rechnung_email_text = rechnung_text.value
+                    settings_repo.update_settings(connection, settings)
+                rechnung_email_error.text = ""
+                ui.notify("E-Mail-Vorlage gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_rechnung_email).classes("mt-2")
+
+            ui.separator().classes("my-4")
+
+            connection_test_result = ui.label("").classes("text-caption")
+
+            async def test_graph_connection() -> None:
+                """Acquire a Graph API access token without sending anything.
+
+                Verifies the Entra ID app registration/credentials in
+                `config.local.json` before the first real bulk send is
+                attempted.
+
+                Returns:
+                    None.
+                """
+                connection_test_result.text = "Prüfe Verbindung..."
+                connection_test_result.classes(remove="text-negative text-positive")
+                try:
+                    config = get_graph_config()
+                except ConfigError as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                try:
+                    await graph_client.get_access_token(config)
+                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                connection_test_result.text = (
+                    f"Verbindung erfolgreich -- Absender: {config.sender_address}"
+                )
+                connection_test_result.classes(add="text-positive")
+
+            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
 
         ui.separator().classes("my-6")
 

@@ -803,4 +803,48 @@ MIGRATIONS: list[Migration] = [
             ALTER TABLE web_registration DROP COLUMN reviewed_at;
         """,
     ),
+    Migration(
+        version=23,
+        description="Add invoice email support: billing_run_items."
+        "email_sent_at (set once an invoice has actually been emailed, "
+        "see app.emailing.bulk_send.send_invoice_emails -- prevents an "
+        "accidental duplicate bulk send, while resend_invoice_email can "
+        "still force a specific resend) and leg_settings."
+        "rechnung_email_betreff/rechnung_email_text (the reusable "
+        "invoice email template, written once in Einstellungen instead "
+        "of retyped every quarter). Purely additive.",
+        sql="""
+            ALTER TABLE billing_run_items ADD COLUMN email_sent_at TEXT;
+
+            ALTER TABLE leg_settings ADD COLUMN rechnung_email_betreff TEXT NOT NULL
+                DEFAULT 'Ihre Abrechnung {leg}, Q{quartal} {jahr}';
+            ALTER TABLE leg_settings ADD COLUMN rechnung_email_text TEXT NOT NULL
+                DEFAULT 'Guten Tag {anrede} {nachname}
+
+Im Anhang finden Sie Ihre Abrechnung für {leg}, Q{quartal} {jahr} über CHF {betrag}.
+
+Freundliche Grüsse';
+        """,
+    ),
+    Migration(
+        version=24,
+        description="Add email_broadcast_log: a sent-history record for "
+        "broadcast/LEG emails (see app.emailing.bulk_send."
+        "send_broadcast_email), analogous to billing_run_items."
+        "email_sent_at for invoices. Records only the recipients a send "
+        "actually succeeded for, so an interrupted batch stays "
+        "traceable. Purely additive.",
+        sql="""
+            CREATE TABLE email_broadcast_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                leg_id INTEGER REFERENCES leg(id) ON DELETE SET NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                recipient_count INTEGER NOT NULL,
+                recipient_emails TEXT NOT NULL
+            );
+        """,
+    ),
 ]

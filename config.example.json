@@ -1,3 +1,8 @@
 {
-    "leg_api_token": "PASTE_TOKEN_HERE"
+    "leg_api_token": "PASTE_TOKEN_HERE",
+    "graph_tenant_id": "PASTE_ENTRA_TENANT_ID_HERE",
+    "graph_client_id": "PASTE_APP_REGISTRATION_CLIENT_ID_HERE",
+    "graph_client_secret": "PASTE_APP_REGISTRATION_CLIENT_SECRET_HERE",
+    "graph_sender_address": "leg@example.ch",
+    "graph_sender_name": "LEG Ittigen"
 }

@@ -221,7 +221,67 @@ hin.
 
 ---
 
-## 5. Backup
+## 5. E-Mail-Versand
+
+Personen können direkt aus der App per E-Mail kontaktiert werden — an
+alle, an die aktuellen Mitglieder einer LEG, oder als individueller
+Rechnungsversand (jede Person erhält nur ihre eigene PDF-Rechnung). Jede
+Person bekommt dabei eine eigene, separate E-Mail — niemand sieht die
+anderen Empfänger oder kann ihnen versehentlich antworten.
+
+Der Versand läuft über die **Microsoft Graph API** (nicht klassisches
+SMTP, da Microsoft Basic-Auth für Exchange Online inzwischen
+grösstenteils abgeschaltet hat).
+
+**Einmalig einrichten** (durch einen Administrator des Microsoft-365-Tenants):
+
+1. In [Entra ID](https://entra.microsoft.com) (früher Azure AD) eine neue
+   **App-Registrierung** anlegen.
+2. Unter „API-Berechtigungen" die Anwendungsberechtigung (nicht delegiert)
+   **`Mail.Send`** für Microsoft Graph hinzufügen und per
+   **Administratorzustimmung** freigeben.
+3. Unter „Zertifikate & Geheimnisse" ein neues **Client-Secret** erzeugen
+   und den Wert sofort kopieren (wird danach nicht mehr angezeigt).
+4. Tenant-ID und Client-ID (Anwendungs-ID) der App-Registrierung notieren.
+5. `config.example.json` im Projektordner zu `config.local.json` kopieren,
+   falls noch nicht geschehen, und die Graph-Werte eintragen:
+   ```json
+   {
+     "graph_tenant_id": "<tenant-id>",
+     "graph_client_id": "<client-id>",
+     "graph_client_secret": "<client-secret>",
+     "graph_sender_address": "<absender-postfach@ihredomain.ch>",
+     "graph_sender_name": "<anzeigename>"
+   }
+   ```
+6. Unter „Einstellungen" → „E-Mail-Versand" auf **„Verbindung testen"**
+   klicken, um die Einrichtung zu prüfen, bevor der erste echte Versand an
+   viele Personen gewagt wird.
+
+**Verwendung:**
+
+- **„E-Mail versenden"** (eigene Seite): geführter Ablauf in 5 Schritten —
+  Empfänger-Art wählen (alle/eine LEG), die vorgeschlagene Liste einsehen
+  und bei Bedarf Personen entfernen/hinzufügen, Text verfassen (mit
+  Platzhaltern wie `{vorname}`, `{anrede}` usw.), Validierung (Vorschau +
+  Warnungen bei fehlenden Angaben, mit direktem „Bearbeiten"-Knopf zur
+  betroffenen Person), Versenden mit Fortschrittsanzeige. Vergangene
+  Versände sind unten auf derselben Seite einsehbar.
+- **Rechnungsversand** (Seite „Rechnungslauf"): nach dem PDF-Export der
+  Knopf **„Rechnungen per E-Mail versenden"** — die hinterlegte Vorlage
+  (einstellbar unter „Einstellungen") wird vorausgefüllt, bleibt aber für
+  diesen einen Lauf editierbar. Personen mit „Papierrechnung" werden
+  automatisch übersprungen; bereits versendete Rechnungen werden beim
+  nächsten Versand nicht doppelt verschickt, lassen sich aber einzeln über
+  „Erneut senden" gezielt nochmals verschicken.
+
+„Gesendet" heisst: von Microsoft zur Zustellung angenommen — ob eine
+E-Mail-Adresse tatsächlich existiert und die Nachricht ankommt, kann die
+App nicht prüfen (ein Bounce landet nur im Absender-Postfach).
+
+---
+
+## 6. Backup
 
 - **„Backup erstellen"** (Seite „Backup"): schreibt die komplette Datenbank
   als eine einzelne, mit Zeitstempel benannte Datei in den Ordner
@@ -241,7 +301,7 @@ sich also mit einer neueren App-Version noch öffnen.
 
 ---
 
-## 6. Tests ausführen
+## 7. Tests ausführen
 
 Die Kernlogik (Verteilung, Abrechnung, Import, Migrationen) ist durch
 automatisierte Tests abgesichert. Zum Ausführen:
@@ -254,7 +314,7 @@ automatisierte Tests abgesichert. Zum Ausführen:
 
 ---
 
-## 7. Code auf GitHub sichern
+## 8. Code auf GitHub sichern
 
 Der Code liegt in einem **öffentlichen** GitHub-Repository. Damit dabei
 niemals versehentlich persönliche Daten (Datenbank, PDFs, Adressen, IBANs)
@@ -266,7 +326,8 @@ und werden nie mitversioniert:
   Auszahlungslisten (CSV)
 - `backups/` — Datenbank-Backups
 - `config.local.json` — der API-Token für die Web-Registrierungen
-  (Abschnitt 4)
+  (Abschnitt 4) sowie die Microsoft-Graph-Zugangsdaten für den
+  E-Mail-Versand (Abschnitt 5)
 - `.venv/` — die lokale Python-Umgebung
 
 **Einmalig einrichten** (in der Kommandozeile im Projektordner):
@@ -283,7 +344,7 @@ sendet die Änderungen an GitHub.
 
 ---
 
-## 8. Technischer Überblick (für Entwickler)
+## 9. Technischer Überblick (für Entwickler)
 
 - **Sprache/Oberfläche:** Python + [NiceGUI](https://nicegui.io) (läuft als
   eigenständiges Desktop-Fenster, kein separater Server nötig).
@@ -299,7 +360,13 @@ sendet die Änderungen an GitHub.
   API (`cloudflare_client.py`) und dessen Abgleichs-Logik
   (`registration_sync.py`), siehe Abschnitt 4.
 - **Lokale Secrets:** `app/config.py` liest den API-Token für die
-  Web-Registrierungen aus der gitignorten `config.local.json`.
+  Web-Registrierungen und die Microsoft-Graph-Zugangsdaten für den
+  E-Mail-Versand aus der gitignorten `config.local.json`.
+- **E-Mail-Versand:** `app/emailing/` — `graph_client.py` (Microsoft
+  Graph API, async, inkl. 429-Drosselungsbehandlung), `templates.py`
+  (`{platzhalter}`-Ersetzung/-Validierung), `bulk_send.py`
+  (Empfänger-Auflösung und Versand-Orchestrierung für Broadcast-/
+  LEG-Mails und den Rechnungsversand), siehe Abschnitt 5.
 - **PDF/QR-Rechnung + CSV-Listen:** `app/pdf/` (Bibliotheken `qrbill` +
   `reportlab` + `svglib` für die PDFs; die Rechnungs-/Auszahlungslisten
   sind reines CSV, siehe `csv_export.py`).
