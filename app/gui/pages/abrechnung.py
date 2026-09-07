@@ -259,6 +259,7 @@ def abrechnung_page() -> None:
                         ui.label(f"Rechnungsliste (CSV): {export_result.invoice_list_path.name}")
                     if export_result.payout_list_path:
                         ui.label(f"Auszahlungsliste (CSV): {export_result.payout_list_path.name}")
+                    ui.link("→ Debitoren (Zahlungen zuordnen)", "/debitoren")
                     for error in export_result.errors:
                         ui.label(f"⚠ {error}").classes("text-negative")
 
@@ -515,7 +516,61 @@ def abrechnung_page() -> None:
                 type="positive",
             )
 
-        run_button.on_click(run_billing)
+        def confirm_rates_then_run_billing() -> None:
+            """Show the currently configured billing rates for confirmation,
+            then run (or re-run) billing for the selected LEG/period.
+
+            The actual amounts get frozen onto each `BillingRunItem` the
+            moment the run is created (see `app.domain.billing`) -- this
+            step exists purely so a wrong rate is caught *before* that
+            freeze happens, since a later correction in Einstellungen can
+            no longer change what has already been billed.
+
+            Returns:
+                None.
+            """
+            if leg_select.value is None:
+                ui.notify("Bitte eine LEG wählen.", type="warning")
+                return
+            if selector.selected_period is None:
+                ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
+                return
+
+            with connection_scope() as connection:
+                settings = settings_repo.get_settings(connection)
+
+            with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
+                ui.label("Aktuell hinterlegte Ansätze prüfen").classes("text-lg font-bold")
+                ui.label(
+                    "Diese Werte werden mit der Rechnung fest verrechnet. Eine "
+                    "spätere Korrektur in den Einstellungen wirkt sich nur auf "
+                    "künftige Abrechnungen aus, nie rückwirkend auf diesen Lauf."
+                ).classes("text-caption text-grey-6")
+                with ui.column().classes("gap-0 mt-2"):
+                    ui.label(f"Energiepreis: {settings.price_rp_per_kwh:.2f} Rp./kWh")
+                    ui.label(
+                        f"Verwaltungsaufwand Bezug: "
+                        f"{settings.verwaltungsaufwand_bezug_rp_per_kwh:.4f} Rp./kWh"
+                    )
+                    ui.label(
+                        f"Verwaltungsaufwand Einspeisung: "
+                        f"{settings.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f} Rp./kWh"
+                    )
+                    ui.label(
+                        f"Kosten Papierrechnung: {settings.papierrechnung_rappen / 100:.2f} CHF"
+                    )
+
+                def confirmed() -> None:
+                    dialog.close()
+                    run_billing()
+
+                with ui.row().classes("w-full justify-end gap-2 mt-4"):
+                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
+                    ui.link("Einstellungen anpassen", "/einstellungen").classes("self-center")
+                    ui.button("Ansätze sind korrekt -- Rechnung erstellen", on_click=confirmed)
+            dialog.open()
+
+        run_button.on_click(confirm_rates_then_run_billing)
 
         ui.label("Bisherige Läufe").classes("text-lg font-bold mt-6")
         refresh_runs_table()

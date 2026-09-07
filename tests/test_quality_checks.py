@@ -9,7 +9,9 @@ from app.domain.quality_checks import (
     check_leg_assignment,
     check_onboarding_progress,
     check_reading_completeness,
+    check_unresolved_bank_transactions,
 )
+from app.models import bank_transaction as bank_transaction_repo
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
@@ -265,3 +267,46 @@ def test_check_onboarding_progress_ignores_person_without_tracker(db):
     """A person never routed through the onboarding pipeline is never flagged."""
     _person(db, "NoTracker")
     assert check_onboarding_progress(db) == []
+
+
+def test_check_unresolved_bank_transactions_no_warning_when_none_open(db):
+    assert check_unresolved_bank_transactions(db) == []
+
+
+def test_check_unresolved_bank_transactions_aggregates_into_one_warning(db):
+    batch_id = bank_transaction_repo.create_batch(
+        db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=2
+    )
+    bank_transaction_repo.insert_transaction(
+        db, bank_import_batch_id=batch_id, bank_reference="R1", booking_date="2026-01-01",
+        amount_rappen=1000, currency="CHF", credit_debit_indicator="CRDT",
+        counterparty_name="A", counterparty_iban="", structured_reference="", remittance_text="",
+        source_format="camt053", is_reversal=False,
+    )
+    bank_transaction_repo.insert_transaction(
+        db, bank_import_batch_id=batch_id, bank_reference="R2", booking_date="2026-01-02",
+        amount_rappen=2000, currency="CHF", credit_debit_indicator="CRDT",
+        counterparty_name="B", counterparty_iban="", structured_reference="", remittance_text="",
+        source_format="camt053", is_reversal=False,
+    )
+
+    warnings = check_unresolved_bank_transactions(db)
+
+    assert len(warnings) == 1
+    assert "2" in warnings[0].message
+    assert warnings[0].link == "/debitoren"
+
+
+def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
+    batch_id = bank_transaction_repo.create_batch(
+        db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=1
+    )
+    tx_id = bank_transaction_repo.insert_transaction(
+        db, bank_import_batch_id=batch_id, bank_reference="R1", booking_date="2026-01-01",
+        amount_rappen=1000, currency="CHF", credit_debit_indicator="CRDT",
+        counterparty_name="A", counterparty_iban="", structured_reference="", remittance_text="",
+        source_format="camt053", is_reversal=False,
+    )
+    bank_transaction_repo.set_status(db, tx_id, "ignored")
+
+    assert check_unresolved_bank_transactions(db) == []

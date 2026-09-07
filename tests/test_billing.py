@@ -12,6 +12,7 @@ from app.domain.demo_data import SUMMER_QUARTER, WINTER_QUARTER, create_demo_dat
 from app.domain.distribution import DistributionResult, PersonQuarterResult
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
+from app.models import settings as settings_repo
 from app.models.billing_run import BillingRunItem
 
 
@@ -28,7 +29,7 @@ def _item(person_id: int, net_amount_rappen: int) -> BillingRunItem:
     return BillingRunItem(
         id=None, billing_run_id=0, person_id=person_id,
         consumed_kwh=0, produced_kwh=0, price_rp_per_kwh=12,
-        verwaltungsaufwand_rappen=0, papierrechnung_rappen=0,
+        verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
         net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
     )
 
@@ -47,7 +48,7 @@ def test_prosumer_gets_a_single_netted_item_not_two():
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=10.0, produced_local_kwh=4.0),
         },
     )
-    items = compute_billing_items(distribution, 12.0, 0.0, 0, {})
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 0, {})
 
     assert len(items) == 1
     item = items[0]
@@ -65,7 +66,7 @@ def test_pure_consumer_gets_positive_net_owed_to_leg():
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=5.0, produced_local_kwh=0.0),
         },
     )
-    items = compute_billing_items(distribution, 12.0, 0.0, 0, {})
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 0, {})
     assert len(items) == 1
     assert items[0].net_amount_rappen == 60
     assert items[0].is_owed_to_leg
@@ -79,7 +80,7 @@ def test_pure_producer_gets_negative_net_owed_by_leg():
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=0.0, produced_local_kwh=5.0),
         },
     )
-    items = compute_billing_items(distribution, 12.0, 0.0, 0, {})
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 0, {})
     assert len(items) == 1
     assert items[0].net_amount_rappen == -60
     assert items[0].is_owed_by_leg
@@ -89,7 +90,7 @@ def test_pure_producer_gets_negative_net_owed_by_leg():
 def test_person_with_no_local_sharing_gets_no_item():
     """A person absent from the distribution result gets no billing item."""
     distribution = DistributionResult(leg_id=1, year=2025, quarter=1, person_results={})
-    assert compute_billing_items(distribution, 12.0, 0.0, 0, {}) == []
+    assert compute_billing_items(distribution, 12.0, 0.0, 0.0, 0, {}) == []
 
 
 def test_rounding_uses_half_up_and_happens_only_once():
@@ -102,23 +103,61 @@ def test_rounding_uses_half_up_and_happens_only_once():
         },
     )
     # 0.125 kWh * 12 Rp./kWh = 1.5 Rappen -> rounds to 2.
-    items = compute_billing_items(distribution, 12.0, 0.0, 0, {})
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 0, {})
     assert items[0].net_amount_rappen == 2
 
 
-def test_verwaltungsaufwand_is_charged_on_consumption_only():
-    """The admin surcharge applies to consumed_local_kwh, never to production."""
+def test_verwaltungsaufwand_bezug_is_charged_on_consumption_only():
+    """The Bezug admin surcharge applies to consumed_local_kwh only, even
+    when an Einspeisung rate of zero means production is untouched."""
     distribution = DistributionResult(
         leg_id=1, year=2025, quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=100.0, produced_local_kwh=50.0),
         },
     )
-    # verwaltungsaufwand_rp_per_kwh=0.5 -> 100 * 0.5 = 50 Rappen.
-    items = compute_billing_items(distribution, 12.0, 0.5, 0, {})
-    assert items[0].verwaltungsaufwand_rappen == 50
+    # verwaltungsaufwand_bezug_rp_per_kwh=0.5 -> 100 * 0.5 = 50 Rappen.
+    items = compute_billing_items(distribution, 12.0, 0.5, 0.0, 0, {})
+    assert items[0].verwaltungsaufwand_bezug_rappen == 50
+    assert items[0].verwaltungsaufwand_einspeisung_rappen == 0
+    assert items[0].verwaltungsaufwand_bezug_rp_per_kwh == 0.5
     # Energy net: 100*12 - 50*12 = 600 Rappen; total = 600 + 50 = 650.
     assert items[0].net_amount_rappen == 650
+
+
+def test_verwaltungsaufwand_einspeisung_is_independent_of_bezug():
+    """The Einspeisung admin surcharge applies to produced_local_kwh only,
+    with its own independent rate -- charging one direction must not
+    imply anything about the other."""
+    distribution = DistributionResult(
+        leg_id=1, year=2025, quarter=1,
+        person_results={
+            1: PersonQuarterResult(person_id=1, consumed_local_kwh=100.0, produced_local_kwh=50.0),
+        },
+    )
+    # Bezug rate 0 (no Bezug fee), Einspeisung rate 0.2 -> 50 * 0.2 = 10 Rappen.
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.2, 0, {})
+    assert items[0].verwaltungsaufwand_bezug_rappen == 0
+    assert items[0].verwaltungsaufwand_einspeisung_rappen == 10
+    assert items[0].verwaltungsaufwand_einspeisung_rp_per_kwh == 0.2
+    # Energy net: 100*12 - 50*12 = 600 Rappen; total = 600 + 10 = 610.
+    assert items[0].net_amount_rappen == 610
+
+
+def test_verwaltungsaufwand_rates_are_frozen_onto_the_item():
+    """Both actual rates used must be stored on the item itself, not just
+    the resulting fee amount -- this is what lets a later rate change in
+    Einstellungen leave already-billed items' displayed rate untouched
+    (see app.domain.billing's module docstring)."""
+    distribution = DistributionResult(
+        leg_id=1, year=2025, quarter=1,
+        person_results={
+            1: PersonQuarterResult(person_id=1, consumed_local_kwh=10.0, produced_local_kwh=10.0),
+        },
+    )
+    items = compute_billing_items(distribution, 12.0, 0.7, 0.3, 0, {})
+    assert items[0].verwaltungsaufwand_bezug_rp_per_kwh == 0.7
+    assert items[0].verwaltungsaufwand_einspeisung_rp_per_kwh == 0.3
 
 
 def test_papierrechnung_applied_only_when_person_opted_in():
@@ -130,7 +169,7 @@ def test_papierrechnung_applied_only_when_person_opted_in():
             2: PersonQuarterResult(person_id=2, consumed_local_kwh=10.0, produced_local_kwh=0.0),
         },
     )
-    items = compute_billing_items(distribution, 12.0, 0.0, 200, {1: True, 2: False})
+    items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 200, {1: True, 2: False})
     items_by_person = {i.person_id: i for i in items}
 
     assert items_by_person[1].papierrechnung_rappen == 200
@@ -167,17 +206,32 @@ def test_verify_sum_balance_ignores_admin_fees():
     """Admin fees added on top of a balanced energy net don't break the balance check."""
     balanced_energy_item_to_leg = BillingRunItem(
         id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, verwaltungsaufwand_rappen=50, papierrechnung_rappen=200,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=50, papierrechnung_rappen=200,
         net_amount_rappen=120 + 50 + 200, pdf_path=None, created_at="",
     )
     balanced_energy_item_by_leg = BillingRunItem(
         id=None, billing_run_id=0, person_id=2, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, verwaltungsaufwand_rappen=0, papierrechnung_rappen=0,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
         net_amount_rappen=-120, pdf_path=None, created_at="",
     )
     check = verify_sum_balance([balanced_energy_item_to_leg, balanced_energy_item_by_leg])
     assert check.balanced
     assert check.total_owed_to_leg_rappen == 120
+    assert check.total_owed_by_leg_rappen == 120
+
+
+def test_verify_sum_balance_ignores_verwaltungsaufwand_einspeisung_too():
+    """The Einspeisung admin fee must be excluded from the energy balance
+    check exactly like the Bezug one -- both are pure LEG revenue with no
+    producer-side counterpart."""
+    item = BillingRunItem(
+        id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+        verwaltungsaufwand_einspeisung_rappen=30,
+        net_amount_rappen=-120 + 30, pdf_path=None, created_at="",
+    )
+    check = verify_sum_balance([item, _item(2, 120)])
+    assert check.balanced
     assert check.total_owed_by_leg_rappen == 120
 
 
@@ -233,6 +287,27 @@ def test_rerunning_billing_replaces_previous_run(db):
     assert len(matching) == 1
     assert matching[0].id == run_2.id
     assert len(billing_run_repo.list_items(db, run_2.id)) == len(items_2)
+
+
+def test_verwaltungsaufwand_rates_survive_persistence_round_trip(db):
+    """The frozen rate fields must actually be stored/reloaded via the
+    database, not just present on the in-memory dataclass before
+    `add_items` ever runs -- this exercises the real INSERT/SELECT
+    columns, not just Python construction."""
+    create_demo_data(db)
+    leg_id = _demo_leg_id(db)
+    settings = settings_repo.get_settings(db)
+    settings.verwaltungsaufwand_bezug_rp_per_kwh = 0.8
+    settings.verwaltungsaufwand_einspeisung_rp_per_kwh = 0.4
+    settings_repo.update_settings(db, settings)
+
+    run, items, _, _ = create_or_replace_billing_run(db, leg_id, *SUMMER_QUARTER)
+    reloaded = billing_run_repo.list_items(db, run.id)
+
+    assert reloaded, "expected items for the summer quarter"
+    for item in reloaded:
+        assert item.verwaltungsaufwand_bezug_rp_per_kwh == 0.8
+        assert item.verwaltungsaufwand_einspeisung_rp_per_kwh == 0.4
 
 
 def test_set_item_email_sent_at_round_trips(db):

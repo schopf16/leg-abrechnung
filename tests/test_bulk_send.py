@@ -270,7 +270,7 @@ def _run_with_item(
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=pdf_path, created_at="",
             )
         ],

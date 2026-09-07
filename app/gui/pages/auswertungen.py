@@ -121,7 +121,8 @@ def auswertungen_page() -> None:
                         items = compute_billing_items(
                             distribution,
                             settings.price_rp_per_kwh,
-                            settings.verwaltungsaufwand_rp_per_kwh,
+                            settings.verwaltungsaufwand_bezug_rp_per_kwh,
+                            settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
                             settings.papierrechnung_rappen,
                             papierrechnung_by_person,
                         )

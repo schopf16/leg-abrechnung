@@ -19,6 +19,7 @@ from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
     check_onboarding_progress,
+    check_unresolved_bank_transactions,
 )
 from app.gui.navigation import page_frame
 from app.models import billing_run as billing_run_repo
@@ -78,6 +79,8 @@ def _load_overview(connection) -> dict:
     for warning in check_leg_assignment(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_onboarding_progress(connection):
+        action_items.append((warning.message, warning.link))
+    for warning in check_unresolved_bank_transactions(connection):
         action_items.append((warning.message, warning.link))
 
     leg_rows = []

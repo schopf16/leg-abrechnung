@@ -4,6 +4,7 @@ the CSV reconciliation lists and export generation."""
 import csv
 import re
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 
 from app.domain.billing import create_or_replace_billing_run
@@ -75,6 +76,13 @@ def _billing_context(db):
     run, items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
     distribution = compute_quarter_distribution(db, leg.id, *SUMMER_QUARTER)
     settings = settings_repo.get_settings(db)
+    # generate_person_bill_pdf prints item.faellig_am verbatim (never
+    # recomputes it) since the export_service.py fix for Finding #2 --
+    # tests calling it directly (bypassing export_billing_run_documents,
+    # which is the only real caller that freezes this itself) must set it.
+    due_date = date.today().isoformat()
+    for item in items:
+        item.faellig_am = due_date
     return run, items, distribution, leg, settings
 
 
@@ -98,11 +106,18 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
+        verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
+        papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
         rechnung_email_betreff="Ihre Abrechnung",
         rechnung_email_text="Guten Tag",
+        mahnung_neue_frist_tage=14,
+        mahnung_bagatellgrenze_rappen=500,
+        mahnung1_email_betreff="1. Mahnung",
+        mahnung1_email_text="Guten Tag",
+        mahnung2_email_betreff="2. Mahnung",
+        mahnung2_email_text="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
@@ -139,11 +154,18 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_rp_per_kwh=0.0, papierrechnung_rappen=0, extra_backup_dir="",
+        verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
+        papierrechnung_rappen=0, extra_backup_dir="",
         messpunkt_land="CH", messpunkt_identifikator="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
         rechnung_email_betreff="Ihre Abrechnung",
         rechnung_email_text="Guten Tag",
+        mahnung_neue_frist_tage=14,
+        mahnung_bagatellgrenze_rappen=500,
+        mahnung1_email_betreff="1. Mahnung",
+        mahnung1_email_text="Guten Tag",
+        mahnung2_email_betreff="2. Mahnung",
+        mahnung2_email_text="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", bemerkung="", created_at="")
@@ -243,17 +265,17 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     consumer_item = next(i for i in items if i.is_owed_to_leg and i.produced_kwh == 0)
     person = person_repo.get(db, consumer_item.person_id)
     person_result = distribution.person_results[consumer_item.person_id]
-    # Strip the admin fees this item happens to carry from demo settings/
-    # data, so the document is down to its simplest possible shape: one
-    # Bezug table plus the net settlement.
-    consumer_item.verwaltungsaufwand_rappen = 0
+    # Strip the admin fees this item happens to carry, so the document is
+    # down to its simplest possible shape: one Bezug table plus the net
+    # settlement. The fee rows are driven entirely by the item's own
+    # (frozen) fields now, not by `settings` -- see app.domain.billing.
+    consumer_item.verwaltungsaufwand_bezug_rappen = 0
+    consumer_item.verwaltungsaufwand_einspeisung_rappen = 0
     consumer_item.papierrechnung_rappen = 0
-    fee_free_settings = settings
-    fee_free_settings.verwaltungsaufwand_rp_per_kwh = 0.0
 
     output_path = tmp_path / "consumer_no_fees.pdf"
     generate_person_bill_pdf(
-        run, consumer_item, person_result, person, leg, fee_free_settings, output_path
+        run, consumer_item, person_result, person, leg, settings, output_path
     )
 
     _assert_is_pdf(output_path)
@@ -339,3 +361,26 @@ def test_export_billing_run_documents_writes_one_pdf_per_person(db, tmp_path, mo
 
     stored_items = billing_run_repo.list_items(db, run.id)
     assert all(item.pdf_path for item in stored_items)
+
+
+def test_export_billing_run_documents_freezes_faellig_am_and_never_resets_it_on_reexport(db, tmp_path, monkeypatch):
+    """Finding #2: a re-export (e.g. to fix a typo in the LEG address) must
+    keep printing/using the due date already communicated to the person
+    and already relied upon by app.domain.mahnwesen -- never push it back
+    out by another PAYMENT_TERM just because the PDF was regenerated."""
+    import app.pdf.export_service as export_service
+
+    monkeypatch.setattr(export_service, "OUTPUT_DIR", tmp_path)
+
+    create_demo_data(db)
+    leg = leg_repo.list_all(db)[0]
+    run, _items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
+
+    export_service.export_billing_run_documents(db, run)
+    first_due_dates = {item.id: item.faellig_am for item in billing_run_repo.list_items(db, run.id)}
+    assert all(due is not None for due in first_due_dates.values())
+
+    export_service.export_billing_run_documents(db, run)
+    second_due_dates = {item.id: item.faellig_am for item in billing_run_repo.list_items(db, run.id)}
+
+    assert second_due_dates == first_due_dates

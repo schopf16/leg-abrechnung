@@ -11,17 +11,26 @@ Intermediate figures (kWh, subtotal values) stay at full precision and are
 only *formatted* for display, never independently rounded and re-added,
 so rounding error can never compound across a document.
 
-On top of that energy net, two admin fees are added -- each its own
+On top of that energy net, three admin fees are added -- each its own
 distinct, independently rounded (or exact, for the flat fee) billed line,
 not subject to the "round only once" rule above since they are not
 derived from repeated addition of the same rounded figure:
 
-- `verwaltungsaufwand_rappen`: `consumed_local_kwh * verwaltungsaufwand_rp_per_kwh`,
-  rounded to the nearest Rappen. Charged on consumption only, never on
-  production.
+- `verwaltungsaufwand_bezug_rappen`: `consumed_local_kwh *
+  verwaltungsaufwand_bezug_rp_per_kwh`, rounded to the nearest Rappen.
+- `verwaltungsaufwand_einspeisung_rappen`: `produced_local_kwh *
+  verwaltungsaufwand_einspeisung_rp_per_kwh`, rounded to the nearest
+  Rappen. Independent of the Bezug rate above -- either can be zero while
+  the other is not.
 - `papierrechnung_rappen`: a flat fee, copied verbatim from
   `LegSettings.papierrechnung_rappen` if the person has
   `Person.papierrechnung` set, else 0.
+
+Both `verwaltungsaufwand_*_rp_per_kwh` rates actually used are frozen
+directly onto each `BillingRunItem` (mirroring how `price_rp_per_kwh` is
+already frozen there) -- once a run is created, changing the rate in
+`LegSettings` never alters what an already-billed item appears to have
+charged; it only takes effect for runs created afterwards.
 
 These fees are pure LEG revenue with no producer-side counterpart, so
 `verify_sum_balance` deliberately excludes them and checks only the energy
@@ -97,7 +106,8 @@ def round_to_rappen(amount_rappen: float) -> int:
 def compute_billing_items(
     distribution: DistributionResult,
     price_rp_per_kwh: float,
-    verwaltungsaufwand_rp_per_kwh: float,
+    verwaltungsaufwand_bezug_rp_per_kwh: float,
+    verwaltungsaufwand_einspeisung_rp_per_kwh: float,
     papierrechnung_rappen: int,
     papierrechnung_by_person: dict[int, bool],
 ) -> list[BillingRunItem]:
@@ -112,8 +122,11 @@ def compute_billing_items(
     Args:
         distribution: Result of `compute_quarter_distribution` for one LEG.
         price_rp_per_kwh: Internal energy price in Rappen per kWh.
-        verwaltungsaufwand_rp_per_kwh: Administrative surcharge in Rappen
-            per kWh, charged on `consumed_local_kwh` only.
+        verwaltungsaufwand_bezug_rp_per_kwh: Administrative surcharge in
+            Rappen per kWh, charged on `consumed_local_kwh`.
+        verwaltungsaufwand_einspeisung_rp_per_kwh: Administrative
+            surcharge in Rappen per kWh, charged on `produced_local_kwh`
+            -- independent of the Bezug rate above.
         papierrechnung_rappen: Flat paper-invoice fee in Rappen, applied
             to persons present (and `True`) in `papierrechnung_by_person`.
         papierrechnung_by_person: Whether each person receives a paper
@@ -122,7 +135,9 @@ def compute_billing_items(
 
     Returns:
         Unpersisted `BillingRunItem` instances (`id`, `billing_run_id` and
-        `created_at` left as placeholders for the caller to fill in).
+        `created_at` left as placeholders for the caller to fill in). Both
+        `verwaltungsaufwand_*_rp_per_kwh` rates actually used are frozen
+        onto each item (see module docstring).
     """
     items: list[BillingRunItem] = []
     for person_id, totals in sorted(distribution.person_results.items()):
@@ -133,8 +148,11 @@ def compute_billing_items(
         produced_value_rappen = totals.produced_local_kwh * price_rp_per_kwh
         energy_net_rappen = round_to_rappen(consumed_value_rappen - produced_value_rappen)
 
-        verwaltungsaufwand = round_to_rappen(
-            totals.consumed_local_kwh * verwaltungsaufwand_rp_per_kwh
+        verwaltungsaufwand_bezug = round_to_rappen(
+            totals.consumed_local_kwh * verwaltungsaufwand_bezug_rp_per_kwh
+        )
+        verwaltungsaufwand_einspeisung = round_to_rappen(
+            totals.produced_local_kwh * verwaltungsaufwand_einspeisung_rp_per_kwh
         )
         papierrechnung = papierrechnung_rappen if papierrechnung_by_person.get(person_id) else 0
 
@@ -146,9 +164,15 @@ def compute_billing_items(
                 consumed_kwh=totals.consumed_local_kwh,
                 produced_kwh=totals.produced_local_kwh,
                 price_rp_per_kwh=price_rp_per_kwh,
-                verwaltungsaufwand_rappen=verwaltungsaufwand,
+                verwaltungsaufwand_bezug_rappen=verwaltungsaufwand_bezug,
+                verwaltungsaufwand_einspeisung_rappen=verwaltungsaufwand_einspeisung,
+                verwaltungsaufwand_bezug_rp_per_kwh=verwaltungsaufwand_bezug_rp_per_kwh,
+                verwaltungsaufwand_einspeisung_rp_per_kwh=verwaltungsaufwand_einspeisung_rp_per_kwh,
                 papierrechnung_rappen=papierrechnung,
-                net_amount_rappen=energy_net_rappen + verwaltungsaufwand + papierrechnung,
+                net_amount_rappen=(
+                    energy_net_rappen + verwaltungsaufwand_bezug
+                    + verwaltungsaufwand_einspeisung + papierrechnung
+                ),
                 pdf_path=None,
                 created_at="",
             )
@@ -159,7 +183,8 @@ def compute_billing_items(
 def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
     """Check that money owed to the LEG balances money owed by the LEG, energy-wise.
 
-    Admin fees (`verwaltungsaufwand_rappen`, `papierrechnung_rappen`) are
+    Admin fees (`verwaltungsaufwand_bezug_rappen`,
+    `verwaltungsaufwand_einspeisung_rappen`, `papierrechnung_rappen`) are
     deliberately excluded -- they are pure LEG revenue with no matching
     producer-side payout, so including them would make this check flag a
     perfectly healthy run as "unbalanced". See the module docstring.
@@ -172,7 +197,8 @@ def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
         within the accepted rounding tolerance.
     """
     energy_net_by_item = [
-        i.net_amount_rappen - i.verwaltungsaufwand_rappen - i.papierrechnung_rappen
+        i.net_amount_rappen - i.verwaltungsaufwand_bezug_rappen
+        - i.verwaltungsaufwand_einspeisung_rappen - i.papierrechnung_rappen
         for i in items
     ]
     total_owed_to_leg = sum(n for n in energy_net_by_item if n > 0)
@@ -219,7 +245,8 @@ def create_or_replace_billing_run(
     items = compute_billing_items(
         distribution,
         settings.price_rp_per_kwh,
-        settings.verwaltungsaufwand_rp_per_kwh,
+        settings.verwaltungsaufwand_bezug_rp_per_kwh,
+        settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
         settings.papierrechnung_rappen,
         papierrechnung_by_person,
     )

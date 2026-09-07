@@ -40,9 +40,10 @@ from app.models.zuordnung import Zuordnung
 #: be used to produce QR-invoices end to end without manual configuration.
 _DEMO_QR_IBAN = "CH5730000123456789012"
 
-#: Demo admin surcharge and paper-invoice fee, matching realistic
+#: Demo admin surcharges and paper-invoice fee, matching realistic
 #: real-world magnitudes (see `app.domain.billing`).
-_DEMO_VERWALTUNGSAUFWAND_RP_PER_KWH = 0.5
+_DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH = 0.5
+_DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH = 0.5
 _DEMO_PAPIERRECHNUNG_RAPPEN = 200
 
 #: Year used for the generated demo quarters. Chosen in the past so both
@@ -577,6 +578,7 @@ def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
     settings.address_city = "Bern"
     settings.address_country = "CH"
     settings.qr_iban = _DEMO_QR_IBAN
-    settings.verwaltungsaufwand_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_RP_PER_KWH
+    settings.verwaltungsaufwand_bezug_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH
+    settings.verwaltungsaufwand_einspeisung_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH
     settings.papierrechnung_rappen = _DEMO_PAPIERRECHNUNG_RAPPEN
     settings_repo.update_settings(connection, settings)

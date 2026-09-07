@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.02">
+  <BkToCstmrDbtCdtNtfctn>
+    <GrpHdr>
+      <MsgId>MSG-054-TEST-1</MsgId>
+      <CreDtTm>2026-02-01T06:00:00</CreDtTm>
+    </GrpHdr>
+    <Ntfctn>
+      <Id>NTFCTN-1</Id>
+      <Acct>
+        <Id>
+          <IBAN>CH9300762011623852957</IBAN>
+        </Id>
+      </Acct>
+
+      <!-- A single Ntry representing a bank's collective QR-payment
+           booking (a "Sammelgutschrift") for one day, broken out into two
+           individually-referenced TxDtls: exactly the case camt.053
+           alone often cannot represent (see module docstring of
+           app.domain.bank_reconciliation). -->
+      <Ntry>
+        <Amt Ccy="CHF">150.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-15</Dt></BookgDt>
+        <ValDt><Dt>2026-01-15</Dt></ValDt>
+        <NtryDtls>
+          <TxDtls>
+            <Amt Ccy="CHF">80.00</Amt>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-C054-0001</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Muster Anna</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>1002340000050000000000427</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Amt Ccy="CHF">70.00</Amt>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-C054-0002</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Muster Bettina</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>2005000000050000000000430</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Ntfctn>
+  </BkToCstmrDbtCdtNtfctn>
+</Document>

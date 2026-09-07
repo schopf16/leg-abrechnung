@@ -14,6 +14,7 @@ from datetime import datetime, time, timedelta
 from typing import Optional
 
 from app.domain.period import quarter_bounds
+from app.models import bank_transaction as bank_transaction_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
@@ -202,3 +203,29 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
         )
 
     return warnings
+
+
+def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag imported bank statement entries still awaiting a decision.
+
+    A single aggregated warning (not one per entry) -- see
+    `app.models.bank_transaction.list_open` for the underlying query --
+    to avoid flooding Handlungsbedarf if many entries are open at once.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A single-item list with the aggregated warning, or `[]` if
+        nothing is open.
+    """
+    open_count = len(bank_transaction_repo.list_open(connection))
+    if open_count == 0:
+        return []
+    return [
+        QualityWarning(
+            category="bank_buchung_ungeklaert",
+            message=f"{open_count} Bank-Buchung(en) noch nicht zugeordnet.",
+            link="/debitoren",
+        )
+    ]

@@ -17,6 +17,7 @@ from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
+from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
@@ -24,11 +25,13 @@ from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
+from app.models import person_offboarding as person_offboarding_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
+from app.models.person_offboarding import GRUND_OPTIONS
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
 from app.models.person import Person
 
@@ -452,6 +455,39 @@ def person_detail_page(person_id: int) -> None:
                     ).props("dense flat").classes("mt-2")
 
             render_onboarding_status()
+
+        with connection_scope() as connection:
+            offboarding = person_offboarding_repo.get_by_person(connection, person_id)
+
+        if offboarding is not None:
+            ui.label("Austritts-/Ausschlussprozess").classes("text-lg font-bold mt-6")
+            offboarding_card = ui.column().classes("w-full max-w-lg")
+
+            def render_offboarding_status() -> None:
+                """(Re-)render the offboarding status card from the current
+                (possibly just-edited) `offboarding` object.
+
+                Returns:
+                    None.
+                """
+                offboarding_card.clear()
+                with offboarding_card, ui.card().classes("w-full"):
+                    ui.label(f"Grund: {GRUND_OPTIONS.get(offboarding.grund, offboarding.grund)}").classes(
+                        "text-caption text-grey-6"
+                    )
+                    if offboarding.is_complete:
+                        ui.label("✓ Abgeschlossen").classes("text-positive")
+                    else:
+                        _, step_label = offboarding.current_step
+                        ui.label(f"Aktueller Schritt: {step_label} (seit {offboarding.days_open()} Tagen)")
+                    ui.button(
+                        "Bearbeiten",
+                        on_click=lambda: open_offboarding_form(
+                            offboarding, person, on_saved=lambda _: render_offboarding_status()
+                        ),
+                    ).props("dense flat").classes("mt-2")
+
+            render_offboarding_status()
 
         ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")

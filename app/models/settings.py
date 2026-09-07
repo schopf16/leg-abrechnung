@@ -20,9 +20,17 @@ class LegSettings:
         address_country: ISO-3166 alpha-2 country code, e.g. ``"CH"``.
         qr_iban: QR-IBAN used as the creditor account on invoices.
         price_rp_per_kwh: Internal energy price in Rappen per kWh.
-        verwaltungsaufwand_rp_per_kwh: Administrative surcharge in Rappen
-            per kWh, charged on top of the energy price for a person's
-            locally-sourced consumption only (never on production).
+        verwaltungsaufwand_bezug_rp_per_kwh: Administrative surcharge in
+            Rappen per kWh, charged on top of the energy price for a
+            person's locally-sourced consumption ("Bezug"). Independent
+            from `verwaltungsaufwand_einspeisung_rp_per_kwh` -- either can
+            be zero while the other is not. Changing this only affects
+            billing runs created afterwards: `app.domain.billing` freezes
+            the rate actually used onto each `BillingRunItem` at creation
+            time, so an already-billed fee never changes retroactively.
+        verwaltungsaufwand_einspeisung_rp_per_kwh: The same kind of
+            administrative surcharge, charged on a person's
+            locally-delivered production ("Einspeisung") instead.
         papierrechnung_rappen: Flat fee in Rappen charged to persons with
             `Person.papierrechnung` set (paper invoice by post).
         extra_backup_dir: Optional second directory every backup is also
@@ -56,6 +64,25 @@ class LegSettings:
             retyping it each quarter.
         rechnung_email_text: Body template for invoice emails, same
             placeholder support.
+        mahnung_neue_frist_tage: Number of days the 1. Mahnung's new
+            deadline grants, and the wait before an unpaid item at stage
+            1 becomes eligible for the 2. Mahnung (see `app.domain.
+            mahnwesen`).
+        mahnung_bagatellgrenze_rappen: A person's total open Saldo must
+            be at least this amount for a Mahnung to be raised at all --
+            avoids chasing a negligible remainder.
+        mahnung1_email_betreff: Subject template for the 1. Mahnung
+            (grants a new deadline; does not yet threaten exclusion --
+            wait, it does, see the LEG's own Reglement: a missed new
+            deadline leads to membership termination). May contain
+            `{placeholder}`s (person placeholders plus `{betrag}`,
+            `{neue_frist}` -- see `app.domain.mahnwesen`).
+        mahnung1_email_text: Body template for the 1. Mahnung.
+        mahnung2_email_betreff: Subject template for the 2. Mahnung
+            (sent when the 1. Mahnung's new deadline was missed --
+            triggers an exclusion review, never automatic, see
+            `app.models.person_offboarding`).
+        mahnung2_email_text: Body template for the 2. Mahnung.
         updated_at: ISO-8601 timestamp of the last update.
     """
 
@@ -65,7 +92,8 @@ class LegSettings:
     address_country: str
     qr_iban: str
     price_rp_per_kwh: float
-    verwaltungsaufwand_rp_per_kwh: float
+    verwaltungsaufwand_bezug_rp_per_kwh: float
+    verwaltungsaufwand_einspeisung_rp_per_kwh: float
     papierrechnung_rappen: int
     extra_backup_dir: str
     messpunkt_land: str
@@ -74,6 +102,12 @@ class LegSettings:
     onboarding_ueberfaellig_tage: int
     rechnung_email_betreff: str
     rechnung_email_text: str
+    mahnung_neue_frist_tage: int
+    mahnung_bagatellgrenze_rappen: int
+    mahnung1_email_betreff: str
+    mahnung1_email_text: str
+    mahnung2_email_betreff: str
+    mahnung2_email_text: str
     updated_at: str
 
     @staticmethod
@@ -93,7 +127,8 @@ class LegSettings:
             address_country=row["address_country"],
             qr_iban=row["qr_iban"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
-            verwaltungsaufwand_rp_per_kwh=row["verwaltungsaufwand_rp_per_kwh"],
+            verwaltungsaufwand_bezug_rp_per_kwh=row["verwaltungsaufwand_bezug_rp_per_kwh"],
+            verwaltungsaufwand_einspeisung_rp_per_kwh=row["verwaltungsaufwand_einspeisung_rp_per_kwh"],
             papierrechnung_rappen=row["papierrechnung_rappen"],
             extra_backup_dir=row["extra_backup_dir"],
             messpunkt_land=row["messpunkt_land"],
@@ -102,6 +137,12 @@ class LegSettings:
             onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
             rechnung_email_betreff=row["rechnung_email_betreff"],
             rechnung_email_text=row["rechnung_email_text"],
+            mahnung_neue_frist_tage=row["mahnung_neue_frist_tage"],
+            mahnung_bagatellgrenze_rappen=row["mahnung_bagatellgrenze_rappen"],
+            mahnung1_email_betreff=row["mahnung1_email_betreff"],
+            mahnung1_email_text=row["mahnung1_email_text"],
+            mahnung2_email_betreff=row["mahnung2_email_betreff"],
+            mahnung2_email_text=row["mahnung2_email_text"],
             updated_at=row["updated_at"],
         )
 
@@ -143,10 +184,14 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
         UPDATE leg_settings SET
             address_street = ?, address_zip = ?, address_city = ?,
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
-            verwaltungsaufwand_rp_per_kwh = ?, papierrechnung_rappen = ?,
+            verwaltungsaufwand_bezug_rp_per_kwh = ?, verwaltungsaufwand_einspeisung_rp_per_kwh = ?,
+            papierrechnung_rappen = ?,
             extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
             web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
-            rechnung_email_betreff = ?, rechnung_email_text = ?, updated_at = ?
+            rechnung_email_betreff = ?, rechnung_email_text = ?,
+            mahnung_neue_frist_tage = ?, mahnung_bagatellgrenze_rappen = ?,
+            mahnung1_email_betreff = ?, mahnung1_email_text = ?,
+            mahnung2_email_betreff = ?, mahnung2_email_text = ?, updated_at = ?
         WHERE id = 1
         """,
         (
@@ -156,7 +201,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.address_country,
             settings.qr_iban,
             settings.price_rp_per_kwh,
-            settings.verwaltungsaufwand_rp_per_kwh,
+            settings.verwaltungsaufwand_bezug_rp_per_kwh,
+            settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
             settings.papierrechnung_rappen,
             settings.extra_backup_dir,
             settings.messpunkt_land,
@@ -165,6 +211,12 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.onboarding_ueberfaellig_tage,
             settings.rechnung_email_betreff,
             settings.rechnung_email_text,
+            settings.mahnung_neue_frist_tage,
+            settings.mahnung_bagatellgrenze_rappen,
+            settings.mahnung1_email_betreff,
+            settings.mahnung1_email_text,
+            settings.mahnung2_email_betreff,
+            settings.mahnung2_email_text,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

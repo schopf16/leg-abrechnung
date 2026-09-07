@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>MSG-053-TEST-1</MsgId>
+      <CreDtTm>2026-02-01T06:00:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>STMT-1</Id>
+      <Acct>
+        <Id>
+          <IBAN>CH9300762011623852957</IBAN>
+        </Id>
+      </Acct>
+      <FrToDt>
+        <FrDtTm>2026-01-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-01-31T23:59:59</ToDtTm>
+      </FrToDt>
+
+      <!-- 1: incoming QR-bill payment with a valid, decodable QRR reference -->
+      <Ntry>
+        <Amt Ccy="CHF">123.45</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-15</Dt></BookgDt>
+        <ValDt><Dt>2026-01-15</Dt></ValDt>
+        <NtryRef>ENTRYREF-1</NtryRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-0001</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Muster Anna</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>CH5604835012345678009</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>1002340000050000000000427</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 2: incoming payment with only free-text remittance info (no
+           structured QRR reference), a candidate for fuzzy matching -->
+      <Ntry>
+        <Amt Ccy="CHF">50.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-16</Dt></BookgDt>
+        <ValDt><Dt>2026-01-16</Dt></ValDt>
+        <NtryRef>ENTRYREF-2</NtryRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-0002</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Muster Maxine</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Kundennummer 200500, vielen Dank</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 3: outgoing payout, matched by counterparty IBAN -->
+      <Ntry>
+        <Amt Ccy="CHF">30.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-17</Dt></BookgDt>
+        <ValDt><Dt>2026-01-17</Dt></ValDt>
+        <NtryRef>ENTRYREF-3</NtryRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-0003</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Cdtr><Nm>Muster Bettina</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>CH1234835098765432001</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Auszahlung Q4 2025</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 4: foreign currency, must be skipped with a warning, never booked -->
+      <Ntry>
+        <Amt Ccy="EUR">40.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-18</Dt></BookgDt>
+        <ValDt><Dt>2026-01-18</Dt></ValDt>
+        <NtryRef>ENTRYREF-4</NtryRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-0004</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Foreign Payer</Nm></Dbtr>
+            </RltdPties>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 5: reversal of an earlier credit, must never be auto-matched,
+           even though it carries a valid, decodable QRR reference -->
+      <Ntry>
+        <Amt Ccy="CHF">75.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <RvslInd>true</RvslInd>
+        <BookgDt><Dt>2026-01-20</Dt></BookgDt>
+        <ValDt><Dt>2026-01-20</Dt></ValDt>
+        <NtryRef>ENTRYREF-5</NtryRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <AcctSvcrRef>ACCTSVCR-0005</AcctSvcrRef>
+            </Refs>
+            <RltdPties>
+              <Dbtr><Nm>Muster Carla</Nm></Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>3007770000050000000000444</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+
+      <!-- 6: no bank reference at all, exercises the fallback key -->
+      <Ntry>
+        <Amt Ccy="CHF">20.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><Dt>2026-01-21</Dt></BookgDt>
+        <ValDt><Dt>2026-01-21</Dt></ValDt>
+        <NtryDtls>
+          <TxDtls>
+            <RltdPties>
+              <Dbtr><Nm>Ohne Referenz AG</Nm></Dbtr>
+            </RltdPties>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

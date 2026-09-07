@@ -31,10 +31,33 @@ from app.gui.safe_notify import safe_notify
 from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
 from app.models import person as person_repo
+from app.models import signature as signature_repo
 from app.models.person import Person
 
 #: Shown as a hint above the subject/body fields.
 PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in PERSON_PLACEHOLDERS)
+
+#: Classic plain-text signature delimiter (RFC 3676) -- some mail clients
+#: recognize "-- " on its own line and render/strip a trailing signature
+#: specially (e.g. dimmed, or omitted from a reply quote).
+_SIGNATURE_DELIMITER = "\n\n-- \n"
+
+
+def _compose_body(body: str, signature_content: str) -> str:
+    """Append a signature to a message body, if one was chosen.
+
+    Args:
+        body: The composed message text, as typed (unrendered).
+        signature_content: The chosen signature's text, or `""` if "Keine
+            Signatur" is selected.
+
+    Returns:
+        `body` unchanged if `signature_content` is empty, else `body` with
+        the signature appended after `_SIGNATURE_DELIMITER`.
+    """
+    if not signature_content.strip():
+        return body
+    return f"{body}{_SIGNATURE_DELIMITER}{signature_content}"
 
 
 def _validation_warnings(subject: str, body: str, recipients: list[Person]) -> tuple[
@@ -83,6 +106,8 @@ def email_versand_page() -> None:
 
         with connection_scope() as connection:
             leg_options = {leg.id: leg.name for leg in leg_repo.list_all(connection)}
+            signatures_by_id = {s.id: s for s in signature_repo.list_all(connection)}
+        signature_options = {None: "Keine Signatur", **{s.id: s.name for s in signatures_by_id.values()}}
 
         recipients: list[Person] = []
 
@@ -210,6 +235,13 @@ def email_versand_page() -> None:
                 )
                 subject_input = ui.input("Betreff").classes("w-full")
                 body_textarea = ui.textarea("Nachricht").classes("w-full").props("rows=8")
+                signature_select = ui.select(
+                    signature_options, label="Signatur", value=None
+                ).classes("w-full max-w-sm")
+                ui.label(
+                    "Wird nach der Nachricht angehängt, ohne den Text oben zu "
+                    "verändern -- unter „Kommunikation → Signaturen“ verwaltet."
+                ).classes("text-caption text-grey-6")
 
                 def go_to_validation() -> None:
                     """Validate the subject and advance to step 4.
@@ -259,7 +291,8 @@ def email_versand_page() -> None:
                     """
                     validation_container.clear()
                     subject = subject_input.value
-                    body = body_textarea.value
+                    signature = signatures_by_id.get(signature_select.value)
+                    body = _compose_body(body_textarea.value, signature.content if signature else "")
                     unknown, invalid_emails, missing = _validation_warnings(
                         subject, body, recipients
                     )
@@ -339,6 +372,8 @@ def email_versand_page() -> None:
                         progress_bar.value = done / total if total else 1.0
                         progress_label.text = f"{done} von {total} gesendet"
 
+                    signature = signatures_by_id.get(signature_select.value)
+                    final_body = _compose_body(body_textarea.value, signature.content if signature else "")
                     try:
                         with connection_scope() as inner_connection:
                             result = await bulk_send.send_broadcast_email(
@@ -346,7 +381,7 @@ def email_versand_page() -> None:
                                 config,
                                 recipients,
                                 subject_input.value,
-                                body_textarea.value,
+                                final_body,
                                 scope=scope_select.value,
                                 leg_id=leg_select.value if scope_select.value == "leg" else None,
                                 on_progress=on_progress,

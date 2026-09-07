@@ -11,6 +11,7 @@ than one LEG can have a run for the same quarter.
 import re
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 from app.domain.distribution import compute_quarter_distribution
@@ -21,7 +22,7 @@ from app.models import settings as settings_repo
 from app.models.billing_run import BillingRun
 from app.paths import OUTPUT_DIR
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
-from app.pdf.person_bill_pdf import generate_person_bill_pdf
+from app.pdf.person_bill_pdf import PAYMENT_TERM, generate_person_bill_pdf
 from app.pdf.qr_bill_render import QrBillConfigurationError
 
 
@@ -105,6 +106,16 @@ def export_billing_run_documents(
 
         filename = f"Abrechnung_{_sanitize_filename_part(person.anzeige_name)}_{item.id}.pdf"
         path = output_dir / filename
+
+        # Freeze the due date on first export only -- a re-export (e.g. to
+        # fix a typo in the LEG address) must keep printing the same date
+        # already communicated to the person and already relied upon by
+        # app.domain.mahnwesen, never push it back out by another
+        # PAYMENT_TERM. `item` is updated in-memory so the PDF below
+        # prints exactly the value now persisted, whichever branch ran.
+        if item.faellig_am is None:
+            item.faellig_am = (date.today() + PAYMENT_TERM).isoformat()
+            billing_run_repo.set_item_faellig_am(connection, item.id, item.faellig_am)
 
         try:
             generate_person_bill_pdf(

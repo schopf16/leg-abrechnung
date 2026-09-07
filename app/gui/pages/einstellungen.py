@@ -23,6 +23,13 @@ _RECHNUNG_PLACEHOLDER_HINT = ", ".join(
     f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "leg", "quartal", "jahr", "betrag")
 )
 
+#: Shown as a hint above the Mahnung template fields -- Person
+#: placeholders plus the Mahnung-only context ones from
+#: `app.domain.mahnwesen`.
+_MAHNUNG_PLACEHOLDER_HINT = ", ".join(
+    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "betrag", "neue_frist")
+)
+
 
 @ui.page("/einstellungen")
 def einstellungen_page() -> None:
@@ -68,9 +75,16 @@ def einstellungen_page() -> None:
                 step=0.1,
                 format="%.2f",
             ).classes("w-full")
-            verwaltungsaufwand = ui.number(
-                "Verwaltungsaufwand (Rp./kWh, nur auf Bezug)",
-                value=current.verwaltungsaufwand_rp_per_kwh,
+            verwaltungsaufwand_bezug = ui.number(
+                "Verwaltungsaufwand Bezug (Rp./kWh)",
+                value=current.verwaltungsaufwand_bezug_rp_per_kwh,
+                min=0,
+                step=0.01,
+                format="%.4f",
+            ).classes("w-full")
+            verwaltungsaufwand_einspeisung = ui.number(
+                "Verwaltungsaufwand Einspeisung (Rp./kWh)",
+                value=current.verwaltungsaufwand_einspeisung_rp_per_kwh,
                 min=0,
                 step=0.01,
                 format="%.4f",
@@ -93,8 +107,11 @@ def einstellungen_page() -> None:
                 if price.value is None or price.value < 0:
                     error_label.text = "Preis muss positiv sein."
                     return
-                if verwaltungsaufwand.value is None or verwaltungsaufwand.value < 0:
-                    error_label.text = "Verwaltungsaufwand muss positiv sein."
+                if verwaltungsaufwand_bezug.value is None or verwaltungsaufwand_bezug.value < 0:
+                    error_label.text = "Verwaltungsaufwand Bezug muss positiv sein."
+                    return
+                if verwaltungsaufwand_einspeisung.value is None or verwaltungsaufwand_einspeisung.value < 0:
+                    error_label.text = "Verwaltungsaufwand Einspeisung muss positiv sein."
                     return
                 if papierrechnung_fee.value is None or papierrechnung_fee.value < 0:
                     error_label.text = "Kosten Papierrechnung müssen positiv sein."
@@ -111,7 +128,8 @@ def einstellungen_page() -> None:
                     address_country=country.value.strip() or "CH",
                     qr_iban=normalize_iban(qr_iban.value),
                     price_rp_per_kwh=float(price.value),
-                    verwaltungsaufwand_rp_per_kwh=float(verwaltungsaufwand.value),
+                    verwaltungsaufwand_bezug_rp_per_kwh=float(verwaltungsaufwand_bezug.value),
+                    verwaltungsaufwand_einspeisung_rp_per_kwh=float(verwaltungsaufwand_einspeisung.value),
                     papierrechnung_rappen=round(float(papierrechnung_fee.value) * 100),
                     extra_backup_dir=current.extra_backup_dir,
                     messpunkt_land=current.messpunkt_land,
@@ -120,6 +138,12 @@ def einstellungen_page() -> None:
                     onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
                     rechnung_email_betreff=current.rechnung_email_betreff,
                     rechnung_email_text=current.rechnung_email_text,
+                    mahnung_neue_frist_tage=current.mahnung_neue_frist_tage,
+                    mahnung_bagatellgrenze_rappen=current.mahnung_bagatellgrenze_rappen,
+                    mahnung1_email_betreff=current.mahnung1_email_betreff,
+                    mahnung1_email_text=current.mahnung1_email_text,
+                    mahnung2_email_betreff=current.mahnung2_email_betreff,
+                    mahnung2_email_text=current.mahnung2_email_text,
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -286,6 +310,69 @@ def einstellungen_page() -> None:
                 connection_test_result.classes(add="text-positive")
 
             ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
+
+        ui.separator().classes("my-6")
+
+        ui.label("Mahnwesen").classes("text-lg font-bold")
+        ui.label(
+            "Zwei Stufen gemäss Reglement: die 1. Mahnung gewährt eine neue "
+            "Frist, die 2. Mahnung löst die Ausschluss-Prüfung aus (siehe "
+            "„Debitoren“/„Mahnwesen“) -- keine Mahngebühr auf irgendeiner "
+            "Stufe. Verfügbare Platzhalter: "
+            f"{_MAHNUNG_PLACEHOLDER_HINT}."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            mahnung_neue_frist_tage = ui.number(
+                "Neue Zahlungsfrist nach 1. Mahnung (Tage)",
+                value=current.mahnung_neue_frist_tage, min=1, step=1, format="%.0f",
+            ).classes("w-full")
+            mahnung_bagatellgrenze = ui.number(
+                "Bagatellgrenze (CHF, darunter keine Mahnung)",
+                value=current.mahnung_bagatellgrenze_rappen / 100, min=0, step=1, format="%.2f",
+            ).classes("w-full")
+
+            ui.label("1. Mahnung").classes("font-bold mt-3")
+            mahnung1_betreff = ui.input("Betreff", value=current.mahnung1_email_betreff).classes("w-full")
+            mahnung1_text = ui.textarea("Nachricht", value=current.mahnung1_email_text).classes(
+                "w-full"
+            ).props("rows=6")
+
+            ui.label("2. Mahnung").classes("font-bold mt-3")
+            mahnung2_betreff = ui.input("Betreff", value=current.mahnung2_email_betreff).classes("w-full")
+            mahnung2_text = ui.textarea("Nachricht", value=current.mahnung2_email_text).classes(
+                "w-full"
+            ).props("rows=6")
+
+            mahnung_error = ui.label("").classes("text-negative")
+
+            def save_mahnwesen() -> None:
+                """Validate and persist the Mahnwesen settings and templates.
+
+                Returns:
+                    None.
+                """
+                if mahnung_neue_frist_tage.value is None or mahnung_neue_frist_tage.value < 1:
+                    mahnung_error.text = "Neue Zahlungsfrist muss mindestens 1 Tag sein."
+                    return
+                if mahnung_bagatellgrenze.value is None or mahnung_bagatellgrenze.value < 0:
+                    mahnung_error.text = "Bagatellgrenze muss positiv sein."
+                    return
+                if not mahnung1_betreff.value.strip() or not mahnung2_betreff.value.strip():
+                    mahnung_error.text = "Betreff darf nicht leer sein."
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.mahnung_neue_frist_tage = int(mahnung_neue_frist_tage.value)
+                    settings.mahnung_bagatellgrenze_rappen = round(mahnung_bagatellgrenze.value * 100)
+                    settings.mahnung1_email_betreff = mahnung1_betreff.value.strip()
+                    settings.mahnung1_email_text = mahnung1_text.value
+                    settings.mahnung2_email_betreff = mahnung2_betreff.value.strip()
+                    settings.mahnung2_email_text = mahnung2_text.value
+                    settings_repo.update_settings(connection, settings)
+                mahnung_error.text = ""
+                ui.notify("Mahnwesen-Einstellungen gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_mahnwesen).classes("mt-2")
 
         ui.separator().classes("my-6")
 

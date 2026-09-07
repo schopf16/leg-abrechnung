@@ -106,8 +106,14 @@ def generate_person_bill_pdf(
         run: The billing run the item belongs to (scoped to one LEG).
         item: The person's netted billing item (provides the
             authoritative, already-rounded `net_amount_rappen`,
-            `verwaltungsaufwand_rappen` and `papierrechnung_rappen` used
-            for the QR-bill and payment list).
+            `verwaltungsaufwand_bezug_rappen`/
+            `verwaltungsaufwand_einspeisung_rappen` and
+            `papierrechnung_rappen` used for the QR-bill and payment list).
+            `item.faellig_am` must already be resolved by the caller
+            (see `app.pdf.export_service.export_billing_run`) -- printed
+            verbatim here, never recomputed, so a re-export can never
+            print a due date that drifts from the one already frozen in
+            the database and used by `app.domain.mahnwesen`.
         person_result: The same person's distribution result for the
             quarter, providing the quarter's Bezug/Vergütung totals shown
             in the document's tables.
@@ -135,7 +141,7 @@ def generate_person_bill_pdf(
         [
             f"Abrechnung Nr. {item.id}",
             f"Datum: {date.today().strftime('%d.%m.%Y')}",
-            f"Zahlbar bis: {(date.today() + PAYMENT_TERM).strftime('%d.%m.%Y')}",
+            f"Zahlbar bis: {date.fromisoformat(item.faellig_am).strftime('%d.%m.%Y')}",
             f"Kunden-Nr.: {person.kundennummer_formatiert}",
             f"Periode: {period}",
         ],
@@ -175,22 +181,47 @@ def generate_person_bill_pdf(
             f"{produced_subtotal_chf:.2f} CHF",
         )
 
-    if item.verwaltungsaufwand_rappen > 0 or item.papierrechnung_rappen > 0:
-        fee_rows = [
-            (
-                "Verwaltungsaufwand",
-                f"{item.consumed_kwh:.3f}",
-                f"{settings.verwaltungsaufwand_rp_per_kwh:.4f}",
-                f"{item.verwaltungsaufwand_rappen / 100:.2f}",
-            ),
+    if (
+        item.verwaltungsaufwand_bezug_rappen > 0
+        or item.verwaltungsaufwand_einspeisung_rappen > 0
+        or item.papierrechnung_rappen > 0
+    ):
+        # Rates read from the item itself, never from `settings` -- these
+        # are frozen at billing time, so a later rate change in
+        # Einstellungen never alters how an already-billed fee appears
+        # (see the module docstring of app.domain.billing).
+        fee_rows = []
+        if item.verwaltungsaufwand_bezug_rappen > 0:
+            fee_rows.append(
+                (
+                    "Verwaltungsaufwand Bezug",
+                    f"{item.consumed_kwh:.3f}",
+                    f"{item.verwaltungsaufwand_bezug_rp_per_kwh:.4f}",
+                    f"{item.verwaltungsaufwand_bezug_rappen / 100:.2f}",
+                )
+            )
+        if item.verwaltungsaufwand_einspeisung_rappen > 0:
+            fee_rows.append(
+                (
+                    "Verwaltungsaufwand Einspeisung",
+                    f"{item.produced_kwh:.3f}",
+                    f"{item.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f}",
+                    f"{item.verwaltungsaufwand_einspeisung_rappen / 100:.2f}",
+                )
+            )
+        fee_rows.append(
             (
                 "Kosten Papierrechnung",
                 "",
                 "",
                 f"{item.papierrechnung_rappen / 100:.2f}",
-            ),
-        ]
-        fee_total_chf = (item.verwaltungsaufwand_rappen + item.papierrechnung_rappen) / 100
+            )
+        )
+        fee_total_chf = (
+            item.verwaltungsaufwand_bezug_rappen
+            + item.verwaltungsaufwand_einspeisung_rappen
+            + item.papierrechnung_rappen
+        ) / 100
         y = draw_monthly_table(
             canvas,
             y,

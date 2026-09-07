@@ -8,7 +8,7 @@ every screen.
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from nicegui import ui
+from nicegui import app, ui
 
 from app.gui.print_list import PRINT_STYLE
 from app.version import APP_VERSION
@@ -32,6 +32,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/zuordnungen", "Zuordnungen"),
             ("/web-registrierungen", "Web-Registrierungen"),
             ("/aufnahmen", "Aufnahmen"),
+            ("/austritte", "Austritte"),
         ],
     ),
     (
@@ -39,11 +40,19 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
         [
             ("/import", "Import"),
             ("/abrechnung", "Rechnungslauf"),
+            ("/debitoren", "Debitoren"),
+            ("/mahnwesen", "Mahnwesen"),
             ("/auswertungen", "Auswertungen"),
         ],
     ),
     ("Statistik", [("/statistik", "Statistik")]),
-    ("Kommunikation", [("/email-versand", "E-Mail versenden")]),
+    (
+        "Kommunikation",
+        [
+            ("/email-versand", "E-Mail versenden"),
+            ("/signaturen", "Signaturen"),
+        ],
+    ),
     (
         "Einstellungen",
         [
@@ -70,6 +79,26 @@ def _nav_link(route: str, label: str, active_route: str, *, indent: bool) -> Non
     classes = "w-full" + (" leg-nav-active text-primary" if route == active_route else "")
     padding = "6px 12px 6px 28px" if indent else "6px 12px"
     ui.link(label, route).classes(classes).style(f"display:block; padding:{padding};")
+
+
+def _confirm_quit() -> None:
+    """Ask for confirmation, then cleanly shut down the application.
+
+    `app.shutdown()` stops the server and (since the app always runs as a
+    native window, see `app.main.main`) closes that window too -- every
+    change is already committed to SQLite immediately on each action, so
+    there is nothing to lose, but a stray click on "Beenden" closing the
+    whole app without warning would still be an unpleasant surprise.
+
+    Returns:
+        None.
+    """
+    with ui.dialog() as dialog, ui.card():
+        ui.label("LEG-Abrechnung wirklich beenden?")
+        with ui.row().classes("w-full justify-end gap-2"):
+            ui.button("Abbrechen", on_click=dialog.close).props("flat")
+            ui.button("Beenden", on_click=app.shutdown, color="negative")
+    dialog.open()
 
 
 @contextmanager
@@ -112,6 +141,11 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
             ).props("dense"):
                 for route, label in items:
                     _nav_link(route, label, active_route, indent=True)
+
+        ui.separator()
+        ui.button(
+            "Beenden", icon="power_settings_new", on_click=_confirm_quit
+        ).props("flat color=negative align=left").classes("w-full")
 
         # Always visible at the bottom, on every page -- lets the
         # administrator read out a phone-friendly version identifier

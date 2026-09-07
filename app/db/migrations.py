@@ -847,4 +847,225 @@ Freundliche Grüsse';
             );
         """,
     ),
+    Migration(
+        version=25,
+        description="Add Debitoren ledger and camt.053/camt.054 bank "
+        "reconciliation: account_entries records money the bank actually "
+        "confirmed (payments received, payouts executed, manual "
+        "corrections) against a Person's running account -- never a copy "
+        "of billing_run_items.net_amount_rappen, which stays the sole "
+        "source of what was invoiced (see app.models.account_entry for "
+        "the sign-convention glossary). bank_import_batches/"
+        "bank_transactions track every imported bank statement entry, "
+        "matched or not, so nothing imported is ever silently lost. "
+        "Purely additive.",
+        sql="""
+            CREATE TABLE account_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE RESTRICT,
+                kind TEXT NOT NULL CHECK (kind IN ('zahlungseingang', 'auszahlung', 'korrektur')),
+                amount_rappen INTEGER NOT NULL,
+                booked_at TEXT NOT NULL,
+                billing_run_item_id INTEGER REFERENCES billing_run_items(id) ON DELETE SET NULL,
+                bank_transaction_id INTEGER REFERENCES bank_transactions(id) ON DELETE SET NULL,
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_account_entries_person ON account_entries(person_id);
+
+            CREATE TABLE bank_import_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                account_iban TEXT NOT NULL DEFAULT '',
+                statement_from TEXT,
+                statement_to TEXT,
+                entry_count INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE bank_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bank_import_batch_id INTEGER NOT NULL REFERENCES bank_import_batches(id) ON DELETE CASCADE,
+                bank_reference TEXT NOT NULL,
+                booking_date TEXT NOT NULL,
+                amount_rappen INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                credit_debit_indicator TEXT NOT NULL CHECK (credit_debit_indicator IN ('CRDT', 'DBIT')),
+                counterparty_name TEXT NOT NULL DEFAULT '',
+                counterparty_iban TEXT NOT NULL DEFAULT '',
+                structured_reference TEXT NOT NULL DEFAULT '',
+                remittance_text TEXT NOT NULL DEFAULT '',
+                source_format TEXT NOT NULL CHECK (source_format IN ('camt053', 'camt054')),
+                is_reversal INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'unmatched' CHECK (
+                    status IN ('auto_matched', 'suggested_pending_review', 'manually_matched', 'unmatched', 'ignored')
+                ),
+                matched_person_id INTEGER REFERENCES person(id) ON DELETE SET NULL,
+                account_entry_id INTEGER REFERENCES account_entries(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE (bank_reference, currency, amount_rappen, credit_debit_indicator)
+            );
+            CREATE INDEX idx_bank_transactions_status ON bank_transactions(status);
+        """,
+    ),
+    Migration(
+        version=26,
+        description="Add Mahnwesen: billing_run_items.faellig_am (the due "
+        "date actually printed on the invoice, persisted so overdue-ness "
+        "can be checked later -- previously only computed on the fly at "
+        "PDF-generation time and never stored), mahnstufe/"
+        "letzte_mahnung_am (per-item escalation state, 0/1/2 per the "
+        "LEG's own 2-stage Reglement: 1. Mahnung grants a new deadline, "
+        "2. Mahnung triggers an exclusion review -- never automatic, see "
+        "app.domain.mahnwesen), leg_settings' editable Mahnung templates "
+        "and mahnung_log (a sent-history record, analogous to "
+        "email_broadcast_log). Purely additive.",
+        sql="""
+            ALTER TABLE billing_run_items ADD COLUMN faellig_am TEXT;
+            ALTER TABLE billing_run_items ADD COLUMN mahnstufe INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE billing_run_items ADD COLUMN letzte_mahnung_am TEXT;
+
+            ALTER TABLE leg_settings ADD COLUMN mahnung_neue_frist_tage INTEGER NOT NULL DEFAULT 14;
+            ALTER TABLE leg_settings ADD COLUMN mahnung_bagatellgrenze_rappen INTEGER NOT NULL DEFAULT 500;
+            ALTER TABLE leg_settings ADD COLUMN mahnung1_email_betreff TEXT NOT NULL
+                DEFAULT 'Zahlungserinnerung -- Ihre Rechnung ist noch offen';
+            ALTER TABLE leg_settings ADD COLUMN mahnung1_email_text TEXT NOT NULL
+                DEFAULT 'Guten Tag {anrede} {nachname}
+
+Wir konnten bisher keinen Zahlungseingang für Ihre Rechnung(en) über CHF {betrag} feststellen. Wir bitten Sie, den ausstehenden Betrag bis zum {neue_frist} zu begleichen.
+
+Sollte diese Frist ungenutzt verstreichen, behalten wir uns vor, Ihre Mitgliedschaft in der LEG zu kündigen. Die Forderung bleibt davon unberührt bestehen.
+
+Den Einzahlungsschein finden Sie im Anhang.
+
+Freundliche Grüsse';
+            ALTER TABLE leg_settings ADD COLUMN mahnung2_email_betreff TEXT NOT NULL
+                DEFAULT '2. Mahnung -- Kündigung der Mitgliedschaft';
+            ALTER TABLE leg_settings ADD COLUMN mahnung2_email_text TEXT NOT NULL
+                DEFAULT 'Guten Tag {anrede} {nachname}
+
+Trotz unserer Zahlungserinnerung ist Ihre Rechnung über CHF {betrag} weiterhin nicht beglichen. Wir sehen uns daher gezwungen, Ihre Mitgliedschaft in der LEG zu kündigen.
+
+Die offene Forderung bleibt davon unberührt bestehen.
+
+Den Einzahlungsschein finden Sie im Anhang.
+
+Freundliche Grüsse';
+
+            CREATE TABLE mahnung_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at TEXT NOT NULL,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+                stufe INTEGER NOT NULL,
+                betrag_rappen INTEGER NOT NULL,
+                billing_run_item_ids TEXT NOT NULL
+            );
+        """,
+    ),
+    Migration(
+        version=27,
+        description="Add Austritts-/Ausschlussprozess: person_offboarding "
+        "tracks the real-world steps of a LEG membership ending, exactly "
+        "mirroring app.models.person_onboarding's structure (a fixed, "
+        "unordered set of step dates) but for the reverse direction --  "
+        "usable both for a voluntary exit and for the exclusion review "
+        "the Mahnwesen's 2. Mahnung triggers (see app.domain.mahnwesen), "
+        "distinguished by 'grund'. Ending a membership never affects the "
+        "Debitoren claim itself -- that lives entirely in "
+        "billing_run_items/account_entries, untouched by this table. "
+        "Purely additive.",
+        sql="""
+            CREATE TABLE person_offboarding (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+                grund TEXT NOT NULL CHECK (grund IN ('zahlungsverzug', 'freiwillig', 'sonstig')),
+                beschlossen_am TEXT,
+                messpunkt_austritt_am TEXT,
+                bkw_informiert_am TEXT,
+                person_bestaetigt_am TEXT,
+                created_at TEXT NOT NULL
+            );
+        """,
+    ),
+    Migration(
+        version=28,
+        description="Split the single administrative surcharge "
+        "(LegSettings.verwaltungsaufwand_rp_per_kwh, charged on "
+        "consumption only) into two independent rates -- Bezug and "
+        "Einspeisung -- settable separately, each defaulting to the "
+        "previous single default of 0.5 Rp./kWh. billing_run_items."
+        "verwaltungsaufwand_rappen is renamed to "
+        "verwaltungsaufwand_bezug_rappen (a pure rename, existing amounts "
+        "untouched) and gains a verwaltungsaufwand_einspeisung_rappen "
+        "counterpart, plus the two actual per-kWh rates used are now "
+        "frozen directly on the item (verwaltungsaufwand_bezug_rp_per_kwh/"
+        "_einspeisung_rp_per_kwh) -- mirroring how billing_run_items."
+        "price_rp_per_kwh already freezes the energy price at billing "
+        "time. Previously, the rate shown alongside an already-billed fee "
+        "was re-read live from leg_settings, so changing the rate in "
+        "Einstellungen would silently change what an old invoice appears "
+        "to have charged, even though the actual billed Rappen amount "
+        "never changed -- this migration fixes that display bug going "
+        "forward by giving every item its own frozen rate. Existing rows "
+        "are backfilled with the (just-migrated) current Bezug rate only "
+        "where they actually carried a nonzero Bezug fee -- the best "
+        "available approximation for pre-existing data, since the exact "
+        "historical rate was never recorded before this migration.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN verwaltungsaufwand_bezug_rp_per_kwh REAL NOT NULL DEFAULT 0.5;
+            ALTER TABLE leg_settings ADD COLUMN verwaltungsaufwand_einspeisung_rp_per_kwh REAL NOT NULL DEFAULT 0.5;
+            UPDATE leg_settings SET verwaltungsaufwand_bezug_rp_per_kwh = verwaltungsaufwand_rp_per_kwh;
+            ALTER TABLE leg_settings DROP COLUMN verwaltungsaufwand_rp_per_kwh;
+
+            ALTER TABLE billing_run_items RENAME COLUMN verwaltungsaufwand_rappen TO verwaltungsaufwand_bezug_rappen;
+            ALTER TABLE billing_run_items ADD COLUMN verwaltungsaufwand_einspeisung_rappen INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE billing_run_items ADD COLUMN verwaltungsaufwand_bezug_rp_per_kwh REAL NOT NULL DEFAULT 0;
+            ALTER TABLE billing_run_items ADD COLUMN verwaltungsaufwand_einspeisung_rp_per_kwh REAL NOT NULL DEFAULT 0;
+            UPDATE billing_run_items SET verwaltungsaufwand_bezug_rp_per_kwh =
+                (SELECT verwaltungsaufwand_bezug_rp_per_kwh FROM leg_settings WHERE id = 1)
+                WHERE verwaltungsaufwand_bezug_rappen > 0;
+        """,
+    ),
+    Migration(
+        version=29,
+        description="Add email signatures (app.models.signature): named, "
+        "reusable text blocks maintained on their own page under "
+        "Kommunikation (/signaturen), selectable per send on the "
+        "E-Mail-Versand page (app.gui.pages.email_versand) -- 'keine "
+        "Signatur' remains the default, nothing is appended unless "
+        "explicitly chosen. Purely additive.",
+        sql="""
+            CREATE TABLE signatures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+        """,
+    ),
+    Migration(
+        version=30,
+        description="Fix two Mahnwesen correctness gaps found in review: "
+        "(1) billing_run_items.faellig_am was only ever set by "
+        "export_billing_run_documents, so every item billed before "
+        "migration 26 has faellig_am = NULL and was silently invisible to "
+        "app.domain.mahnwesen forever -- backfilled here as "
+        "created_at + 45 days (PAYMENT_TERM) for every already-issued item "
+        "(pdf_path set), the same best-effort 'closest available "
+        "approximation' precedent as migration 28's rate backfill, since "
+        "the exact original due date was never recorded before migration "
+        "26. (2) billing_run_items.mahnung_frist_tage freezes the new-"
+        "deadline period (LegSettings.mahnung_neue_frist_tage) actually "
+        "granted when an item's 1. Mahnung was sent, so a later change to "
+        "that setting can never retroactively move the deadline already "
+        "promised in writing to a specific person -- mirrors migration "
+        "28's per-item rate freeze for the same reason. Purely additive.",
+        sql="""
+            UPDATE billing_run_items
+            SET faellig_am = date(created_at, '+45 days')
+            WHERE faellig_am IS NULL AND pdf_path IS NOT NULL;
+
+            ALTER TABLE billing_run_items ADD COLUMN mahnung_frist_tage INTEGER;
+        """,
+    ),
 ]

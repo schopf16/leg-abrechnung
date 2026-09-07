@@ -586,7 +586,7 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=12.0,
-                verwaltungsaufwand_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
                 net_amount_rappen=120, pdf_path=None, created_at="",
             ),
         ],
