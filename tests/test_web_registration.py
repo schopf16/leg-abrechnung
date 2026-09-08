@@ -53,7 +53,7 @@ def _submission(
 
 def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 30
+    assert get_schema_version(db) == 32
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []

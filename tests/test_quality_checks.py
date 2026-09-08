@@ -7,8 +7,10 @@ from datetime import date, datetime, timedelta
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
+    check_leg_upgrade_potential,
     check_onboarding_progress,
     check_reading_completeness,
+    check_trafokreis_einseitig,
     check_unresolved_bank_transactions,
 )
 from app.models import bank_transaction as bank_transaction_repo
@@ -18,12 +20,14 @@ from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
+from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.standort import Standort
+from app.models.trafokreis import Trafokreis
 from app.models.zuordnung import Zuordnung
 
 YEAR, QUARTER = 2025, 1
@@ -310,3 +314,94 @@ def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
     bank_transaction_repo.set_status(db, tx_id, "ignored")
 
     assert check_unresolved_bank_transactions(db) == []
+
+
+def _trafokreis(db, name: str) -> int:
+    """Create a Trafokreis and return its id."""
+    return trafokreis_repo.create(db, Trafokreis(id=None, name=name, bkw_bezeichnung="", bemerkung="", created_at=""))
+
+
+def _standort_in(db, trafokreis_id: int, *, adresse: str = "Weg") -> int:
+    """Create a Standort assigned to a Trafokreis and return its id."""
+    return standort_repo.create(
+        db,
+        Standort(
+            id=None, adresse=adresse, hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+            trafokreis_id=trafokreis_id, created_at="",
+        ),
+    )
+
+
+def _messpunkt_richtung(
+    db, messpunkt_bezeichnung: str, standort_id: int, messrichtung: str, *, leg_id: int | None = None,
+) -> int:
+    """Create a Messpunkt with an explicit Messrichtung and return its id."""
+    return messpunkt_repo.create(
+        db,
+        Messpunkt(
+            id=None, messpunkt_bezeichnung=messpunkt_bezeichnung, messrichtung=messrichtung,
+            standort_id=standort_id, leg_id=leg_id, pv_leistung_kwp=None,
+            batteriespeicher_kwh=None, created_at="",
+        ),
+    )
+
+
+def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_trafokreis(db):
+    trafokreis_id = _trafokreis(db, "TK1")
+    other_trafokreis_id = _trafokreis(db, "TK2")
+    standort_id = _standort_in(db, trafokreis_id)
+    other_standort_id = _standort_in(db, other_trafokreis_id, adresse="Anderswo")
+    mixed_leg_id = _leg(db)
+
+    person_id = _person(db)
+    bezug_id = _messpunkt_richtung(db, "CH1", standort_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    einspeisung_id = _messpunkt_richtung(db, "CH2", standort_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    other_person_id = _person(db, "Andere")
+    other_mp_id = _messpunkt_richtung(db, "CH3", other_standort_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
+        zuordnung_repo.create(
+            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        )
+
+    warnings = check_leg_upgrade_potential(db)
+
+    assert len(warnings) == 1
+    assert warnings[0].link == "/trafokreise"
+
+
+def test_check_trafokreis_einseitig_flags_producer_only_trafokreis(db):
+    trafokreis_id = _trafokreis(db, "TK1")
+    standort_id = _standort_in(db, trafokreis_id)
+    person_id = _person(db)
+    einspeisung_id = _messpunkt_richtung(db, "CH1", standort_id, MESSRICHTUNG_EINSPEISUNG)
+    zuordnung_repo.create(
+        db, Zuordnung(id=None, person_id=person_id, messpunkt_id=einspeisung_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+    )
+
+    warnings = check_trafokreis_einseitig(db)
+
+    assert len(warnings) == 1
+    assert "Nur Prosumer" in warnings[0].message
+    assert warnings[0].link == "/trafokreise"
+
+
+def test_check_trafokreis_einseitig_no_warning_once_resolved_via_mixed_leg(db):
+    """The Trafokreis is still producer-only, but its one Messpunkt already
+    sits in a mixed (multi-Trafokreis) LEG -- the recommended fix is
+    already acted on, so no warning."""
+    trafokreis_id = _trafokreis(db, "TK1")
+    other_trafokreis_id = _trafokreis(db, "TK2")
+    standort_id = _standort_in(db, trafokreis_id)
+    other_standort_id = _standort_in(db, other_trafokreis_id)
+    mixed_leg_id = _leg(db)
+
+    person_id = _person(db)
+    einspeisung_id = _messpunkt_richtung(db, "CH1", standort_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    other_person_id = _person(db, "Andere")
+    other_mp_id = _messpunkt_richtung(db, "CH2", other_standort_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    for pid, mp_id in ((person_id, einspeisung_id), (other_person_id, other_mp_id)):
+        zuordnung_repo.create(
+            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        )
+
+    assert check_trafokreis_einseitig(db) == []

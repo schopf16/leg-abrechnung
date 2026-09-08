@@ -1,5 +1,13 @@
 """Trafokreise management page: list, search, create, edit, delete.
 
+Rendered as one card per Trafokreis (not a single-row-per-Trafokreis
+table): once Bemerkung has any real content, a flat table either forces
+horizontal scrolling (wide fixed columns) or, if wrapped, very tall rows
+that push everything else below the fold -- neither is acceptable. Cards
+let the Bemerkung wrap onto its own full-width line instead, so one entry
+takes the 2-3 lines it actually needs and no more (same rationale as
+`app.gui.pages.personen`).
+
 A Trafokreis cannot be deleted while Standorte still reference it (see
 `app.models.trafokreis.TrafokreisInUseError`). Its `name` must be unique,
 checked live as the administrator types.
@@ -8,30 +16,60 @@ checked live as the administrator types.
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.participant_mix import compute_participant_mix_for_trafokreis, find_upgrade_candidates
 from app.gui.navigation import page_frame
-from app.gui.print_list import render_print_button, table_columns
+from app.gui.print_list import render_print_button
+from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models.trafokreis import Trafokreis, TrafokreisInUseError
 
-COLUMNS = [
-    {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
-    {"name": "bkw_bezeichnung", "label": "BKW-Bezeichnung", "field": "bkw_bezeichnung", "align": "left"},
-    {"name": "standorte_count", "label": "Standorte", "field": "standorte_count", "align": "right"},
-    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+#: `(label, field)` pairs for the printed table -- independent of the
+#: on-screen card layout, see `app.gui.print_list`.
+PRINT_COLUMNS = [
+    ("Name", "name"),
+    ("BKW-Bezeichnung", "bkw_bezeichnung"),
+    ("Standorte", "standorte_count"),
+    ("Prosumer : Consumer", "prosumer_consumer"),
+    ("Hinweis", "hinweis"),
+    ("Bemerkung", "bemerkung"),
 ]
 
 
-def _to_row(connection, trafokreis: Trafokreis) -> dict:
-    """Convert a `Trafokreis` into a row dict for the NiceGUI table.
+def _mix_badge(mix) -> str:
+    """Format a `ParticipantMix` as a coloured "<N> Prosumer : <N> Consumer" badge.
+
+    Args:
+        mix: The `app.domain.participant_mix.ParticipantMix` to display.
+
+    Returns:
+        A short text badge -- 🟢 if both sides are present, 🔴 if the
+        Trafokreis is one-sided (or empty).
+    """
+    symbol = "🔴" if mix.ist_einseitig else "🟢"
+    return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
+
+
+def _to_row(connection, trafokreis: Trafokreis, standort_ids: set[int], upgrade_trafokreis_ids: set[int]) -> dict:
+    """Convert a `Trafokreis` into a row dict backing both the card and the printout.
 
     Args:
         connection: Open SQLite connection.
         trafokreis: Trafokreis to convert.
+        standort_ids: This Trafokreis's own Standort ids (preloaded by the
+            caller to avoid re-querying every Standort per row).
+        upgrade_trafokreis_ids: Trafokreis ids with LEG-upgrade potential
+            (see `app.domain.participant_mix.find_upgrade_candidates`),
+            preloaded once for the whole list.
 
     Returns:
-        A dict with the fields required by `COLUMNS`, plus a hidden
-        `_search` key used for client-side filtering.
+        A dict with the fields required by `PRINT_COLUMNS` and `render_card`,
+        plus a hidden `_search` key used for client-side filtering.
     """
+    mix = compute_participant_mix_for_trafokreis(connection, trafokreis.id)
+    prosumer_consumer = _mix_badge(mix)
+    if trafokreis.id in upgrade_trafokreis_ids:
+        prosumer_consumer += " ⭐ Potential für eigenes LEG"
+
     search_text = " ".join(
         [trafokreis.name, trafokreis.bkw_bezeichnung or "", trafokreis.bemerkung or ""]
     ).lower()
@@ -39,7 +77,10 @@ def _to_row(connection, trafokreis: Trafokreis) -> dict:
         "id": trafokreis.id,
         "name": trafokreis.name,
         "bkw_bezeichnung": trafokreis.bkw_bezeichnung,
-        "standorte_count": trafokreis_repo.count_standorte(connection, trafokreis.id),
+        "standorte_count": len(standort_ids),
+        "prosumer_consumer": prosumer_consumer,
+        "hinweis": mix.hinweis,
+        "bemerkung": trafokreis.bemerkung,
         "_search": search_text,
     }
 
@@ -63,8 +104,8 @@ def trafokreise_page() -> None:
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
                     rubrik="Trafokreise",
-                    get_columns=lambda: table_columns(table),
-                    get_rows=lambda: table.rows,
+                    get_columns=lambda: PRINT_COLUMNS,
+                    get_rows=lambda: visible_rows,
                     get_filter_description=lambda: (
                         f'Suche: "{search_input.value.strip()}"' if search_input.value else None
                     ),
@@ -75,18 +116,37 @@ def trafokreise_page() -> None:
             "w-full max-w-md"
         ).props("debounce=300 clearable")
 
-        table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
-        table.add_slot(
-            "body-cell-actions",
-            r'''
-            <q-td :props="props">
-                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
-                <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
-            </q-td>
-            ''',
-        )
+        list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_rows: list[dict] = []
+        visible_rows: list[dict] = []
+
+        def render_card(row: dict) -> None:
+            """Render one Trafokreis as a card with wrapping field groups.
+
+            Args:
+                row: Row dict from `_to_row`.
+
+            Returns:
+                None.
+            """
+            with ui.card().classes("w-full"):
+                with ui.row().classes("w-full items-center gap-4 flex-wrap"):
+                    with ui.column().classes("gap-0 min-w-[180px]"):
+                        ui.label(row["name"]).classes("font-bold")
+                        if row["bkw_bezeichnung"]:
+                            ui.label(row["bkw_bezeichnung"]).classes("text-caption text-grey-6")
+                    ui.label(f"{row['standorte_count']} Standort(e)").classes("text-body2")
+                    ui.label(row["prosumer_consumer"]).classes("text-body2")
+                    with ui.row().classes("gap-1 ml-auto"):
+                        ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
+                        ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
+                            "dense flat color=negative"
+                        )
+                if row["hinweis"]:
+                    ui.label(row["hinweis"]).classes("w-full text-body2 text-negative")
+                if row["bemerkung"]:
+                    ui.label(row["bemerkung"]).classes("w-full text-body2 text-grey-7")
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value.
@@ -94,9 +154,15 @@ def trafokreise_page() -> None:
             Returns:
                 None.
             """
+            nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
-            table.rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
-            table.update()
+            visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
+            list_container.clear()
+            with list_container:
+                if not visible_rows:
+                    ui.label("Keine Trafokreise gefunden.").classes("text-grey-6")
+                for row in visible_rows:
+                    render_card(row)
 
         def refresh() -> None:
             """Reload all Trafokreise from the database and re-apply the filter.
@@ -106,8 +172,16 @@ def trafokreise_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
+                standorte = standort_repo.list_all(connection)
+                upgrade_trafokreis_ids = {
+                    c.trafokreis.id for c in find_upgrade_candidates(connection)
+                }
                 all_rows = [
-                    _to_row(connection, trafokreis)
+                    _to_row(
+                        connection, trafokreis,
+                        {s.id for s in standorte if s.trafokreis_id == trafokreis.id},
+                        upgrade_trafokreis_ids,
+                    )
                     for trafokreis in trafokreis_repo.list_all(connection)
                 ]
             apply_filter()
@@ -208,30 +282,30 @@ def trafokreise_page() -> None:
                     ui.button("Speichern", on_click=save)
             dialog.open()
 
-        def on_edit(event) -> None:
-            """Table row-edit handler: open the edit dialog for the clicked row.
+        def on_edit(row: dict) -> None:
+            """Card edit-button handler: open the edit dialog for this row.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                row: Row dict of the Trafokreis to edit.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                existing = trafokreis_repo.get(connection, event.args["id"])
+                existing = trafokreis_repo.get(connection, row["id"])
             open_form(existing)
 
-        def on_remove(event) -> None:
-            """Table row-delete handler: delete the Trafokreis after confirmation.
+        def on_remove(row: dict) -> None:
+            """Card delete-button handler: delete the Trafokreis after confirmation.
 
             Args:
-                event: NiceGUI generic event carrying the clicked row's args.
+                row: Row dict of the Trafokreis to delete.
 
             Returns:
                 None.
             """
-            trafokreis_id = event.args["id"]
-            name = event.args["name"]
+            trafokreis_id = row["id"]
+            name = row["name"]
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Trafokreis "{name}" wirklich löschen?')
@@ -252,8 +326,5 @@ def trafokreise_page() -> None:
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
-
-        table.on("edit", on_edit)
-        table.on("remove", on_remove)
 
         refresh()

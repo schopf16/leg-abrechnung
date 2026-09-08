@@ -1068,4 +1068,46 @@ Freundliche Grüsse';
             ALTER TABLE billing_run_items ADD COLUMN mahnung_frist_tage INTEGER;
         """,
     ),
+    Migration(
+        version=31,
+        description="Add Anschlussleistung tracking (Standort) and a "
+        "Betriebsstunden<=500h flag (Messpunkt) for the BKW 5%-Produktions-"
+        "regel check (Art. 19e Abs. 1 StromVV, see app.domain.anschluss_ratio): "
+        "a LEG's production capacity must be at least 5% of its participants' "
+        "connection capacity, else it must be reported to BKW (Art. 19g Abs. 1 "
+        "lit. e StromVV). Anschlussleistung is not available via any BKW API "
+        "(gridconnection.bkw.ch only shows one's own connection, not other "
+        "participants'), so it is recorded manually per Standort, with a "
+        "Gebaeudetyp-based Richtwert fallback when no real value is known. "
+        "Purely additive.",
+        sql="""
+            ALTER TABLE standort ADD COLUMN anschlussleistung_kw REAL;
+            ALTER TABLE standort ADD COLUMN anschlussleistung_quelle TEXT
+                CHECK (anschlussleistung_quelle IN ('bkw_abfrage', 'anschlussvertrag', 'richtwert'));
+            ALTER TABLE standort ADD COLUMN anschlussleistung_erfasst_am TEXT;
+            ALTER TABLE standort ADD COLUMN gebaeudetyp TEXT NOT NULL DEFAULT 'unbekannt'
+                CHECK (gebaeudetyp IN ('efh', 'mfh_1_3', 'mfh_4_9', 'mfh_10_15', 'gewerbe', 'unbekannt'));
+
+            ALTER TABLE messpunkt ADD COLUMN betrieb_max_500h INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
+    Migration(
+        version=32,
+        description="Remove migration 31's Anschlussleistung/5%-Produktionsregel "
+        "tracking again: the fixed-Richtwert-per-Gebaeudetyp model turned out not "
+        "to fit reality well enough to be worth the manual data entry it required "
+        "(see app.domain.participant_mix, which replaces it with a much simpler "
+        "Prosumer/Consumer participant-count ratio -- no Anschlussleistung, "
+        "Gebaeudetyp or 500h-Betriebsstunden concept needed at all). Reverts "
+        "standort.anschlussleistung_kw/_quelle/_erfasst_am/gebaeudetyp and "
+        "messpunkt.betrieb_max_500h.",
+        sql="""
+            ALTER TABLE standort DROP COLUMN anschlussleistung_kw;
+            ALTER TABLE standort DROP COLUMN anschlussleistung_quelle;
+            ALTER TABLE standort DROP COLUMN anschlussleistung_erfasst_am;
+            ALTER TABLE standort DROP COLUMN gebaeudetyp;
+
+            ALTER TABLE messpunkt DROP COLUMN betrieb_max_500h;
+        """,
+    ),
 ]

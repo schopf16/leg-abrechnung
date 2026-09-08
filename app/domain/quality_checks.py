@@ -3,9 +3,10 @@
 Covers gaps in the Zuordnung history, missing reading periods, the
 invoice/credit-note sum balance (lives in `app.domain.billing.
 verify_sum_balance`, re-exposed here for a single import point),
-Messpunkte that have no LEG assigned yet, and interested persons whose
+Messpunkte that have no LEG assigned yet, interested persons whose
 onboarding (`app.models.person_onboarding`) has been stuck on its current
-step for too long.
+step for too long, and the one-sided-Trafokreis / LEG-upgrade signals from
+`app.domain.participant_mix`.
 """
 
 import sqlite3
@@ -13,12 +14,16 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Optional
 
+from app.domain import participant_mix
+from app.domain.leg_composition import compute_leg_composition
 from app.domain.period import quarter_bounds
 from app.models import bank_transaction as bank_transaction_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
+from app.models import standort as standort_repo
+from app.models import trafokreis as trafokreis_repo
 from app.models import zuordnung as zuordnung_repo
 
 #: Expected number of 15-minute readings per Messpunkt per full calendar day.
@@ -31,8 +36,9 @@ class QualityWarning:
 
     Attributes:
         category: One of "zuordnung_ueberlappung", "zuordnung_luecke",
-            "messdaten_luecke", "leg_nicht_zugeordnet" or
-            "aufnahme_ueberfaellig".
+            "messdaten_luecke", "leg_nicht_zugeordnet",
+            "aufnahme_ueberfaellig", "bank_buchung_ungeklaert",
+            "trafokreis_wechsel_potential" or "trafokreis_einseitig".
         message: Human-readable (German) description.
         link: Route path to the specific object this warning is about
             (e.g. `/messpunkte/12`), so the UI can jump straight there
@@ -229,3 +235,73 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
             link="/debitoren",
         )
     ]
+
+
+def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag Trafokreise that could now split off into their own, better-
+    discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A `QualityWarning` per Trafokreis with newly-viable upgrade potential.
+    """
+    warnings: list[QualityWarning] = []
+    for candidate in participant_mix.find_upgrade_candidates(connection):
+        leg_names = ", ".join(f"„{leg.name}“" for leg in candidate.mixed_legs)
+        warnings.append(
+            QualityWarning(
+                category="trafokreis_wechsel_potential",
+                message=(
+                    f"Trafokreis „{candidate.trafokreis.name}“ hat jetzt sowohl "
+                    f"Prosumer als auch Consumer ({candidate.mix.verhaeltnis}) -- "
+                    f"{candidate.person_count} Person(en) in {leg_names} könnten "
+                    "in ein eigenes LEG wechseln."
+                ),
+                link="/trafokreise",
+            )
+        )
+    return warnings
+
+
+def check_trafokreis_einseitig(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag Trafokreise with participants on only one side (nothing to
+    actually share locally), unless already resolved via a mixed LEG.
+
+    See `app.domain.participant_mix.compute_participant_mix_for_trafokreis`.
+    A Trafokreis whose Messpunkte are *all* already in a mixed (multi-
+    Trafokreis) LEG is not flagged -- the recommended fix is already acted
+    on. A Trafokreis with no participants at all yet is not flagged either
+    (nothing to warn about).
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A `QualityWarning` per still-one-sided Trafokreis.
+    """
+    warnings: list[QualityWarning] = []
+    standorte = standort_repo.list_all(connection)
+    messpunkte = messpunkt_repo.list_all(connection)
+    for trafokreis in trafokreis_repo.list_all(connection):
+        mix = participant_mix.compute_participant_mix_for_trafokreis(connection, trafokreis.id)
+        if mix.hinweis is None:
+            continue
+        standort_ids = {s.id for s in standorte if s.trafokreis_id == trafokreis.id}
+        leg_ids_here = {
+            mp.leg_id for mp in messpunkte if mp.standort_id in standort_ids and mp.leg_id is not None
+        }
+        already_resolved = bool(leg_ids_here) and all(
+            compute_leg_composition(connection, leg_id).is_mixed for leg_id in leg_ids_here
+        )
+        if already_resolved:
+            continue
+        warnings.append(
+            QualityWarning(
+                category="trafokreis_einseitig",
+                message=f"Trafokreis „{trafokreis.name}“: {mix.hinweis}",
+                link="/trafokreise",
+            )
+        )
+    return warnings
