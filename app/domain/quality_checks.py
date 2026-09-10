@@ -36,12 +36,13 @@ class QualityWarning:
 
     Attributes:
         category: One of "assignment_overlap", "assignment_gap",
-            "messdaten_luecke", "leg_nicht_zugeordnet",
-            "onboarding_overdue", "bank_transaction_unresolved",
-            "trafokreis_wechsel_potential" or "trafokreis_einseitig".
+            "reading_gap", "leg_not_assigned", "onboarding_overdue",
+            "bank_transaction_unresolved",
+            "substation_area_upgrade_potential" or
+            "substation_area_one_sided".
         message: Human-readable (German) description.
         link: Route path to the specific object this warning is about
-            (e.g. `/metering_points/12`), so the UI can jump straight there
+            (e.g. `/metering-points/12`), so the UI can jump straight there
             instead of just naming it in text -- `None` if no detail page
             exists for that kind of object, or the specific record could
             not be resolved.

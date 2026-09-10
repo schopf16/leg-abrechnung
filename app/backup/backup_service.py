@@ -19,7 +19,12 @@ from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version, initialize
 from app.paths import BACKUPS_DIR, DATABASE_PATH
 
 #: Tables that must be present for a file to be accepted as a LEG database.
-_REQUIRED_TABLES = {"leg_settings", "person", "metering_point", "readings", "billing_runs"}
+#: Validation runs BEFORE the restored file is migrated, so only tables
+#: whose name has never changed across the migration history may be listed
+#: here -- a backup taken at schema 38 still calls today's metering_point
+#: table "messpunkt", and must remain restorable (that is the whole point
+#: of replayable migrations).
+_REQUIRED_TABLES = {"leg_settings", "person", "readings", "billing_runs"}
 
 _BACKUP_FILENAME_PREFIX = "leg_abrechnung_"
 _BACKUP_FILENAME_SUFFIX = ".sqlite3"

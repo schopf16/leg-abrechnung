@@ -82,7 +82,7 @@ class LegSettings:
             wait, it does, see the LEG's own Reglement: a missed new
             deadline leads to membership termination). May contain
             `{placeholder}`s (person placeholders plus `{betrag}`,
-            `{new_deadline}` -- see `app.domain.dunning`).
+            `{neue_frist}` -- see `app.domain.dunning`).
         dunning1_email_body: Body template for the 1. dunning notice.
         dunning2_email_subject: Subject template for the 2. dunning notice
             (sent when the 1. dunning notice's new deadline was missed --

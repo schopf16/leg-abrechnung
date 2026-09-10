@@ -9,8 +9,9 @@ column order does not matter, matching is case-insensitive):
 
 - `MeteringPoint`: metering point designation (business key, "designation").
 - `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
-- `Richtung`: "consumption" or "feed-in" (German, case-insensitive; English
-  synonyms are also accepted, see `app.importers.base.validate_direction`).
+- `Richtung`: "Bezug" or "Einspeisung" (case-insensitive; the English
+  synonyms "consumption"/"production"/"import"/"export" are also accepted,
+  see `app.importers.base.validate_direction`), stored as "bezug"/"einspeisung".
 - `Wert_kWh`: energy for the interval, decimal point or comma.
 
 As with the EBIX parser, no real BKW CSV sample was available; adjust the

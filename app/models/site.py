@@ -21,9 +21,9 @@ class Site:
         id: Primary key, `None` for a not-yet-persisted instance.
         street: Street name (without house number).
         house_number: House number.
-        plz: Postal code.
+        postal_code: Postal code.
         municipality: Municipality.
-        lage: Optional detail (e.g. floor/unit) within that address.
+        address_detail: Optional detail (e.g. floor/unit) within that address.
         substation_area_id: Foreign key to the assigned `substation area`, `None`
             until manually assigned.
         created_at: ISO-8601 creation timestamp.
@@ -97,7 +97,7 @@ def find_by_address(
     """Fetch a site by exact (case-insensitive) address/Hausnummer/PLZ match.
 
     Used to warn about likely duplicate sites -- the same physical
-    address entered twice by mistake. `lage` is deliberately not part of
+    address entered twice by mistake. `address_detail` is deliberately not part of
     the match: it is a descriptive detail (e.g. floor/unit) within one
     site, not a way to distinguish several sites at one address (a
     multi-family building is one site with several metering points, see
@@ -107,7 +107,7 @@ def find_by_address(
         connection: Open SQLite connection.
         street: Street name to match.
         house_number: House number to match.
-        plz: Postal code to match.
+        postal_code: Postal code to match.
 
     Returns:
         The matching `site`, or `None` if no such address exists.

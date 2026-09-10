@@ -1,4 +1,4 @@
-"""Placeholder substitution for email texts (`{first_name}`, `{salutation}`, ...).
+"""Placeholder substitution for email texts (`{vorname}`, `{anrede}`, ...).
 
 Shared by the broadcast/LEG email composer and the invoice email template
 (see `app.gui.pages.email_dispatch` and `app.gui.pages.billing`) -- one

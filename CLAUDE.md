@@ -27,8 +27,8 @@ no cloud, no network dependency for normal operation. See `README.md`
 .venv\Scripts\python.exe -m pytest tests/test_billing.py::test_name -v
 ```
 
-There is no separate lint/build/typecheck command configured — tests are
-the verification gate. `.venv` is a local, gitignored virtualenv set up by
+Lint, security scan and tests are the verification gate — see "Tooling and
+CI" below (ruff, bandit, pip-audit); there is no typecheck step. `.venv` is a local, gitignored virtualenv set up by
 `start.bat`; `requirements.txt` pins exact versions.
 
 ## Architecture

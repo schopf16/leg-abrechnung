@@ -152,3 +152,33 @@ def test_restore_backup_migrates_database_to_current_schema(tmp_path):
     settings_row = connection.execute("SELECT * FROM leg_settings WHERE id = 1").fetchone()
     connection.close()
     assert settings_row is not None
+
+
+def test_restore_backup_accepts_backup_from_before_table_renames(tmp_path, monkeypatch):
+    """A backup taken before migration 39 still calls the metering-point
+    table "messpunkt". Validation runs before the restored file is migrated,
+    so it must only require tables whose name never changed -- otherwise
+    every pre-rename backup becomes un-restorable, which is exactly what
+    replayable migrations exist to prevent."""
+    import app.db.schema as schema_module
+    from app.db.migrations import MIGRATIONS
+    from app.db.schema import CURRENT_SCHEMA_VERSION
+
+    old_backup_path = tmp_path / "leg_abrechnung_20260901_000000_000000.sqlite3"
+    connection = sqlite3.connect(old_backup_path)
+    connection.row_factory = sqlite3.Row
+    monkeypatch.setattr(schema_module, "MIGRATIONS", [m for m in MIGRATIONS if m.version <= 38])
+    schema_module.initialize_database(connection)
+    assert "messpunkt" in {
+        row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    connection.close()
+    monkeypatch.setattr(schema_module, "MIGRATIONS", MIGRATIONS)
+
+    db_path = tmp_path / "live.sqlite3"
+    backups_dir = tmp_path / "backups"
+    _make_live_db(db_path)
+
+    result = restore_backup(old_backup_path, db_path, backups_dir)
+
+    assert result.restored_schema_version == CURRENT_SCHEMA_VERSION

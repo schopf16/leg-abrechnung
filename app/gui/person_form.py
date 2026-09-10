@@ -64,10 +64,10 @@ def open_person_form(
         existing: Person to edit, or `None` to create a new one.
         prefill: Initial field values for a new person, ignored if
             `existing` is set. Keys: any of `_PREFILL_KEYS` (`company`,
-            `salutation`, `first_name`, `last_name`, `strasse`, `house_number`,
-            `plz`, `ort`, `land`, `email`, `phone`, `iban`,
+            `salutation`, `first_name`, `last_name`, `street`, `house_number`,
+            `postal_code`, `city`, `country`, `email`, `phone`, `iban`,
             `bkw_customer_number`); missing keys use the usual defaults
-            (`land` defaults to `"CH"`).
+            (`country` defaults to `"CH"`).
         on_saved: Called with the created/updated `Person` right after a
             successful save (dialog already closed) -- e.g. so a caller
             elsewhere on the page can refresh its own list or react to

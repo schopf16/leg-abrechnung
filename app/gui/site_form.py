@@ -49,7 +49,7 @@ def open_site_form(
         existing: site to edit, or `None` to create a new one.
         prefill: Initial field values for a new site, ignored if
             `existing` is set. Keys: any of `_PREFILL_KEYS` (`street`,
-            `house_number`, `plz`, `municipality`); missing keys default to "".
+            `house_number`, `postal_code`, `municipality`); missing keys default to "".
         on_saved: Called with the created/updated `site` right after a
             successful save (dialog already closed) -- e.g. so a caller
             elsewhere on the page can refresh its own list or react to

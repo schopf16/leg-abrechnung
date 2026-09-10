@@ -38,10 +38,10 @@ class RegistrationSubmission:
         salutation: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
         first_name: Submitted first name.
         last_name: Submitted last name.
-        strasse: Submitted street name (without house number).
+        street: Submitted street name (without house number).
         house_number: Submitted house number.
-        plz: Submitted postal code.
-        ort: Submitted city.
+        postal_code: Submitted postal code.
+        city: Submitted city.
         email: Submitted email address -- possibly empty, callers must
             handle that case (see `app.importers.registration_sync`).
         phone: Optional submitted phone number.

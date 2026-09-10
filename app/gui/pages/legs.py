@@ -114,8 +114,8 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         "name": leg.name,
         "metering_points_count": leg_repo.count_metering_points(connection, leg.id),
         # Flattened for the printout/CSV export (a single-cell text), see
-        # app.gui.print_list -- the on-screen card uses trafokreise_status/
-        # trafokreise_liste instead, to list the substation areas one per line.
+        # app.gui.print_list -- the on-screen card uses substation_areas_status/
+        # substation_areas_list instead, to list the substation areas one per line.
         "substation_areas": (
             f"{substation_areas_status}: {substation_area_names}" if composition.substation_areas else substation_areas_status
         ),

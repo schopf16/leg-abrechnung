@@ -112,7 +112,7 @@ def _registration_status(
         reg: Registration to check.
         known_person_emails: Every existing Person's non-empty `contact_email`.
         known_site_addresses: Every existing site's
-            `(street, house_number, plz)`, lowercased.
+            `(street, house_number, postal_code)`, lowercased.
         known_metering_points: Every existing MeteringPoint's `designation`.
 
     Returns:

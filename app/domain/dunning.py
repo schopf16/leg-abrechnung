@@ -110,7 +110,7 @@ def _next_level(item: BillingRunItem, today: date, new_deadline_days: int) -> Op
     if item.dunning_level == 1:
         if not item.last_dunning_at:
             return None
-        # Use the deadline actually granted (and printed via {new_deadline})
+        # Use the deadline actually granted (and printed via {neue_frist})
         # when the 1. dunning notice was sent, frozen on the item itself -- never
         # the live setting, which may have changed since. Only items sent
         # before this freeze existed (migration 30) fall back to the
