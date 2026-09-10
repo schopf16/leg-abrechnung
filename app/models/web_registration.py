@@ -5,9 +5,9 @@ One row per Cloudflare submission (not per reported meter): the form
 fields were deliberately chosen to mirror `Person` almost 1:1 (`firma`,
 `anrede`, `vorname`, `nachname`, address, contact, `bkw_kundennummer`,
 `iban`), but a registration can report zero, one or several meters
-(`WebRegistrationMeter`). Person, Standort and each meter's Messpunkt are
+(`WebRegistrationMeter`). Person, site and each meter's Messpunkt are
 each taken over as their own explicit step (see `app.gui.pages.
-web_registrierungen`) -- matching a reported meter (and its Standort)
+web_registrierungen`) -- matching a reported meter (and its site)
 against a *new* record is a judgment call for the administrator, not a
 mechanical one. Zuordnung (linking a taken-over Person to a taken-over
 Messpunkt) stays a manual step in `/zuordnungen`.
@@ -85,10 +85,10 @@ class WebRegistration:
         anrede: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
         vorname: Submitted first name.
         nachname: Submitted last name.
-        strasse: Submitted street name (without house number).
-        hausnummer: Submitted house number.
-        plz: Submitted postal code.
-        ort: Submitted city.
+        street: Submitted street name (without house number).
+        house_number: Submitted house number.
+        postal_code: Submitted postal code.
+        city: Submitted city.
         email: Submitted email address -- the matching key across repeat
             submissions (see class docstring).
         telefon: Optional submitted phone number.
@@ -105,9 +105,9 @@ class WebRegistration:
             web_registrierungen`). Only `mark_person_created` sets it;
             used to decide whether deleting this registration (see
             `delete`) needs the strong irrevocable-data-loss warning.
-        standort_created: Whether a `Standort` was actually created from
-            this registration's reported address via "Standort
-            übernehmen". Only `mark_standort_created` sets it.
+        site_created: Whether a `site` was actually created from
+            this registration's reported address via "site
+            übernehmen". Only `mark_site_created` sets it.
         meters: Zählernummern reported with this registration, zero, one
             or several -- each with its own `messpunkt_created` flag.
     """
@@ -118,10 +118,10 @@ class WebRegistration:
     anrede: str
     vorname: str
     nachname: str
-    strasse: str
-    hausnummer: str
-    plz: str
-    ort: str
+    street: str
+    house_number: str
+    postal_code: str
+    city: str
     email: str
     telefon: str
     bkw_kundennummer: str
@@ -130,7 +130,7 @@ class WebRegistration:
     submitted_at: str
     imported_at: str
     person_created: bool = False
-    standort_created: bool = False
+    site_created: bool = False
     meters: list[WebRegistrationMeter] = field(default_factory=list)
 
     @property
@@ -151,7 +151,7 @@ class WebRegistration:
     def is_fully_processed(self) -> bool:
         """Whether there is nothing left to take over from this registration.
 
-        `True` once Person, Standort and every reported Messpunkt have
+        `True` once Person, site and every reported Messpunkt have
         all been created via their respective "... übernehmen" action --
         the only remaining action at that point is deleting the entry.
 
@@ -160,7 +160,7 @@ class WebRegistration:
         """
         return (
             self.person_created
-            and self.standort_created
+            and self.site_created
             and all(m.messpunkt_created for m in self.meters)
         )
 
@@ -183,10 +183,10 @@ class WebRegistration:
             anrede=row["anrede"],
             vorname=row["vorname"],
             nachname=row["nachname"],
-            strasse=row["strasse"],
-            hausnummer=row["hausnummer"],
-            plz=row["plz"],
-            ort=row["ort"],
+            street=row["street"],
+            house_number=row["house_number"],
+            postal_code=row["postal_code"],
+            city=row["city"],
             email=row["email"],
             telefon=row["telefon"],
             bkw_kundennummer=row["bkw_kundennummer"],
@@ -195,7 +195,7 @@ class WebRegistration:
             submitted_at=row["submitted_at"],
             imported_at=row["imported_at"],
             person_created=bool(row["person_created"]),
-            standort_created=bool(row["standort_created"]),
+            site_created=bool(row["site_created"]),
             meters=meters,
         )
 
@@ -303,8 +303,8 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
         cursor = connection.execute(
             """
             INSERT INTO web_registration
-                (cloudflare_id, firma, anrede, vorname, nachname, strasse, hausnummer,
-                 plz, ort, email, telefon, bkw_kundennummer, iban, message,
+                (cloudflare_id, firma, anrede, vorname, nachname, street, house_number,
+                 postal_code, city, email, telefon, bkw_kundennummer, iban, message,
                  submitted_at, imported_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -314,10 +314,10 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
                 registration.anrede,
                 registration.vorname,
                 registration.nachname,
-                registration.strasse,
-                registration.hausnummer,
-                registration.plz,
-                registration.ort,
+                registration.street,
+                registration.house_number,
+                registration.postal_code,
+                registration.city,
                 registration.email,
                 registration.telefon,
                 registration.bkw_kundennummer,
@@ -333,7 +333,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
             """
             UPDATE web_registration SET
                 cloudflare_id = ?, firma = ?, anrede = ?, vorname = ?, nachname = ?,
-                strasse = ?, hausnummer = ?, plz = ?, ort = ?, email = ?, telefon = ?,
+                street = ?, house_number = ?, postal_code = ?, city = ?, email = ?, telefon = ?,
                 bkw_kundennummer = ?, iban = ?, message = ?, submitted_at = ?,
                 imported_at = ?
             WHERE id = ?
@@ -344,10 +344,10 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
                 registration.anrede,
                 registration.vorname,
                 registration.nachname,
-                registration.strasse,
-                registration.hausnummer,
-                registration.plz,
-                registration.ort,
+                registration.street,
+                registration.house_number,
+                registration.postal_code,
+                registration.city,
                 registration.email,
                 registration.telefon,
                 registration.bkw_kundennummer,
@@ -399,10 +399,10 @@ def mark_person_created(connection: sqlite3.Connection, web_registration_id: int
     connection.commit()
 
 
-def mark_standort_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Record that a `Standort` was actually created from this registration.
+def mark_site_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Record that a `site` was actually created from this registration.
 
-    Idempotent. The only way `standort_created` is set.
+    Idempotent. The only way `site_created` is set.
 
     Args:
         connection: Open SQLite connection.
@@ -412,7 +412,7 @@ def mark_standort_created(connection: sqlite3.Connection, web_registration_id: i
         None.
     """
     connection.execute(
-        "UPDATE web_registration SET standort_created = 1 WHERE id = ?",
+        "UPDATE web_registration SET site_created = 1 WHERE id = ?",
         (web_registration_id,),
     )
     connection.commit()

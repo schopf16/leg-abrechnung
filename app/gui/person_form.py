@@ -22,10 +22,10 @@ _PREFILL_KEYS = (
     "anrede",
     "vorname",
     "nachname",
-    "strasse",
-    "hausnummer",
-    "plz",
-    "ort",
+    "street",
+    "house_number",
+    "postal_code",
+    "city",
     "land",
     "email",
     "telefon",
@@ -64,7 +64,7 @@ def open_person_form(
         existing: Person to edit, or `None` to create a new one.
         prefill: Initial field values for a new person, ignored if
             `existing` is set. Keys: any of `_PREFILL_KEYS` (`firma`,
-            `anrede`, `vorname`, `nachname`, `strasse`, `hausnummer`,
+            `anrede`, `vorname`, `nachname`, `strasse`, `house_number`,
             `plz`, `ort`, `land`, `email`, `telefon`, `iban`,
             `bkw_kundennummer`); missing keys use the usual defaults
             (`land` defaults to `"CH"`).
@@ -102,20 +102,20 @@ def open_person_form(
                 "Nachname", value=_initial(existing, "nachname", prefill, "nachname")
             ).classes("flex-grow")
         with ui.row().classes("w-full gap-2"):
-            strasse = ui.input(
+            street = ui.input(
                 "Adresse: Strasse",
-                value=_initial(existing, "rechnungsadresse_strasse", prefill, "strasse"),
+                value=_initial(existing, "rechnungsadresse_strasse", prefill, "street"),
             ).classes("flex-grow")
-            hausnummer = ui.input(
+            house_number = ui.input(
                 "Hausnummer",
-                value=_initial(existing, "rechnungsadresse_hausnummer", prefill, "hausnummer"),
+                value=_initial(existing, "rechnungsadresse_hausnummer", prefill, "house_number"),
             ).classes("w-24")
         with ui.row().classes("w-full gap-2"):
-            plz = ui.input(
-                "PLZ", value=_initial(existing, "rechnungsadresse_plz", prefill, "plz")
+            postal_code = ui.input(
+                "PLZ", value=_initial(existing, "rechnungsadresse_plz", prefill, "postal_code")
             ).classes("w-24")
-            ort = ui.input(
-                "Ort", value=_initial(existing, "rechnungsadresse_ort", prefill, "ort")
+            city = ui.input(
+                "Ort", value=_initial(existing, "rechnungsadresse_ort", prefill, "city")
             ).classes("flex-grow")
             land = ui.input(
                 "Land", value=_initial(existing, "rechnungsadresse_land", prefill, "land", "CH")
@@ -197,10 +197,10 @@ def open_person_form(
                         nachname=nachname.value.strip(),
                         kontakt_email=email.value.strip(),
                         kontakt_telefon=telefon.value.strip(),
-                        rechnungsadresse_strasse=strasse.value.strip(),
-                        rechnungsadresse_hausnummer=hausnummer.value.strip(),
-                        rechnungsadresse_plz=plz.value.strip(),
-                        rechnungsadresse_ort=ort.value.strip(),
+                        rechnungsadresse_strasse=street.value.strip(),
+                        rechnungsadresse_hausnummer=house_number.value.strip(),
+                        rechnungsadresse_plz=postal_code.value.strip(),
+                        rechnungsadresse_ort=city.value.strip(),
                         rechnungsadresse_land=land.value.strip() or "CH",
                         iban=iban_normalized,
                         kundennummer=existing.kundennummer,
@@ -219,10 +219,10 @@ def open_person_form(
                         nachname=nachname.value.strip(),
                         kontakt_email=email.value.strip(),
                         kontakt_telefon=telefon.value.strip(),
-                        rechnungsadresse_strasse=strasse.value.strip(),
-                        rechnungsadresse_hausnummer=hausnummer.value.strip(),
-                        rechnungsadresse_plz=plz.value.strip(),
-                        rechnungsadresse_ort=ort.value.strip(),
+                        rechnungsadresse_strasse=street.value.strip(),
+                        rechnungsadresse_hausnummer=house_number.value.strip(),
+                        rechnungsadresse_plz=postal_code.value.strip(),
+                        rechnungsadresse_ort=city.value.strip(),
                         rechnungsadresse_land=land.value.strip() or "CH",
                         iban=iban_normalized,
                         kundennummer=None,

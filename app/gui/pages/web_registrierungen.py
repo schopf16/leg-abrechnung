@@ -1,15 +1,15 @@
 """Web-Registrierungen page: inbox for registrations submitted through the
 public form on leg-ittigen.ch (see `app.importers.registration_sync`).
 
-Person, Standort and every reported Messpunkt can each be taken over
+Person, site and every reported Messpunkt can each be taken over
 separately -- "... übernehmen" opens the matching create dialog (see
-`app.gui.person_form`/`standort_form`/`messpunkt_form`) prefilled from the
+`app.gui.person_form`/`site_form`/`messpunkt_form`) prefilled from the
 registration, so nothing has to be retyped, and records that this item
 was taken over once actually saved. Deliberately three independent
 actions rather than one "accept everything" button: matching a reported
-meter (and its Standort) against a *new* record still needs a human
+meter (and its site) against a *new* record still needs a human
 judgment call (which LEG, which Messrichtung, is this really the same
-site as an existing Standort), so each piece is confirmed on its own.
+site as an existing site), so each piece is confirmed on its own.
 Zuordnung (linking a taken-over Person to a taken-over Messpunkt) stays a
 manual step in `/zuordnungen`, as it always was.
 
@@ -35,7 +35,7 @@ from app.gui.navigation import page_frame
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
-from app.gui.standort_form import open_standort_form
+from app.gui.site_form import open_site_form
 from app.importers.cloudflare_client import (
     CloudflareApiError,
     CloudflareAuthError,
@@ -45,7 +45,7 @@ from app.importers.registration_sync import sync_registrations
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import web_registration as web_registration_repo
 from app.models.web_registration import WebRegistration, WebRegistrationMeter
 
@@ -55,7 +55,7 @@ PRINT_COLUMNS = [
     ("Eingegangen", "eingegangen"),
     ("E-Mail", "email"),
     ("Telefon", "telefon"),
-    ("Adresse", "adresse"),
+    ("Adresse", "address"),
     ("BKW-Kundennummer", "bkw_kundennummer"),
     ("Zähler", "zaehler"),
     ("Status", "status"),
@@ -76,7 +76,7 @@ def _print_row(reg: WebRegistration) -> dict:
         "eingegangen": reg.submitted_at,
         "email": reg.email,
         "telefon": reg.telefon,
-        "adresse": f"{reg.strasse} {reg.hausnummer}, {reg.plz} {reg.ort}".strip(", "),
+        "address": f"{reg.street} {reg.house_number}, {reg.postal_code} {reg.city}".strip(", "),
         "bkw_kundennummer": reg.bkw_kundennummer,
         "zaehler": ", ".join(m.meter_number for m in reg.meters) or "-",
         "status": "Vollständig übernommen" if reg.is_fully_processed else "Offen",
@@ -86,24 +86,24 @@ def _print_row(reg: WebRegistration) -> dict:
 @dataclass
 class _RegistrationStatus:
     """Whether a matching record already exists for one registration's
-    Person/Standort/each reported Messpunkt, *without* having been taken
+    Person/site/each reported Messpunkt, *without* having been taken
     over via this page -- purely informational, see module docstring.
 
     Attributes:
         person_exists: A Person with this registration's email already exists.
-        standort_exists: A Standort with this registration's address already exists.
+        site_exists: A site with this registration's address already exists.
         messpunkt_exists: `{meter.id: bool}` for each of the registration's meters.
     """
 
     person_exists: bool
-    standort_exists: bool
+    site_exists: bool
     messpunkt_exists: dict[int, bool]
 
 
 def _registration_status(
     reg: WebRegistration,
     known_person_emails: set[str],
-    known_standort_addresses: set[tuple[str, str, str]],
+    known_site_addresses: set[tuple[str, str, str]],
     known_messpunkte: set[str],
 ) -> _RegistrationStatus:
     """Compute one registration's "does a match already exist?" status.
@@ -111,17 +111,17 @@ def _registration_status(
     Args:
         reg: Registration to check.
         known_person_emails: Every existing Person's non-empty `kontakt_email`.
-        known_standort_addresses: Every existing Standort's
-            `(adresse, hausnummer, plz)`, lowercased.
+        known_site_addresses: Every existing site's
+            `(street, house_number, plz)`, lowercased.
         known_messpunkte: Every existing Messpunkt's `messpunkt_bezeichnung`.
 
     Returns:
         The computed `_RegistrationStatus`.
     """
-    standort_key = (reg.strasse.strip().lower(), reg.hausnummer.strip().lower(), reg.plz.strip().lower())
+    site_key = (reg.street.strip().lower(), reg.house_number.strip().lower(), reg.postal_code.strip().lower())
     return _RegistrationStatus(
         person_exists=bool(reg.email) and reg.email in known_person_emails,
-        standort_exists=standort_key in known_standort_addresses,
+        site_exists=site_key in known_site_addresses,
         messpunkt_exists={m.id: m.meter_number in known_messpunkte for m in reg.meters},
     )
 
@@ -242,8 +242,8 @@ def web_registrierungen_page() -> None:
                         ui.label(reg.email or "-")
                         ui.label(reg.telefon or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[200px]"):
-                        ui.label(f"{reg.strasse} {reg.hausnummer}".strip() or "-")
-                        ui.label(f"{reg.plz} {reg.ort}".strip() or "-")
+                        ui.label(f"{reg.street} {reg.house_number}".strip() or "-")
+                        ui.label(f"{reg.postal_code} {reg.city}".strip() or "-")
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(f"BKW-Kundennummer: {reg.bkw_kundennummer or '-'}")
                         ui.label(f"IBAN: {reg.iban or '-'}").classes("text-grey-7")
@@ -265,9 +265,9 @@ def web_registrierungen_page() -> None:
                     )
                     _take_over_row(
                         "Standort übernehmen",
-                        done=reg.standort_created,
-                        exists=status.standort_exists,
-                        on_click=lambda r=reg: on_take_over_standort(r),
+                        done=reg.site_created,
+                        exists=status.site_exists,
+                        on_click=lambda r=reg: on_take_over_site(r),
                     )
                     if reg.meters:
                         for meter in reg.meters:
@@ -297,9 +297,9 @@ def web_registrierungen_page() -> None:
                 known_person_emails = {
                     p.kontakt_email for p in person_repo.list_all(connection) if p.kontakt_email
                 }
-                known_standort_addresses = {
-                    (s.adresse.strip().lower(), s.hausnummer.strip().lower(), s.plz.strip().lower())
-                    for s in standort_repo.list_all(connection)
+                known_site_addresses = {
+                    (s.street.strip().lower(), s.house_number.strip().lower(), s.postal_code.strip().lower())
+                    for s in site_repo.list_all(connection)
                 }
                 known_messpunkte = {
                     mp.messpunkt_bezeichnung for mp in messpunkt_repo.list_all(connection)
@@ -322,7 +322,7 @@ def web_registrierungen_page() -> None:
                     render_card(
                         reg,
                         _registration_status(
-                            reg, known_person_emails, known_standort_addresses, known_messpunkte
+                            reg, known_person_emails, known_site_addresses, known_messpunkte
                         ),
                     )
 
@@ -345,10 +345,10 @@ def web_registrierungen_page() -> None:
                 "anrede": reg.anrede,
                 "vorname": reg.vorname,
                 "nachname": reg.nachname,
-                "strasse": reg.strasse,
-                "hausnummer": reg.hausnummer,
-                "plz": reg.plz,
-                "ort": reg.ort,
+                "street": reg.street,
+                "house_number": reg.house_number,
+                "postal_code": reg.postal_code,
+                "city": reg.city,
                 "email": reg.email,
                 "telefon": reg.telefon,
                 "iban": reg.iban,
@@ -369,8 +369,8 @@ def web_registrierungen_page() -> None:
 
             open_person_form(prefill=prefill, on_saved=on_person_saved)
 
-        def on_take_over_standort(reg: WebRegistration) -> None:
-            """Card button handler: open a prefilled Standort-creation dialog.
+        def on_take_over_site(reg: WebRegistration) -> None:
+            """Card button handler: open a prefilled site-creation dialog.
 
             Args:
                 reg: Registration to take over.
@@ -379,23 +379,23 @@ def web_registrierungen_page() -> None:
                 None.
             """
             prefill = {
-                "adresse": reg.strasse,
-                "hausnummer": reg.hausnummer,
-                "plz": reg.plz,
-                "gemeinde": reg.ort,
+                "street": reg.street,
+                "house_number": reg.house_number,
+                "postal_code": reg.postal_code,
+                "municipality": reg.city,
             }
 
-            def on_standort_saved(_standort) -> None:
+            def on_site_saved(_site) -> None:
                 with connection_scope() as connection:
-                    web_registration_repo.mark_standort_created(connection, reg.id)
+                    web_registration_repo.mark_site_created(connection, reg.id)
                 refresh()
 
-            open_standort_form(prefill=prefill, on_saved=on_standort_saved)
+            open_site_form(prefill=prefill, on_saved=on_site_saved)
 
         def on_take_over_messpunkt(reg: WebRegistration, meter: WebRegistrationMeter) -> None:
             """Card button handler: open a prefilled Messpunkt-creation dialog.
 
-            Pre-selects the Standort matching this registration's address
+            Pre-selects the site matching this registration's address
             if one already exists (typically because it was just taken
             over above) -- otherwise leaves it for the administrator to pick.
 
@@ -407,12 +407,12 @@ def web_registrierungen_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                matching_standort = standort_repo.find_by_address(
-                    connection, reg.strasse, reg.hausnummer, reg.plz
+                matching_site = site_repo.find_by_address(
+                    connection, reg.street, reg.house_number, reg.postal_code
                 )
             prefill = {"messpunktnummer": meter.meter_number}
-            if matching_standort is not None:
-                prefill["standort_id"] = matching_standort.id
+            if matching_site is not None:
+                prefill["site_id"] = matching_site.id
 
             def on_messpunkt_saved(_messpunkt) -> None:
                 with connection_scope() as connection:

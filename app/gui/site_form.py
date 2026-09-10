@@ -1,8 +1,8 @@
-"""Shared Standort create/edit dialog.
+"""Shared site create/edit dialog.
 
-Used both by the Standorte page itself and by the Web-Registrierungen page
-(to prefill a new Standort from a registration's reported address without
-having to re-type it) -- see `open_standort_form`'s `prefill` argument.
+Used both by the sites page itself and by the Web-Registrierungen page
+(to prefill a new site from a registration's reported address without
+having to re-type it) -- see `open_site_form`'s `prefill` argument.
 """
 
 from typing import Callable, Optional
@@ -11,22 +11,22 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.safe_notify import safe_notify
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models.standort import Standort
+from app.models.site import Site
 
-#: Standort-shaped fields `open_standort_form`'s `prefill` dict may set for
-#: a new Standort -- see that function's docstring.
-_PREFILL_KEYS = ("adresse", "hausnummer", "plz", "gemeinde")
+#: site-shaped fields `open_site_form`'s `prefill` dict may set for
+#: a new site -- see that function's docstring.
+_PREFILL_KEYS = ("street", "house_number", "postal_code", "municipality")
 
 
-def _initial(existing: Optional[Standort], attr: str, prefill: dict, key: str) -> str:
+def _initial(existing: Optional[Site], attr: str, prefill: dict, key: str) -> str:
     """Resolve one field's initial form value.
 
     Args:
-        existing: Standort being edited, or `None` when creating.
+        existing: site being edited, or `None` when creating.
         attr: Attribute name on `existing` to read when editing.
-        prefill: Prefill dict passed to `open_standort_form`.
+        prefill: Prefill dict passed to `open_site_form`.
         key: Key to look up in `prefill` when creating.
 
     Returns:
@@ -37,23 +37,23 @@ def _initial(existing: Optional[Standort], attr: str, prefill: dict, key: str) -
     return prefill.get(key, "")
 
 
-def open_standort_form(
+def open_site_form(
     *,
-    existing: Optional[Standort] = None,
+    existing: Optional[Site] = None,
     prefill: Optional[dict] = None,
-    on_saved: Optional[Callable[[Standort], None]] = None,
+    on_saved: Optional[Callable[[Site], None]] = None,
 ) -> None:
-    """Open the create/edit dialog for a Standort.
+    """Open the create/edit dialog for a site.
 
     Args:
-        existing: Standort to edit, or `None` to create a new one.
-        prefill: Initial field values for a new Standort, ignored if
-            `existing` is set. Keys: any of `_PREFILL_KEYS` (`adresse`,
-            `hausnummer`, `plz`, `gemeinde`); missing keys default to "".
-        on_saved: Called with the created/updated `Standort` right after a
+        existing: site to edit, or `None` to create a new one.
+        prefill: Initial field values for a new site, ignored if
+            `existing` is set. Keys: any of `_PREFILL_KEYS` (`street`,
+            `house_number`, `plz`, `municipality`); missing keys default to "".
+        on_saved: Called with the created/updated `site` right after a
             successful save (dialog already closed) -- e.g. so a caller
             elsewhere on the page can refresh its own list or react to
-            the new Standort's id.
+            the new site's id.
 
     Returns:
         None.
@@ -69,22 +69,22 @@ def open_standort_form(
             "text-lg font-bold"
         )
         with ui.row().classes("w-full gap-2"):
-            adresse = ui.input(
-                "Adresse", value=_initial(existing, "adresse", prefill, "adresse")
+            street = ui.input(
+                "Adresse", value=_initial(existing, "street", prefill, "street")
             ).classes("flex-grow").props("debounce=300")
-            hausnummer = ui.input(
-                "Hausnummer", value=_initial(existing, "hausnummer", prefill, "hausnummer")
+            house_number = ui.input(
+                "Hausnummer", value=_initial(existing, "house_number", prefill, "house_number")
             ).classes("w-24").props("debounce=300")
         with ui.row().classes("w-full gap-2"):
-            plz = ui.input(
-                "PLZ", value=_initial(existing, "plz", prefill, "plz")
+            postal_code = ui.input(
+                "PLZ", value=_initial(existing, "postal_code", prefill, "postal_code")
             ).classes("w-24").props("debounce=300")
-            gemeinde = ui.input(
-                "Gemeinde", value=_initial(existing, "gemeinde", prefill, "gemeinde")
+            municipality = ui.input(
+                "Gemeinde", value=_initial(existing, "municipality", prefill, "municipality")
             ).classes("flex-grow")
         duplicate_warning = ui.label("").classes("text-warning")
-        lage = ui.input(
-            "Lage (optional, z. B. Stockwerk)", value=existing.lage if existing else ""
+        address_detail = ui.input(
+            "Lage (optional, z. B. Stockwerk)", value=existing.address_detail if existing else ""
         ).classes("w-full")
         substation_area_select = ui.select(
             substation_area_options,
@@ -95,19 +95,19 @@ def open_standort_form(
         error_label = ui.label("").classes("text-negative")
 
         def check_duplicate() -> bool:
-            """Check whether Adresse/Hausnummer/PLZ already match another Standort.
+            """Check whether address/Hausnummer/PLZ already match another site.
 
             Updates `duplicate_warning` as a side effect.
 
             Returns:
-                `True` if a different Standort already has this exact address.
+                `True` if a different site already has this exact address.
             """
-            if not (adresse.value.strip() and hausnummer.value.strip() and plz.value.strip()):
+            if not (street.value.strip() and house_number.value.strip() and postal_code.value.strip()):
                 duplicate_warning.text = ""
                 return False
             with connection_scope() as connection:
-                found = standort_repo.find_by_address(
-                    connection, adresse.value.strip(), hausnummer.value.strip(), plz.value.strip()
+                found = site_repo.find_by_address(
+                    connection, street.value.strip(), house_number.value.strip(), postal_code.value.strip()
                 )
             is_duplicate = found is not None and (existing is None or found.id != existing.id)
             duplicate_warning.text = (
@@ -117,18 +117,18 @@ def open_standort_form(
             )
             return is_duplicate
 
-        adresse.on_value_change(lambda _: check_duplicate())
-        hausnummer.on_value_change(lambda _: check_duplicate())
-        plz.on_value_change(lambda _: check_duplicate())
+        street.on_value_change(lambda _: check_duplicate())
+        house_number.on_value_change(lambda _: check_duplicate())
+        postal_code.on_value_change(lambda _: check_duplicate())
         check_duplicate()
 
         def save() -> None:
-            """Validate the form and persist the Standort.
+            """Validate the form and persist the site.
 
             Returns:
                 None.
             """
-            if not adresse.value.strip():
+            if not street.value.strip():
                 error_label.text = "Adresse darf nicht leer sein."
                 return
             if check_duplicate():
@@ -136,29 +136,29 @@ def open_standort_form(
                 return
             with connection_scope() as connection:
                 if existing:
-                    saved = Standort(
+                    saved = Site(
                         id=existing.id,
-                        adresse=adresse.value.strip(),
-                        hausnummer=hausnummer.value.strip(),
-                        plz=plz.value.strip(),
-                        gemeinde=gemeinde.value.strip(),
-                        lage=lage.value.strip(),
+                        street=street.value.strip(),
+                        house_number=house_number.value.strip(),
+                        postal_code=postal_code.value.strip(),
+                        municipality=municipality.value.strip(),
+                        address_detail=address_detail.value.strip(),
                         substation_area_id=substation_area_select.value,
                         created_at=existing.created_at,
                     )
-                    standort_repo.update(connection, saved)
+                    site_repo.update(connection, saved)
                 else:
-                    saved = Standort(
+                    saved = Site(
                         id=None,
-                        adresse=adresse.value.strip(),
-                        hausnummer=hausnummer.value.strip(),
-                        plz=plz.value.strip(),
-                        gemeinde=gemeinde.value.strip(),
-                        lage=lage.value.strip(),
+                        street=street.value.strip(),
+                        house_number=house_number.value.strip(),
+                        postal_code=postal_code.value.strip(),
+                        municipality=municipality.value.strip(),
+                        address_detail=address_detail.value.strip(),
                         substation_area_id=substation_area_select.value,
                         created_at="",
                     )
-                    new_id = standort_repo.create(connection, saved)
+                    new_id = site_repo.create(connection, saved)
                     saved.id = new_id
             dialog.close()
             # Notify before any caller-side refresh() -- see

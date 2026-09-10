@@ -1,7 +1,7 @@
 """LEG (Lokale Elektrizitätsgemeinschaft): the administrative and billing
 group an individual Messpunkt opts into. Attached to the Messpunkt itself,
-never to a Standort or Person directly -- two Messpunkte at the very same
-Standort (and thus the same substation area, see `app.models.substation_area`) can
+never to a site or Person directly -- two Messpunkte at the very same
+site (and thus the same substation area, see `app.models.substation_area`) can
 belong to different LEGs, and one LEG can combine Messpunkte spread across
 several substation areas if their owners agree to bill jointly (at a
 correspondingly lower BKW discount for the cross-substation-area share, which

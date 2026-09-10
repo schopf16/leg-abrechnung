@@ -27,7 +27,7 @@ For every 15-minute interval `t`, independently per LEG:
 Each Messpunkt's interval share is then attributed to whichever Person was
 assigned to it at that exact moment (see `app.models.zuordnung`), so a
 mid-quarter move splits a Messpunkt's energy between two Personen
-automatically. Moving never changes the Messpunkt, its Standort, or that
+automatically. Moving never changes the Messpunkt, its site, or that
 Messpunkt's LEG -- only which Person the Zuordnung points at.
 """
 

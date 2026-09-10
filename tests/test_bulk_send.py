@@ -23,13 +23,13 @@ from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
 from app.models.person import Person
-from app.models.standort import Standort
+from app.models.site import Site
 from app.models.zuordnung import Zuordnung
 
 
@@ -54,11 +54,11 @@ def _person(db, name: str = "P", email: str = "p@example.invalid",
     )
 
 
-def _standort(db) -> int:
-    return standort_repo.create(
+def _site(db) -> int:
+    return site_repo.create(
         db,
-        Standort(
-            id=None, adresse="Testweg", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+        Site(
+            id=None, street="Testweg", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
             substation_area_id=None, created_at="",
         ),
     )
@@ -68,12 +68,12 @@ def _leg(db, name: str = "LEG Test") -> int:
     return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
-def _messpunkt(db, bezeichnung: str, standort_id: int, leg_id) -> int:
+def _messpunkt(db, bezeichnung: str, site_id: int, leg_id) -> int:
     return messpunkt_repo.create(
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=bezeichnung, messrichtung=MESSRICHTUNG_BEZUG,
-            standort_id=standort_id, leg_id=leg_id, pv_leistung_kwp=None,
+            site_id=site_id, leg_id=leg_id, pv_leistung_kwp=None,
             batteriespeicher_kwh=None, created_at="",
         ),
     )
@@ -112,8 +112,8 @@ def test_list_broadcast_recipients_excludes_missing_email(db):
 
 def test_list_leg_recipients_includes_current_member(db):
     leg_id = _leg(db)
-    standort_id = _standort(db)
-    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
+    site_id = _site(db)
+    messpunkt_id = _messpunkt(db, "CH-A", site_id, leg_id)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, messpunkt_id, date(2020, 1, 1))
 
@@ -128,8 +128,8 @@ def test_list_leg_recipients_includes_not_yet_started_zuordnung(db):
     LEG's recipient list come back empty until the Zuordnung's exact start
     date arrived (`Zuordnung.is_current_or_upcoming`, unconditional)."""
     leg_id = _leg(db)
-    standort_id = _standort(db)
-    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
+    site_id = _site(db)
+    messpunkt_id = _messpunkt(db, "CH-A", site_id, leg_id)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, messpunkt_id, date.today() + timedelta(days=90))
 
@@ -140,8 +140,8 @@ def test_list_leg_recipients_includes_not_yet_started_zuordnung(db):
 def test_list_leg_recipients_excludes_other_leg(db):
     leg_a = _leg(db, "LEG A")
     leg_b = _leg(db, "LEG B")
-    standort_id = _standort(db)
-    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_a)
+    site_id = _site(db)
+    messpunkt_id = _messpunkt(db, "CH-A", site_id, leg_a)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, messpunkt_id, date(2020, 1, 1))
 
@@ -150,8 +150,8 @@ def test_list_leg_recipients_excludes_other_leg(db):
 
 def test_list_leg_recipients_excludes_expired_zuordnung(db):
     leg_id = _leg(db)
-    standort_id = _standort(db)
-    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
+    site_id = _site(db)
+    messpunkt_id = _messpunkt(db, "CH-A", site_id, leg_id)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, messpunkt_id, date(2015, 1, 1), date(2016, 1, 1))
 
@@ -160,9 +160,9 @@ def test_list_leg_recipients_excludes_expired_zuordnung(db):
 
 def test_list_leg_recipients_deduplicates_multiple_messpunkte(db):
     leg_id = _leg(db)
-    standort_id = _standort(db)
-    mp1 = _messpunkt(db, "CH-A", standort_id, leg_id)
-    mp2 = _messpunkt(db, "CH-B", standort_id, leg_id)
+    site_id = _site(db)
+    mp1 = _messpunkt(db, "CH-A", site_id, leg_id)
+    mp2 = _messpunkt(db, "CH-B", site_id, leg_id)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, mp1, date(2020, 1, 1))
     _zuordnung(db, person_id, mp2, date(2020, 1, 1))
@@ -173,8 +173,8 @@ def test_list_leg_recipients_deduplicates_multiple_messpunkte(db):
 
 def test_list_leg_recipients_excludes_missing_email(db):
     leg_id = _leg(db)
-    standort_id = _standort(db)
-    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
+    site_id = _site(db)
+    messpunkt_id = _messpunkt(db, "CH-A", site_id, leg_id)
     person_id = _person(db, "KeineMail", email="")
     _zuordnung(db, person_id, messpunkt_id, date(2020, 1, 1))
 

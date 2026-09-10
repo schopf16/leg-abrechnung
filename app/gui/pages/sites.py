@@ -1,4 +1,4 @@
-"""Standorte management page: list, search, create, edit, delete, and a
+"""sites management page: list, search, create, edit, delete, and a
 detail drill-down showing the site's Messpunkte.
 """
 
@@ -10,19 +10,19 @@ from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
-from app.gui.standort_form import open_standort_form
+from app.gui.site_form import open_site_form
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
-from app.models.standort import Standort
+from app.models.site import Site
 
 COLUMNS = [
-    {"name": "adresse", "label": "Adresse", "field": "adresse", "align": "left", "sortable": True},
-    {"name": "plz_gemeinde", "label": "PLZ / Gemeinde", "field": "plz_gemeinde", "align": "left"},
-    {"name": "lage", "label": "Lage", "field": "lage", "align": "left"},
+    {"name": "address", "label": "Adresse", "field": "address", "align": "left", "sortable": True},
+    {"name": "plz_municipality", "label": "PLZ / Gemeinde", "field": "plz_municipality", "align": "left"},
+    {"name": "address_detail", "label": "Lage", "field": "address_detail", "align": "left"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
@@ -50,47 +50,47 @@ def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
     return name, is_future
 
 
-def _to_row(standort: Standort, substation_areas: dict) -> dict:
-    """Convert a `Standort` into a row dict for the NiceGUI table.
+def _to_row(site: Site, substation_areas: dict) -> dict:
+    """Convert a `site` into a row dict for the NiceGUI table.
 
     Args:
-        standort: Standort to convert.
+        site: site to convert.
         substation areas: Preloaded `{substation_area_id: substation area}` lookup.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
         `_search` key used for client-side filtering.
     """
-    substation_area = substation_areas.get(standort.substation_area_id)
+    substation_area = substation_areas.get(site.substation_area_id)
     substation_area_name = substation_area.name if substation_area else "-"
     search_text = " ".join(
         [
-            standort.adresse,
-            standort.hausnummer,
-            standort.plz,
-            standort.gemeinde,
-            standort.lage or "",
+            site.street,
+            site.house_number,
+            site.postal_code,
+            site.municipality,
+            site.address_detail or "",
             substation_area_name,
         ]
     ).lower()
     return {
-        "id": standort.id,
-        "adresse": f"{standort.adresse} {standort.hausnummer}".strip(),
-        "plz_gemeinde": f"{standort.plz} {standort.gemeinde}".strip(),
-        "lage": standort.lage,
+        "id": site.id,
+        "address": f"{site.street} {site.house_number}".strip(),
+        "plz_municipality": f"{site.postal_code} {site.municipality}".strip(),
+        "address_detail": site.address_detail,
         "substation_area": substation_area_name,
         "_search": search_text,
     }
 
 
-@ui.page("/standorte")
-def standorte_page() -> None:
-    """Render the Standorte CRUD page with search.
+@ui.page("/sites")
+def sites_page() -> None:
+    """Render the sites CRUD page with search.
 
     Returns:
         None.
     """
-    with page_frame("/standorte", "Standorte"):
+    with page_frame("/sites", "Standorte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Standorte sind physische Netzanschlusspunkte. Ein Standort "
@@ -140,7 +140,7 @@ def standorte_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all Standorte from the database and re-apply the filter.
+            """Reload all sites from the database and re-apply the filter.
 
             Returns:
                 None.
@@ -148,24 +148,24 @@ def standorte_page() -> None:
             nonlocal all_rows
             with connection_scope() as connection:
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(connection)}
-                all_rows = [_to_row(s, substation_areas) for s in standort_repo.list_all(connection)]
+                all_rows = [_to_row(s, substation_areas) for s in site_repo.list_all(connection)]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
 
-        def open_form(existing: Standort | None) -> None:
-            """Open the create/edit dialog for a Standort.
+        def open_form(existing: Site | None) -> None:
+            """Open the create/edit dialog for a site.
 
             Args:
-                existing: Standort to edit, or `None` to create a new one.
+                existing: site to edit, or `None` to create a new one.
 
             Returns:
                 None.
             """
-            open_standort_form(existing=existing, on_saved=lambda _: refresh())
+            open_site_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_view(event) -> None:
-            """Table row-view handler: navigate to the Standort's detail page.
+            """Table row-view handler: navigate to the site's detail page.
 
             Args:
                 event: NiceGUI generic event carrying the clicked row's args.
@@ -173,7 +173,7 @@ def standorte_page() -> None:
             Returns:
                 None.
             """
-            ui.navigate.to(f"/standorte/{event.args['id']}")
+            ui.navigate.to(f"/sites/{event.args['id']}")
 
         def on_edit(event) -> None:
             """Table row-edit handler: open the edit dialog for the clicked row.
@@ -185,11 +185,11 @@ def standorte_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                existing = standort_repo.get(connection, event.args["id"])
+                existing = site_repo.get(connection, event.args["id"])
             open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete the Standort after confirmation.
+            """Table row-delete handler: delete the site after confirmation.
 
             Args:
                 event: NiceGUI generic event carrying the clicked row's args.
@@ -197,12 +197,12 @@ def standorte_page() -> None:
             Returns:
                 None.
             """
-            standort_id = event.args["id"]
-            adresse_text = event.args["adresse"]
+            site_id = event.args["id"]
+            address_text = event.args["address"]
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(
-                    f'Standort "{adresse_text}" wirklich löschen? '
+                    f'Standort "{address_text}" wirklich löschen? '
                     "Zugehörige Messpunkte werden mitgelöscht."
                 )
                 with ui.row().classes("w-full justify-end gap-2"):
@@ -210,7 +210,7 @@ def standorte_page() -> None:
 
                     def do_delete() -> None:
                         with connection_scope() as connection:
-                            standort_repo.delete(connection, standort_id)
+                            site_repo.delete(connection, site_id)
                         confirm.close()
                         # notify before refresh() -- see app.gui.safe_notify's
                         # module docstring for why a plain ui.notify() here
@@ -229,40 +229,40 @@ def standorte_page() -> None:
         refresh()
 
 
-@ui.page("/standorte/{standort_id}")
-def standort_detail_page(standort_id: int) -> None:
-    """Render one Standort's detail view: Adresse, Lage, substation area, and its
+@ui.page("/sites/{site_id}")
+def site_detail_page(site_id: int) -> None:
+    """Render one site's detail view: address, Lage, substation area, and its
     Messpunkte (each with its own LEG, see `app.models.leg`).
 
     Args:
-        standort_id: Database id of the Standort, from the URL path.
+        site_id: Database id of the site, from the URL path.
 
     Returns:
         None.
     """
     with connection_scope() as connection:
-        standort = standort_repo.get(connection, standort_id)
+        site = site_repo.get(connection, site_id)
         substation_area = (
-            substation_area_repo.get(connection, standort.substation_area_id)
-            if standort and standort.substation_area_id
+            substation_area_repo.get(connection, site.substation_area_id)
+            if site and site.substation_area_id
             else None
         )
-        messpunkte = messpunkt_repo.list_for_standort(connection, standort_id) if standort else []
+        messpunkte = messpunkt_repo.list_for_site(connection, site_id) if site else []
         legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
         person_display = {mp.id: _current_person_display(connection, mp.id) for mp in messpunkte}
 
     with page_frame(
-        "/standorte", "Standort" if standort is None else standort.adresse_vollstaendig
+        "/sites", "Standort" if site is None else site.full_address
     ):
-        if standort is None:
+        if site is None:
             ui.label("Standort nicht gefunden.").classes("text-negative")
-            ui.link("← Zurück zu Standorten", "/standorte")
+            ui.link("← Zurück zu Standorten", "/sites")
             return
 
-        ui.link("← Zurück zu Standorten", "/standorte")
-        ui.label(standort.adresse_vollstaendig).classes("text-xl font-bold mt-2")
+        ui.link("← Zurück zu Standorten", "/sites")
+        ui.label(site.full_address).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
-            ui.label(f"Lage: {standort.lage or '-'}")
+            ui.label(f"Lage: {site.address_detail or '-'}")
             ui.label(f"Trafokreis: {substation_area.name if substation_area else '-'}")
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")

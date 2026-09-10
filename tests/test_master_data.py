@@ -13,14 +13,14 @@ from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
 from app.models.person import Person
-from app.models.standort import Standort
+from app.models.site import Site
 from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
@@ -61,7 +61,7 @@ def _make_person(name: str = "Test Person") -> Person:
 def _make_messpunkt(
     messpunkt_bezeichnung: str = "CH1234567890123456789012345",
     messrichtung: str = MESSRICHTUNG_BEZUG,
-    standort_id: int = 1,
+    site_id: int = 1,
     leg_id: int | None = None,
 ) -> Messpunkt:
     """Build an unpersisted `Messpunkt` for use in tests.
@@ -69,7 +69,7 @@ def _make_messpunkt(
     Args:
         messpunkt_bezeichnung: Business key to assign.
         messrichtung: Measurement direction.
-        standort_id: Foreign key of the site the Messpunkt belongs to.
+        site_id: Foreign key of the site the Messpunkt belongs to.
         leg_id: Foreign key of the assigned LEG, or `None`.
 
     Returns:
@@ -79,7 +79,7 @@ def _make_messpunkt(
         id=None,
         messpunkt_bezeichnung=messpunkt_bezeichnung,
         messrichtung=messrichtung,
-        standort_id=standort_id,
+        site_id=site_id,
         leg_id=leg_id,
         pv_leistung_kwp=None,
         batteriespeicher_kwh=None,
@@ -102,29 +102,29 @@ def _make_substation_area(db, name: str = "Bern_TRA00001") -> int:
     )
 
 
-def _make_standort(
+def _make_site(
     db,
     substation_area_id: int | None = None,
-    adresse: str = "Musterstrasse",
-    hausnummer: str = "1",
-    plz: str = "3000",
+    street: str = "Musterstrasse",
+    house_number: str = "1",
+    postal_code: str = "3000",
 ) -> int:
-    """Create a minimal Standort and return its id.
+    """Create a minimal site and return its id.
 
     Args:
         db: Database connection fixture.
         substation_area_id: Foreign key of the assigned substation area, or `None`.
-        adresse: Street name.
-        hausnummer: House number.
+        street: Street name.
+        house_number: House number.
         plz: Postal code.
 
     Returns:
-        The new Standort's id.
+        The new site's id.
     """
-    return standort_repo.create(
+    return site_repo.create(
         db,
-        Standort(
-            id=None, adresse=adresse, hausnummer=hausnummer, plz=plz, gemeinde="Bern", lage="",
+        Site(
+            id=None, street=street, house_number=house_number, postal_code=postal_code, municipality="Bern", address_detail="",
             substation_area_id=substation_area_id, created_at="",
         ),
     )
@@ -262,17 +262,17 @@ def test_migration_21_reassigns_existing_8_digit_kundennummer_to_6_digits(monkey
 
 def test_messpunkt_rejects_unknown_messrichtung(db):
     """Creating a Messpunkt with an invalid messrichtung raises ValueError."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     with pytest.raises(ValueError):
-        messpunkt_repo.create(db, _make_messpunkt(messrichtung="unbekannt", standort_id=standort_id))
+        messpunkt_repo.create(db, _make_messpunkt(messrichtung="unbekannt", site_id=site_id))
 
 
 def test_messpunkt_bezeichnung_is_unique(db):
     """Two Messpunkte cannot share the same messpunkt_bezeichnung."""
-    standort_id = _make_standort(db)
-    messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", standort_id=standort_id))
+    site_id = _make_site(db)
+    messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", site_id=site_id))
     with pytest.raises(Exception):
-        messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", standort_id=standort_id))
+        messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", site_id=site_id))
 
 
 def test_messpunkt_direction_properties():
@@ -338,9 +338,9 @@ def _dt(year: int, month: int, day: int):
 
 def test_zuordnung_get_finds_by_id(db):
     """`get` fetches a single Zuordnung by id, or `None` if unknown."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
     zuordnung_id = zuordnung_repo.create(
         db,
         Zuordnung(
@@ -359,10 +359,10 @@ def test_zuordnung_get_finds_by_id(db):
 def test_get_relevant_for_messpunkt_prefers_the_already_started_one(db):
     """Both an already-started and a not-yet-started Zuordnung exist --
     the already-started one is the "currently assigned" answer."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
@@ -386,10 +386,10 @@ def test_get_relevant_for_messpunkt_prefers_the_already_started_one(db):
 def test_get_relevant_for_messpunkt_falls_back_to_soonest_upcoming(db):
     """Nothing has started yet -- falls back to the soonest-starting
     upcoming Zuordnung instead of reporting "unassigned"."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
@@ -413,9 +413,9 @@ def test_get_relevant_for_messpunkt_falls_back_to_soonest_upcoming(db):
 def test_get_relevant_for_messpunkt_ignores_ended_zuordnung(db):
     """A Zuordnung that has already ended is not "upcoming" -- an empty
     history (or one with only past assignments) reports `None`."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
@@ -429,10 +429,10 @@ def test_get_relevant_for_messpunkt_ignores_ended_zuordnung(db):
 
 def test_find_warnings_detects_gap(db):
     """A gap between two Zuordnung periods is reported."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
 
     zuordnung_repo.create(
         db,
@@ -456,10 +456,10 @@ def test_find_warnings_detects_gap(db):
 
 def test_find_warnings_detects_overlap(db):
     """Overlapping Zuordnung periods are reported."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
 
     zuordnung_repo.create(
         db,
@@ -483,10 +483,10 @@ def test_find_warnings_detects_overlap(db):
 
 def test_find_warnings_none_for_consecutive_periods(db):
     """Back-to-back Zuordnungen with no gap or overlap raise no warnings."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
 
     zuordnung_repo.create(
         db,
@@ -569,11 +569,11 @@ def test_substation_area_name_is_unique(db):
 def test_leg_composition_is_not_mixed_when_all_messpunkte_share_one_substation_area(db):
     """A LEG whose Messpunkte are all on one substation area is not flagged as mixed."""
     substation_area_id = _make_substation_area(db, "Bern_TRA00001")
-    standort_a = _make_standort(db, substation_area_id)
-    standort_b = _make_standort(db, substation_area_id)
+    site_a = _make_site(db, substation_area_id)
+    site_b = _make_site(db, substation_area_id)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
@@ -584,11 +584,11 @@ def test_leg_composition_is_mixed_when_messpunkte_span_two_substation_areas(db):
     """A LEG whose Messpunkte span two substation areas is flagged as mixed."""
     substation_area_a = _make_substation_area(db, "Bern_TRA00001")
     substation_area_b = _make_substation_area(db, "Bern_TRA00002")
-    standort_a = _make_standort(db, substation_area_a)
-    standort_b = _make_standort(db, substation_area_b)
+    site_a = _make_site(db, substation_area_a)
+    site_b = _make_site(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Gemeinsame_LEG"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert composition.is_mixed
@@ -599,48 +599,48 @@ def test_leg_composition_ignores_other_legs_messpunkte(db):
     """Messpunkte belonging to a different LEG don't count toward this LEG's composition."""
     substation_area_a = _make_substation_area(db, "Bern_TRA00001")
     substation_area_b = _make_substation_area(db, "Bern_TRA00002")
-    standort_a = _make_standort(db, substation_area_a)
-    standort_b = _make_standort(db, substation_area_b)
+    site_a = _make_site(db, substation_area_a)
+    site_b = _make_site(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
     other_leg_id = leg_repo.create(db, _make_leg("Bern_TRA00002"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=other_leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
+    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=other_leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
     assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001"]
 
 
-def test_standort_find_by_address_finds_exact_match(db):
-    """`find_by_address` finds a Standort by Adresse/Hausnummer/PLZ, case-insensitively."""
-    _make_standort(db, adresse="Bergstrasse", hausnummer="3", plz="3001")
+def test_site_find_by_address_finds_exact_match(db):
+    """`find_by_address` finds a site by address/Hausnummer/PLZ, case-insensitively."""
+    _make_site(db, street="Bergstrasse", house_number="3", postal_code="3001")
 
-    found = standort_repo.find_by_address(db, "bergstrasse", "3", "3001")
+    found = site_repo.find_by_address(db, "bergstrasse", "3", "3001")
     assert found is not None
-    assert found.adresse == "Bergstrasse"
+    assert found.street == "Bergstrasse"
 
 
-def test_standort_find_by_address_returns_none_for_no_match(db):
-    """`find_by_address` returns `None` when no Standort has that address."""
-    _make_standort(db, adresse="Bergstrasse", hausnummer="3", plz="3001")
+def test_site_find_by_address_returns_none_for_no_match(db):
+    """`find_by_address` returns `None` when no site has that address."""
+    _make_site(db, street="Bergstrasse", house_number="3", postal_code="3001")
 
-    assert standort_repo.find_by_address(db, "Bergstrasse", "4", "3001") is None
+    assert site_repo.find_by_address(db, "Bergstrasse", "4", "3001") is None
 
 
-def test_standort_list_all_sorts_hausnummer_numerically(db):
+def test_site_list_all_sorts_house_number_numerically(db):
     """House numbers sort numerically (2 before 10), not lexicographically."""
-    _make_standort(db, adresse="Bergstrasse", hausnummer="10", plz="3001")
-    _make_standort(db, adresse="Bergstrasse", hausnummer="2", plz="3001")
-    _make_standort(db, adresse="Bergstrasse", hausnummer="1", plz="3001")
+    _make_site(db, street="Bergstrasse", house_number="10", postal_code="3001")
+    _make_site(db, street="Bergstrasse", house_number="2", postal_code="3001")
+    _make_site(db, street="Bergstrasse", house_number="1", postal_code="3001")
 
-    hausnummern = [s.hausnummer for s in standort_repo.list_all(db)]
-    assert hausnummern == ["1", "2", "10"]
+    house_numbers = [s.house_number for s in site_repo.list_all(db)]
+    assert house_numbers == ["1", "2", "10"]
 
 
 def test_messpunkt_pv_and_batterie_fields_roundtrip(db):
     """PV-Leistung and Batteriespeicher survive create/update, and default to `None`."""
-    standort_id = _make_standort(db)
-    messpunkt = _make_messpunkt("CH-PV", standort_id=standort_id)
+    site_id = _make_site(db)
+    messpunkt = _make_messpunkt("CH-PV", site_id=site_id)
     messpunkt.pv_leistung_kwp = 6.4
     messpunkt.batteriespeicher_kwh = 10.0
     messpunkt_id = messpunkt_repo.create(db, messpunkt)

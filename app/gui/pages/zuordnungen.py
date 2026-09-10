@@ -20,7 +20,7 @@ from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.zuordnung import Zuordnung
 
@@ -113,7 +113,7 @@ def zuordnungen_page() -> None:
             nonlocal print_rows
             with connection_scope() as connection:
                 messpunkte = {mp.id: mp for mp in messpunkt_repo.list_all(connection)}
-                standorte = {s.id: s for s in standort_repo.list_all(connection)}
+                sites = {s.id: s for s in site_repo.list_all(connection)}
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 zuordnungen = zuordnung_repo.list_all(connection)
                 all_warnings = []
@@ -143,9 +143,9 @@ def zuordnungen_page() -> None:
                     if mp is None:
                         label = f"Messpunkt #{messpunkt_id}"
                     else:
-                        standort = standorte.get(mp.standort_id)
-                        standort_text = standort.adresse_vollstaendig if standort else "?"
-                        label = f"{mp.messpunkt_bezeichnung} — {standort_text}"
+                        site = sites.get(mp.site_id)
+                        site_text = site.full_address if site else "?"
+                        label = f"{mp.messpunkt_bezeichnung} — {site_text}"
                     render_group(label, group)
                     for row in group:
                         print_rows.append(
@@ -175,16 +175,16 @@ def zuordnungen_page() -> None:
             """
             with connection_scope() as connection:
                 messpunkte = messpunkt_repo.list_all(connection)
-                standorte = standort_repo.list_all(connection)
+                sites = site_repo.list_all(connection)
                 persons = person_repo.list_all(connection)
             messpunkte_by_id = {mp.id: mp for mp in messpunkte}
-            standort_options = {s.id: s.adresse_vollstaendig for s in standorte}
+            site_options = {s.id: s.full_address for s in sites}
 
-            def messpunkt_options_for(standort_id: Optional[int]) -> dict:
-                """Build the Messpunkt dropdown options, optionally filtered by Standort.
+            def messpunkt_options_for(site_id: Optional[int]) -> dict:
+                """Build the Messpunkt dropdown options, optionally filtered by site.
 
                 Args:
-                    standort_id: If set, only Messpunkte at that Standort
+                    site_id: If set, only Messpunkte at that site
                         are included; `None` includes all of them.
 
                 Returns:
@@ -193,7 +193,7 @@ def zuordnungen_page() -> None:
                 return {
                     mp.id: f"{mp.messpunkt_bezeichnung} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
                     for mp in messpunkte
-                    if standort_id is None or mp.standort_id == standort_id
+                    if site_id is None or mp.site_id == site_id
                 }
 
             # Deactivated persons are hidden from selection for new Zuordnungen,
@@ -206,8 +206,8 @@ def zuordnungen_page() -> None:
                 p.id: p.anzeige_name + ("" if p.aktiv else " (inaktiv)") for p in selectable_persons
             }
 
-            initial_standort_id = (
-                messpunkte_by_id[existing.messpunkt_id].standort_id
+            initial_site_id = (
+                messpunkte_by_id[existing.messpunkt_id].site_id
                 if existing and existing.messpunkt_id in messpunkte_by_id
                 else None
             )
@@ -216,27 +216,27 @@ def zuordnungen_page() -> None:
                 ui.label(
                     "Zuordnung bearbeiten" if existing else "Neue Zuordnung"
                 ).classes("text-lg font-bold")
-                standort_select = ui.select(
-                    {None: "Alle Standorte", **standort_options},
+                site_select = ui.select(
+                    {None: "Alle Standorte", **site_options},
                     label="Standort (Filter für Messpunkt)",
-                    value=initial_standort_id,
+                    value=initial_site_id,
                     with_input=True,
                 ).classes("w-full")
                 messpunkt_select = ui.select(
-                    messpunkt_options_for(initial_standort_id),
+                    messpunkt_options_for(initial_site_id),
                     label="Messpunkt",
                     value=existing.messpunkt_id if existing else None,
                     with_input=True,
                 ).classes("w-full")
                 leg_warning = ui.label("").classes("text-warning text-body2")
 
-                def on_standort_change() -> None:
-                    """Re-filter the Messpunkt options to the selected Standort.
+                def on_site_change() -> None:
+                    """Re-filter the Messpunkt options to the selected site.
 
                     Returns:
                         None.
                     """
-                    options = messpunkt_options_for(standort_select.value)
+                    options = messpunkt_options_for(site_select.value)
                     messpunkt_select.options = options
                     if messpunkt_select.value not in options:
                         # Never guess a Messpunkt from the newly filtered
@@ -246,7 +246,7 @@ def zuordnungen_page() -> None:
                     messpunkt_select.update()
                     update_leg_warning()
 
-                standort_select.on_value_change(lambda _: on_standort_change())
+                site_select.on_value_change(lambda _: on_site_change())
 
                 def update_leg_warning() -> None:
                     """Show a warning if the selected Messpunkt's LEG mixes substation areas.

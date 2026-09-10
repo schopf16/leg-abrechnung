@@ -1,9 +1,9 @@
 """substation area (transformer circuit): the physical grid-topology grouping a
-Standort belongs to. Purely a property of the Standort -- never of a
+site belongs to. Purely a property of the site -- never of a
 Person or Messpunkt directly.
 
 A substation area is distinct from a LEG (see `app.models.leg`): the substation area
-is what the grid operator (BKW) actually groups Standorte by, while a LEG
+is what the grid operator (BKW) actually groups sites by, while a LEG
 is the administrative/billing group an individual Messpunkt opts into. By
 default a LEG matches one substation area, but two Messpunkte on different
 substation areas can deliberately share one LEG -- at a correspondingly lower
@@ -160,10 +160,10 @@ def update(connection: sqlite3.Connection, substation_area: SubstationArea) -> N
     connection.commit()
 
 
-def count_standorte(connection: sqlite3.Connection, substation_area_id: int) -> int:
-    """Count the Standorte currently assigned to a substation area.
+def count_sites(connection: sqlite3.Connection, substation_area_id: int) -> int:
+    """Count the sites currently assigned to a substation area.
 
-    Used to guard deletion: a substation area with assigned Standorte must not
+    Used to guard deletion: a substation area with assigned sites must not
     be deleted (see `delete`).
 
     Args:
@@ -171,20 +171,20 @@ def count_standorte(connection: sqlite3.Connection, substation_area_id: int) -> 
         substation_area_id: Primary key of the substation area.
 
     Returns:
-        The number of `standort` rows referencing this substation area.
+        The number of `site` rows referencing this substation area.
     """
     row = connection.execute(
-        "SELECT COUNT(*) AS n FROM standort WHERE substation_area_id = ?", (substation_area_id,)
+        "SELECT COUNT(*) AS n FROM site WHERE substation_area_id = ?", (substation_area_id,)
     ).fetchone()
     return row["n"]
 
 
 class SubstationAreaInUseError(Exception):
-    """Raised when deleting a substation area that still has assigned Standorte."""
+    """Raised when deleting a substation area that still has assigned sites."""
 
 
 def delete(connection: sqlite3.Connection, substation_area_id: int) -> None:
-    """Delete a substation area, but only if no Standort is assigned to it.
+    """Delete a substation area, but only if no site is assigned to it.
 
     Args:
         connection: Open SQLite connection.
@@ -194,10 +194,10 @@ def delete(connection: sqlite3.Connection, substation_area_id: int) -> None:
         None.
 
     Raises:
-        SubstationAreaInUseError: If one or more Standorte still reference
+        SubstationAreaInUseError: If one or more sites still reference
             this substation area.
     """
-    if count_standorte(connection, substation_area_id) > 0:
+    if count_sites(connection, substation_area_id) > 0:
         raise SubstationAreaInUseError(
             "Trafokreis kann nicht gelöscht werden: es sind noch Standorte zugeordnet."
         )

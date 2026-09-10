@@ -1193,4 +1193,30 @@ Freundliche Grüsse';
             ALTER TABLE standort RENAME COLUMN trafokreis_id TO substation_area_id;
         """,
     ),
+    Migration(
+        version=38,
+        description="Translate the Standort entity to English: table "
+        "'standort' becomes 'site' with street/house_number/postal_code/"
+        "municipality/address_detail instead of adresse/hausnummer/plz/"
+        "gemeinde/lage, and messpunkt.standort_id becomes site_id. The same "
+        "address field names on web_registration move along "
+        "(strasse/hausnummer/plz/ort -> street/house_number/postal_code/city, "
+        "standort_created -> site_created): they are the identical field "
+        "names in Python, so they cannot be translated separately. Second "
+        "step of the English translation, see migration 37.",
+        sql="""
+            ALTER TABLE standort RENAME TO site;
+            ALTER TABLE site RENAME COLUMN adresse TO street;
+            ALTER TABLE site RENAME COLUMN hausnummer TO house_number;
+            ALTER TABLE site RENAME COLUMN plz TO postal_code;
+            ALTER TABLE site RENAME COLUMN gemeinde TO municipality;
+            ALTER TABLE site RENAME COLUMN lage TO address_detail;
+            ALTER TABLE messpunkt RENAME COLUMN standort_id TO site_id;
+            ALTER TABLE web_registration RENAME COLUMN strasse TO street;
+            ALTER TABLE web_registration RENAME COLUMN hausnummer TO house_number;
+            ALTER TABLE web_registration RENAME COLUMN plz TO postal_code;
+            ALTER TABLE web_registration RENAME COLUMN ort TO city;
+            ALTER TABLE web_registration RENAME COLUMN standort_created TO site_created;
+        """,
+    ),
 ]

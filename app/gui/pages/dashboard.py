@@ -30,7 +30,7 @@ from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import web_registration as web_registration_repo
 
@@ -52,7 +52,7 @@ def _load_overview(connection) -> dict:
     """
     substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
-    standorte = standort_repo.list_all(connection)
+    sites = site_repo.list_all(connection)
     messpunkte = messpunkt_repo.list_all(connection)
     persons = person_repo.list_all(connection)
     runs = billing_run_repo.list_runs(connection)
@@ -118,7 +118,7 @@ def _load_overview(connection) -> dict:
     return {
         "counts": {
             "substation_areas": len(substation_areas),
-            "standorte": len(standorte),
+            "sites": len(sites),
             "legs": len(legs),
             "messpunkte": len(messpunkte),
             "personen": len(persons),
@@ -176,7 +176,7 @@ def dashboard_page() -> None:
         with ui.row().classes("gap-4 flex-wrap"):
             for label, key in (
                 ("Trafokreise", "substation_areas"),
-                ("Standorte", "standorte"),
+                ("Standorte", "sites"),
                 ("LEGs", "legs"),
                 ("Messpunkte", "messpunkte"),
                 ("Personen", "personen"),

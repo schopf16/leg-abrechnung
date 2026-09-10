@@ -1,5 +1,5 @@
 """Messpunkte management page: list, search, create, edit, delete, and a
-detail drill-down showing the Standort, LEG and currently assigned Person.
+detail drill-down showing the site, LEG and currently assigned Person.
 """
 
 from datetime import date, datetime
@@ -14,7 +14,7 @@ from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.messpunkt import (
     MESSRICHTUNG_BEZUG,
@@ -33,7 +33,7 @@ MESSRICHTUNG_LABELS = {
 PRINT_COLUMNS = [
     ("Messpunkt", "messpunkt_bezeichnung"),
     ("Messrichtung", "messrichtung"),
-    ("Standort-Adresse", "standort_adresse"),
+    ("Standort-Adresse", "site_address"),
     ("LEG", "leg"),
     ("Zugeordnet", "person"),
     ("PV-Leistung (kWp)", "pv_leistung_kwp"),
@@ -98,25 +98,25 @@ def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
     return name, is_future
 
 
-def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
+def _to_row(connection, mp: Messpunkt, sites: dict, legs: dict) -> dict:
     """Convert a `Messpunkt` into a row dict for the card-based list.
 
     Args:
         connection: Open SQLite connection.
         mp: Messpunkt to convert.
-        standorte: Preloaded `{standort_id: Standort}` lookup.
+        sites: Preloaded `{site_id: site}` lookup.
         legs: Preloaded `{leg_id: Leg}` lookup.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
         `_search` key used for client-side filtering.
     """
-    standort = standorte.get(mp.standort_id)
-    standort_adresse = standort.adresse_vollstaendig if standort else "?"
-    standort_strasse = (
-        " ".join(p for p in (standort.adresse, standort.hausnummer) if p) if standort else "?"
+    site = sites.get(mp.site_id)
+    site_address = site.full_address if site else "?"
+    site_street = (
+        " ".join(p for p in (site.street, site.house_number) if p) if site else "?"
     )
-    standort_ort = " ".join(p for p in (standort.plz, standort.gemeinde) if p) if standort else ""
+    site_city = " ".join(p for p in (site.postal_code, site.municipality) if p) if site else ""
     leg = legs.get(mp.leg_id)
     leg_name = leg.name if leg else "-"
     person_name, person_is_future = _current_person_display(connection, mp.id)
@@ -124,7 +124,7 @@ def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
         [
             mp.messpunkt_bezeichnung,
             MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
-            standort_adresse,
+            site_address,
             leg_name,
             person_name,
         ]
@@ -133,10 +133,10 @@ def _to_row(connection, mp: Messpunkt, standorte: dict, legs: dict) -> dict:
         "id": mp.id,
         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
         "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
-        "standort_id": mp.standort_id,
-        "standort_adresse": standort_adresse,
-        "standort_strasse": standort_strasse,
-        "standort_ort": standort_ort,
+        "site_id": mp.site_id,
+        "site_address": site_address,
+        "site_street": site_street,
+        "site_city": site_city,
         "leg": leg_name,
         "person": person_name,
         "person_is_future": person_is_future,
@@ -206,8 +206,8 @@ def messpunkte_page() -> None:
                         _messpunkt_bezeichnung_row(row["messpunkt_bezeichnung"])
                         ui.label(row["messrichtung"]).classes("text-caption text-grey-6")
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(row["standort_strasse"])
-                        ui.label(row["standort_ort"])
+                        ui.label(row["site_street"])
+                        ui.label(row["site_city"])
                         ui.label(f"LEG: {row['leg']}").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         person_label = ui.label(f"Zugeordnet: {row['person']}")
@@ -264,10 +264,10 @@ def messpunkte_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                standorte = {s.id: s for s in standort_repo.list_all(connection)}
+                sites = {s.id: s for s in site_repo.list_all(connection)}
                 legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
                 all_rows = [
-                    _to_row(connection, mp, standorte, legs) for mp in messpunkt_repo.list_all(connection)
+                    _to_row(connection, mp, sites, legs) for mp in messpunkt_repo.list_all(connection)
                 ]
             apply_filter()
 
@@ -335,7 +335,7 @@ def messpunkte_page() -> None:
 @ui.page("/messpunkte/{messpunkt_id}")
 def messpunkt_detail_page(messpunkt_id: int) -> None:
     """Render one Messpunkt's detail view: Bezeichnung, Messrichtung,
-    Standort, LEG and currently assigned Person.
+    site, LEG and currently assigned Person.
 
     Args:
         messpunkt_id: Database id of the Messpunkt, from the URL path.
@@ -345,7 +345,7 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
     """
     with connection_scope() as connection:
         mp = messpunkt_repo.get(connection, messpunkt_id)
-        standort = standort_repo.get(connection, mp.standort_id) if mp else None
+        site = site_repo.get(connection, mp.site_id) if mp else None
         leg = leg_repo.get(connection, mp.leg_id) if mp and mp.leg_id else None
         person_name, person_is_future = (
             _current_person_display(connection, messpunkt_id) if mp else ("-", False)
@@ -363,15 +363,15 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
         _messpunkt_bezeichnung_row(mp.messpunkt_bezeichnung, classes="text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Messrichtung: {MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung)}")
-            if standort:
+            if site:
                 ui.label(
-                    f"Standort: {' '.join(p for p in (standort.adresse, standort.hausnummer) if p)}"
+                    f"Standort: {' '.join(p for p in (site.street, site.house_number) if p)}"
                 )
-                ui.label(" ".join(p for p in (standort.plz, standort.gemeinde) if p))
+                ui.label(" ".join(p for p in (site.postal_code, site.municipality) if p))
             else:
                 ui.label("Standort: ?")
-            if standort:
-                ui.link("Standort ansehen", f"/standorte/{standort.id}")
+            if site:
+                ui.link("Standort ansehen", f"/sites/{site.id}")
             ui.label(f"LEG: {leg.name if leg else '-'}")
             person_detail_label = ui.label(f"Aktuell zugeordnete Person: {person_name}")
             if person_is_future:

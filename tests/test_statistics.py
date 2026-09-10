@@ -6,11 +6,11 @@ from app.domain.period import trailing_months
 from app.domain.statistics import monthly_energy_totals, monthly_growth_counts
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.reading import Reading, upsert_readings
-from app.models.standort import Standort
+from app.models.site import Site
 
 
 def test_trailing_months_lists_chronological_window_ending_at_reference():
@@ -26,22 +26,22 @@ def test_trailing_months_handles_year_boundary_for_single_month():
     assert months[-1] == (2025, 1)
 
 
-def _make_standort(db) -> int:
-    return standort_repo.create(
+def _make_site(db) -> int:
+    return site_repo.create(
         db,
-        Standort(
-            id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+        Site(
+            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
             substation_area_id=None, created_at="",
         ),
     )
 
 
-def _make_messpunkt(db, bezeichnung: str, messrichtung: str, standort_id: int, leg_id=None) -> int:
+def _make_messpunkt(db, bezeichnung: str, messrichtung: str, site_id: int, leg_id=None) -> int:
     return messpunkt_repo.create(
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=bezeichnung, messrichtung=messrichtung,
-            standort_id=standort_id, leg_id=leg_id, pv_leistung_kwp=None,
+            site_id=site_id, leg_id=leg_id, pv_leistung_kwp=None,
             batteriespeicher_kwh=None, created_at="",
         ),
     )
@@ -55,9 +55,9 @@ def _set_created_at(db, table: str, entity_id: int, when: date) -> None:
 
 def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
     """Bezug and Einspeisung readings are summed per calendar month."""
-    standort_id = _make_standort(db)
-    bezug_mp = _make_messpunkt(db, "CH-B1", MESSRICHTUNG_BEZUG, standort_id)
-    einspeisung_mp = _make_messpunkt(db, "CH-E1", MESSRICHTUNG_EINSPEISUNG, standort_id)
+    site_id = _make_site(db)
+    bezug_mp = _make_messpunkt(db, "CH-B1", MESSRICHTUNG_BEZUG, site_id)
+    einspeisung_mp = _make_messpunkt(db, "CH-E1", MESSRICHTUNG_EINSPEISUNG, site_id)
 
     upsert_readings(
         db,
@@ -82,11 +82,11 @@ def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
 
 def test_monthly_energy_totals_filters_by_leg(db):
     """Passing a leg_id only counts readings from that LEG's Messpunkte."""
-    standort_id = _make_standort(db)
+    site_id = _make_site(db)
     leg_a = leg_repo.create(db, Leg(id=None, name="LEG A", note="", created_at=""))
     leg_b = leg_repo.create(db, Leg(id=None, name="LEG B", note="", created_at=""))
-    mp_a = _make_messpunkt(db, "CH-A", MESSRICHTUNG_BEZUG, standort_id, leg_id=leg_a)
-    mp_b = _make_messpunkt(db, "CH-B", MESSRICHTUNG_BEZUG, standort_id, leg_id=leg_b)
+    mp_a = _make_messpunkt(db, "CH-A", MESSRICHTUNG_BEZUG, site_id, leg_id=leg_a)
+    mp_b = _make_messpunkt(db, "CH-B", MESSRICHTUNG_BEZUG, site_id, leg_id=leg_b)
 
     upsert_readings(
         db,
@@ -104,16 +104,16 @@ def test_monthly_energy_totals_filters_by_leg(db):
 
 
 def test_monthly_growth_counts_are_cumulative(db):
-    """A Standort created in an earlier month counts toward every later month too."""
-    early_id = _make_standort(db)
-    _set_created_at(db, "standort", early_id, date(2025, 1, 10))
-    late_id = _make_standort(db)
-    _set_created_at(db, "standort", late_id, date(2025, 3, 5))
+    """A site created in an earlier month counts toward every later month too."""
+    early_id = _make_site(db)
+    _set_created_at(db, "site", early_id, date(2025, 1, 10))
+    late_id = _make_site(db)
+    _set_created_at(db, "site", late_id, date(2025, 3, 5))
 
     growth = monthly_growth_counts(db, reference_date=date(2025, 4, 30), months=4)
     by_month = {(g.year, g.month): g for g in growth}
 
-    assert by_month[(2025, 1)].standorte == 1
-    assert by_month[(2025, 2)].standorte == 1
-    assert by_month[(2025, 3)].standorte == 2
-    assert by_month[(2025, 4)].standorte == 2
+    assert by_month[(2025, 1)].sites == 1
+    assert by_month[(2025, 2)].sites == 1
+    assert by_month[(2025, 3)].sites == 2
+    assert by_month[(2025, 4)].sites == 2

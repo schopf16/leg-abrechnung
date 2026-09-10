@@ -14,7 +14,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from app.models import messpunkt as messpunkt_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea
 
@@ -26,8 +26,8 @@ class LegComposition:
     Attributes:
         leg_id: The LEG this composition describes.
         substation areas: Distinct substation areas at least one of the LEG's
-            Messpunkte is attached to (via its Standort), sorted by name.
-            A Messpunkt whose Standort has no substation area assigned is not
+            Messpunkte is attached to (via its site), sorted by name.
+            A Messpunkt whose site has no substation area assigned is not
             represented here.
     """
 
@@ -55,17 +55,17 @@ def compute_leg_composition(connection: sqlite3.Connection, leg_id: int) -> LegC
     Returns:
         A `LegComposition` for that LEG.
     """
-    standorte_by_id = {s.id: s for s in standort_repo.list_all(connection)}
+    sites_by_id = {s.id: s for s in site_repo.list_all(connection)}
     substation_areas_by_id = {t.id: t for t in substation_area_repo.list_all(connection)}
 
     substation_area_ids: set[int] = set()
     for messpunkt in messpunkt_repo.list_all(connection):
         if messpunkt.leg_id != leg_id:
             continue
-        standort = standorte_by_id.get(messpunkt.standort_id)
-        if standort is None or standort.substation_area_id is None:
+        site = sites_by_id.get(messpunkt.site_id)
+        if site is None or site.substation_area_id is None:
             continue
-        substation_area_ids.add(standort.substation_area_id)
+        substation_area_ids.add(site.substation_area_id)
 
     substation_areas = sorted(
         (substation_areas_by_id[tid] for tid in substation_area_ids if tid in substation_areas_by_id),

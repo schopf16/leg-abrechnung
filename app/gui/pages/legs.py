@@ -44,7 +44,7 @@ from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.leg import Leg, LegInUseError
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
@@ -402,13 +402,13 @@ def legs_page() -> None:
 
 
 def _messpunkt_row_for_leg(
-    mp, standorte: dict, substation_areas: dict, upgrade_substation_area_ids: set[int]
+    mp, sites: dict, substation_areas: dict, upgrade_substation_area_ids: set[int]
 ) -> dict:
     """Convert one Messpunkt of a LEG into a row dict for the detail table.
 
     Args:
         mp: Messpunkt to convert.
-        standorte: Preloaded `{standort_id: Standort}` lookup.
+        sites: Preloaded `{site_id: site}` lookup.
         substation areas: Preloaded `{substation_area_id: substation area}` lookup.
         upgrade_substation_area_ids: substation area ids that are upgrade candidates
             for this specific LEG (see `app.domain.participant_mix.
@@ -421,15 +421,15 @@ def _messpunkt_row_for_leg(
     Returns:
         A dict with the fields required by `leg_detail_page`'s table.
     """
-    standort = standorte.get(mp.standort_id)
+    site = sites.get(mp.site_id)
     substation_area = (
-        substation_areas.get(standort.substation_area_id) if standort and standort.substation_area_id else None
+        substation_areas.get(site.substation_area_id) if site and site.substation_area_id else None
     )
     return {
         "id": mp.id,
         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
         "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
-        "standort_adresse": standort.adresse_vollstaendig if standort else "?",
+        "site_address": site.full_address if site else "?",
         "substation_area": substation_area.name if substation_area else "-",
         "is_upgrade_candidate": substation_area is not None and substation_area.id in upgrade_substation_area_ids,
         "leg_id": mp.leg_id,
@@ -440,7 +440,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
     """Open a minimal dialog to reassign one Messpunkt's LEG.
 
     Deliberately just the LEG field -- not the full `app.gui.
-    messpunkt_form`, which also edits Bezeichnung/Standort/PV data not
+    messpunkt_form`, which also edits Bezeichnung/site/PV data not
     relevant here. This is the fast path for splitting a few people out
     of a LEG that spans several substation areas, right from that LEG's own
     detail view, instead of looking each Messpunkt up individually on the
@@ -493,7 +493,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
 @ui.page("/legs/{leg_id}")
 def leg_detail_page(leg_id: int) -> None:
     """Render one LEG's detail view: its Messpunkte, each with the
-    substation area assigned via its Standort (see `app.models.standort`),
+    substation area assigned via its site (see `app.models.site`),
     sortable by clicking a column header, plus a quick "LEG ändern"
     action per row.
 
@@ -531,8 +531,8 @@ def leg_detail_page(leg_id: int) -> None:
                     "field": "messrichtung", "align": "left", "sortable": True,
                 },
                 {
-                    "name": "standort_adresse", "label": "Adresse",
-                    "field": "standort_adresse", "align": "left", "sortable": True,
+                    "name": "site_address", "label": "Adresse",
+                    "field": "site_address", "align": "left", "sortable": True,
                 },
                 {
                     "name": "substation_area", "label": "Trafokreis",
@@ -570,7 +570,7 @@ def leg_detail_page(leg_id: int) -> None:
             """
             with connection_scope() as inner_connection:
                 min_personen = settings_repo.get_settings(inner_connection).leg_gruendung_min_personen
-                standorte = {s.id: s for s in standort_repo.list_all(inner_connection)}
+                sites = {s.id: s for s in site_repo.list_all(inner_connection)}
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
                 messpunkte = [
                     mp for mp in messpunkt_repo.list_all(inner_connection) if mp.leg_id == leg_id
@@ -585,7 +585,7 @@ def leg_detail_page(leg_id: int) -> None:
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
                 table.rows = [
-                    _messpunkt_row_for_leg(mp, standorte, substation_areas, upgrade_substation_area_ids)
+                    _messpunkt_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
                     for mp in messpunkte
                 ]
             table.update()

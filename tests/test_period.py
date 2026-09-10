@@ -30,16 +30,16 @@ def _insert_reading(db, messpunkt_id: int, timestamp: str) -> None:
 
 
 def _make_messpunkt(db) -> int:
-    """Create a minimal Standort and Messpunkt and return the Messpunkt's id."""
+    """Create a minimal site and Messpunkt and return the Messpunkt's id."""
     from app.models import messpunkt as messpunkt_repo
-    from app.models import standort as standort_repo
+    from app.models import site as site_repo
     from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
-    from app.models.standort import Standort
+    from app.models.site import Site
 
-    standort_id = standort_repo.create(
+    site_id = site_repo.create(
         db,
-        Standort(
-            id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+        Site(
+            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
             substation_area_id=None, created_at="",
         ),
     )
@@ -47,7 +47,7 @@ def _make_messpunkt(db) -> int:
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung="CH-period-test",
-            messrichtung=MESSRICHTUNG_BEZUG, standort_id=standort_id, leg_id=None,
+            messrichtung=MESSRICHTUNG_BEZUG, site_id=site_id, leg_id=None,
             pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
     )

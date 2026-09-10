@@ -19,10 +19,10 @@ def _submission(
     anrede: str = "Frau",
     vorname: str = "Anna",
     nachname: str = "Muster",
-    strasse: str = "Musterweg",
-    hausnummer: str = "1",
-    plz: str = "3063",
-    ort: str = "Ittigen",
+    street: str = "Musterweg",
+    house_number: str = "1",
+    postal_code: str = "3063",
+    city: str = "Ittigen",
     telefon: str = "",
     bkw_kundennummer: str = "",
     iban: str = "",
@@ -37,10 +37,10 @@ def _submission(
         anrede=anrede,
         vorname=vorname,
         nachname=nachname,
-        strasse=strasse,
-        hausnummer=hausnummer,
-        plz=plz,
-        ort=ort,
+        street=street,
+        house_number=house_number,
+        postal_code=postal_code,
+        city=city,
         email=email,
         telefon=telefon,
         bkw_kundennummer=bkw_kundennummer,
@@ -53,7 +53,7 @@ def _submission(
 
 def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 37
+    assert get_schema_version(db) == 38
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -61,16 +61,16 @@ def test_migration_22_adds_take_over_tracking_columns(db):
     assert db.execute("SELECT COUNT(*) FROM web_registration_meter").fetchone()[0] == 0
 
 
-def test_mark_standort_created_is_idempotent(db):
+def test_mark_site_created_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
-    assert web_registration_repo.get(db, reg_id).standort_created is False
+    assert web_registration_repo.get(db, reg_id).site_created is False
 
-    web_registration_repo.mark_standort_created(db, reg_id)
-    web_registration_repo.mark_standort_created(db, reg_id)
+    web_registration_repo.mark_site_created(db, reg_id)
+    web_registration_repo.mark_site_created(db, reg_id)
 
-    assert web_registration_repo.get(db, reg_id).standort_created is True
+    assert web_registration_repo.get(db, reg_id).site_created is True
 
 
 def test_mark_messpunkt_created_is_idempotent(db):
@@ -98,7 +98,7 @@ def test_mark_person_created_is_idempotent(db):
     assert web_registration_repo.get(db, reg_id).person_created is True
 
 
-def test_mark_person_created_is_independent_of_standort_and_messpunkt(db):
+def test_mark_person_created_is_independent_of_site_and_messpunkt(db):
     """Each of the three take-over flags is set only by its own action."""
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
@@ -107,12 +107,12 @@ def test_mark_person_created_is_independent_of_standort_and_messpunkt(db):
     web_registration_repo.mark_person_created(db, reg_id)
     reg = web_registration_repo.get(db, reg_id)
     assert reg.person_created is True
-    assert reg.standort_created is False
+    assert reg.site_created is False
     assert reg.meters[0].messpunkt_created is False
     assert reg.is_fully_processed is False
 
 
-def test_is_fully_processed_requires_person_standort_and_every_meter(db):
+def test_is_fully_processed_requires_person_site_and_every_meter(db):
     with patch(
         _SYNC_TARGET,
         side_effect=[[_submission(1, meters=[("CH-A", ""), ("CH-B", "")])], []],
@@ -124,7 +124,7 @@ def test_is_fully_processed_requires_person_standort_and_every_meter(db):
     assert web_registration_repo.get(db, reg_id).is_fully_processed is False
 
     web_registration_repo.mark_person_created(db, reg_id)
-    web_registration_repo.mark_standort_created(db, reg_id)
+    web_registration_repo.mark_site_created(db, reg_id)
     web_registration_repo.mark_messpunkt_created(db, meter_ids[0])
     assert web_registration_repo.get(db, reg_id).is_fully_processed is False  # meter_ids[1] still open
 
@@ -132,13 +132,13 @@ def test_is_fully_processed_requires_person_standort_and_every_meter(db):
     assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 
 
-def test_is_fully_processed_true_with_no_meters_once_person_and_standort_done(db):
+def test_is_fully_processed_true_with_no_meters_once_person_and_site_done(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[])], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
 
     web_registration_repo.mark_person_created(db, reg_id)
-    web_registration_repo.mark_standort_created(db, reg_id)
+    web_registration_repo.mark_site_created(db, reg_id)
 
     assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 

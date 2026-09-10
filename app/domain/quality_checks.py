@@ -22,7 +22,7 @@ from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 
@@ -287,15 +287,15 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
         A `QualityWarning` per still-one-sided substation area.
     """
     warnings: list[QualityWarning] = []
-    standorte = standort_repo.list_all(connection)
+    sites = site_repo.list_all(connection)
     messpunkte = messpunkt_repo.list_all(connection)
     for substation_area in substation_area_repo.list_all(connection):
         mix = participant_mix.compute_participant_mix_for_substation_area(connection, substation_area.id)
         if mix.hinweis is None:
             continue
-        standort_ids = {s.id for s in standorte if s.substation_area_id == substation_area.id}
+        site_ids = {s.id for s in sites if s.substation_area_id == substation_area.id}
         leg_ids_here = {
-            mp.leg_id for mp in messpunkte if mp.standort_id in standort_ids and mp.leg_id is not None
+            mp.leg_id for mp in messpunkte if mp.site_id in site_ids and mp.leg_id is not None
         }
         already_resolved = bool(leg_ids_here) and all(
             compute_leg_composition(connection, leg_id).is_mixed for leg_id in leg_ids_here

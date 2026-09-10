@@ -39,7 +39,7 @@ class RegistrationSubmission:
         vorname: Submitted first name.
         nachname: Submitted last name.
         strasse: Submitted street name (without house number).
-        hausnummer: Submitted house number.
+        house_number: Submitted house number.
         plz: Submitted postal code.
         ort: Submitted city.
         email: Submitted email address -- possibly empty, callers must
@@ -59,10 +59,10 @@ class RegistrationSubmission:
     anrede: str
     vorname: str
     nachname: str
-    strasse: str
-    hausnummer: str
-    plz: str
-    ort: str
+    street: str
+    house_number: str
+    postal_code: str
+    city: str
     email: str
     telefon: str
     bkw_kundennummer: str
@@ -224,6 +224,10 @@ def _to_submission(entry: dict) -> RegistrationSubmission:
     Returns:
         The corresponding `RegistrationSubmission`.
     """
+    # NOTE: the payload keys below are the German field names the
+    # leg-ittigen.ch form posts -- an external contract we do not
+    # control. They must stay German even though everything they are
+    # mapped onto is English.
     payload = entry.get("payload") or {}
     return RegistrationSubmission(
         cloudflare_id=entry["id"],
@@ -231,10 +235,10 @@ def _to_submission(entry: dict) -> RegistrationSubmission:
         anrede=(payload.get("anrede") or "").strip(),
         vorname=(payload.get("vorname") or "").strip(),
         nachname=(payload.get("nachname") or "").strip(),
-        strasse=(payload.get("strasse") or "").strip(),
-        hausnummer=(payload.get("hausnummer") or "").strip(),
-        plz=(payload.get("plz") or "").strip(),
-        ort=(payload.get("ort") or "").strip(),
+        street=(payload.get("strasse") or "").strip(),
+        house_number=(payload.get("hausnummer") or "").strip(),
+        postal_code=(payload.get("plz") or "").strip(),
+        city=(payload.get("ort") or "").strip(),
         email=(payload.get("email") or "").strip(),
         telefon=(payload.get("telefon") or "").strip(),
         bkw_kundennummer=(payload.get("bkw_kundennummer") or "").strip(),

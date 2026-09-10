@@ -3,7 +3,7 @@
 Connected to Messpunkte exclusively through the dated `Zuordnung` (see
 `app.models.zuordnung`) -- never directly, and never via an address match.
 The `rechnungsadresse_*` fields are a pure contact/billing address and
-deliberately independent of any Standort's physical connection address (a
+deliberately independent of any site's physical connection address (a
 person can be billed somewhere other than where their meter is installed).
 
 A Person can be a company (`firma` set), a natural person (`vorname`/

@@ -1,6 +1,6 @@
 """Personen management page: list, search, create, edit, delete, and a
 detail drill-down showing the Person → Zuordnung → Messpunkt (→ LEG,
-→ Standort → substation area) join (project prompt section 7,
+→ site → substation area) join (project prompt section 7,
 "Personen-Detailansicht").
 
 The list is rendered as one card per Person (not a single-row-per-person
@@ -28,7 +28,7 @@ from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.person_offboarding import GRUND_OPTIONS
@@ -80,7 +80,7 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("E-Mail", "email"),
     ("Telefon", "telefon"),
-    ("Rechnungsadresse", "adresse"),
+    ("Rechnungsadresse", "address"),
     ("IBAN", "iban"),
     ("Status", "status"),
 ]
@@ -88,7 +88,7 @@ PRINT_COLUMNS = [
 DETAIL_COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt", "field": "messpunkt_bezeichnung", "align": "left"},
     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
-    {"name": "standort_adresse", "label": "Standort-Adresse", "field": "standort_adresse", "align": "left"},
+    {"name": "site_address", "label": "Standort-Adresse", "field": "site_address", "align": "left"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
     {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left"},
@@ -110,7 +110,7 @@ def _print_row(person: Person) -> dict:
         "name": person.anzeige_name,
         "email": person.kontakt_email,
         "telefon": person.kontakt_telefon,
-        "adresse": (
+        "address": (
             f"{person.rechnungsadresse_strasse_vollstaendig}, "
             f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}"
         ),
@@ -122,7 +122,7 @@ def _print_row(person: Person) -> dict:
 def _search_text_for_person(connection, person: Person) -> str:
     """Build the lowercase substring-search haystack for one Person.
 
-    Covers the person's own fields plus the designation and Standort
+    Covers the person's own fields plus the designation and site
     address of every Messpunkt ever assigned to them (project prompt
     section 8: Personen search also reaches into their Zuordnungen).
 
@@ -155,9 +155,9 @@ def _search_text_for_person(connection, person: Person) -> str:
         if mp is None:
             continue
         parts.append(mp.messpunkt_bezeichnung)
-        standort = standort_repo.get(connection, mp.standort_id)
-        if standort is not None:
-            parts.append(standort.adresse_vollstaendig)
+        site = site_repo.get(connection, mp.site_id)
+        if site is not None:
+            parts.append(site.full_address)
     return " ".join(p for p in parts if p).lower()
 
 
@@ -503,7 +503,7 @@ def person_detail_page(person_id: int) -> None:
         )
 
         def refresh_detail() -> None:
-            """Reload the person's Zuordnung → Messpunkt (→ LEG, → Standort
+            """Reload the person's Zuordnung → Messpunkt (→ LEG, → site
             → substation area) join, and warn if any involved LEG mixes
             substation areas.
 
@@ -528,12 +528,12 @@ def person_detail_page(person_id: int) -> None:
                     if not show_all_switch.value and not is_relevant:
                         continue
                     mp = messpunkt_repo.get(inner_connection, z.messpunkt_id)
-                    standort = (
-                        standort_repo.get(inner_connection, mp.standort_id) if mp else None
+                    site = (
+                        site_repo.get(inner_connection, mp.site_id) if mp else None
                     )
                     substation_area = (
-                        substation_area_repo.get(inner_connection, standort.substation_area_id)
-                        if standort and standort.substation_area_id
+                        substation_area_repo.get(inner_connection, site.substation_area_id)
+                        if site and site.substation_area_id
                         else None
                     )
                     leg = (
@@ -548,7 +548,7 @@ def person_detail_page(person_id: int) -> None:
                             "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung)
                             if mp
                             else "?",
-                            "standort_adresse": standort.adresse_vollstaendig if standort else "?",
+                            "site_address": site.full_address if site else "?",
                             "substation_area": substation_area.name if substation_area else "-",
                             "leg": leg.name if leg else "-",
                             "gueltig_von": z.gueltig_von.isoformat(),

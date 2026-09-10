@@ -18,7 +18,7 @@ from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 
 MESSRICHTUNG_LABELS = {
@@ -28,7 +28,7 @@ MESSRICHTUNG_LABELS = {
 
 #: Messpunkt-shaped fields `open_messpunkt_form`'s `prefill` dict may set
 #: for a new Messpunkt -- see that function's docstring.
-_PREFILL_KEYS = ("land", "identifikator", "messpunktnummer", "standort_id", "messrichtung")
+_PREFILL_KEYS = ("land", "identifikator", "messpunktnummer", "site_id", "messrichtung")
 
 
 def open_messpunkt_form(
@@ -44,9 +44,9 @@ def open_messpunkt_form(
         prefill: Initial field values for a new Messpunkt, ignored if
             `existing` is set. Keys: any of `_PREFILL_KEYS` (`land`,
             `identifikator` default from `LegSettings` if omitted;
-            `messpunktnummer` defaults to ""; `standort_id` defaults to
+            `messpunktnummer` defaults to ""; `site_id` defaults to
             no selection if omitted -- deliberately never guesses an
-            unrelated Standort; `messrichtung` defaults to
+            unrelated site; `messrichtung` defaults to
             `MESSRICHTUNG_BEZUG`).
         on_saved: Called with the created/updated `Messpunkt` right after
             a successful save (dialog already closed) -- e.g. so a caller
@@ -59,10 +59,10 @@ def open_messpunkt_form(
     prefill = prefill or {}
 
     with connection_scope() as connection:
-        standorte = standort_repo.list_all(connection)
+        sites = site_repo.list_all(connection)
         legs = leg_repo.list_all(connection)
         settings = settings_repo.get_settings(connection)
-    standort_options = {s.id: s.adresse_vollstaendig for s in standorte}
+    site_options = {s.id: s.full_address for s in sites}
     leg_options = {leg.id: leg.name for leg in legs}
 
     if existing:
@@ -115,10 +115,10 @@ def open_messpunkt_form(
             label="Messrichtung",
             value=existing.messrichtung if existing else prefill.get("messrichtung", MESSRICHTUNG_BEZUG),
         ).classes("w-full")
-        standort_select = ui.select(
-            standort_options,
+        site_select = ui.select(
+            site_options,
             label="Standort",
-            value=existing.standort_id if existing else prefill.get("standort_id"),
+            value=existing.site_id if existing else prefill.get("site_id"),
         ).classes("w-full")
         leg_select = ui.select(
             leg_options,
@@ -152,7 +152,7 @@ def open_messpunkt_form(
             if bezeichnung_problem:
                 error_label.text = bezeichnung_problem
                 return
-            if standort_select.value is None:
+            if site_select.value is None:
                 error_label.text = "Standort ist erforderlich."
                 return
             try:
@@ -162,7 +162,7 @@ def open_messpunkt_form(
                             id=existing.id,
                             messpunkt_bezeichnung=full_bezeichnung,
                             messrichtung=messrichtung.value,
-                            standort_id=standort_select.value,
+                            site_id=site_select.value,
                             leg_id=leg_select.value,
                             pv_leistung_kwp=pv_leistung.value,
                             batteriespeicher_kwh=batteriespeicher.value,
@@ -174,7 +174,7 @@ def open_messpunkt_form(
                             id=None,
                             messpunkt_bezeichnung=full_bezeichnung,
                             messrichtung=messrichtung.value,
-                            standort_id=standort_select.value,
+                            site_id=site_select.value,
                             leg_id=leg_select.value,
                             pv_leistung_kwp=pv_leistung.value,
                             batteriespeicher_kwh=batteriespeicher.value,

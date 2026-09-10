@@ -21,7 +21,7 @@ explicit `min_personen` parameter rather than hardcoding it.
 Terms used here, deliberately simple (an earlier, more legally-precise
 model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
 StromVV -- turned out to need too much manual, hard-to-obtain data per
-Standort to be worth it):
+site to be worth it):
 
     Prosumer: a person with a current-or-upcoming Zuordnung (see
         `app.models.zuordnung.Zuordnung.is_current_or_upcoming` -- counts
@@ -59,7 +59,7 @@ from typing import Optional
 from app.domain.leg_composition import compute_leg_composition
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
@@ -151,9 +151,9 @@ class ParticipantMix:
 
 
 def compute_participant_mix(
-    connection: sqlite3.Connection, standort_ids: list[int], stichtag: Optional[date] = None
+    connection: sqlite3.Connection, site_ids: list[int], stichtag: Optional[date] = None
 ) -> ParticipantMix:
-    """Compute the Prosumer:Consumer mix for an arbitrary set of Standorte.
+    """Compute the Prosumer:Consumer mix for an arbitrary set of sites.
 
     The one core computation, used both for a hypothetical "this
     substation area as its own LEG" check (`compute_participant_mix_for_substation_area`)
@@ -162,7 +162,7 @@ def compute_participant_mix(
 
     Args:
         connection: Open SQLite connection.
-        standort_ids: Standorte to include.
+        site_ids: sites to include.
         stichtag: Reference date for which Zuordnungen count as relevant,
             `None` for today.
 
@@ -170,12 +170,12 @@ def compute_participant_mix(
         The computed `ParticipantMix`.
     """
     moment = _moment(stichtag)
-    standort_ids_set = set(standort_ids)
+    site_ids_set = set(site_ids)
 
     prosumer_ids: set[int] = set()
     consumer_ids: set[int] = set()
     for messpunkt in messpunkt_repo.list_all(connection):
-        if messpunkt.standort_id not in standort_ids_set:
+        if messpunkt.site_id not in site_ids_set:
             continue
         for zuordnung in zuordnung_repo.list_for_messpunkt(connection, messpunkt.id):
             if not zuordnung.is_current_or_upcoming(moment):
@@ -191,7 +191,7 @@ def compute_participant_mix(
 def compute_participant_mix_for_substation_area(
     connection: sqlite3.Connection, substation_area_id: int, stichtag: Optional[date] = None
 ) -> ParticipantMix:
-    """Hypothetical mix if this substation area's Standorte formed their own LEG.
+    """Hypothetical mix if this substation area's sites formed their own LEG.
 
     Args:
         connection: Open SQLite connection.
@@ -199,10 +199,10 @@ def compute_participant_mix_for_substation_area(
         stichtag: Reference date, `None` for today.
 
     Returns:
-        The `ParticipantMix` for every Standort assigned to this substation area.
+        The `ParticipantMix` for every site assigned to this substation area.
     """
-    standort_ids = [s.id for s in standort_repo.list_all(connection) if s.substation_area_id == substation_area_id]
-    return compute_participant_mix(connection, standort_ids, stichtag)
+    site_ids = [s.id for s in site_repo.list_all(connection) if s.substation_area_id == substation_area_id]
+    return compute_participant_mix(connection, site_ids, stichtag)
 
 
 def compute_participant_mix_for_leg(
@@ -216,13 +216,13 @@ def compute_participant_mix_for_leg(
         stichtag: Reference date, `None` for today.
 
     Returns:
-        The `ParticipantMix` for every Standort with at least one
+        The `ParticipantMix` for every site with at least one
         Messpunkt assigned to this LEG.
     """
-    standort_ids = sorted({
-        mp.standort_id for mp in messpunkt_repo.list_all(connection) if mp.leg_id == leg_id
+    site_ids = sorted({
+        mp.site_id for mp in messpunkt_repo.list_all(connection) if mp.leg_id == leg_id
     })
-    return compute_participant_mix(connection, standort_ids, stichtag)
+    return compute_participant_mix(connection, site_ids, stichtag)
 
 
 def leg_should_split(
@@ -316,22 +316,22 @@ def find_upgrade_candidates(
         already acted on.
     """
     moment = _moment(stichtag)
-    standorte = standort_repo.list_all(connection)
+    sites = site_repo.list_all(connection)
     messpunkte = messpunkt_repo.list_all(connection)
     legs_by_id = {leg.id: leg for leg in leg_repo.list_all(connection)}
 
     candidates: list[UpgradeCandidate] = []
     for substation_area in substation_area_repo.list_all(connection):
-        standort_ids = {s.id for s in standorte if s.substation_area_id == substation_area.id}
-        if not standort_ids:
+        site_ids = {s.id for s in sites if s.substation_area_id == substation_area.id}
+        if not site_ids:
             continue
 
-        mix = compute_participant_mix(connection, list(standort_ids), stichtag)
+        mix = compute_participant_mix(connection, list(site_ids), stichtag)
         if mix.ist_einseitig or mix.gesamt_personen < min_personen:
             continue
 
         leg_ids_here = {
-            mp.leg_id for mp in messpunkte if mp.standort_id in standort_ids and mp.leg_id is not None
+            mp.leg_id for mp in messpunkte if mp.site_id in site_ids and mp.leg_id is not None
         }
         mixed_legs = sorted(
             (
@@ -346,7 +346,7 @@ def find_upgrade_candidates(
         mixed_leg_ids = {leg.id for leg in mixed_legs}
         person_ids: set[int] = set()
         for mp in messpunkte:
-            if mp.standort_id not in standort_ids or mp.leg_id not in mixed_leg_ids:
+            if mp.site_id not in site_ids or mp.leg_id not in mixed_leg_ids:
                 continue
             for zuordnung in zuordnung_repo.list_for_messpunkt(connection, mp.id):
                 if zuordnung.is_current_or_upcoming(moment):

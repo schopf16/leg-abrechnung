@@ -8,7 +8,7 @@ let the note wrap onto its own full-width line instead, so one entry
 takes the 2-3 lines it actually needs and no more (same rationale as
 `app.gui.pages.personen`).
 
-A substation area cannot be deleted while Standorte still reference it (see
+A substation area cannot be deleted while sites still reference it (see
 `app.models.substation_area.SubstationAreaInUseError`). Its `name` must be unique,
 checked live as the administrator types.
 """
@@ -21,7 +21,7 @@ from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import settings as settings_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
 
@@ -30,7 +30,7 @@ from app.models.substation_area import SubstationArea, SubstationAreaInUseError
 PRINT_COLUMNS = [
     ("Name", "name"),
     ("BKW-Bezeichnung", "bkw_designation"),
-    ("Standorte", "standorte_count"),
+    ("Standorte", "sites_count"),
     ("Prosumer : Consumer", "prosumer_consumer"),
     ("Hinweis", "hinweis"),
     ("Bemerkung", "note"),
@@ -52,15 +52,15 @@ def _mix_badge(mix) -> str:
 
 
 def _to_row(
-    connection, substation_area: SubstationArea, standort_ids: set[int], upgrade_substation_area_ids: set[int],
+    connection, substation_area: SubstationArea, site_ids: set[int], upgrade_substation_area_ids: set[int],
 ) -> dict:
     """Convert a `substation area` into a row dict backing both the card and the printout.
 
     Args:
         connection: Open SQLite connection.
         substation area: substation area to convert.
-        standort_ids: This substation area's own Standort ids (preloaded by the
-            caller to avoid re-querying every Standort per row).
+        site_ids: This substation area's own site ids (preloaded by the
+            caller to avoid re-querying every site per row).
         upgrade_substation_area_ids: substation area ids with LEG-upgrade potential
             (see `app.domain.participant_mix.find_upgrade_candidates`),
             preloaded once for the whole list.
@@ -81,7 +81,7 @@ def _to_row(
         "id": substation_area.id,
         "name": substation_area.name,
         "bkw_designation": substation_area.bkw_designation,
-        "standorte_count": len(standort_ids),
+        "sites_count": len(site_ids),
         "prosumer_consumer": prosumer_consumer,
         "hinweis": mix.hinweis,
         "note": substation_area.note,
@@ -140,7 +140,7 @@ def substation_areas_page() -> None:
                         ui.label(row["name"]).classes("font-bold")
                         if row["bkw_designation"]:
                             ui.label(row["bkw_designation"]).classes("text-caption text-grey-6")
-                    ui.label(f"{row['standorte_count']} Standort(e)").classes("text-body2")
+                    ui.label(f"{row['sites_count']} Standort(e)").classes("text-body2")
                     ui.label(row["prosumer_consumer"]).classes("text-body2")
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
@@ -177,7 +177,7 @@ def substation_areas_page() -> None:
             nonlocal all_rows
             with connection_scope() as connection:
                 min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
-                standorte = standort_repo.list_all(connection)
+                sites = site_repo.list_all(connection)
                 upgrade_substation_area_ids = {
                     c.substation_area.id
                     for c in find_upgrade_candidates(connection, min_personen=min_personen)
@@ -185,7 +185,7 @@ def substation_areas_page() -> None:
                 all_rows = [
                     _to_row(
                         connection, substation_area,
-                        {s.id for s in standorte if s.substation_area_id == substation_area.id},
+                        {s.id for s in sites if s.substation_area_id == substation_area.id},
                         upgrade_substation_area_ids,
                     )
                     for substation_area in substation_area_repo.list_all(connection)

@@ -8,13 +8,13 @@ from app.domain import participant_mix
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
-from app.models import standort as standort_repo
+from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
-from app.models.standort import Standort
+from app.models.site import Site
 from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
@@ -43,22 +43,22 @@ def _leg(db, name: str) -> int:
     return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
-def _standort(db, substation_area_id: int, *, adresse: str = "Weg") -> int:
-    return standort_repo.create(
+def _site(db, substation_area_id: int, *, street: str = "Weg") -> int:
+    return site_repo.create(
         db,
-        Standort(
-            id=None, adresse=adresse, hausnummer="1", plz="3000", gemeinde="Bern", lage="",
+        Site(
+            id=None, street=street, house_number="1", postal_code="3000", municipality="Bern", address_detail="",
             substation_area_id=substation_area_id, created_at="",
         ),
     )
 
 
-def _messpunkt(db, standort_id: int, leg_id: int | None, messrichtung: str) -> int:
+def _messpunkt(db, site_id: int, leg_id: int | None, messrichtung: str) -> int:
     return messpunkt_repo.create(
         db,
         Messpunkt(
             id=None, messpunkt_bezeichnung=f"CH{next(_bezeichnung_counter):031d}",
-            messrichtung=messrichtung, standort_id=standort_id, leg_id=leg_id,
+            messrichtung=messrichtung, site_id=site_id, leg_id=leg_id,
             pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
         ),
     )
@@ -72,12 +72,12 @@ def _zuordnung(db, person_id: int, messpunkt_id: int, von: date, bis: date | Non
 
 def test_consumer_counted_for_bezug_person(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
+    bezug_id = _messpunkt(db, site_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
 
-    mix = participant_mix.compute_participant_mix(db, [standort_id])
+    mix = participant_mix.compute_participant_mix(db, [site_id])
 
     assert mix.consumer_count == 1
     assert mix.prosumer_count == 0
@@ -86,12 +86,12 @@ def test_consumer_counted_for_bezug_person(db):
 
 def test_prosumer_counted_for_einspeisung_person(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
+    einspeisung_id = _messpunkt(db, site_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 
-    mix = participant_mix.compute_participant_mix(db, [standort_id])
+    mix = participant_mix.compute_participant_mix(db, [site_id])
 
     assert mix.prosumer_count == 1
     assert mix.consumer_count == 0
@@ -102,14 +102,14 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     """A person with both a Bezug- and an Einspeisung-Messpunkt is
     deliberately counted in both totals -- see module docstring."""
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, None, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 
-    mix = participant_mix.compute_participant_mix(db, [standort_id])
+    mix = participant_mix.compute_participant_mix(db, [site_id])
 
     assert mix.prosumer_count == 1
     assert mix.consumer_count == 1
@@ -120,12 +120,12 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
 
 def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
+    bezug_id = _messpunkt(db, site_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2020, 1, 1), date(2020, 12, 31))
 
-    mix = participant_mix.compute_participant_mix(db, [standort_id], stichtag=date(2026, 1, 1))
+    mix = participant_mix.compute_participant_mix(db, [site_id], stichtag=date(2026, 1, 1))
 
     assert mix.consumer_count == 0
     assert mix.prosumer_count == 0
@@ -137,14 +137,14 @@ def test_not_yet_started_zuordnung_counts_as_prosumer_and_consumer(db):
     not-yet-started Zuordnung is now always relevant here (`Zuordnung.
     is_current_or_upcoming`), not just once its start date arrives."""
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, None, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 12, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 12, 1))
 
-    mix = participant_mix.compute_participant_mix(db, [standort_id], stichtag=date(2026, 9, 10))
+    mix = participant_mix.compute_participant_mix(db, [site_id], stichtag=date(2026, 9, 10))
 
     assert mix.consumer_count == 1
     assert mix.prosumer_count == 1
@@ -163,9 +163,9 @@ def test_empty_scope_is_not_flagged_as_einseitig(db):
 
 def test_hinweis_nur_lieferanten(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
+    einspeisung_id = _messpunkt(db, site_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
@@ -175,9 +175,9 @@ def test_hinweis_nur_lieferanten(db):
 
 def test_hinweis_nur_bezueger(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
+    bezug_id = _messpunkt(db, site_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
@@ -188,17 +188,17 @@ def test_hinweis_nur_bezueger(db):
 def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable(db):
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
 
     mixed_leg_id = _leg(db, "Gemischte LEG")
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_mp_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
     _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db)
@@ -211,11 +211,11 @@ def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable
 
 def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     dedicated_leg_id = _leg(db, "Dedizierte LEG")
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, dedicated_leg_id, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 
@@ -231,17 +231,17 @@ def test_upgrade_candidate_hidden_below_min_personen(db):
     exceeds the 2 people actually present."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
 
     mixed_leg_id = _leg(db, "Gemischte LEG")
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_mp_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
     _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db, min_personen=3)
@@ -258,14 +258,14 @@ def test_no_upgrade_candidate_for_a_still_one_sided_substation_area(db):
     an upgrade candidate -- it genuinely cannot stand alone yet."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_mp_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
     _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
@@ -277,16 +277,16 @@ def test_no_upgrade_candidate_for_a_still_one_sided_substation_area(db):
 def test_leg_should_split_when_every_substation_area_is_independently_green(db):
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     other_person_id = _person(db, "Andere")
-    other_bezug_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    other_einspeisung_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    other_bezug_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_einspeisung_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     for pid, mp_id in (
         (person_id, bezug_id), (person_id, einspeisung_id),
         (other_person_id, other_bezug_id), (other_person_id, other_einspeisung_id),
@@ -301,16 +301,16 @@ def test_leg_should_not_split_when_one_substation_area_would_be_one_sided_alone(
     stays better off shared, even though it is mixed."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     # This substation area only has a producer -- would be one-sided alone.
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    other_mp_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
         _zuordnung(db, pid, mp_id, date(2026, 1, 1))
 
@@ -323,16 +323,16 @@ def test_leg_should_not_split_below_min_personen(db):
     the threshold above that turns the recommendation off again."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
-    standort_id = _standort(db, substation_area_id)
-    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
+    site_id = _site(db, substation_area_id)
+    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     other_person_id = _person(db, "Andere")
-    other_bezug_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
-    other_einspeisung_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    other_bezug_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_einspeisung_id = _messpunkt(db, other_site_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     for pid, mp_id in (
         (person_id, bezug_id), (person_id, einspeisung_id),
         (other_person_id, other_bezug_id), (other_person_id, other_einspeisung_id),
@@ -345,11 +345,11 @@ def test_leg_should_not_split_below_min_personen(db):
 
 def test_leg_should_not_split_when_not_mixed(db):
     substation_area_id = _substation_area(db, "TK1")
-    standort_id = _standort(db, substation_area_id)
+    site_id = _site(db, substation_area_id)
     dedicated_leg_id = _leg(db, "Dedizierte LEG")
     person_id = _person(db)
-    bezug_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)
-    einspeisung_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    bezug_id = _messpunkt(db, site_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, site_id, dedicated_leg_id, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 

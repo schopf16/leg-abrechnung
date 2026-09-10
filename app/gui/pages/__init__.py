@@ -18,7 +18,7 @@ from app.gui.pages import (  # noqa: F401
     messpunkte,
     personen,
     signaturen,
-    standorte,
+    sites,
     statistik,
     substation_areas,
     web_registrierungen,

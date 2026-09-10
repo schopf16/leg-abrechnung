@@ -51,7 +51,7 @@ class MonthlyGrowth:
         month: Calendar month, 1 to 12.
         personen: Number of Personen created on or before this month.
         messpunkte: Number of Messpunkte created on or before this month.
-        standorte: Number of Standorte created on or before this month.
+        sites: Number of sites created on or before this month.
         substation areas: Number of substation areas created on or before this month.
         legs: Number of LEGs created on or before this month.
     """
@@ -60,7 +60,7 @@ class MonthlyGrowth:
     month: int
     personen: int
     messpunkte: int
-    standorte: int
+    sites: int
     substation_areas: int
     legs: int
 
@@ -151,7 +151,7 @@ def monthly_growth_counts(
 
     personen = _creation_dates(connection, "person")
     messpunkte = _creation_dates(connection, "messpunkt")
-    standorte = _creation_dates(connection, "standort")
+    sites = _creation_dates(connection, "site")
     substation_areas = _creation_dates(connection, "substation_area")
     legs = _creation_dates(connection, "leg")
 
@@ -164,7 +164,7 @@ def monthly_growth_counts(
                 month=month,
                 personen=sum(1 for d in personen if d <= last_day),
                 messpunkte=sum(1 for d in messpunkte if d <= last_day),
-                standorte=sum(1 for d in standorte if d <= last_day),
+                sites=sum(1 for d in sites if d <= last_day),
                 substation_areas=sum(1 for d in substation_areas if d <= last_day),
                 legs=sum(1 for d in legs if d <= last_day),
             )

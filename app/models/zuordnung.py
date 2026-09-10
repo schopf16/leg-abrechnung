@@ -1,10 +1,10 @@
 """Time-bounded assignments of Messpunkte to Personen (Zuordnungs-Historie).
 
-A Messpunkt is physically fixed to a Standort, but the person billed for
+A Messpunkt is physically fixed to a site, but the person billed for
 it can change over time (e.g. a tenant moving out mid-quarter). Each row
 in `zuordnung` represents one such period; `gueltig_bis = NULL` means
 "still valid / open-ended". Moving never changes the Messpunkt, its
-Standort, or that Standort's LEG -- only which Person the
+site, or that site's LEG -- only which Person the
 Zuordnung points at.
 """
 
@@ -131,7 +131,7 @@ def get_relevant_for_messpunkt(
     started). If none has started yet, falls back to the soonest-starting
     one that `is_current_or_upcoming` -- a not-yet-started assignment
     should still show up here (see the caller in `app.gui.pages.
-    messpunkte`/`standorte`, which marks it visually as upcoming rather
+    messpunkte`/`sites`, which marks it visually as upcoming rather
     than hiding it), instead of the Messpunkt looking unassigned just
     because the administrator entered it ahead of time.
 

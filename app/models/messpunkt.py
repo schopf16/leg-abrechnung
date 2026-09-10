@@ -4,7 +4,7 @@ postal address, which is not an identity key (an address can host several
 Messpunkte, e.g. a multi-family building).
 
 LEG membership is deliberately a property of the Messpunkt, not of its
-Standort (see `app.models.leg`): two Messpunkte at the very same Standort
+site (see `app.models.leg`): two Messpunkte at the very same site
 can belong to different LEGs, since it is the Messpunkt's owner -- not the
 building -- who decides which LEG to join.
 """
@@ -30,7 +30,7 @@ class Messpunkt:
             (business key), as used in EBIX/SDAT-CH and CSV exports.
         messrichtung: Either `MESSRICHTUNG_BEZUG` (consumption) or
             `MESSRICHTUNG_EINSPEISUNG` (feed-in).
-        standort_id: Foreign key to the `Standort` this Messpunkt is
+        site_id: Foreign key to the `site` this Messpunkt is
             physically installed at.
         leg_id: Foreign key to the assigned `Leg`, `None` until manually
             assigned.
@@ -46,7 +46,7 @@ class Messpunkt:
     id: Optional[int]
     messpunkt_bezeichnung: str
     messrichtung: str
-    standort_id: int
+    site_id: int
     leg_id: Optional[int]
     pv_leistung_kwp: Optional[float]
     batteriespeicher_kwh: Optional[float]
@@ -84,7 +84,7 @@ class Messpunkt:
             id=row["id"],
             messpunkt_bezeichnung=row["messpunkt_bezeichnung"],
             messrichtung=row["messrichtung"],
-            standort_id=row["standort_id"],
+            site_id=row["site_id"],
             leg_id=row["leg_id"],
             pv_leistung_kwp=row["pv_leistung_kwp"],
             batteriespeicher_kwh=row["batteriespeicher_kwh"],
@@ -107,19 +107,19 @@ def list_all(connection: sqlite3.Connection) -> list[Messpunkt]:
     return [Messpunkt.from_row(row) for row in rows]
 
 
-def list_for_standort(connection: sqlite3.Connection, standort_id: int) -> list[Messpunkt]:
-    """List all Messpunkte belonging to one Standort.
+def list_for_site(connection: sqlite3.Connection, site_id: int) -> list[Messpunkt]:
+    """List all Messpunkte belonging to one site.
 
     Args:
         connection: Open SQLite connection.
-        standort_id: Primary key of the site.
+        site_id: Primary key of the site.
 
     Returns:
         All metering points at that site, sorted by `messpunkt_bezeichnung`.
     """
     rows = connection.execute(
-        "SELECT * FROM messpunkt WHERE standort_id = ? ORDER BY messpunkt_bezeichnung",
-        (standort_id,),
+        "SELECT * FROM messpunkt WHERE site_id = ? ORDER BY messpunkt_bezeichnung",
+        (site_id,),
     ).fetchall()
     return [Messpunkt.from_row(row) for row in rows]
 
@@ -178,14 +178,14 @@ def create(connection: sqlite3.Connection, messpunkt: Messpunkt) -> int:
     cursor = connection.execute(
         """
         INSERT INTO messpunkt
-            (messpunkt_bezeichnung, messrichtung, standort_id, leg_id,
+            (messpunkt_bezeichnung, messrichtung, site_id, leg_id,
              pv_leistung_kwp, batteriespeicher_kwh, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             messpunkt.messpunkt_bezeichnung,
             messpunkt.messrichtung,
-            messpunkt.standort_id,
+            messpunkt.site_id,
             messpunkt.leg_id,
             messpunkt.pv_leistung_kwp,
             messpunkt.batteriespeicher_kwh,
@@ -216,14 +216,14 @@ def update(connection: sqlite3.Connection, messpunkt: Messpunkt) -> None:
     connection.execute(
         """
         UPDATE messpunkt SET
-            messpunkt_bezeichnung = ?, messrichtung = ?, standort_id = ?, leg_id = ?,
+            messpunkt_bezeichnung = ?, messrichtung = ?, site_id = ?, leg_id = ?,
             pv_leistung_kwp = ?, batteriespeicher_kwh = ?
         WHERE id = ?
         """,
         (
             messpunkt.messpunkt_bezeichnung,
             messpunkt.messrichtung,
-            messpunkt.standort_id,
+            messpunkt.site_id,
             messpunkt.leg_id,
             messpunkt.pv_leistung_kwp,
             messpunkt.batteriespeicher_kwh,
