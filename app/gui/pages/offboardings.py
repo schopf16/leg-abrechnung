@@ -1,12 +1,12 @@
 """Austritte page: tracks each person's progress through the four
 real-world steps of a LEG membership ending (see `app.models.
-person_offboarding`) -- the reverse of `app.gui.pages.aufnahmen`.
+person_offboarding`) -- the reverse of `app.gui.pages.onboardings`.
 
 A tracker only exists once explicitly started -- manually here (for a
 normal voluntary exit), or via the "Ausschluss-Prozess starten" link
-Michael follows from the Mahnwesen page once a 2. Mahnung goes unpaid
+Michael follows from the dunning page once a 2. dunning notice goes unpaid
 (never automatically). Deleting a tracker only discards the tracking
-record; it never touches the Person or their Debitoren claim.
+record; it never touches the Person or their receivables claim.
 """
 
 from datetime import date, datetime
@@ -21,11 +21,11 @@ from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models.person import Person
-from app.models.person_offboarding import GRUND_OPTIONS, STEPS, PersonOffboarding
+from app.models.person_offboarding import REASON_OPTIONS, STEPS, PersonOffboarding
 
-#: `(label, field)` pairs for the printed table: Person/Grund/Status, then
+#: `(label, field)` pairs for the printed table: Person/reason/status, then
 #: one column per offboarding step (its date, or empty if still open).
-PRINT_COLUMNS = [("Person", "person"), ("Grund", "grund"), ("Status", "status")] + [
+PRINT_COLUMNS = [("Person", "person"), ("Grund", "reason"), ("Status", "status")] + [
     (label, attr) for attr, label in STEPS
 ]
 
@@ -47,7 +47,7 @@ def _print_row(offboarding: PersonOffboarding, person: Person) -> dict:
         status = f"{step_label} (seit {offboarding.days_open()} Tagen)"
     row = {
         "person": person.display_name,
-        "grund": GRUND_OPTIONS.get(offboarding.grund, offboarding.grund),
+        "reason": REASON_OPTIONS.get(offboarding.reason, offboarding.reason),
         "status": status,
     }
     for attr, _ in STEPS:
@@ -68,14 +68,14 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-@ui.page("/austritte")
-def austritte_page() -> None:
+@ui.page("/offboardings")
+def offboardings_page() -> None:
     """Render the Austritte (offboarding tracking) page.
 
     Returns:
         None.
     """
-    with page_frame("/austritte", "Austritte"):
+    with page_frame("/offboardings", "Austritte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Fortschritt durch die vier Schritte eines LEG-Austritts: "
@@ -127,7 +127,7 @@ def austritte_page() -> None:
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         with ui.row().classes("items-center gap-2"):
                             ui.link(person.display_name, f"/persons/{person.id}").classes("font-bold")
-                            ui.badge(GRUND_OPTIONS.get(offboarding.grund, offboarding.grund))
+                            ui.badge(REASON_OPTIONS.get(offboarding.reason, offboarding.reason))
                             if offboarding.is_complete:
                                 ui.badge("Abgeschlossen", color="positive")
                         if not offboarding.is_complete:
@@ -256,13 +256,13 @@ def austritte_page() -> None:
                         error_label.text = "Bitte eine Person wählen."
                         return
                     try:
-                        beschlossen_am = _parse_date(start_date.value)
+                        decided_at = _parse_date(start_date.value)
                     except ValueError:
                         error_label.text = "Ungültiges Datum."
                         return
                     with connection_scope() as connection:
                         person_offboarding_repo.start_for_person(
-                            connection, person_select.value, grund="freiwillig", beschlossen_am=beschlossen_am
+                            connection, person_select.value, reason="freiwillig", decided_at=decided_at
                         )
                     dialog.close()
                     safe_notify("Austritt gestartet.", type="positive")

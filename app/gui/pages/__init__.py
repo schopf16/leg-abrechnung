@@ -3,18 +3,18 @@ all `@ui.page` routes with NiceGUI.
 """
 
 from app.gui.pages import (  # noqa: F401
-    abrechnung,
-    aufnahmen,
-    austritte,
+    billing,
+    onboardings,
+    offboardings,
     auswertungen,
     backup,
     dashboard,
-    debitoren,
+    receivables,
     einstellungen,
     email_versand,
     import_page,
     legs,
-    mahnwesen,
+    dunning,
     metering_points,
     persons,
     signaturen,

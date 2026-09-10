@@ -15,13 +15,13 @@ harder-to-notice failure than a loud one; see `LegNotAssignedError`.
 
 For every 15-minute interval `t`, independently per LEG:
 
-1. `P(t)` = sum of all Einspeisung (feed-in) readings at `t` on that LEG.
-2. `C(t)` = sum of all Bezug (consumption) readings at `t` on that LEG.
+1. `P(t)` = sum of all feed-in (feed-in) readings at `t` on that LEG.
+2. `C(t)` = sum of all consumption (consumption) readings at `t` on that LEG.
 3. `S(t) = min(P(t), C(t))` -- only energy produced *and* consumed at the
    same instant, on the same LEG, can be shared locally.
-4. Each Bezug-MeteringPoint's locally-covered share is
+4. Each consumption-MeteringPoint's locally-covered share is
    `consumption_m(t) * S(t) / C(t)` (zero if `C(t) == 0`).
-5. Each Einspeisung-MeteringPoint's locally-delivered share is
+5. Each feed-in-MeteringPoint's locally-delivered share is
    `production_m(t) * S(t) / P(t)` (zero if `P(t) == 0`).
 
 Each MeteringPoint's interval share is then attributed to whichever Person was

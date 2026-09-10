@@ -31,10 +31,10 @@ site to be worth it):
         pre-enters a whole future quarter's move-ins in advance had every
         substation area/LEG here show 0:0 under a strict "started today" rule,
         until that date actually arrived) to at least one
-        Einspeisung-MeteringPoint in scope -- "kann Strom liefern". A person
+        feed-in-MeteringPoint in scope -- "kann Strom liefern". A person
         who both consumes and feeds in counts here too.
     Consumer: a person with a current-or-upcoming Assignment to at least
-        one Bezug-MeteringPoint in scope -- "bezieht Strom". Same overlap
+        one consumption-MeteringPoint in scope -- "bezieht Strom". Same overlap
         applies.
 
 A true prosumer (feeds in AND consumes) is deliberately counted on both
@@ -67,16 +67,16 @@ from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.substation_area import SubstationArea
 
 
-def _moment(stichtag: Optional[date]) -> datetime:
-    """Turn an optional Stichtag into the midnight `datetime` `Assignment.covers` expects.
+def _moment(reference_date: Optional[date]) -> datetime:
+    """Turn an optional reference date into the midnight `datetime` `Assignment.covers` expects.
 
     Args:
-        stichtag: The reference date, or `None` for today.
+        reference_date: The reference date, or `None` for today.
 
     Returns:
-        Midnight of `stichtag` (or today).
+        Midnight of `reference_date` (or today).
     """
-    return datetime.combine(stichtag or date.today(), time())
+    return datetime.combine(reference_date or date.today(), time())
 
 
 @dataclass
@@ -93,7 +93,7 @@ class ParticipantMix:
     consumer_count: int
 
     @property
-    def ist_einseitig(self) -> bool:
+    def is_one_sided(self) -> bool:
         """Whether one side is completely empty.
 
         Returns:
@@ -105,7 +105,7 @@ class ParticipantMix:
         return self.prosumer_count == 0 or self.consumer_count == 0
 
     @property
-    def verhaeltnis(self) -> str:
+    def ratio(self) -> str:
         """The ratio as a simple `"<Prosumer>:<Consumer>"` string.
 
         Returns:
@@ -119,7 +119,7 @@ class ParticipantMix:
 
         A true prosumer is counted on both sides (see the module
         docstring), so this is not a deduplicated headcount -- it is
-        exactly the two numbers shown together in `verhaeltnis` added up,
+        exactly the two numbers shown together in `ratio` added up,
         matching how an administrator reads that badge. Used to gate the
         LEG-upgrade suggestion on `LegSettings.leg_founding_min_persons`
         (see `leg_should_split`/`find_upgrade_candidates`): a substation area
@@ -132,7 +132,7 @@ class ParticipantMix:
         return self.prosumer_count + self.consumer_count
 
     @property
-    def hinweis(self) -> Optional[str]:
+    def hint(self) -> Optional[str]:
         """A German one-liner if exactly one side is empty, else `None`.
 
         Returns:
@@ -151,7 +151,7 @@ class ParticipantMix:
 
 
 def compute_participant_mix(
-    connection: sqlite3.Connection, site_ids: list[int], stichtag: Optional[date] = None
+    connection: sqlite3.Connection, site_ids: list[int], reference_date: Optional[date] = None
 ) -> ParticipantMix:
     """Compute the Prosumer:Consumer mix for an arbitrary set of sites.
 
@@ -163,13 +163,13 @@ def compute_participant_mix(
     Args:
         connection: Open SQLite connection.
         site_ids: sites to include.
-        stichtag: Reference date for which assignments count as relevant,
+        reference_date: Reference date for which assignments count as relevant,
             `None` for today.
 
     Returns:
         The computed `ParticipantMix`.
     """
-    moment = _moment(stichtag)
+    moment = _moment(reference_date)
     site_ids_set = set(site_ids)
 
     prosumer_ids: set[int] = set()
@@ -189,31 +189,31 @@ def compute_participant_mix(
 
 
 def compute_participant_mix_for_substation_area(
-    connection: sqlite3.Connection, substation_area_id: int, stichtag: Optional[date] = None
+    connection: sqlite3.Connection, substation_area_id: int, reference_date: Optional[date] = None
 ) -> ParticipantMix:
     """Hypothetical mix if this substation area's sites formed their own LEG.
 
     Args:
         connection: Open SQLite connection.
         substation_area_id: Primary key of the substation area.
-        stichtag: Reference date, `None` for today.
+        reference_date: Reference date, `None` for today.
 
     Returns:
         The `ParticipantMix` for every site assigned to this substation area.
     """
     site_ids = [s.id for s in site_repo.list_all(connection) if s.substation_area_id == substation_area_id]
-    return compute_participant_mix(connection, site_ids, stichtag)
+    return compute_participant_mix(connection, site_ids, reference_date)
 
 
 def compute_participant_mix_for_leg(
-    connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None
+    connection: sqlite3.Connection, leg_id: int, reference_date: Optional[date] = None
 ) -> ParticipantMix:
     """The real mix for a LEG as it is actually composed today.
 
     Args:
         connection: Open SQLite connection.
         leg_id: Primary key of the LEG.
-        stichtag: Reference date, `None` for today.
+        reference_date: Reference date, `None` for today.
 
     Returns:
         The `ParticipantMix` for every site with at least one
@@ -222,11 +222,11 @@ def compute_participant_mix_for_leg(
     site_ids = sorted({
         mp.site_id for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id
     })
-    return compute_participant_mix(connection, site_ids, stichtag)
+    return compute_participant_mix(connection, site_ids, reference_date)
 
 
 def leg_should_split(
-    connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None,
+    connection: sqlite3.Connection, leg_id: int, reference_date: Optional[date] = None,
     *, min_persons: int = 0,
 ) -> bool:
     """Whether a mixed LEG's substation areas would each work fine standalone.
@@ -242,7 +242,7 @@ def leg_should_split(
     Args:
         connection: Open SQLite connection.
         leg_id: Primary key of the LEG.
-        stichtag: Reference date, `None` for today.
+        reference_date: Reference date, `None` for today.
         min_persons: Minimum `ParticipantMix.total_persons` each
             substation area must reach on its own for the split to be
             suggested -- pass `LegSettings.leg_founding_min_persons`
@@ -262,8 +262,8 @@ def leg_should_split(
     if not composition.is_mixed:
         return False
     for substation_area in composition.substation_areas:
-        mix = compute_participant_mix_for_substation_area(connection, substation_area.id, stichtag)
-        if mix.ist_einseitig or mix.total_persons < min_persons:
+        mix = compute_participant_mix_for_substation_area(connection, substation_area.id, reference_date)
+        if mix.is_one_sided or mix.total_persons < min_persons:
             return False
     return True
 
@@ -291,14 +291,14 @@ class UpgradeCandidate:
 
 
 def find_upgrade_candidates(
-    connection: sqlite3.Connection, stichtag: Optional[date] = None, *, min_persons: int = 0
+    connection: sqlite3.Connection, reference_date: Optional[date] = None, *, min_persons: int = 0
 ) -> list[UpgradeCandidate]:
     """Find substation areas that now have both sides but are still split across
     a multi-substation-area LEG.
 
     Args:
         connection: Open SQLite connection.
-        stichtag: Reference date, `None` for today.
+        reference_date: Reference date, `None` for today.
         min_persons: Minimum `ParticipantMix.total_persons` a substation area
             must reach to be suggested -- pass `LegSettings.
             leg_founding_min_persons` (default 0, i.e. no minimum). A
@@ -315,7 +315,7 @@ def find_upgrade_candidates(
         LEG of its own produces no candidate -- the recommendation is
         already acted on.
     """
-    moment = _moment(stichtag)
+    moment = _moment(reference_date)
     sites = site_repo.list_all(connection)
     metering_points = metering_point_repo.list_all(connection)
     legs_by_id = {leg.id: leg for leg in leg_repo.list_all(connection)}
@@ -326,8 +326,8 @@ def find_upgrade_candidates(
         if not site_ids:
             continue
 
-        mix = compute_participant_mix(connection, list(site_ids), stichtag)
-        if mix.ist_einseitig or mix.total_persons < min_persons:
+        mix = compute_participant_mix(connection, list(site_ids), reference_date)
+        if mix.is_one_sided or mix.total_persons < min_persons:
             continue
 
         leg_ids_here = {

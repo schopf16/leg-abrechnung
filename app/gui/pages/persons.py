@@ -31,7 +31,7 @@ from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
-from app.models.person_offboarding import GRUND_OPTIONS
+from app.models.person_offboarding import REASON_OPTIONS
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.person import Person
 
@@ -423,7 +423,7 @@ def person_detail_page(person_id: int) -> None:
 
         with connection_scope() as connection:
             onboarding = person_onboarding_repo.get_by_person(connection, person_id)
-            onboarding_threshold = settings_repo.get_settings(connection).onboarding_ueberfaellig_tage
+            onboarding_threshold = settings_repo.get_settings(connection).onboarding_overdue_days
 
         if onboarding is not None:
             ui.label("Aufnahmeprozess").classes("text-lg font-bold mt-6")
@@ -472,7 +472,7 @@ def person_detail_page(person_id: int) -> None:
                 """
                 offboarding_card.clear()
                 with offboarding_card, ui.card().classes("w-full"):
-                    ui.label(f"Grund: {GRUND_OPTIONS.get(offboarding.grund, offboarding.grund)}").classes(
+                    ui.label(f"Grund: {REASON_OPTIONS.get(offboarding.reason, offboarding.reason)}").classes(
                         "text-caption text-grey-6"
                     )
                     if offboarding.is_complete:

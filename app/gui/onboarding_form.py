@@ -70,7 +70,7 @@ def open_onboarding_form(
                 date_inputs[attr] = ui.input(
                     label, value=value.isoformat() if value else ""
                 ).props("type=date").classes("flex-grow")
-                if attr == "leg_zugewiesen_am":
+                if attr == "leg_assigned_at":
                     leg_select = ui.select(
                         leg_options, label="LEG", value=onboarding.leg_id, with_input=True
                     ).classes("w-48")
@@ -89,12 +89,12 @@ def open_onboarding_form(
                 error_label.text = "Ungültiges Datum."
                 return
 
-            onboarding.angemeldet_am = parsed["angemeldet_am"]
-            onboarding.leg_zugewiesen_am = parsed["leg_zugewiesen_am"]
+            onboarding.registered_at = parsed["registered_at"]
+            onboarding.leg_assigned_at = parsed["leg_assigned_at"]
             onboarding.leg_id = leg_select.value
-            onboarding.vertrag_unterzeichnet_am = parsed["vertrag_unterzeichnet_am"]
-            onboarding.bkw_angemeldet_am = parsed["bkw_angemeldet_am"]
-            onboarding.bkw_bestaetigt_am = parsed["bkw_bestaetigt_am"]
+            onboarding.contract_signed_at = parsed["contract_signed_at"]
+            onboarding.bkw_registered_at = parsed["bkw_registered_at"]
+            onboarding.bkw_confirmed_at = parsed["bkw_confirmed_at"]
 
             with connection_scope() as connection:
                 person_onboarding_repo.update(connection, onboarding)

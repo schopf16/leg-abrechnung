@@ -65,7 +65,7 @@ class BillingRunItem:
 
     Every person gets exactly one item, and one resulting PDF,
     regardless of whether they only consume, only produce, or both:
-    consumption ("Bezug") and production ("Vergütung") are netted into a
+    consumption ("consumption") and production ("Vergütung") are netted into a
     single amount. A positive `net_amount_rappen` means the person owes
     the LEG (an invoice); negative means the LEG owes the person (a
     credit, paid out via the payment list).
@@ -79,7 +79,7 @@ class BillingRunItem:
         produced_kwh: Total locally-delivered production for the quarter
             (3 decimal precision).
         price_rp_per_kwh: Price applied, copied from the parent run.
-        verwaltungsaufwand_bezug_rappen: Administrative surcharge on
+        admin_fee_consumption_rappen: Administrative surcharge on
             `consumed_kwh`, already rounded to the nearest Rappen (its own
             distinct billed line, not subject to the "round only once"
             rule that applies to the energy net amount).
@@ -89,8 +89,8 @@ class BillingRunItem:
         net_amount_rappen: The full invoiced total -- rounded energy net
             (`consumed_kwh * price - produced_kwh * price`, the *only*
             rounding step for the energy portion, see
-            `app.domain.billing`) plus `verwaltungsaufwand_bezug_rappen`
-            plus `verwaltungsaufwand_einspeisung_rappen` plus
+            `app.domain.billing`) plus `admin_fee_consumption_rappen`
+            plus `admin_fee_feed_in_rappen` plus
             `paper_invoice_rappen`.
         pdf_path: Filesystem path of the generated PDF, once created.
         created_at: ISO-8601 creation timestamp.
@@ -100,44 +100,44 @@ class BillingRunItem:
             emailed item on a later bulk send (see `app.emailing.
             bulk_send.send_invoice_emails`) -- `resend_invoice_email`
             deliberately bypasses that check for an explicit resend.
-        faellig_am: ISO date this item's payment term expires -- the same
+        due_date: ISO date this item's payment term expires -- the same
             date actually printed as "Zahlbar valid_to" on the PDF (see
             `app.pdf.person_bill_pdf.PAYMENT_TERM`), persisted at PDF
-            generation time so `app.domain.mahnwesen` can later check
+            generation time so `app.domain.dunning` can later check
             overdue-ness against the exact date once shown to the person,
             not a value recomputed independently. `None` until the PDF
             has been generated.
-        mahnstufe: Escalation state for `app.domain.mahnwesen`: `0` (no
-            Mahnung sent yet), `1` (1. Mahnung sent, a new deadline
-            granted) or `2` (2. Mahnung sent, triggers an exclusion
+        dunning_level: Escalation state for `app.domain.dunning`: `0` (no
+            dunning notice sent yet), `1` (1. dunning notice sent, a new deadline
+            granted) or `2` (2. dunning notice sent, triggers an exclusion
             review -- see `app.models.person_offboarding`). Matches the
             LEG's own 2-stage Reglement, not the generic 3-stage/fee
             model common in accounting software.
-        letzte_mahnung_am: ISO timestamp the last Mahnung for this item
-            was sent, or `None` if `mahnstufe == 0`.
-        verwaltungsaufwand_einspeisung_rappen: Administrative surcharge on
+        last_dunning_at: ISO timestamp the last dunning notice for this item
+            was sent, or `None` if `dunning_level == 0`.
+        admin_fee_feed_in_rappen: Administrative surcharge on
             `produced_kwh`, already rounded to the nearest Rappen -- the
-            "Einspeisung" counterpart to `verwaltungsaufwand_bezug_rappen`,
+            "feed-in" counterpart to `admin_fee_consumption_rappen`,
             independent of it (either can be zero while the other is not).
-        verwaltungsaufwand_bezug_rp_per_kwh: The actual Bezug admin-fee
-            rate used to compute `verwaltungsaufwand_bezug_rappen`, frozen
+        admin_fee_consumption_rp_per_kwh: The actual consumption admin-fee
+            rate used to compute `admin_fee_consumption_rappen`, frozen
             at billing time (copied from `LegSettings.
-            verwaltungsaufwand_bezug_rp_per_kwh` when this item was
+            admin_fee_consumption_rp_per_kwh` when this item was
             created). Displaying this instead of the live setting is what
             guarantees a later rate change in Einstellungen never alters
             how an already-billed fee appears -- mirrors `price_rp_per_kwh`
             above, which freezes the energy price the same way.
-        verwaltungsaufwand_einspeisung_rp_per_kwh: The Einspeisung
+        admin_fee_feed_in_rp_per_kwh: The feed-in
             counterpart, frozen the same way.
-        mahnung_frist_tage: The new-deadline period (in days) actually
-            granted when this item's 1. Mahnung was sent -- frozen from
-            `LegSettings.mahnung_neue_frist_tage` at that moment, same
-            freeze-at-time-of-action reasoning as the Verwaltungsaufwand
-            rates above. `app.domain.mahnwesen` uses this (not the live
+        dunning_deadline_days: The new-deadline period (in days) actually
+            granted when this item's 1. dunning notice was sent -- frozen from
+            `LegSettings.dunning_new_deadline_days` at that moment, same
+            freeze-at-time-of-action reasoning as the admin fee
+            rates above. `app.domain.dunning` uses this (not the live
             setting) to decide whether the deadline that was actually
             promised to this person, in writing, has lapsed -- a later
             change to the setting must never silently move a deadline
-            already communicated. `None` while `mahnstufe == 0`.
+            already communicated. `None` while `dunning_level == 0`.
     """
 
     id: Optional[int]
@@ -146,19 +146,19 @@ class BillingRunItem:
     consumed_kwh: float
     produced_kwh: float
     price_rp_per_kwh: float
-    verwaltungsaufwand_bezug_rappen: int
+    admin_fee_consumption_rappen: int
     paper_invoice_rappen: int
     net_amount_rappen: int
     pdf_path: Optional[str]
     created_at: str
     email_sent_at: Optional[str] = None
-    faellig_am: Optional[str] = None
-    mahnstufe: int = 0
-    letzte_mahnung_am: Optional[str] = None
-    verwaltungsaufwand_einspeisung_rappen: int = 0
-    verwaltungsaufwand_bezug_rp_per_kwh: float = 0.0
-    verwaltungsaufwand_einspeisung_rp_per_kwh: float = 0.0
-    mahnung_frist_tage: Optional[int] = None
+    due_date: Optional[str] = None
+    dunning_level: int = 0
+    last_dunning_at: Optional[str] = None
+    admin_fee_feed_in_rappen: int = 0
+    admin_fee_consumption_rp_per_kwh: float = 0.0
+    admin_fee_feed_in_rp_per_kwh: float = 0.0
+    dunning_deadline_days: Optional[int] = None
 
     @property
     def net_amount_chf(self) -> float:
@@ -205,19 +205,19 @@ class BillingRunItem:
             consumed_kwh=row["consumed_kwh"],
             produced_kwh=row["produced_kwh"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
-            verwaltungsaufwand_bezug_rappen=row["verwaltungsaufwand_bezug_rappen"],
+            admin_fee_consumption_rappen=row["admin_fee_consumption_rappen"],
             paper_invoice_rappen=row["paper_invoice_rappen"],
             net_amount_rappen=row["net_amount_rappen"],
             pdf_path=row["pdf_path"],
             created_at=row["created_at"],
             email_sent_at=row["email_sent_at"],
-            faellig_am=row["faellig_am"],
-            mahnstufe=row["mahnstufe"],
-            letzte_mahnung_am=row["letzte_mahnung_am"],
-            verwaltungsaufwand_einspeisung_rappen=row["verwaltungsaufwand_einspeisung_rappen"],
-            verwaltungsaufwand_bezug_rp_per_kwh=row["verwaltungsaufwand_bezug_rp_per_kwh"],
-            verwaltungsaufwand_einspeisung_rp_per_kwh=row["verwaltungsaufwand_einspeisung_rp_per_kwh"],
-            mahnung_frist_tage=row["mahnung_frist_tage"],
+            due_date=row["due_date"],
+            dunning_level=row["dunning_level"],
+            last_dunning_at=row["last_dunning_at"],
+            admin_fee_feed_in_rappen=row["admin_fee_feed_in_rappen"],
+            admin_fee_consumption_rp_per_kwh=row["admin_fee_consumption_rp_per_kwh"],
+            admin_fee_feed_in_rp_per_kwh=row["admin_fee_feed_in_rp_per_kwh"],
+            dunning_deadline_days=row["dunning_deadline_days"],
         )
 
 
@@ -363,9 +363,9 @@ def add_items(
             """
             INSERT INTO billing_run_items
                 (billing_run_id, person_id, consumed_kwh, produced_kwh,
-                 price_rp_per_kwh, verwaltungsaufwand_bezug_rappen,
-                 verwaltungsaufwand_einspeisung_rappen,
-                 verwaltungsaufwand_bezug_rp_per_kwh, verwaltungsaufwand_einspeisung_rp_per_kwh,
+                 price_rp_per_kwh, admin_fee_consumption_rappen,
+                 admin_fee_feed_in_rappen,
+                 admin_fee_consumption_rp_per_kwh, admin_fee_feed_in_rp_per_kwh,
                  paper_invoice_rappen, net_amount_rappen, pdf_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -375,10 +375,10 @@ def add_items(
                 item.consumed_kwh,
                 item.produced_kwh,
                 item.price_rp_per_kwh,
-                item.verwaltungsaufwand_bezug_rappen,
-                item.verwaltungsaufwand_einspeisung_rappen,
-                item.verwaltungsaufwand_bezug_rp_per_kwh,
-                item.verwaltungsaufwand_einspeisung_rp_per_kwh,
+                item.admin_fee_consumption_rappen,
+                item.admin_fee_feed_in_rappen,
+                item.admin_fee_consumption_rp_per_kwh,
+                item.admin_fee_feed_in_rp_per_kwh,
                 item.paper_invoice_rappen,
                 item.net_amount_rappen,
                 item.pdf_path,
@@ -417,7 +417,7 @@ def list_items_for_person(connection: sqlite3.Connection, person_id: int) -> lis
     """List every billing run item ever created for one person, across all
     billing runs (any LEG, any period).
 
-    Used to build a person's full Debitoren history (see
+    Used to build a person's full receivables history (see
     `app.domain.person_ledger`) without iterating every run.
 
     Args:
@@ -470,44 +470,44 @@ def set_item_pdf_path(
     connection.commit()
 
 
-def set_item_faellig_am(connection: sqlite3.Connection, item_id: int, faellig_am: str) -> None:
+def set_item_due_date(connection: sqlite3.Connection, item_id: int, due_date: str) -> None:
     """Persist the due date actually printed on a line item's PDF.
 
     Args:
         connection: Open SQLite connection.
         item_id: Primary key of the billing run item.
-        faellig_am: ISO date (`date.today() + PAYMENT_TERM` at the moment
+        due_date: ISO date (`date.today() + PAYMENT_TERM` at the moment
             the PDF was generated, see `app.pdf.export_service`).
 
     Returns:
         None.
     """
     connection.execute(
-        "UPDATE billing_run_items SET faellig_am = ? WHERE id = ?",
-        (faellig_am, item_id),
+        "UPDATE billing_run_items SET due_date = ? WHERE id = ?",
+        (due_date, item_id),
     )
     connection.commit()
 
 
-def set_item_mahnstufe(
+def set_item_dunning_level(
     connection: sqlite3.Connection,
     item_id: int,
-    mahnstufe: int,
-    letzte_mahnung_am: str,
+    dunning_level: int,
+    last_dunning_at: str,
     *,
-    mahnung_frist_tage: Optional[int] = None,
+    dunning_deadline_days: Optional[int] = None,
 ) -> None:
-    """Record that a Mahnung was sent for a line item, advancing its stage.
+    """Record that a dunning notice was sent for a line item, advancing its stage.
 
     Args:
         connection: Open SQLite connection.
         item_id: Primary key of the billing run item.
-        mahnstufe: The new stage (`1` or `2`).
-        letzte_mahnung_am: ISO timestamp of this send.
-        mahnung_frist_tage: The new-deadline period actually granted by
+        dunning_level: The new stage (`1` or `2`).
+        last_dunning_at: ISO timestamp of this send.
+        dunning_deadline_days: The new-deadline period actually granted by
             this send, to freeze onto the item -- pass the current
-            `LegSettings.mahnung_neue_frist_tage` when advancing to stage
-            `1` (see `app.domain.mahnwesen.send_mahnung`); leave `None`
+            `LegSettings.dunning_new_deadline_days` when advancing to stage
+            `1` (see `app.domain.dunning.send_dunning`); leave `None`
             when advancing to stage `2` (there is no further deadline to
             freeze, and the existing frozen value from stage 1 is left
             untouched by omitting it from the UPDATE).
@@ -515,19 +515,19 @@ def set_item_mahnstufe(
     Returns:
         None.
     """
-    if mahnung_frist_tage is not None:
+    if dunning_deadline_days is not None:
         connection.execute(
             """
             UPDATE billing_run_items
-            SET mahnstufe = ?, letzte_mahnung_am = ?, mahnung_frist_tage = ?
+            SET dunning_level = ?, last_dunning_at = ?, dunning_deadline_days = ?
             WHERE id = ?
             """,
-            (mahnstufe, letzte_mahnung_am, mahnung_frist_tage, item_id),
+            (dunning_level, last_dunning_at, dunning_deadline_days, item_id),
         )
     else:
         connection.execute(
-            "UPDATE billing_run_items SET mahnstufe = ?, letzte_mahnung_am = ? WHERE id = ?",
-            (mahnstufe, letzte_mahnung_am, item_id),
+            "UPDATE billing_run_items SET dunning_level = ?, last_dunning_at = ? WHERE id = ?",
+            (dunning_level, last_dunning_at, item_id),
         )
     connection.commit()
 

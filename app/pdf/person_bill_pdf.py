@@ -5,9 +5,9 @@ quarter, regardless of whether they only consume, only produce, or both
 (project brief follow-up: "jede Partei erhält nur 1 PDF"). The document
 shows, in order:
 
-1. Bezug (consumption) for the whole quarter, as one summed line.
+1. consumption (consumption) for the whole quarter, as one summed line.
 2. Vergütung (production) for the whole quarter, as one summed line.
-3. Verwaltungsaufwand (admin surcharge on consumption) and Kosten
+3. admin fee (admin surcharge on consumption) and Kosten
    paper invoice (flat paper-invoice fee), if either applies.
 4. The net settlement: consumption value minus production value plus the
    two fees above, rounded to the nearest Rappen exactly once for the
@@ -106,16 +106,16 @@ def generate_person_bill_pdf(
         run: The billing run the item belongs to (scoped to one LEG).
         item: The person's netted billing item (provides the
             authoritative, already-rounded `net_amount_rappen`,
-            `verwaltungsaufwand_bezug_rappen`/
-            `verwaltungsaufwand_einspeisung_rappen` and
+            `admin_fee_consumption_rappen`/
+            `admin_fee_feed_in_rappen` and
             `paper_invoice_rappen` used for the QR-bill and payment list).
-            `item.faellig_am` must already be resolved by the caller
+            `item.due_date` must already be resolved by the caller
             (see `app.pdf.export_service.export_billing_run`) -- printed
             verbatim here, never recomputed, so a re-export can never
             print a due date that drifts from the one already frozen in
-            the database and used by `app.domain.mahnwesen`.
+            the database and used by `app.domain.dunning`.
         person_result: The same person's distribution result for the
-            quarter, providing the quarter's Bezug/Vergütung totals shown
+            quarter, providing the quarter's consumption/Vergütung totals shown
             in the document's tables.
         person: The person this document is addressed to.
         leg: The LEG this document is billed under (provides the
@@ -141,7 +141,7 @@ def generate_person_bill_pdf(
         [
             f"Abrechnung Nr. {item.id}",
             f"Datum: {date.today().strftime('%d.%m.%Y')}",
-            f"Zahlbar bis: {date.fromisoformat(item.faellig_am).strftime('%d.%m.%Y')}",
+            f"Zahlbar bis: {date.fromisoformat(item.due_date).strftime('%d.%m.%Y')}",
             f"Kunden-Nr.: {person.formatted_customer_number}",
             f"Periode: {period}",
         ],
@@ -182,8 +182,8 @@ def generate_person_bill_pdf(
         )
 
     if (
-        item.verwaltungsaufwand_bezug_rappen > 0
-        or item.verwaltungsaufwand_einspeisung_rappen > 0
+        item.admin_fee_consumption_rappen > 0
+        or item.admin_fee_feed_in_rappen > 0
         or item.paper_invoice_rappen > 0
     ):
         # Rates read from the item itself, never from `settings` -- these
@@ -191,22 +191,22 @@ def generate_person_bill_pdf(
         # Einstellungen never alters how an already-billed fee appears
         # (see the module docstring of app.domain.billing).
         fee_rows = []
-        if item.verwaltungsaufwand_bezug_rappen > 0:
+        if item.admin_fee_consumption_rappen > 0:
             fee_rows.append(
                 (
                     "Verwaltungsaufwand Bezug",
                     f"{item.consumed_kwh:.3f}",
-                    f"{item.verwaltungsaufwand_bezug_rp_per_kwh:.4f}",
-                    f"{item.verwaltungsaufwand_bezug_rappen / 100:.2f}",
+                    f"{item.admin_fee_consumption_rp_per_kwh:.4f}",
+                    f"{item.admin_fee_consumption_rappen / 100:.2f}",
                 )
             )
-        if item.verwaltungsaufwand_einspeisung_rappen > 0:
+        if item.admin_fee_feed_in_rappen > 0:
             fee_rows.append(
                 (
                     "Verwaltungsaufwand Einspeisung",
                     f"{item.produced_kwh:.3f}",
-                    f"{item.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f}",
-                    f"{item.verwaltungsaufwand_einspeisung_rappen / 100:.2f}",
+                    f"{item.admin_fee_feed_in_rp_per_kwh:.4f}",
+                    f"{item.admin_fee_feed_in_rappen / 100:.2f}",
                 )
             )
         fee_rows.append(
@@ -218,8 +218,8 @@ def generate_person_bill_pdf(
             )
         )
         fee_total_chf = (
-            item.verwaltungsaufwand_bezug_rappen
-            + item.verwaltungsaufwand_einspeisung_rappen
+            item.admin_fee_consumption_rappen
+            + item.admin_fee_feed_in_rappen
             + item.paper_invoice_rappen
         ) / 100
         y = draw_monthly_table(
@@ -257,7 +257,7 @@ def generate_person_bill_pdf(
     if item.is_owed_to_leg:
         # The QR-bill always occupies the bottom 106mm of whatever page it
         # is drawn on. If the content above would run into that reserved
-        # zone (e.g. a prosumer with both a Bezug and a Vergütung table),
+        # zone (e.g. a prosumer with both a consumption and a Vergütung table),
         # start a fresh page for the QR-bill instead of letting the two
         # collide.
         if y < CONTENT_BOTTOM_Y:

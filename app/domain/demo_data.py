@@ -6,8 +6,8 @@ Used both to let the administrator click through the app with realistic
 data, and as the fixture basis for the distribution-engine unit tests (see
 `tests/test_distribution.py`), per the project brief's edge-case list:
 
-- Winter quarter: no local Einspeisung at all (`P(t) = 0` throughout).
-- Summer quarter: Einspeisung sometimes exceeds Bezug (`S(t) =
+- Winter quarter: no local feed-in at all (`P(t) = 0` throughout).
+- Summer quarter: feed-in sometimes exceeds consumption (`S(t) =
   min(P, C) = C`, testing the consumption-limited case) and sometimes falls
   short of it (testing the production-limited case).
 - A MeteringPoint that changes Person mid-quarter (tenant move), exercising
@@ -42,19 +42,19 @@ _DEMO_QR_IBAN = "CH5730000123456789012"
 
 #: Demo admin surcharges and paper-invoice fee, matching realistic
 #: real-world magnitudes (see `app.domain.billing`).
-_DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH = 0.5
-_DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH = 0.5
+_DEMO_ADMIN_FEE_CONSUMPTION_RP_PER_KWH = 0.5
+_DEMO_ADMIN_FEE_FEED_IN_RP_PER_KWH = 0.5
 _DEMO_PAPER_INVOICE_RAPPEN = 200
 
 #: Year used for the generated demo quarters. Chosen in the past so both
 #: quarters are always complete, regardless of when the app is run.
 DEMO_YEAR = 2025
 
-#: (year, quarter) for the winter fixture: no local Einspeisung.
+#: (year, quarter) for the winter fixture: no local feed-in.
 WINTER_QUARTER = (DEMO_YEAR, 4)
 
-#: (year, quarter) for the summer fixture: Einspeisung sometimes exceeds,
-#: sometimes falls short of, Bezug.
+#: (year, quarter) for the summer fixture: feed-in sometimes exceeds,
+#: sometimes falls short of, consumption.
 SUMMER_QUARTER = (DEMO_YEAR, 3)
 
 #: Marker used to detect "demo data already created" and to keep the
@@ -114,7 +114,7 @@ def demo_data_exists(connection: sqlite3.Connection) -> bool:
 
 
 def _consumption_kwh(moment: datetime, scale: float) -> float:
-    """Compute a synthetic Bezug value for one 15-minute interval.
+    """Compute a synthetic consumption value for one 15-minute interval.
 
     Args:
         moment: Interval start.
@@ -128,7 +128,7 @@ def _consumption_kwh(moment: datetime, scale: float) -> float:
 
 
 def _production_kwh(moment: datetime, scale: float, day_index: int) -> float:
-    """Compute a synthetic Einspeisung value for one 15-minute interval.
+    """Compute a synthetic feed-in value for one 15-minute interval.
 
     Follows a bell curve between 06:00 and 20:00, zero outside daylight
     hours, scaled per day by `_SOLAR_DAY_SCALE` cycling through
@@ -158,32 +158,32 @@ def _generate_readings_for_quarter(
     scale: float,
     year: int,
     quarter: int,
-    einspeisung_disabled: bool,
+    feed_in_disabled: bool,
 ) -> list[Reading]:
     """Generate one quarter's worth of 15-minute synthetic readings.
 
     Args:
         metering_point_id: Database id of the MeteringPoint to generate readings for.
-        direction: The MeteringPoint's `direction`, determining Bezug vs.
-            Einspeisung shape.
+        direction: The MeteringPoint's `direction`, determining consumption vs.
+            feed-in shape.
         scale: Per-MeteringPoint scale factor.
         year: Calendar year of the quarter.
         quarter: Quarter number, 1 to 4.
-        einspeisung_disabled: If `True`, Einspeisung-metering points yield
+        feed_in_disabled: If `True`, feed-in-metering points yield
             all-zero readings (used for the winter fixture).
 
     Returns:
         One `Reading` per 15-minute interval in the quarter.
     """
     start, end = quarter_bounds(year, quarter)
-    is_einspeisung = direction == DIRECTION_FEED_IN
+    is_feed_in = direction == DIRECTION_FEED_IN
 
     readings: list[Reading] = []
     moment = start
     while moment < end:
         day_index = (moment.date() - start.date()).days
-        if is_einspeisung:
-            kwh = 0.0 if einspeisung_disabled else _production_kwh(moment, scale, day_index)
+        if is_feed_in:
+            kwh = 0.0 if feed_in_disabled else _production_kwh(moment, scale, day_index)
         else:
             kwh = _consumption_kwh(moment, scale)
         readings.append(
@@ -508,7 +508,7 @@ def _create_demo_assignments(
     )
 
 
-#: Per-MeteringPoint scale factors used for both Bezug and Einspeisung shape.
+#: Per-MeteringPoint scale factors used for both consumption and feed-in shape.
 _METERING_POINT_SCALES = {
     "anna_bezug": 1.0,
     "anna_einspeisung": 4.0,
@@ -542,7 +542,7 @@ def _create_demo_readings(
             scale=scale,
             year=WINTER_QUARTER[0],
             quarter=WINTER_QUARTER[1],
-            einspeisung_disabled=True,
+            feed_in_disabled=True,
         )
         summer_readings = _generate_readings_for_quarter(
             metering_point_id=metering_point.id,
@@ -550,7 +550,7 @@ def _create_demo_readings(
             scale=scale,
             year=SUMMER_QUARTER[0],
             quarter=SUMMER_QUARTER[1],
-            einspeisung_disabled=False,
+            feed_in_disabled=False,
         )
         total += upsert_readings(connection, winter_readings)
         total += upsert_readings(connection, summer_readings)
@@ -578,7 +578,7 @@ def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
     settings.address_city = "Bern"
     settings.address_country = "CH"
     settings.qr_iban = _DEMO_QR_IBAN
-    settings.verwaltungsaufwand_bezug_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH
-    settings.verwaltungsaufwand_einspeisung_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH
+    settings.admin_fee_consumption_rp_per_kwh = _DEMO_ADMIN_FEE_CONSUMPTION_RP_PER_KWH
+    settings.admin_fee_feed_in_rp_per_kwh = _DEMO_ADMIN_FEE_FEED_IN_RP_PER_KWH
     settings.paper_invoice_rappen = _DEMO_PAPER_INVOICE_RAPPEN
     settings_repo.update_settings(connection, settings)

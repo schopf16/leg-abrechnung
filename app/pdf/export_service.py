@@ -79,7 +79,7 @@ def export_billing_run_documents(
     persons = {p.id: p for p in person_repo.list_all(connection)}
     leg = leg_repo.get(connection, run.leg_id)
     settings = settings_repo.get_settings(connection)
-    # Monthly Bezug/Vergütung breakdowns are not persisted (only the final
+    # Monthly consumption/Vergütung breakdowns are not persisted (only the final
     # netted amount is); recomputed here from the same live readings the
     # run itself was built from.
     distribution = compute_quarter_distribution(
@@ -110,12 +110,12 @@ def export_billing_run_documents(
         # Freeze the due date on first export only -- a re-export (e.g. to
         # fix a typo in the LEG address) must keep printing the same date
         # already communicated to the person and already relied upon by
-        # app.domain.mahnwesen, never push it back out by another
+        # app.domain.dunning, never push it back out by another
         # PAYMENT_TERM. `item` is updated in-memory so the PDF below
         # prints exactly the value now persisted, whichever branch ran.
-        if item.faellig_am is None:
-            item.faellig_am = (date.today() + PAYMENT_TERM).isoformat()
-            billing_run_repo.set_item_faellig_am(connection, item.id, item.faellig_am)
+        if item.due_date is None:
+            item.due_date = (date.today() + PAYMENT_TERM).isoformat()
+            billing_run_repo.set_item_due_date(connection, item.id, item.due_date)
 
         try:
             generate_person_bill_pdf(

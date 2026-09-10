@@ -21,7 +21,7 @@ from app.models import metering_point as metering_point_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models import assignment as assignment_repo
 from app.models.person import Person
-from app.models.person_offboarding import GRUND_OPTIONS, STEPS, PersonOffboarding
+from app.models.person_offboarding import REASON_OPTIONS, STEPS, PersonOffboarding
 
 
 def _parse_date(value: str) -> Optional[date]:
@@ -58,7 +58,7 @@ def open_offboarding_form(
     """
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
         ui.label(f"Austritt/Ausschluss: {person.display_name}").classes("text-lg font-bold")
-        ui.label(f"Grund: {GRUND_OPTIONS.get(offboarding.grund, offboarding.grund)}").classes(
+        ui.label(f"Grund: {REASON_OPTIONS.get(offboarding.reason, offboarding.reason)}").classes(
             "text-caption text-grey-6"
         )
         ui.label(

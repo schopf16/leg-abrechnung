@@ -1,4 +1,4 @@
-"""Tests for app.models.account_entry (Debitoren ledger)."""
+"""Tests for app.models.account_entry (receivables ledger)."""
 
 from app.models import account_entry as account_entry_repo
 from app.models import billing_run as billing_run_repo
@@ -48,7 +48,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
+                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
             )
         ],
@@ -75,14 +75,14 @@ def test_create_and_list_for_person_round_trip(db):
     assert entry.bank_transaction_id is None
 
 
-def test_saldo_is_zero_with_no_history(db):
+def test_balance_is_zero_with_no_history(db):
     person_id = _person(db)
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 0
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 0
     assert account_entry_repo.get_all_saldi(db).get(person_id, 0) == 0
 
 
-def test_saldo_combines_invoices_and_payments(db):
-    """A person owes 10000 Rappen from an invoice, pays 6000 -- Saldo
+def test_balance_combines_invoices_and_payments(db):
+    """A person owes 10000 Rappen from an invoice, pays 6000 -- balance
     should be the remaining 4000 owed to the LEG (positive, internal
     convention)."""
     person_id = _person(db)
@@ -92,13 +92,13 @@ def test_saldo_combines_invoices_and_payments(db):
         booked_at="2026-02-01", billing_run_item_id=item_id,
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 4_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 4_000
     assert account_entry_repo.get_all_saldi(db)[person_id] == 4_000
 
 
-def test_saldo_reflects_overpayment_as_negative_internal_value(db):
+def test_balance_reflects_overpayment_as_negative_internal_value(db):
     """Paying more than invoiced must not be special-cased -- the excess
-    simply shows as a negative (LEG-owes-person) internal Saldo."""
+    simply shows as a negative (LEG-owes-person) internal balance."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -106,13 +106,13 @@ def test_saldo_reflects_overpayment_as_negative_internal_value(db):
         booked_at="2026-02-01", billing_run_item_id=item_id,
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == -5_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == -5_000
 
 
 def test_double_payment_of_the_same_invoice_is_never_blocked(db):
     """Two separate incoming payments against the same billing_run_item_id
     must both be recorded -- there is deliberately no "one payment per
-    invoice" constraint (see the Debitoren plan's explicit scenario)."""
+    invoice" constraint (see the receivables plan's explicit scenario)."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -125,35 +125,35 @@ def test_double_payment_of_the_same_invoice_is_never_blocked(db):
     )
 
     assert len(account_entry_repo.list_for_person(db, person_id)) == 2
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == -10_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == -10_000
 
 
-def test_payout_reduces_a_negative_saldo_back_toward_zero(db):
+def test_payout_reduces_a_negative_balance_back_toward_zero(db):
     """The LEG owes the person 8000 (credit); executing the payout must
-    move the Saldo back to 0, so a payout is recorded POSITIVE."""
+    move the balance back to 0, so a payout is recorded POSITIVE."""
     person_id = _person(db)
     _run_id, _item_id = _billing_item(db, person_id, net_amount_rappen=-8_000)
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == -8_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == -8_000
 
     account_entry_repo.create(
         db, person_id=person_id, kind="auszahlung", amount_rappen=8_000,
         booked_at="2026-02-01",
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 0
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 0
 
 
-def test_delete_removes_an_entry_and_updates_saldo(db):
+def test_delete_removes_an_entry_and_updates_balance(db):
     person_id = _person(db)
     entry_id = account_entry_repo.create(
         db, person_id=person_id, kind="korrektur", amount_rappen=1_000, booked_at="2026-01-01",
     )
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 1_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 1_000
 
     account_entry_repo.delete(db, entry_id)
 
     assert account_entry_repo.list_for_person(db, person_id) == []
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 0
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 0
 
 
 def test_get_all_saldi_covers_multiple_persons_independently(db):
@@ -178,7 +178,7 @@ def test_get_remaining_for_item_with_no_payments_is_the_full_amount(db):
 def test_get_remaining_for_item_subtracts_only_payments_linked_to_it(db):
     """A payment linked to a *different* item must not reduce this item's
     own remaining amount, even for the same person -- see Finding #1 of
-    the review this fixes (a Mahnung's QR-bill must never overcharge for
+    the review this fixes (a dunning notice's QR-bill must never overcharge for
     an item already partially covered)."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
@@ -198,7 +198,7 @@ def test_get_remaining_for_item_subtracts_only_payments_linked_to_it(db):
 
 def test_get_remaining_for_item_never_goes_negative(db):
     """An overshooting payment against one specific item becomes a general
-    credit on the person's Saldo, never a negative 'remaining' here."""
+    credit on the person's balance, never a negative 'remaining' here."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -220,5 +220,5 @@ def test_create_with_commit_false_is_visible_within_the_same_connection(db):
         booked_at="2026-01-01", commit=False,
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person_id) == 1_000
+    assert account_entry_repo.get_balance_rappen(db, person_id) == 1_000
     db.commit()

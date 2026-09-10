@@ -98,7 +98,7 @@ def draw_meta_block(canvas: Canvas, lines: list[str]) -> None:
 
 
 def draw_title(canvas: Canvas, title: str, y_mm_from_top: float = 90) -> float:
-    """Draw the document title (e.g. "Rechnung" or "Gutschrift").
+    """Draw the document title (e.g. "Rechnung" or "credit note").
 
     Args:
         canvas: Target canvas.
@@ -145,10 +145,10 @@ def draw_monthly_table(
     Args:
         canvas: Target canvas.
         top_y: Y-coordinate (points from page bottom) of the section's top edge.
-        section_title: Section heading, e.g. "Bezug" or "Vergütung (Produktion)".
+        section_title: Section heading, e.g. "consumption" or "Vergütung (Produktion)".
         rows: `(month_label, kwh_text, price_text, amount_text)` tuples,
             one per calendar month of the billing period.
-        subtotal_label: Label for the subtotal row, e.g. "Zwischensumme Bezug".
+        subtotal_label: Label for the subtotal row, e.g. "Zwischensumme consumption".
         subtotal_value: Formatted subtotal amount, e.g. "123.45 CHF". This
             is a *display* figure only -- see the module docstring of
             `app.domain.billing` for why rounding never happens here.

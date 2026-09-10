@@ -191,7 +191,7 @@ def assignments_page() -> None:
                     A `{metering_point_id: label}` dict for `ui.select`.
                 """
                 return {
-                    mp.id: f"{mp.designation} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
+                    mp.id: f"{mp.designation} ({'Bezug' if mp.is_consumption else 'Einspeisung'})"
                     for mp in metering_points
                     if site_id is None or mp.site_id == site_id
                 }

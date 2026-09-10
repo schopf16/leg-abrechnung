@@ -278,7 +278,7 @@ def site_detail_page(site_id: int) -> None:
                     {
                         "id": mp.id,
                         "designation": mp.designation,
-                        "direction": "Bezug" if mp.is_bezug else "Einspeisung",
+                        "direction": "Bezug" if mp.is_consumption else "Einspeisung",
                         "leg": legs[mp.leg_id].name if mp.leg_id in legs else "-",
                         "person": person_display.get(mp.id, ("-", False))[0],
                         "person_is_future": person_display.get(mp.id, ("-", False))[1],

@@ -35,7 +35,7 @@ def _type_label(item) -> str:
         item: A `BillingRunItem`.
 
     Returns:
-        "Rechnung" if the person owes the LEG, "Gutschrift" if the
+        "Rechnung" if the person owes the LEG, "credit note" if the
         LEG owes the person, "Ausgeglichen" if the net is zero.
     """
     if item.is_owed_to_leg:
@@ -45,14 +45,14 @@ def _type_label(item) -> str:
     return "Ausgeglichen"
 
 
-@ui.page("/abrechnung")
-def abrechnung_page() -> None:
+@ui.page("/billing")
+def billing_page() -> None:
     """Render the billing run page.
 
     Returns:
         None.
     """
-    with page_frame("/abrechnung", "Rechnungslauf"):
+    with page_frame("/billing", "Rechnungslauf"):
         ui.label(
             "Berechnet die lokale Verteilung und erzeugt Rechnungen/"
             "Gutschriften je Person für ein Quartal, innerhalb einer LEG. "
@@ -259,7 +259,7 @@ def abrechnung_page() -> None:
                         ui.label(f"Rechnungsliste (CSV): {export_result.invoice_list_path.name}")
                     if export_result.payout_list_path:
                         ui.label(f"Auszahlungsliste (CSV): {export_result.payout_list_path.name}")
-                    ui.link("→ Debitoren (Zahlungen zuordnen)", "/debitoren")
+                    ui.link("→ Debitoren (Zahlungen zuordnen)", "/receivables")
                     for error in export_result.errors:
                         ui.label(f"⚠ {error}").classes("text-negative")
 
@@ -337,7 +337,7 @@ def abrechnung_page() -> None:
                             with connection_scope() as connection:
                                 await bulk_send.resend_invoice_email(
                                     connection, config, run, item,
-                                    settings.rechnung_email_betreff, settings.rechnung_email_text,
+                                    settings.invoice_email_subject, settings.invoice_email_body,
                                 )
                         except (
                             ValueError, graph_client.GraphAuthError, graph_client.GraphApiError,
@@ -371,11 +371,11 @@ def abrechnung_page() -> None:
                     f"Rechnungen per E-Mail versenden -- {leg_options.get(run.leg_id, '?')}, "
                     f"Q{run.period_quarter} {run.period_year}"
                 ).classes("text-lg font-bold")
-                subject_input = ui.input("Betreff", value=settings.rechnung_email_betreff).classes(
+                subject_input = ui.input("Betreff", value=settings.invoice_email_subject).classes(
                     "w-full"
                 )
                 body_textarea = ui.textarea(
-                    "Nachricht", value=settings.rechnung_email_text
+                    "Nachricht", value=settings.invoice_email_body
                 ).classes("w-full").props("rows=8")
                 ui.label(f"Verfügbare Platzhalter: {_INVOICE_PLACEHOLDER_HINT}").classes(
                     "text-caption text-grey-6"
@@ -555,11 +555,11 @@ def abrechnung_page() -> None:
                     ui.label(f"Energiepreis: {settings.price_rp_per_kwh:.2f} Rp./kWh")
                     ui.label(
                         f"Verwaltungsaufwand Bezug: "
-                        f"{settings.verwaltungsaufwand_bezug_rp_per_kwh:.4f} Rp./kWh"
+                        f"{settings.admin_fee_consumption_rp_per_kwh:.4f} Rp./kWh"
                     )
                     ui.label(
                         f"Verwaltungsaufwand Einspeisung: "
-                        f"{settings.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f} Rp./kWh"
+                        f"{settings.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh"
                     )
                     ui.label(
                         f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF"

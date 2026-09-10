@@ -1,17 +1,17 @@
-"""Builds the chronological ledger shown in a Person's Debitoren detail
-view: every invoice/credit issued, every Mahnung sent, and every payment/
+"""Builds the chronological ledger shown in a Person's receivables detail
+view: every invoice/credit issued, every dunning notice sent, and every payment/
 payout/correction booked, merged into one timeline that explains how the
-current Saldo actually came about -- not just the final number.
+current balance actually came about -- not just the final number.
 
 Sign convention: `amount_rappen` on a movement entry (`rechnung`,
 `gutschrift`, `zahlungseingang`, `auszahlung`, `korrektur`) uses the exact
 same internal convention as `BillingRunItem.net_amount_rappen`/
 `AccountEntry.amount_rappen` (positive = increases what the person owes
 the LEG) -- no second convention invented here, so the GUI's existing
-single negate-for-display rule (see `app.gui.pages.debitoren`) applies
-identically to every line, not just the aggregate Saldo. A `mahnung` entry
-is purely informational (sending a Mahnung does not itself move the
-Saldo), so its `amount_rappen` is always `None`.
+single negate-for-display rule (see `app.gui.pages.receivables`) applies
+identically to every line, not just the aggregate balance. A `mahnung` entry
+is purely informational (sending a dunning notice does not itself move the
+balance), so its `amount_rappen` is always `None`.
 """
 
 from dataclasses import dataclass
@@ -21,13 +21,13 @@ from typing import Optional
 from app.models import account_entry as account_entry_repo
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
-from app.models import mahnung_log as mahnung_log_repo
+from app.models import dunning_log as dunning_log_repo
 from app.pdf.person_bill_pdf import PAYMENT_TERM
 
 
 @dataclass
 class LedgerEntry:
-    """One event in a person's Debitoren history.
+    """One event in a person's receivables history.
 
     Attributes:
         entry_date: ISO date this event is dated to, for sorting/display.
@@ -36,7 +36,7 @@ class LedgerEntry:
         description: Human-readable (German) summary of this event.
         amount_rappen: Signed amount in internal convention (see module
             docstring), or `None` for a purely informational entry (a
-            `mahnung` send -- it does not move the Saldo by itself).
+            `mahnung` send -- it does not move the balance by itself).
         billing_run_item_id: The invoice/credit this event is about or
             refers to, if any -- lets the GUI offer "Details ansehen"
             (see `app.gui.invoice_detail`) directly from this line.
@@ -57,16 +57,16 @@ _ACCOUNT_ENTRY_LABELS = {
 
 
 def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
-    """Build one person's full Debitoren timeline, oldest first.
+    """Build one person's full receivables timeline, oldest first.
 
     Args:
         connection: Open SQLite connection.
         person_id: Primary key of the person.
 
     Returns:
-        Every invoice/credit, Mahnung and payment/payout/correction
+        Every invoice/credit, dunning notice and payment/payout/correction
         involving this person, sorted by `entry_date` (ties broken in
-        insertion order: invoices, then Mahnungen, then account entries).
+        insertion order: invoices, then dunning notices, then account entries).
     """
     entries: list[LedgerEntry] = []
 
@@ -76,15 +76,15 @@ def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
         leg_name = leg.name if leg else "?"
         period = f"Q{run.period_quarter}/{run.period_year}" if run else "?"
 
-        if item.faellig_am:
-            issue_date = (date.fromisoformat(item.faellig_am) - PAYMENT_TERM).isoformat()
+        if item.due_date:
+            issue_date = (date.fromisoformat(item.due_date) - PAYMENT_TERM).isoformat()
         else:
             issue_date = item.created_at[:10]
 
         if item.is_owed_to_leg:
             kind, label = "rechnung", "Rechnung gestellt"
         elif item.is_owed_by_leg:
-            kind, label = "gutschrift", "Gutschrift erstellt"
+            kind, label = "credit_note", "Gutschrift erstellt"
         else:
             kind, label = "rechnung", "Abrechnung (kein Saldo)"
 
@@ -98,15 +98,15 @@ def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
             )
         )
 
-    for log in mahnung_log_repo.list_for_person(connection, person_id):
+    for log in dunning_log_repo.list_for_person(connection, person_id):
         entries.append(
             LedgerEntry(
                 entry_date=log.sent_at[:10],
                 kind="mahnung",
                 description=(
-                    f"{log.stufe}. Mahnung gesendet "
+                    f"{log.level}. Mahnung gesendet "
                     f"({len(log.billing_run_item_ids)} Position(en), "
-                    f"CHF {log.betrag_rappen / 100:.2f} offen)"
+                    f"CHF {log.amount_rappen / 100:.2f} offen)"
                 ),
                 amount_rappen=None,
             )

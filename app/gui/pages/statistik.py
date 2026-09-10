@@ -1,6 +1,6 @@
 """Statistik page: trend charts over the last 12 months.
 
-Two independent views: energy flow (Bezug/Einspeisung/Saldo, optionally
+Two independent views: energy flow (consumption/feed-in/balance, optionally
 scoped to one LEG) and master-data growth (cumulative persons/
 metering points/sites/substation areas/LEGs), both aggregated by
 `app.domain.statistics`.
@@ -67,9 +67,9 @@ def statistik_page() -> None:
                     "xAxis": {"type": "category", "data": [_month_label(m.year, m.month) for m in monthly]},
                     "yAxis": {"type": "value", "name": "kWh"},
                     "series": [
-                        {"name": "Bezug", "type": "bar", "data": [m.bezug_kwh for m in monthly]},
-                        {"name": "Einspeisung", "type": "bar", "data": [m.einspeisung_kwh for m in monthly]},
-                        {"name": "Saldo", "type": "line", "data": [round(m.saldo_kwh, 3) for m in monthly]},
+                        {"name": "Bezug", "type": "bar", "data": [m.consumption_kwh for m in monthly]},
+                        {"name": "Einspeisung", "type": "bar", "data": [m.feed_in_kwh for m in monthly]},
+                        {"name": "Saldo", "type": "line", "data": [round(m.balance_kwh, 3) for m in monthly]},
                     ],
                 }
             )

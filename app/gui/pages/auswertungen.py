@@ -21,9 +21,9 @@ from app.models import settings as settings_repo
 CATEGORY_LABELS = {
     "assignment_overlap": "Überlappende Zuordnung",
     "assignment_gap": "Lücke in Zuordnung",
-    "messdaten_luecke": "Lücke in Messdaten",
-    "leg_nicht_zugeordnet": "Messpunkt ohne LEG",
-    "aufnahme_ueberfaellig": "Aufnahme überfällig",
+    "reading_gap": "Lücke in Messdaten",
+    "leg_not_assigned": "Messpunkt ohne LEG",
+    "onboarding_overdue": "Aufnahme überfällig",
 }
 
 
@@ -34,7 +34,7 @@ def _type_label(item) -> str:
         item: A `BillingRunItem`.
 
     Returns:
-        "Rechnung" if the person owes the LEG, "Gutschrift" if the
+        "Rechnung" if the person owes the LEG, "credit note" if the
         LEG owes the person, "Ausgeglichen" if the net is zero.
     """
     if item.is_owed_to_leg:
@@ -121,8 +121,8 @@ def auswertungen_page() -> None:
                         items = compute_billing_items(
                             distribution,
                             settings.price_rp_per_kwh,
-                            settings.verwaltungsaufwand_bezug_rp_per_kwh,
-                            settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
+                            settings.admin_fee_consumption_rp_per_kwh,
+                            settings.admin_fee_feed_in_rp_per_kwh,
                             settings.paper_invoice_rappen,
                             paper_invoice_by_person,
                         )

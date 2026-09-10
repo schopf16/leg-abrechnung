@@ -305,7 +305,7 @@ INVOICE_EXTRA_PLACEHOLDERS = ("leg", "quartal", "jahr", "betrag")
 def invoice_skip_reason(person: Optional[Person], item: BillingRunItem) -> Optional[str]:
     """Decide whether a billing run item should be skipped, and why.
 
-    Also used by the GUI (see `app.gui.pages.abrechnung`) to preview what
+    Also used by the GUI (see `app.gui.pages.billing`) to preview what
     a bulk send would do before actually sending anything.
 
     Args:

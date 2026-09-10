@@ -30,11 +30,11 @@ from app.models.person_onboarding import STEPS, PersonOnboarding
 #: `None` means "no filter, show everything".
 STEP_FILTER_OPTIONS: dict[str | None, str] = {
     None: "Alle Schritte",
-    "angemeldet_am": "Anmeldung bei uns steht noch aus",
-    "leg_zugewiesen_am": "Einteilung in LEG steht noch aus",
-    "vertrag_unterzeichnet_am": "Vertrag noch nicht unterschrieben",
-    "bkw_angemeldet_am": "Noch nicht bei der BKW angemeldet",
-    "bkw_bestaetigt_am": "Noch nicht von der BKW bestätigt",
+    "registered_at": "Anmeldung bei uns steht noch aus",
+    "leg_assigned_at": "Einteilung in LEG steht noch aus",
+    "contract_signed_at": "Vertrag noch nicht unterschrieben",
+    "bkw_registered_at": "Noch nicht bei der BKW angemeldet",
+    "bkw_confirmed_at": "Noch nicht von der BKW bestätigt",
 }
 
 
@@ -51,7 +51,7 @@ def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int
     Args:
         onboarding: Tracker to convert.
         person: The tracked person.
-        threshold_days: Current `onboarding_ueberfaellig_tage` setting, to
+        threshold_days: Current `onboarding_overdue_days` setting, to
             flag an overdue step on the printout too.
 
     Returns:
@@ -83,14 +83,14 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-@ui.page("/aufnahmen")
-def aufnahmen_page() -> None:
+@ui.page("/onboardings")
+def onboardings_page() -> None:
     """Render the Aufnahmen (onboarding tracking) page.
 
     Returns:
         None.
     """
-    with page_frame("/aufnahmen", "Aufnahmen"):
+    with page_frame("/onboardings", "Aufnahmen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Fortschritt interessierter Personen durch die fünf Schritte "
@@ -143,7 +143,7 @@ def aufnahmen_page() -> None:
             Args:
                 onboarding: Tracker to render.
                 person: The tracked person.
-                threshold_days: Current `onboarding_ueberfaellig_tage` setting.
+                threshold_days: Current `onboarding_overdue_days` setting.
 
             Returns:
                 None.
@@ -196,7 +196,7 @@ def aufnahmen_page() -> None:
                     else person_onboarding_repo.list_in_progress(connection)
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
-                threshold_days = settings_repo.get_settings(connection).onboarding_ueberfaellig_tage
+                threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
             step_attr = step_filter.value
             if step_attr is not None:
                 # A tracker matches only while that one step's own date is
@@ -297,13 +297,13 @@ def aufnahmen_page() -> None:
                         error_label.text = "Bitte eine Person wählen."
                         return
                     try:
-                        angemeldet_am = _parse_date(start_date.value)
+                        registered_at = _parse_date(start_date.value)
                     except ValueError:
                         error_label.text = "Ungültiges Datum."
                         return
                     with connection_scope() as connection:
                         person_onboarding_repo.start_for_person(
-                            connection, person_select.value, angemeldet_am=angemeldet_am
+                            connection, person_select.value, registered_at=registered_at
                         )
                     dialog.close()
                     safe_notify("Aufnahme gestartet.", type="positive")

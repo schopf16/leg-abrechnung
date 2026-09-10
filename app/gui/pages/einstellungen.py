@@ -19,14 +19,14 @@ from app.models.settings import LegSettings
 #: Shown as a hint above the invoice email template fields -- Person
 #: placeholders plus the invoice-only context ones from
 #: `app.emailing.bulk_send._invoice_placeholder_values`.
-_RECHNUNG_PLACEHOLDER_HINT = ", ".join(
+_INVOICE_PLACEHOLDER_HINT = ", ".join(
     f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "leg", "quartal", "jahr", "betrag")
 )
 
-#: Shown as a hint above the Mahnung template fields -- Person
-#: placeholders plus the Mahnung-only context ones from
-#: `app.domain.mahnwesen`.
-_MAHNUNG_PLACEHOLDER_HINT = ", ".join(
+#: Shown as a hint above the dunning notice template fields -- Person
+#: placeholders plus the dunning notice-only context ones from
+#: `app.domain.dunning`.
+_DUNNING_PLACEHOLDER_HINT = ", ".join(
     f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "betrag", "neue_frist")
 )
 
@@ -75,16 +75,16 @@ def einstellungen_page() -> None:
                 step=0.1,
                 format="%.2f",
             ).classes("w-full")
-            verwaltungsaufwand_bezug = ui.number(
+            admin_fee_consumption = ui.number(
                 "Verwaltungsaufwand Bezug (Rp./kWh)",
-                value=current.verwaltungsaufwand_bezug_rp_per_kwh,
+                value=current.admin_fee_consumption_rp_per_kwh,
                 min=0,
                 step=0.01,
                 format="%.4f",
             ).classes("w-full")
-            verwaltungsaufwand_einspeisung = ui.number(
+            admin_fee_feed_in = ui.number(
                 "Verwaltungsaufwand Einspeisung (Rp./kWh)",
-                value=current.verwaltungsaufwand_einspeisung_rp_per_kwh,
+                value=current.admin_fee_feed_in_rp_per_kwh,
                 min=0,
                 step=0.01,
                 format="%.4f",
@@ -107,10 +107,10 @@ def einstellungen_page() -> None:
                 if price.value is None or price.value < 0:
                     error_label.text = "Preis muss positiv sein."
                     return
-                if verwaltungsaufwand_bezug.value is None or verwaltungsaufwand_bezug.value < 0:
+                if admin_fee_consumption.value is None or admin_fee_consumption.value < 0:
                     error_label.text = "Verwaltungsaufwand Bezug muss positiv sein."
                     return
-                if verwaltungsaufwand_einspeisung.value is None or verwaltungsaufwand_einspeisung.value < 0:
+                if admin_fee_feed_in.value is None or admin_fee_feed_in.value < 0:
                     error_label.text = "Verwaltungsaufwand Einspeisung muss positiv sein."
                     return
                 if paper_invoice_fee.value is None or paper_invoice_fee.value < 0:
@@ -128,23 +128,23 @@ def einstellungen_page() -> None:
                     address_country=country.value.strip() or "CH",
                     qr_iban=normalize_iban(qr_iban.value),
                     price_rp_per_kwh=float(price.value),
-                    verwaltungsaufwand_bezug_rp_per_kwh=float(verwaltungsaufwand_bezug.value),
-                    verwaltungsaufwand_einspeisung_rp_per_kwh=float(verwaltungsaufwand_einspeisung.value),
+                    admin_fee_consumption_rp_per_kwh=float(admin_fee_consumption.value),
+                    admin_fee_feed_in_rp_per_kwh=float(admin_fee_feed_in.value),
                     paper_invoice_rappen=round(float(paper_invoice_fee.value) * 100),
                     extra_backup_dir=current.extra_backup_dir,
                     metering_point_country=current.metering_point_country,
                     metering_point_identifier=current.metering_point_identifier,
                     web_registration_cursor=current.web_registration_cursor,
-                    onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
+                    onboarding_overdue_days=current.onboarding_overdue_days,
                     leg_founding_min_persons=current.leg_founding_min_persons,
-                    rechnung_email_betreff=current.rechnung_email_betreff,
-                    rechnung_email_text=current.rechnung_email_text,
-                    mahnung_neue_frist_tage=current.mahnung_neue_frist_tage,
-                    mahnung_bagatellgrenze_rappen=current.mahnung_bagatellgrenze_rappen,
-                    mahnung1_email_betreff=current.mahnung1_email_betreff,
-                    mahnung1_email_text=current.mahnung1_email_text,
-                    mahnung2_email_betreff=current.mahnung2_email_betreff,
-                    mahnung2_email_text=current.mahnung2_email_text,
+                    invoice_email_subject=current.invoice_email_subject,
+                    invoice_email_body=current.invoice_email_body,
+                    dunning_new_deadline_days=current.dunning_new_deadline_days,
+                    dunning_minimum_rappen=current.dunning_minimum_rappen,
+                    dunning1_email_subject=current.dunning1_email_subject,
+                    dunning1_email_body=current.dunning1_email_body,
+                    dunning2_email_subject=current.dunning2_email_subject,
+                    dunning2_email_body=current.dunning2_email_body,
                     updated_at="",
                 )
                 with connection_scope() as connection:
@@ -209,9 +209,9 @@ def einstellungen_page() -> None:
             "und auf der Übersicht als überfällig gemeldet wird."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
-            onboarding_ueberfaellig_tage = ui.number(
+            onboarding_overdue_days = ui.number(
                 "Überfällig nach (Tagen)",
-                value=current.onboarding_ueberfaellig_tage,
+                value=current.onboarding_overdue_days,
                 min=1,
                 step=1,
                 format="%.0f",
@@ -225,14 +225,14 @@ def einstellungen_page() -> None:
                     None.
                 """
                 if (
-                    onboarding_ueberfaellig_tage.value is None
-                    or onboarding_ueberfaellig_tage.value < 1
+                    onboarding_overdue_days.value is None
+                    or onboarding_overdue_days.value < 1
                 ):
                     onboarding_error.text = "Muss mindestens 1 Tag sein."
                     return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
-                    settings.onboarding_ueberfaellig_tage = int(onboarding_ueberfaellig_tage.value)
+                    settings.onboarding_overdue_days = int(onboarding_overdue_days.value)
                     settings_repo.update_settings(connection, settings)
                 onboarding_error.text = ""
                 ui.notify("Aufnahmeprozess-Einstellung gespeichert.", type="positive")
@@ -290,35 +290,35 @@ def einstellungen_page() -> None:
             "„Rechnungslauf“) -- einmal hier hinterlegt, kein erneutes "
             "Eintippen pro Quartal nötig, für einen einzelnen Lauf dort "
             "trotzdem noch anpassbar. Verfügbare Platzhalter: "
-            f"{_RECHNUNG_PLACEHOLDER_HINT}."
+            f"{_INVOICE_PLACEHOLDER_HINT}."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
-            rechnung_betreff = ui.input(
-                "Betreff", value=current.rechnung_email_betreff
+            invoice_subject = ui.input(
+                "Betreff", value=current.invoice_email_subject
             ).classes("w-full")
-            rechnung_text = ui.textarea(
-                "Nachricht", value=current.rechnung_email_text
+            invoice_body = ui.textarea(
+                "Nachricht", value=current.invoice_email_body
             ).classes("w-full").props("rows=6")
-            rechnung_email_error = ui.label("").classes("text-negative")
+            invoice_email_error = ui.label("").classes("text-negative")
 
-            def save_rechnung_email() -> None:
+            def save_invoice_email() -> None:
                 """Validate and persist the invoice email template.
 
                 Returns:
                     None.
                 """
-                if not rechnung_betreff.value.strip():
-                    rechnung_email_error.text = "Betreff darf nicht leer sein."
+                if not invoice_subject.value.strip():
+                    invoice_email_error.text = "Betreff darf nicht leer sein."
                     return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
-                    settings.rechnung_email_betreff = rechnung_betreff.value.strip()
-                    settings.rechnung_email_text = rechnung_text.value
+                    settings.invoice_email_subject = invoice_subject.value.strip()
+                    settings.invoice_email_body = invoice_body.value
                     settings_repo.update_settings(connection, settings)
-                rechnung_email_error.text = ""
+                invoice_email_error.text = ""
                 ui.notify("E-Mail-Vorlage gespeichert.", type="positive")
 
-            ui.button("Speichern", on_click=save_rechnung_email).classes("mt-2")
+            ui.button("Speichern", on_click=save_invoice_email).classes("mt-2")
 
             ui.separator().classes("my-4")
 
@@ -363,60 +363,60 @@ def einstellungen_page() -> None:
             "Frist, die 2. Mahnung löst die Ausschluss-Prüfung aus (siehe "
             "„Debitoren“/„Mahnwesen“) -- keine Mahngebühr auf irgendeiner "
             "Stufe. Verfügbare Platzhalter: "
-            f"{_MAHNUNG_PLACEHOLDER_HINT}."
+            f"{_DUNNING_PLACEHOLDER_HINT}."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
-            mahnung_neue_frist_tage = ui.number(
+            dunning_new_deadline_days = ui.number(
                 "Neue Zahlungsfrist nach 1. Mahnung (Tage)",
-                value=current.mahnung_neue_frist_tage, min=1, step=1, format="%.0f",
+                value=current.dunning_new_deadline_days, min=1, step=1, format="%.0f",
             ).classes("w-full")
-            mahnung_bagatellgrenze = ui.number(
+            dunning_minimum = ui.number(
                 "Bagatellgrenze (CHF, darunter keine Mahnung)",
-                value=current.mahnung_bagatellgrenze_rappen / 100, min=0, step=1, format="%.2f",
+                value=current.dunning_minimum_rappen / 100, min=0, step=1, format="%.2f",
             ).classes("w-full")
 
             ui.label("1. Mahnung").classes("font-bold mt-3")
-            mahnung1_betreff = ui.input("Betreff", value=current.mahnung1_email_betreff).classes("w-full")
-            mahnung1_text = ui.textarea("Nachricht", value=current.mahnung1_email_text).classes(
+            dunning1_subject = ui.input("Betreff", value=current.dunning1_email_subject).classes("w-full")
+            dunning1_body = ui.textarea("Nachricht", value=current.dunning1_email_body).classes(
                 "w-full"
             ).props("rows=6")
 
             ui.label("2. Mahnung").classes("font-bold mt-3")
-            mahnung2_betreff = ui.input("Betreff", value=current.mahnung2_email_betreff).classes("w-full")
-            mahnung2_text = ui.textarea("Nachricht", value=current.mahnung2_email_text).classes(
+            dunning2_subject = ui.input("Betreff", value=current.dunning2_email_subject).classes("w-full")
+            dunning2_body = ui.textarea("Nachricht", value=current.dunning2_email_body).classes(
                 "w-full"
             ).props("rows=6")
 
-            mahnung_error = ui.label("").classes("text-negative")
+            dunning_error = ui.label("").classes("text-negative")
 
-            def save_mahnwesen() -> None:
-                """Validate and persist the Mahnwesen settings and templates.
+            def save_dunning() -> None:
+                """Validate and persist the dunning settings and templates.
 
                 Returns:
                     None.
                 """
-                if mahnung_neue_frist_tage.value is None or mahnung_neue_frist_tage.value < 1:
-                    mahnung_error.text = "Neue Zahlungsfrist muss mindestens 1 Tag sein."
+                if dunning_new_deadline_days.value is None or dunning_new_deadline_days.value < 1:
+                    dunning_error.text = "Neue Zahlungsfrist muss mindestens 1 Tag sein."
                     return
-                if mahnung_bagatellgrenze.value is None or mahnung_bagatellgrenze.value < 0:
-                    mahnung_error.text = "Bagatellgrenze muss positiv sein."
+                if dunning_minimum.value is None or dunning_minimum.value < 0:
+                    dunning_error.text = "Bagatellgrenze muss positiv sein."
                     return
-                if not mahnung1_betreff.value.strip() or not mahnung2_betreff.value.strip():
-                    mahnung_error.text = "Betreff darf nicht leer sein."
+                if not dunning1_subject.value.strip() or not dunning2_subject.value.strip():
+                    dunning_error.text = "Betreff darf nicht leer sein."
                     return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
-                    settings.mahnung_neue_frist_tage = int(mahnung_neue_frist_tage.value)
-                    settings.mahnung_bagatellgrenze_rappen = round(mahnung_bagatellgrenze.value * 100)
-                    settings.mahnung1_email_betreff = mahnung1_betreff.value.strip()
-                    settings.mahnung1_email_text = mahnung1_text.value
-                    settings.mahnung2_email_betreff = mahnung2_betreff.value.strip()
-                    settings.mahnung2_email_text = mahnung2_text.value
+                    settings.dunning_new_deadline_days = int(dunning_new_deadline_days.value)
+                    settings.dunning_minimum_rappen = round(dunning_minimum.value * 100)
+                    settings.dunning1_email_subject = dunning1_subject.value.strip()
+                    settings.dunning1_email_body = dunning1_body.value
+                    settings.dunning2_email_subject = dunning2_subject.value.strip()
+                    settings.dunning2_email_body = dunning2_body.value
                     settings_repo.update_settings(connection, settings)
-                mahnung_error.text = ""
+                dunning_error.text = ""
                 ui.notify("Mahnwesen-Einstellungen gespeichert.", type="positive")
 
-            ui.button("Speichern", on_click=save_mahnwesen).classes("mt-2")
+            ui.button("Speichern", on_click=save_dunning).classes("mt-2")
 
         ui.separator().classes("my-6")
 

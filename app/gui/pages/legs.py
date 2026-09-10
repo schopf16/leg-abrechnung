@@ -75,7 +75,7 @@ def _mix_badge(mix) -> str:
         A short text badge -- 🟢 if both sides are present, 🔴 if the
         LEG is one-sided (or empty).
     """
-    symbol = "🔴" if mix.ist_einseitig else "🟢"
+    symbol = "🔴" if mix.is_one_sided else "🟢"
     return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
 
 

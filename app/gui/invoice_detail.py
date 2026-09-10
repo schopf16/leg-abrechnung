@@ -7,7 +7,7 @@ from the PDF file itself, which may have been moved, renamed, or deleted
 since it was generated, and never from the live `LegSettings` either
 (the admin-fee rates actually charged are frozen onto the item itself,
 see `app.domain.billing`). This is the primary way to inspect a past
-invoice from the Debitoren detail view (see `app.gui.pages.debitoren`),
+invoice from the receivables detail view (see `app.gui.pages.receivables`),
 not a fallback for when the PDF is missing.
 
 Reuses `item.consumed_kwh`/`item.produced_kwh` directly rather than
@@ -76,10 +76,10 @@ def open_invoice_detail(item_id: int) -> None:
 
         with ui.row().classes("w-full gap-6 mt-2 flex-wrap"):
             with ui.column().classes("gap-0"):
-                if item.faellig_am:
-                    faellig = date.fromisoformat(item.faellig_am)
-                    ui.label(f"Datum: {(faellig - PAYMENT_TERM).strftime('%d.%m.%Y')}").classes("text-body2")
-                    ui.label(f"Zahlbar bis: {faellig.strftime('%d.%m.%Y')}").classes("text-body2")
+                if item.due_date:
+                    due = date.fromisoformat(item.due_date)
+                    ui.label(f"Datum: {(due - PAYMENT_TERM).strftime('%d.%m.%Y')}").classes("text-body2")
+                    ui.label(f"Zahlbar bis: {due.strftime('%d.%m.%Y')}").classes("text-body2")
                 else:
                     ui.label("Datum: PDF noch nicht erzeugt").classes("text-body2 text-grey-6")
             if person is not None:
@@ -108,8 +108,8 @@ def open_invoice_detail(item_id: int) -> None:
                 ui.label(f"{amount_chf:.2f} CHF")
 
         if (
-            item.verwaltungsaufwand_bezug_rappen > 0
-            or item.verwaltungsaufwand_einspeisung_rappen > 0
+            item.admin_fee_consumption_rappen > 0
+            or item.admin_fee_feed_in_rappen > 0
             or item.paper_invoice_rappen > 0
         ):
             # Rates read from the item itself (frozen at billing time),
@@ -117,20 +117,20 @@ def open_invoice_detail(item_id: int) -> None:
             # on why a later rate change must never alter how an
             # already-billed fee is displayed.
             ui.label("Verwaltungsaufwand").classes("font-bold mt-2")
-            if item.verwaltungsaufwand_bezug_rappen > 0:
+            if item.admin_fee_consumption_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label(
                         f"Verwaltungsaufwand Bezug ({item.consumed_kwh:.3f} kWh × "
-                        f"{item.verwaltungsaufwand_bezug_rp_per_kwh:.4f} Rp./kWh)"
+                        f"{item.admin_fee_consumption_rp_per_kwh:.4f} Rp./kWh)"
                     )
-                    ui.label(f"{item.verwaltungsaufwand_bezug_rappen / 100:.2f} CHF")
-            if item.verwaltungsaufwand_einspeisung_rappen > 0:
+                    ui.label(f"{item.admin_fee_consumption_rappen / 100:.2f} CHF")
+            if item.admin_fee_feed_in_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label(
                         f"Verwaltungsaufwand Einspeisung ({item.produced_kwh:.3f} kWh × "
-                        f"{item.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f} Rp./kWh)"
+                        f"{item.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh)"
                     )
-                    ui.label(f"{item.verwaltungsaufwand_einspeisung_rappen / 100:.2f} CHF")
+                    ui.label(f"{item.admin_fee_feed_in_rappen / 100:.2f} CHF")
             if item.paper_invoice_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label("Kosten Papierrechnung")
@@ -155,9 +155,9 @@ def open_invoice_detail(item_id: int) -> None:
             ui.label(f"Per E-Mail versendet am: {item.email_sent_at[:10]}").classes(
                 "text-caption text-grey-6"
             )
-        if item.mahnstufe:
-            zusatz = f", zuletzt am {item.letzte_mahnung_am[:10]}" if item.letzte_mahnung_am else ""
-            ui.label(f"Mahnstufe {item.mahnstufe}{zusatz}").classes("text-caption text-grey-6")
+        if item.dunning_level:
+            zusatz = f", zuletzt am {item.last_dunning_at[:10]}" if item.last_dunning_at else ""
+            ui.label(f"Mahnstufe {item.dunning_level}{zusatz}").classes("text-caption text-grey-6")
 
         with ui.row().classes("w-full justify-end mt-4"):
             ui.button("Schliessen", on_click=dialog.close).props("flat")

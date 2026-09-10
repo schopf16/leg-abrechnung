@@ -22,7 +22,7 @@ class ParsedReading:
         designation: Business key (grid operator's metering
             point id) as it appears in the source file.
         timestamp: Interval start (naive local datetime).
-        direction: Either "bezug" or "einspeisung".
+        direction: Either "consumption" or "feed_in".
         kwh: Energy for the interval in kWh, non-negative.
     """
 
@@ -57,12 +57,12 @@ def validate_direction(raw_value: str) -> str:
     """Normalize a direction string from a source file to the app's vocabulary.
 
     Args:
-        raw_value: Raw direction text from the source file (e.g. "Bezug",
+        raw_value: Raw direction text from the source file (e.g. "consumption",
             "BEZUG", "production", or an OBIS code prefix already resolved
             by the caller).
 
     Returns:
-        Either "bezug" or "einspeisung".
+        Either "consumption" or "feed_in".
 
     Raises:
         ImportValidationError: If `raw_value` cannot be mapped to a known

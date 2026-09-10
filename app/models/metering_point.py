@@ -53,7 +53,7 @@ class MeteringPoint:
     created_at: str
 
     @property
-    def is_bezug(self) -> bool:
+    def is_consumption(self) -> bool:
         """Whether this MeteringPoint measures consumption.
 
         Returns:
@@ -62,7 +62,7 @@ class MeteringPoint:
         return self.direction == DIRECTION_CONSUMPTION
 
     @property
-    def is_einspeisung(self) -> bool:
+    def is_feed_in(self) -> bool:
         """Whether this MeteringPoint measures feed-in.
 
         Returns:

@@ -20,17 +20,17 @@ class LegSettings:
         address_country: ISO-3166 alpha-2 country code, e.g. ``"CH"``.
         qr_iban: QR-IBAN used as the creditor account on invoices.
         price_rp_per_kwh: Internal energy price in Rappen per kWh.
-        verwaltungsaufwand_bezug_rp_per_kwh: Administrative surcharge in
+        admin_fee_consumption_rp_per_kwh: Administrative surcharge in
             Rappen per kWh, charged on top of the energy price for a
-            person's locally-sourced consumption ("Bezug"). Independent
-            from `verwaltungsaufwand_einspeisung_rp_per_kwh` -- either can
+            person's locally-sourced consumption ("consumption"). Independent
+            from `admin_fee_feed_in_rp_per_kwh` -- either can
             be zero while the other is not. Changing this only affects
             billing runs created afterwards: `app.domain.billing` freezes
             the rate actually used onto each `BillingRunItem` at creation
             time, so an already-billed fee never changes retroactively.
-        verwaltungsaufwand_einspeisung_rp_per_kwh: The same kind of
+        admin_fee_feed_in_rp_per_kwh: The same kind of
             administrative surcharge, charged on a person's
-            locally-delivered production ("Einspeisung") instead.
+            locally-delivered production ("feed-in") instead.
         paper_invoice_rappen: Flat fee in Rappen charged to persons with
             `Person.paper_invoice` set (paper invoice by post).
         extra_backup_dir: Optional second directory every backup is also
@@ -54,7 +54,7 @@ class LegSettings:
             already fetched from the leg-ittigen.ch registration API --
             see `app.importers.registration_sync`. Managed exclusively by
             that sync, never edited through the settings form.
-        onboarding_ueberfaellig_tage: Number of days a person's current
+        onboarding_overdue_days: Number of days a person's current
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
         leg_founding_min_persons: Minimum `app.domain.participant_mix.
@@ -63,32 +63,32 @@ class LegSettings:
             Prosumer and a Consumer, before the app suggests splitting it
             off its current multi-substation-area LEG into its own, better-
             discounted one. Default 7.
-        rechnung_email_betreff: Subject template for invoice emails (see
+        invoice_email_subject: Subject template for invoice emails (see
             `app.emailing.bulk_send.send_invoice_emails`), may contain
             `{placeholder}`s (see `app.emailing.templates`). Written once
             in the settings, reused for every billing run instead of
             retyping it each quarter.
-        rechnung_email_text: Body template for invoice emails, same
+        invoice_email_body: Body template for invoice emails, same
             placeholder support.
-        mahnung_neue_frist_tage: Number of days the 1. Mahnung's new
+        dunning_new_deadline_days: Number of days the 1. dunning notice's new
             deadline grants, and the wait before an unpaid item at stage
-            1 becomes eligible for the 2. Mahnung (see `app.domain.
-            mahnwesen`).
-        mahnung_bagatellgrenze_rappen: A person's total open Saldo must
-            be at least this amount for a Mahnung to be raised at all --
+            1 becomes eligible for the 2. dunning notice (see `app.domain.
+            dunning`).
+        dunning_minimum_rappen: A person's total open balance must
+            be at least this amount for a dunning notice to be raised at all --
             avoids chasing a negligible remainder.
-        mahnung1_email_betreff: Subject template for the 1. Mahnung
+        dunning1_email_subject: Subject template for the 1. dunning notice
             (grants a new deadline; does not yet threaten exclusion --
             wait, it does, see the LEG's own Reglement: a missed new
             deadline leads to membership termination). May contain
             `{placeholder}`s (person placeholders plus `{betrag}`,
-            `{neue_frist}` -- see `app.domain.mahnwesen`).
-        mahnung1_email_text: Body template for the 1. Mahnung.
-        mahnung2_email_betreff: Subject template for the 2. Mahnung
-            (sent when the 1. Mahnung's new deadline was missed --
+            `{new_deadline}` -- see `app.domain.dunning`).
+        dunning1_email_body: Body template for the 1. dunning notice.
+        dunning2_email_subject: Subject template for the 2. dunning notice
+            (sent when the 1. dunning notice's new deadline was missed --
             triggers an exclusion review, never automatic, see
             `app.models.person_offboarding`).
-        mahnung2_email_text: Body template for the 2. Mahnung.
+        dunning2_email_body: Body template for the 2. dunning notice.
         updated_at: ISO-8601 timestamp of the last update.
     """
 
@@ -98,23 +98,23 @@ class LegSettings:
     address_country: str
     qr_iban: str
     price_rp_per_kwh: float
-    verwaltungsaufwand_bezug_rp_per_kwh: float
-    verwaltungsaufwand_einspeisung_rp_per_kwh: float
+    admin_fee_consumption_rp_per_kwh: float
+    admin_fee_feed_in_rp_per_kwh: float
     paper_invoice_rappen: int
     extra_backup_dir: str
     metering_point_country: str
     metering_point_identifier: str
     web_registration_cursor: int
-    onboarding_ueberfaellig_tage: int
+    onboarding_overdue_days: int
     leg_founding_min_persons: int
-    rechnung_email_betreff: str
-    rechnung_email_text: str
-    mahnung_neue_frist_tage: int
-    mahnung_bagatellgrenze_rappen: int
-    mahnung1_email_betreff: str
-    mahnung1_email_text: str
-    mahnung2_email_betreff: str
-    mahnung2_email_text: str
+    invoice_email_subject: str
+    invoice_email_body: str
+    dunning_new_deadline_days: int
+    dunning_minimum_rappen: int
+    dunning1_email_subject: str
+    dunning1_email_body: str
+    dunning2_email_subject: str
+    dunning2_email_body: str
     updated_at: str
 
     @staticmethod
@@ -134,23 +134,23 @@ class LegSettings:
             address_country=row["address_country"],
             qr_iban=row["qr_iban"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
-            verwaltungsaufwand_bezug_rp_per_kwh=row["verwaltungsaufwand_bezug_rp_per_kwh"],
-            verwaltungsaufwand_einspeisung_rp_per_kwh=row["verwaltungsaufwand_einspeisung_rp_per_kwh"],
+            admin_fee_consumption_rp_per_kwh=row["admin_fee_consumption_rp_per_kwh"],
+            admin_fee_feed_in_rp_per_kwh=row["admin_fee_feed_in_rp_per_kwh"],
             paper_invoice_rappen=row["paper_invoice_rappen"],
             extra_backup_dir=row["extra_backup_dir"],
             metering_point_country=row["metering_point_country"],
             metering_point_identifier=row["metering_point_identifier"],
             web_registration_cursor=row["web_registration_cursor"],
-            onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
+            onboarding_overdue_days=row["onboarding_overdue_days"],
             leg_founding_min_persons=row["leg_founding_min_persons"],
-            rechnung_email_betreff=row["rechnung_email_betreff"],
-            rechnung_email_text=row["rechnung_email_text"],
-            mahnung_neue_frist_tage=row["mahnung_neue_frist_tage"],
-            mahnung_bagatellgrenze_rappen=row["mahnung_bagatellgrenze_rappen"],
-            mahnung1_email_betreff=row["mahnung1_email_betreff"],
-            mahnung1_email_text=row["mahnung1_email_text"],
-            mahnung2_email_betreff=row["mahnung2_email_betreff"],
-            mahnung2_email_text=row["mahnung2_email_text"],
+            invoice_email_subject=row["invoice_email_subject"],
+            invoice_email_body=row["invoice_email_body"],
+            dunning_new_deadline_days=row["dunning_new_deadline_days"],
+            dunning_minimum_rappen=row["dunning_minimum_rappen"],
+            dunning1_email_subject=row["dunning1_email_subject"],
+            dunning1_email_body=row["dunning1_email_body"],
+            dunning2_email_subject=row["dunning2_email_subject"],
+            dunning2_email_body=row["dunning2_email_body"],
             updated_at=row["updated_at"],
         )
 
@@ -192,15 +192,15 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
         UPDATE leg_settings SET
             address_street = ?, address_zip = ?, address_city = ?,
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
-            verwaltungsaufwand_bezug_rp_per_kwh = ?, verwaltungsaufwand_einspeisung_rp_per_kwh = ?,
+            admin_fee_consumption_rp_per_kwh = ?, admin_fee_feed_in_rp_per_kwh = ?,
             paper_invoice_rappen = ?,
             extra_backup_dir = ?, metering_point_country = ?, metering_point_identifier = ?,
-            web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
+            web_registration_cursor = ?, onboarding_overdue_days = ?,
             leg_founding_min_persons = ?,
-            rechnung_email_betreff = ?, rechnung_email_text = ?,
-            mahnung_neue_frist_tage = ?, mahnung_bagatellgrenze_rappen = ?,
-            mahnung1_email_betreff = ?, mahnung1_email_text = ?,
-            mahnung2_email_betreff = ?, mahnung2_email_text = ?, updated_at = ?
+            invoice_email_subject = ?, invoice_email_body = ?,
+            dunning_new_deadline_days = ?, dunning_minimum_rappen = ?,
+            dunning1_email_subject = ?, dunning1_email_body = ?,
+            dunning2_email_subject = ?, dunning2_email_body = ?, updated_at = ?
         WHERE id = 1
         """,
         (
@@ -210,23 +210,23 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.address_country,
             settings.qr_iban,
             settings.price_rp_per_kwh,
-            settings.verwaltungsaufwand_bezug_rp_per_kwh,
-            settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
+            settings.admin_fee_consumption_rp_per_kwh,
+            settings.admin_fee_feed_in_rp_per_kwh,
             settings.paper_invoice_rappen,
             settings.extra_backup_dir,
             settings.metering_point_country,
             settings.metering_point_identifier,
             settings.web_registration_cursor,
-            settings.onboarding_ueberfaellig_tage,
+            settings.onboarding_overdue_days,
             settings.leg_founding_min_persons,
-            settings.rechnung_email_betreff,
-            settings.rechnung_email_text,
-            settings.mahnung_neue_frist_tage,
-            settings.mahnung_bagatellgrenze_rappen,
-            settings.mahnung1_email_betreff,
-            settings.mahnung1_email_text,
-            settings.mahnung2_email_betreff,
-            settings.mahnung2_email_text,
+            settings.invoice_email_subject,
+            settings.invoice_email_body,
+            settings.dunning_new_deadline_days,
+            settings.dunning_minimum_rappen,
+            settings.dunning1_email_subject,
+            settings.dunning1_email_body,
+            settings.dunning2_email_subject,
+            settings.dunning2_email_body,
             datetime.now(timezone.utc).isoformat(),
         ),
     )

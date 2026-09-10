@@ -54,30 +54,30 @@ def _set_created_at(db, table: str, entity_id: int, when: date) -> None:
 
 
 def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
-    """Bezug and Einspeisung readings are summed per calendar month."""
+    """consumption and feed-in readings are summed per calendar month."""
     site_id = _make_site(db)
-    bezug_mp = _make_metering_point(db, "CH-B1", DIRECTION_CONSUMPTION, site_id)
-    einspeisung_mp = _make_metering_point(db, "CH-E1", DIRECTION_FEED_IN, site_id)
+    consumption_mp = _make_metering_point(db, "CH-B1", DIRECTION_CONSUMPTION, site_id)
+    feed_in_mp = _make_metering_point(db, "CH-E1", DIRECTION_FEED_IN, site_id)
 
     upsert_readings(
         db,
         [
-            Reading(metering_point_id=bezug_mp, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=10.0, source="test"),
-            Reading(metering_point_id=bezug_mp, timestamp="2025-06-01T00:15:00", direction="bezug", kwh=5.0, source="test"),
-            Reading(metering_point_id=einspeisung_mp, timestamp="2025-06-01T00:00:00", direction="einspeisung", kwh=3.0, source="test"),
-            Reading(metering_point_id=bezug_mp, timestamp="2025-05-01T00:00:00", direction="bezug", kwh=2.0, source="test"),
+            Reading(metering_point_id=consumption_mp, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=10.0, source="test"),
+            Reading(metering_point_id=consumption_mp, timestamp="2025-06-01T00:15:00", direction="bezug", kwh=5.0, source="test"),
+            Reading(metering_point_id=feed_in_mp, timestamp="2025-06-01T00:00:00", direction="einspeisung", kwh=3.0, source="test"),
+            Reading(metering_point_id=consumption_mp, timestamp="2025-05-01T00:00:00", direction="bezug", kwh=2.0, source="test"),
         ],
     )
 
     monthly = monthly_energy_totals(db, reference_date=date(2025, 6, 15), months=3)
     by_month = {(m.year, m.month): m for m in monthly}
 
-    assert by_month[(2025, 6)].bezug_kwh == 15.0
-    assert by_month[(2025, 6)].einspeisung_kwh == 3.0
-    assert by_month[(2025, 6)].saldo_kwh == -12.0
-    assert by_month[(2025, 5)].bezug_kwh == 2.0
-    assert by_month[(2025, 4)].bezug_kwh == 0.0
-    assert by_month[(2025, 4)].einspeisung_kwh == 0.0
+    assert by_month[(2025, 6)].consumption_kwh == 15.0
+    assert by_month[(2025, 6)].feed_in_kwh == 3.0
+    assert by_month[(2025, 6)].balance_kwh == -12.0
+    assert by_month[(2025, 5)].consumption_kwh == 2.0
+    assert by_month[(2025, 4)].consumption_kwh == 0.0
+    assert by_month[(2025, 4)].feed_in_kwh == 0.0
 
 
 def test_monthly_energy_totals_filters_by_leg(db):
@@ -97,10 +97,10 @@ def test_monthly_energy_totals_filters_by_leg(db):
     )
 
     only_a = monthly_energy_totals(db, leg_id=leg_a, reference_date=date(2025, 6, 15), months=1)
-    assert only_a[0].bezug_kwh == 7.0
+    assert only_a[0].consumption_kwh == 7.0
 
     everything = monthly_energy_totals(db, leg_id=None, reference_date=date(2025, 6, 15), months=1)
-    assert everything[0].bezug_kwh == 11.0
+    assert everything[0].consumption_kwh == 11.0
 
 
 def test_monthly_growth_counts_are_cumulative(db):

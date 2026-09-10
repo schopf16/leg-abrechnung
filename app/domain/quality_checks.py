@@ -37,7 +37,7 @@ class QualityWarning:
     Attributes:
         category: One of "assignment_overlap", "assignment_gap",
             "messdaten_luecke", "leg_nicht_zugeordnet",
-            "aufnahme_ueberfaellig", "bank_buchung_ungeklaert",
+            "onboarding_overdue", "bank_transaction_unresolved",
             "trafokreis_wechsel_potential" or "trafokreis_einseitig".
         message: Human-readable (German) description.
         link: Route path to the specific object this warning is about
@@ -124,7 +124,7 @@ def check_reading_completeness(
                 if count != _EXPECTED_READINGS_PER_DAY:
                     warnings.append(
                         QualityWarning(
-                            category="messdaten_luecke",
+                            category="reading_gap",
                             message=(
                                 f"Messpunkt {metering_point.designation}: "
                                 f"{current_day.isoformat()} hat "
@@ -163,7 +163,7 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
             continue
         warnings.append(
             QualityWarning(
-                category="leg_nicht_zugeordnet",
+                category="leg_not_assigned",
                 message=f"Messpunkt „{metering_point.designation}“ hat noch keine zugeordnete LEG.",
                 link=f"/metering-points/{metering_point.id}",
             )
@@ -175,7 +175,7 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
 def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag interested persons stuck too long on their current onboarding step.
 
-    "Too long" is `LegSettings.onboarding_ueberfaellig_tage` days (default
+    "Too long" is `LegSettings.onboarding_overdue_days` days (default
     30) since the current step (see `PersonOnboarding.current_step`)
     became active -- see `app.models.person_onboarding` for how that
     reference date is derived. Completed onboardings, and persons never
@@ -188,7 +188,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
     Returns:
         A `QualityWarning` per overdue onboarding. Empty if none are overdue.
     """
-    threshold_days = settings_repo.get_settings(connection).onboarding_ueberfaellig_tage
+    threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
     warnings: list[QualityWarning] = []
     for onboarding in person_onboarding_repo.list_in_progress(connection):
         if not onboarding.is_overdue(threshold_days):
@@ -198,7 +198,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
         _, step_label = onboarding.current_step
         warnings.append(
             QualityWarning(
-                category="aufnahme_ueberfaellig",
+                category="onboarding_overdue",
                 message=(
                     f'Aufnahme von "{person_name}" hängt seit '
                     f"{onboarding.days_open()} Tagen bei Schritt "
@@ -230,9 +230,9 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
         return []
     return [
         QualityWarning(
-            category="bank_buchung_ungeklaert",
+            category="bank_transaction_unresolved",
             message=f"{open_count} Bank-Buchung(en) noch nicht zugeordnet.",
-            link="/debitoren",
+            link="/receivables",
         )
     ]
 
@@ -260,7 +260,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
                 category="substation_area_upgrade_potential",
                 message=(
                     f"Trafokreis „{candidate.substation_area.name}“ hat jetzt sowohl "
-                    f"Prosumer als auch Consumer ({candidate.mix.verhaeltnis}) -- "
+                    f"Prosumer als auch Consumer ({candidate.mix.ratio}) -- "
                     f"{candidate.person_count} Person(en) in {leg_names} könnten "
                     "in ein eigenes LEG wechseln."
                 ),
@@ -291,7 +291,7 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
     metering_points = metering_point_repo.list_all(connection)
     for substation_area in substation_area_repo.list_all(connection):
         mix = participant_mix.compute_participant_mix_for_substation_area(connection, substation_area.id)
-        if mix.hinweis is None:
+        if mix.hint is None:
             continue
         site_ids = {s.id for s in sites if s.substation_area_id == substation_area.id}
         leg_ids_here = {
@@ -305,7 +305,7 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
         warnings.append(
             QualityWarning(
                 category="substation_area_one_sided",
-                message=f"Trafokreis „{substation_area.name}“: {mix.hinweis}",
+                message=f"Trafokreis „{substation_area.name}“: {mix.hint}",
                 link="/substation-areas",
             )
         )

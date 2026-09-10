@@ -46,7 +46,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
+                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
             )
         ],
@@ -168,7 +168,7 @@ def test_prepayment_before_any_invoice_exists_still_finds_a_candidate(db):
 
 def test_book_transaction_records_actual_paid_amount_on_overpayment(db):
     """Paying more than invoiced must book the real amount -- the excess
-    simply becomes a credit on the running Saldo, no special-casing."""
+    simply becomes a credit on the running balance, no special-casing."""
     person = _person(db)
     _run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
     tx = _tx(amount_rappen=15_000)
@@ -181,7 +181,7 @@ def test_book_transaction_records_actual_paid_amount_on_overpayment(db):
         person_id=person.id, billing_run_item_id=item_id, status="manually_matched",
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == -5_000
+    assert account_entry_repo.get_balance_rappen(db, person.id) == -5_000
 
 
 def test_book_transaction_for_dbit_payout_uses_positive_amount(db):
@@ -197,7 +197,7 @@ def test_book_transaction_for_dbit_payout_uses_positive_amount(db):
         person_id=person.id, billing_run_item_id=None, status="manually_matched",
     )
 
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == 0
+    assert account_entry_repo.get_balance_rappen(db, person.id) == 0
 
 
 def test_book_transaction_is_idempotent_across_reimports(db):
@@ -250,7 +250,7 @@ def test_undo_match_removes_account_entry_and_resets_status(db):
         db, bank_import_batch_id=batch_id, transaction=tx, source_format="camt053",
         person_id=person.id, billing_run_item_id=None, status="manually_matched",
     )
-    assert account_entry_repo.get_saldo_rappen(db, person.id) != 0
+    assert account_entry_repo.get_balance_rappen(db, person.id) != 0
 
     bank_reconciliation.undo_match(db, transaction_id)
 
@@ -260,12 +260,12 @@ def test_undo_match_removes_account_entry_and_resets_status(db):
     # The IBAN candidate is still findable, so it falls back to a
     # suggestion rather than plain "unmatched".
     assert stored.status == "suggested_pending_review"
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == 0
+    assert account_entry_repo.get_balance_rappen(db, person.id) == 0
 
 
 def test_double_payment_of_the_same_invoice_via_two_bank_references(db):
     """Two distinct real bank transactions (different bank_reference)
-    paying the same invoice must both book -- see the Debitoren plan's
+    paying the same invoice must both book -- see the receivables plan's
     explicit "no one-payment-per-invoice lock" requirement."""
     person = _person(db)
     _run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
@@ -283,12 +283,12 @@ def test_double_payment_of_the_same_invoice_via_two_bank_references(db):
     )
 
     assert len(account_entry_repo.list_for_person(db, person.id)) == 2
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == -10_000
+    assert account_entry_repo.get_balance_rappen(db, person.id) == -10_000
 
 
 def test_resolve_open_transaction_assigns_a_person_with_the_correct_sign(db):
     """The manual-resolution path used by the permanent "Offene Bank-
-    Buchungen" queue on /debitoren (Finding #8: previously duplicated the
+    Buchungen" queue on /receivables (Finding #8: previously duplicated the
     booking logic inline instead of sharing it with book_transaction)."""
     person = _person(db)
     batch_id = bank_transaction_repo.create_batch(
@@ -307,7 +307,7 @@ def test_resolve_open_transaction_assigns_a_person_with_the_correct_sign(db):
     assert stored.account_entry_id is not None
     # CRDT booked as a payment reduces the owed amount (internal sign
     # convention, see app.models.account_entry).
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == -10_000
+    assert account_entry_repo.get_balance_rappen(db, person.id) == -10_000
 
 
 def test_resolve_open_transaction_with_no_person_ignores_it(db):
@@ -341,5 +341,5 @@ def test_book_transaction_with_commit_false_still_books_within_the_connection(db
     )
 
     assert transaction_id is not None
-    assert account_entry_repo.get_saldo_rappen(db, person.id) == -10_000
+    assert account_entry_repo.get_balance_rappen(db, person.id) == -10_000
     db.commit()

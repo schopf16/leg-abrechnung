@@ -18,28 +18,28 @@ from app.domain.period import month_bounds, trailing_months
 
 @dataclass
 class MonthlyEnergy:
-    """One calendar month's total local Bezug and Einspeisung.
+    """One calendar month's total local consumption and feed-in.
 
     Attributes:
         year: Calendar year.
         month: Calendar month, 1 to 12.
-        bezug_kwh: Total consumption recorded that month, in kWh.
-        einspeisung_kwh: Total feed-in recorded that month, in kWh.
+        consumption_kwh: Total consumption recorded that month, in kWh.
+        feed_in_kwh: Total feed-in recorded that month, in kWh.
     """
 
     year: int
     month: int
-    bezug_kwh: float
-    einspeisung_kwh: float
+    consumption_kwh: float
+    feed_in_kwh: float
 
     @property
-    def saldo_kwh(self) -> float:
+    def balance_kwh(self) -> float:
         """Feed-in minus consumption -- positive means a net surplus.
 
         Returns:
-            `einspeisung_kwh - bezug_kwh`, in kWh.
+            `feed_in_kwh - consumption_kwh`, in kWh.
         """
-        return self.einspeisung_kwh - self.bezug_kwh
+        return self.feed_in_kwh - self.consumption_kwh
 
 
 @dataclass
@@ -71,7 +71,7 @@ def monthly_energy_totals(
     reference_date: Optional[date] = None,
     months: int = 12,
 ) -> list[MonthlyEnergy]:
-    """Aggregate Bezug/Einspeisung totals per month over a trailing window.
+    """Aggregate consumption/feed-in totals per month over a trailing window.
 
     Args:
         connection: Open SQLite connection.
@@ -109,8 +109,8 @@ def monthly_energy_totals(
         MonthlyEnergy(
             year=year,
             month=month,
-            bezug_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("bezug", 0.0), 3),
-            einspeisung_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("einspeisung", 0.0), 3),
+            consumption_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("bezug", 0.0), 3),
+            feed_in_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("einspeisung", 0.0), 3),
         )
         for year, month in window
     ]

@@ -1,7 +1,7 @@
 """Placeholder substitution for email texts (`{first_name}`, `{salutation}`, ...).
 
 Shared by the broadcast/LEG email composer and the invoice email template
-(see `app.gui.pages.email_versand` and `app.gui.pages.abrechnung`) -- one
+(see `app.gui.pages.email_versand` and `app.gui.pages.billing`) -- one
 substitution engine, one validation pass, used from both places.
 
 Deliberately simple `str`-based `{placeholder}` syntax (not a templating

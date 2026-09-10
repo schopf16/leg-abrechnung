@@ -2,7 +2,7 @@
 to a Person and, where applicable, a specific invoice/payout, and books
 the result as an `AccountEntry`.
 
-Two paths, by design (see the Debitoren plan):
+Two paths, by design (see the receivables plan):
 
 1. **Deterministic**: a CRDT entry whose structured reference decodes
    (via `app.pdf.qr_reference.parse_qrr_reference`) to a real billing run
@@ -355,7 +355,7 @@ def _book_account_entry(
     The single place the CRDT/DBIT-to-`kind`/sign mapping is written --
     shared by `book_transaction` (fresh import) and `resolve_open_transaction`
     (resolving an already-stored, still-open transaction from the
-    permanent "Offene Bank-Buchungen" queue on `/debitoren`) so the two
+    permanent "Offene Bank-Buchungen" queue on `/receivables`) so the two
     call sites can never drift apart on the sign convention.
 
     Args:
@@ -395,7 +395,7 @@ def resolve_open_transaction(
     """Resolve one already-imported, still-open bank transaction.
 
     The manual-resolution counterpart to `book_transaction`: used by the
-    permanent "Offene Bank-Buchungen" queue on `/debitoren` to assign (or
+    permanent "Offene Bank-Buchungen" queue on `/receivables` to assign (or
     ignore) a transaction left unresolved from an earlier import, whereas
     `book_transaction` only ever runs once, while committing a fresh
     import batch.

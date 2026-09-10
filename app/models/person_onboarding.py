@@ -22,11 +22,11 @@ from typing import Optional
 #: The five onboarding steps, in display order, as
 #: `(PersonOnboarding attribute name, German label)` pairs.
 STEPS: list[tuple[str, str]] = [
-    ("angemeldet_am", "Anmeldung bei uns"),
-    ("leg_zugewiesen_am", "Einteilung in LEG"),
-    ("vertrag_unterzeichnet_am", "Gesellschaftsvertrag unterzeichnet"),
-    ("bkw_angemeldet_am", "Anmeldung bei der BKW"),
-    ("bkw_bestaetigt_am", "Bestätigung durch die BKW"),
+    ("registered_at", "Anmeldung bei uns"),
+    ("leg_assigned_at", "Einteilung in LEG"),
+    ("contract_signed_at", "Gesellschaftsvertrag unterzeichnet"),
+    ("bkw_registered_at", "Anmeldung bei der BKW"),
+    ("bkw_confirmed_at", "Bestätigung durch die BKW"),
 ]
 
 
@@ -37,29 +37,29 @@ class PersonOnboarding:
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         person_id: The Person being tracked (one tracking row per Person).
-        angemeldet_am: Date of step 1, "Anmeldung bei uns", or `None`.
-        leg_zugewiesen_am: Date of step 2, "Einteilung in LEG", or `None`.
+        registered_at: Date of step 1, "Anmeldung bei uns", or `None`.
+        leg_assigned_at: Date of step 2, "Einteilung in LEG", or `None`.
         leg_id: The LEG assigned in step 2, or `None` until decided. Kept
             even if that LEG is later deleted (`ON DELETE SET NULL`) --
             losing the LEG record must never destroy onboarding history.
-        vertrag_unterzeichnet_am: Date of step 3, "Gesellschaftsvertrag
+        contract_signed_at: Date of step 3, "Gesellschaftsvertrag
             unterzeichnet", or `None`.
-        bkw_angemeldet_am: Date of step 4, "Anmeldung bei der BKW", or `None`.
-        bkw_bestaetigt_am: Date of step 5, "Bestätigung durch die BKW",
+        bkw_registered_at: Date of step 4, "Anmeldung bei der BKW", or `None`.
+        bkw_confirmed_at: Date of step 5, "Bestätigung durch die BKW",
             or `None`.
         created_at: ISO-8601 timestamp tracking was started for this
             Person -- also the reference point for how long step 1 has
-            been open if `angemeldet_am` itself is not yet set.
+            been open if `registered_at` itself is not yet set.
     """
 
     id: Optional[int]
     person_id: int
-    angemeldet_am: Optional[date]
-    leg_zugewiesen_am: Optional[date]
+    registered_at: Optional[date]
+    leg_assigned_at: Optional[date]
     leg_id: Optional[int]
-    vertrag_unterzeichnet_am: Optional[date]
-    bkw_angemeldet_am: Optional[date]
-    bkw_bestaetigt_am: Optional[date]
+    contract_signed_at: Optional[date]
+    bkw_registered_at: Optional[date]
+    bkw_confirmed_at: Optional[date]
     created_at: str
 
     @property
@@ -125,7 +125,7 @@ class PersonOnboarding:
 
         Args:
             threshold_days: Number of days after which an open step
-                counts as overdue (see `LegSettings.onboarding_ueberfaellig_tage`).
+                counts as overdue (see `LegSettings.onboarding_overdue_days`).
             reference: Day to measure against, defaults to today.
 
         Returns:
@@ -151,12 +151,12 @@ class PersonOnboarding:
         return PersonOnboarding(
             id=row["id"],
             person_id=row["person_id"],
-            angemeldet_am=_date(row["angemeldet_am"]),
-            leg_zugewiesen_am=_date(row["leg_zugewiesen_am"]),
+            registered_at=_date(row["registered_at"]),
+            leg_assigned_at=_date(row["leg_assigned_at"]),
             leg_id=row["leg_id"],
-            vertrag_unterzeichnet_am=_date(row["vertrag_unterzeichnet_am"]),
-            bkw_angemeldet_am=_date(row["bkw_angemeldet_am"]),
-            bkw_bestaetigt_am=_date(row["bkw_bestaetigt_am"]),
+            contract_signed_at=_date(row["contract_signed_at"]),
+            bkw_registered_at=_date(row["bkw_registered_at"]),
+            bkw_confirmed_at=_date(row["bkw_confirmed_at"]),
             created_at=row["created_at"],
         )
 
@@ -226,7 +226,7 @@ def list_in_progress(connection: sqlite3.Connection) -> list[PersonOnboarding]:
 
 
 def start_for_person(
-    connection: sqlite3.Connection, person_id: int, angemeldet_am: Optional[date] = None
+    connection: sqlite3.Connection, person_id: int, registered_at: Optional[date] = None
 ) -> PersonOnboarding:
     """Start onboarding tracking for a Person, or return its existing tracker.
 
@@ -237,7 +237,7 @@ def start_for_person(
     Args:
         connection: Open SQLite connection.
         person_id: Primary key of the person to start tracking for.
-        angemeldet_am: Date to record for step 1 ("Anmeldung bei uns"),
+        registered_at: Date to record for step 1 ("Anmeldung bei uns"),
             e.g. the originating Web-Registrierung's submission date.
             Left unset (`None`) if not given -- the administrator can
             fill it in later like any other step.
@@ -251,12 +251,12 @@ def start_for_person(
 
     cursor = connection.execute(
         """
-        INSERT INTO person_onboarding (person_id, angemeldet_am, created_at)
+        INSERT INTO person_onboarding (person_id, registered_at, created_at)
         VALUES (?, ?, ?)
         """,
         (
             person_id,
-            angemeldet_am.isoformat() if angemeldet_am else None,
+            registered_at.isoformat() if registered_at else None,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -282,19 +282,19 @@ def update(connection: sqlite3.Connection, onboarding: PersonOnboarding) -> None
     connection.execute(
         """
         UPDATE person_onboarding SET
-            angemeldet_am = ?, leg_zugewiesen_am = ?, leg_id = ?,
-            vertrag_unterzeichnet_am = ?, bkw_angemeldet_am = ?, bkw_bestaetigt_am = ?
+            registered_at = ?, leg_assigned_at = ?, leg_id = ?,
+            contract_signed_at = ?, bkw_registered_at = ?, bkw_confirmed_at = ?
         WHERE id = ?
         """,
         (
-            onboarding.angemeldet_am.isoformat() if onboarding.angemeldet_am else None,
-            onboarding.leg_zugewiesen_am.isoformat() if onboarding.leg_zugewiesen_am else None,
+            onboarding.registered_at.isoformat() if onboarding.registered_at else None,
+            onboarding.leg_assigned_at.isoformat() if onboarding.leg_assigned_at else None,
             onboarding.leg_id,
-            onboarding.vertrag_unterzeichnet_am.isoformat()
-            if onboarding.vertrag_unterzeichnet_am
+            onboarding.contract_signed_at.isoformat()
+            if onboarding.contract_signed_at
             else None,
-            onboarding.bkw_angemeldet_am.isoformat() if onboarding.bkw_angemeldet_am else None,
-            onboarding.bkw_bestaetigt_am.isoformat() if onboarding.bkw_bestaetigt_am else None,
+            onboarding.bkw_registered_at.isoformat() if onboarding.bkw_registered_at else None,
+            onboarding.bkw_confirmed_at.isoformat() if onboarding.bkw_confirmed_at else None,
             onboarding.id,
         ),
     )

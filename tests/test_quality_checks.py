@@ -65,7 +65,7 @@ def _leg(db) -> int:
 
 
 def _metering_point(db, designation: str, site_id: int, leg_id: int | None = None) -> int:
-    """Create a "bezug" MeteringPoint and return its id."""
+    """Create a "consumption" MeteringPoint and return its id."""
     return metering_point_repo.create(
         db,
         MeteringPoint(
@@ -196,7 +196,7 @@ def test_check_leg_assignment_flags_unresolved_metering_point(db):
     _metering_point(db, "CH-C", site, leg_id=None)
 
     warnings = check_leg_assignment(db)
-    assert any(w.category == "leg_nicht_zugeordnet" for w in warnings)
+    assert any(w.category == "leg_not_assigned" for w in warnings)
     assert len(warnings) == 1
     # Links straight to the unresolved MeteringPoint's detail page.
     unresolved_id = metering_point_repo.get_by_designation(db, "CH-C").id
@@ -216,11 +216,11 @@ def test_check_onboarding_progress_flags_overdue_step(db):
     """An onboarding stuck for longer than the (default 30-day) threshold is flagged."""
     person_id = _person(db, "Overdue")
     person_onboarding_repo.start_for_person(
-        db, person_id, angemeldet_am=date.today() - timedelta(days=40)
+        db, person_id, registered_at=date.today() - timedelta(days=40)
     )
 
     warnings = check_onboarding_progress(db)
-    assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
+    assert any(w.category == "onboarding_overdue" for w in warnings)
     assert "Overdue" in warnings[0].message
     # Links straight to the person's detail page.
     assert warnings[0].link == f"/persons/{person_id}"
@@ -230,7 +230,7 @@ def test_check_onboarding_progress_ignores_step_within_threshold(db):
     """An onboarding well within the threshold produces no warning."""
     person_id = _person(db, "OnTrack")
     person_onboarding_repo.start_for_person(
-        db, person_id, angemeldet_am=date.today() - timedelta(days=5)
+        db, person_id, registered_at=date.today() - timedelta(days=5)
     )
 
     assert check_onboarding_progress(db) == []
@@ -240,12 +240,12 @@ def test_check_onboarding_progress_ignores_completed_onboarding(db):
     """A fully completed onboarding is never flagged, however old it is."""
     person_id = _person(db, "Done")
     onboarding = person_onboarding_repo.start_for_person(
-        db, person_id, angemeldet_am=date.today() - timedelta(days=100)
+        db, person_id, registered_at=date.today() - timedelta(days=100)
     )
-    onboarding.leg_zugewiesen_am = date.today() - timedelta(days=90)
-    onboarding.vertrag_unterzeichnet_am = date.today() - timedelta(days=80)
-    onboarding.bkw_angemeldet_am = date.today() - timedelta(days=70)
-    onboarding.bkw_bestaetigt_am = date.today() - timedelta(days=60)
+    onboarding.leg_assigned_at = date.today() - timedelta(days=90)
+    onboarding.contract_signed_at = date.today() - timedelta(days=80)
+    onboarding.bkw_registered_at = date.today() - timedelta(days=70)
+    onboarding.bkw_confirmed_at = date.today() - timedelta(days=60)
     person_onboarding_repo.update(db, onboarding)
 
     assert check_onboarding_progress(db) == []
@@ -255,16 +255,16 @@ def test_check_onboarding_progress_respects_configurable_threshold(db):
     """A lowered threshold flags an onboarding that the default would not."""
     person_id = _person(db, "Custom")
     person_onboarding_repo.start_for_person(
-        db, person_id, angemeldet_am=date.today() - timedelta(days=10)
+        db, person_id, registered_at=date.today() - timedelta(days=10)
     )
     assert check_onboarding_progress(db) == []  # still fine at the default 30 days
 
     settings = settings_repo.get_settings(db)
-    settings.onboarding_ueberfaellig_tage = 5
+    settings.onboarding_overdue_days = 5
     settings_repo.update_settings(db, settings)
 
     warnings = check_onboarding_progress(db)
-    assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
+    assert any(w.category == "onboarding_overdue" for w in warnings)
 
 
 def test_check_onboarding_progress_ignores_person_without_tracker(db):
@@ -298,7 +298,7 @@ def test_check_unresolved_bank_transactions_aggregates_into_one_warning(db):
 
     assert len(warnings) == 1
     assert "2" in warnings[0].message
-    assert warnings[0].link == "/debitoren"
+    assert warnings[0].link == "/receivables"
 
 
 def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
@@ -357,11 +357,11 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    bezug_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    einspeisung_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
+    consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
+    for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
             db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )
@@ -389,11 +389,11 @@ def test_check_leg_upgrade_potential_respects_configurable_min_persons(db):
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    bezug_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    einspeisung_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
+    consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
+    for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
             db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )
@@ -412,9 +412,9 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site_in(db, substation_area_id)
     person_id = _person(db)
-    einspeisung_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
+    feed_in_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
     assignment_repo.create(
-        db, Assignment(id=None, person_id=person_id, metering_point_id=einspeisung_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
+        db, Assignment(id=None, person_id=person_id, metering_point_id=feed_in_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
     )
 
     warnings = check_substation_area_one_sided(db)
@@ -435,10 +435,10 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    einspeisung_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
+    feed_in_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH2", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    for pid, mp_id in ((person_id, einspeisung_id), (other_person_id, other_mp_id)):
+    for pid, mp_id in ((person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
             db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )

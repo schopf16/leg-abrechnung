@@ -22,9 +22,9 @@ file arrives:
    `ParsedReading` list, so it keeps working unchanged.
 
 OBIS codes used to determine direction (Swiss convention):
-    1.8.0 (and 1.8.x sub-registers) = Wirkenergie Bezug   -> "bezug"
-    2.8.0 (and 2.8.x sub-registers) = Wirkenergie Lieferung/Einspeisung
-                                                          -> "einspeisung"
+    1.8.0 (and 1.8.x sub-registers) = Wirkenergie consumption   -> "consumption"
+    2.8.0 (and 2.8.x sub-registers) = Wirkenergie Lieferung/feed-in
+                                                          -> "feed_in"
 """
 
 from datetime import datetime, timedelta
@@ -49,7 +49,7 @@ def _obis_to_direction(obis_code: str) -> str:
         obis_code: OBIS code string, e.g. "1.8.0" or "2.8.1".
 
     Returns:
-        Either "bezug" or "einspeisung".
+        Either "consumption" or "feed_in".
 
     Raises:
         ImportValidationError: If the OBIS code's first component is

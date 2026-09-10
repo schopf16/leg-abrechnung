@@ -286,13 +286,13 @@ def test_metering_point_designation_is_unique(db):
 
 
 def test_metering_point_direction_properties():
-    """`is_bezug`/`is_einspeisung` reflect the MeteringPoint's direction."""
+    """`is_consumption`/`is_feed_in` reflect the MeteringPoint's direction."""
     from app.models.metering_point import DIRECTION_FEED_IN
 
-    bezug = _make_metering_point(direction=DIRECTION_CONSUMPTION)
-    einspeisung = _make_metering_point(direction=DIRECTION_FEED_IN)
-    assert bezug.is_bezug and not bezug.is_einspeisung
-    assert einspeisung.is_einspeisung and not einspeisung.is_bezug
+    consumption = _make_metering_point(direction=DIRECTION_CONSUMPTION)
+    feed_in = _make_metering_point(direction=DIRECTION_FEED_IN)
+    assert consumption.is_consumption and not consumption.is_feed_in
+    assert feed_in.is_feed_in and not feed_in.is_consumption
 
 
 def test_assignment_covers_respects_open_and_closed_ranges():
@@ -685,7 +685,7 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=12.0,
-                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
+                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=120, pdf_path=None, created_at="",
             ),
         ],

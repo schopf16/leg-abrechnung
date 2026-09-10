@@ -1,12 +1,12 @@
-"""Debitoren page: every Person's running account balance, a camt.053/
+"""receivables page: every Person's running account balance, a camt.053/
 camt.054 bank statement import with automatic (QRR) and suggested
 (IBAN/name/customer number) reconciliation, and a persistent queue of not-yet-
 resolved bank transactions so nothing imported is ever silently lost.
 
-Display sign convention: `account_entry.get_saldo_rappen` uses the same
+Display sign convention: `account_entry.get_balance_rappen` uses the same
 internal convention as `BillingRunItem.net_amount_rappen` (positive =
 owed to the LEG). This page negates it for display exactly once, to match
-how Michael thinks about it: a positive Saldo shown here means a credit/
+how Michael thinks about it: a positive balance shown here means a credit/
 overpayment, negative means the person still owes money. Never negate
 anywhere else.
 """
@@ -19,7 +19,7 @@ from typing import Optional
 from nicegui import events, ui
 
 from app.db.connection import connection_scope
-from app.domain import bank_reconciliation, mahnwesen, person_ledger
+from app.domain import bank_reconciliation, dunning, person_ledger
 from app.domain.iban_validation import format_iban
 from app.gui.invoice_detail import open_invoice_detail
 from app.gui.navigation import page_frame
@@ -38,7 +38,7 @@ from app.models.person import Person
 PRINT_COLUMNS = [
     ("Kunden-Nr.", "customer_number"),
     ("Name", "name"),
-    ("Saldo (CHF)", "saldo"),
+    ("Saldo (CHF)", "balance"),
 ]
 
 #: Sentinel select-option values for the bank-transaction resolution
@@ -47,30 +47,30 @@ _LEAVE_OPEN = "leave_open"
 _IGNORE = "ignore"
 
 
-def _display_saldo_chf(saldo_rappen: int) -> float:
-    """Negate + convert an internal Saldo to the GUI-displayed CHF value.
+def _display_balance_chf(balance_rappen: int) -> float:
+    """Negate + convert an internal balance to the GUI-displayed CHF value.
 
     Args:
-        saldo_rappen: Internal Saldo (positive = owed to the LEG), see
+        balance_rappen: Internal balance (positive = owed to the LEG), see
             `app.models.account_entry`'s sign-convention glossary.
 
     Returns:
         The value as Michael reads it: positive = Guthaben, negative =
         Schulden.
     """
-    return -saldo_rappen / 100
+    return -balance_rappen / 100
 
 
-def _saldo_color_class(saldo_rappen: int) -> str:
-    """CSS text-color class for a displayed Saldo.
+def _balance_color_class(balance_rappen: int) -> str:
+    """CSS text-color class for a displayed balance.
 
     Args:
-        saldo_rappen: Internal Saldo.
+        balance_rappen: Internal balance.
 
     Returns:
         A Quasar/Tailwind text-color class name.
     """
-    displayed = _display_saldo_chf(saldo_rappen)
+    displayed = _display_balance_chf(balance_rappen)
     if displayed > 0:
         return "text-positive"
     if displayed < 0:
@@ -78,14 +78,14 @@ def _saldo_color_class(saldo_rappen: int) -> str:
     return ""
 
 
-@ui.page("/debitoren")
-def debitoren_page() -> None:
-    """Render the Debitoren overview, bank-import assistant and open-items queue.
+@ui.page("/receivables")
+def receivables_page() -> None:
+    """Render the receivables overview, bank-import assistant and open-items queue.
 
     Returns:
         None.
     """
-    with page_frame("/debitoren", "Debitoren"):
+    with page_frame("/receivables", "Debitoren"):
         ui.label(
             "Übersicht, wer der LEG etwas schuldet oder ein Guthaben hat. "
             "Ein importierter Kontoauszug ordnet Zahlungen automatisch der "
@@ -99,12 +99,12 @@ def debitoren_page() -> None:
             )
             only_forderung_switch = ui.switch("Nur offene Forderungen")
             only_guthaben_switch = ui.switch("Nur Guthaben")
-            only_mahnung_switch = ui.switch("Nur fällige Mahnungen")
-            only_austritt_switch = ui.switch("Nur laufende Austritte")
+            only_dunning_switch = ui.switch("Nur fällige Mahnungen")
+            only_offboarding_switch = ui.switch("Nur laufende Austritte")
             render_print_button(
                 rubrik="Debitoren",
                 get_columns=lambda: PRINT_COLUMNS,
-                get_rows=lambda: [_print_row(p, saldo) for p, saldo in visible_entries],
+                get_rows=lambda: [_print_row(p, balance) for p, balance in visible_entries],
                 get_filter_description=lambda: _filter_description(),
             )
 
@@ -112,14 +112,14 @@ def debitoren_page() -> None:
 
         all_entries: list[tuple[Person, int]] = []
         visible_entries: list[tuple[Person, int]] = []
-        faellige_mahnung_person_ids: set[int] = set()
-        laufende_austritt_person_ids: set[int] = set()
+        due_dunning_person_ids: set[int] = set()
+        running_offboarding_person_ids: set[int] = set()
 
-        def _print_row(person: Person, saldo_rappen: int) -> dict:
+        def _print_row(person: Person, balance_rappen: int) -> dict:
             return {
                 "customer_number": person.formatted_customer_number,
                 "name": person.display_name,
-                "saldo": f"{_display_saldo_chf(saldo_rappen):.2f}",
+                "balance": f"{_display_balance_chf(balance_rappen):.2f}",
             }
 
         def _filter_description() -> Optional[str]:
@@ -130,13 +130,13 @@ def debitoren_page() -> None:
                 parts.append("nur offene Forderungen")
             if only_guthaben_switch.value:
                 parts.append("nur Guthaben")
-            if only_mahnung_switch.value:
+            if only_dunning_switch.value:
                 parts.append("nur fällige Mahnungen")
-            if only_austritt_switch.value:
+            if only_offboarding_switch.value:
                 parts.append("nur laufende Austritte")
             return ", ".join(parts) if parts else None
 
-        def render_person_card(person: Person, saldo_rappen: int) -> None:
+        def render_person_card(person: Person, balance_rappen: int) -> None:
             with ui.card().classes("w-full"):
                 with ui.row().classes("w-full items-center gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
@@ -144,8 +144,8 @@ def debitoren_page() -> None:
                         ui.label(f"Kunden-Nr. {person.formatted_customer_number}").classes(
                             "text-caption text-grey-6"
                         )
-                    ui.label(f"{_display_saldo_chf(saldo_rappen):.2f} CHF").classes(
-                        "text-lg font-bold ml-auto " + _saldo_color_class(saldo_rappen)
+                    ui.label(f"{_display_balance_chf(balance_rappen):.2f} CHF").classes(
+                        "text-lg font-bold ml-auto " + _balance_color_class(balance_rappen)
                     )
                     ui.button("Details", on_click=lambda p=person: open_person_detail(p)).props(
                         "dense flat"
@@ -155,18 +155,18 @@ def debitoren_page() -> None:
             nonlocal visible_entries
             needle = (search_input.value or "").strip().lower()
 
-            def matches(person: Person, saldo_rappen: int) -> bool:
+            def matches(person: Person, balance_rappen: int) -> bool:
                 if needle and needle not in person.display_name.lower() and needle not in str(
                     person.customer_number or ""
                 ):
                     return False
-                if only_forderung_switch.value and not (saldo_rappen > 0):
+                if only_forderung_switch.value and not (balance_rappen > 0):
                     return False
-                if only_guthaben_switch.value and not (saldo_rappen < 0):
+                if only_guthaben_switch.value and not (balance_rappen < 0):
                     return False
-                if only_mahnung_switch.value and person.id not in faellige_mahnung_person_ids:
+                if only_dunning_switch.value and person.id not in due_dunning_person_ids:
                     return False
-                if only_austritt_switch.value and person.id not in laufende_austritt_person_ids:
+                if only_offboarding_switch.value and person.id not in running_offboarding_person_ids:
                     return False
                 return True
 
@@ -175,18 +175,18 @@ def debitoren_page() -> None:
             with list_container:
                 if not visible_entries:
                     ui.label("Keine Einträge für diesen Filter.").classes("text-grey-6")
-                for person, saldo_rappen in visible_entries:
-                    render_person_card(person, saldo_rappen)
+                for person, balance_rappen in visible_entries:
+                    render_person_card(person, balance_rappen)
 
         def refresh_persons() -> None:
-            nonlocal all_entries, faellige_mahnung_person_ids, laufende_austritt_person_ids
+            nonlocal all_entries, due_dunning_person_ids, running_offboarding_person_ids
             with connection_scope() as connection:
                 persons = person_repo.list_all(connection)
                 saldi = account_entry_repo.get_all_saldi(connection)
-                faellige_mahnung_person_ids = {
-                    c.person.id for c in mahnwesen.list_faellige_mahnungen(connection)
+                due_dunning_person_ids = {
+                    c.person.id for c in dunning.list_due_dunnings(connection)
                 }
-                laufende_austritt_person_ids = {
+                running_offboarding_person_ids = {
                     o.person_id for o in person_offboarding_repo.list_in_progress(connection)
                 }
             all_entries = [(p, saldi.get(p.id, 0)) for p in persons]
@@ -194,20 +194,20 @@ def debitoren_page() -> None:
 
         search_input.on_value_change(lambda _: apply_filter())
         only_forderung_switch.on_value_change(lambda _: apply_filter())
-        only_mahnung_switch.on_value_change(lambda _: apply_filter())
-        only_austritt_switch.on_value_change(lambda _: apply_filter())
+        only_dunning_switch.on_value_change(lambda _: apply_filter())
+        only_offboarding_switch.on_value_change(lambda _: apply_filter())
         only_guthaben_switch.on_value_change(lambda _: apply_filter())
 
         # -- Person detail dialog -------------------------------------------------
         def open_person_detail(person: Person) -> None:
             with connection_scope() as connection:
                 ledger_entries = person_ledger.list_ledger_entries(connection, person.id)
-                saldo_rappen = account_entry_repo.get_saldo_rappen(connection, person.id)
+                balance_rappen = account_entry_repo.get_balance_rappen(connection, person.id)
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
                 ui.label(person.display_name).classes("text-lg font-bold")
-                ui.label(f"Saldo: {_display_saldo_chf(saldo_rappen):.2f} CHF").classes(
-                    "font-bold " + _saldo_color_class(saldo_rappen)
+                ui.label(f"Saldo: {_display_balance_chf(balance_rappen):.2f} CHF").classes(
+                    "font-bold " + _balance_color_class(balance_rappen)
                 )
                 ui.label(
                     "Zeitliche Übersicht, wie dieser Saldo zustande kommt: gestellte "
@@ -224,8 +224,8 @@ def debitoren_page() -> None:
                                 with ui.row().classes("items-center gap-2"):
                                     if ledger_entry.amount_rappen is not None:
                                         ui.label(
-                                            f"{_display_saldo_chf(ledger_entry.amount_rappen):+.2f} CHF"
-                                        ).classes(_saldo_color_class(ledger_entry.amount_rappen))
+                                            f"{_display_balance_chf(ledger_entry.amount_rappen):+.2f} CHF"
+                                        ).classes(_balance_color_class(ledger_entry.amount_rappen))
                                     if ledger_entry.billing_run_item_id is not None:
                                         ui.button(
                                             "Details ansehen",
@@ -247,7 +247,7 @@ def debitoren_page() -> None:
                         return
                     # GUI convention is negated relative to storage -- see
                     # module docstring: a positive value typed here (a
-                    # Guthaben/payment) must reduce the internal Saldo.
+                    # Guthaben/payment) must reduce the internal balance.
                     amount_rappen = -round(float(amount_input.value) * 100)
                     with connection_scope() as connection:
                         account_entry_repo.create(

@@ -47,7 +47,7 @@ def _load_overview(connection) -> dict:
         path to jump straight to the object in question, or `None` if no
         detail page exists for it), "legs" (per-LEG summary rows),
         "offene_registrierungen" (count of not-yet-fully-processed Web-Registrierungen)
-        and "offene_aufnahmen" (count of in-progress onboarding trackers,
+        and "open_onboardings" (count of in-progress onboarding trackers,
         see `app.models.person_onboarding`) keys.
     """
     substation_areas = substation_area_repo.list_all(connection)
@@ -60,7 +60,7 @@ def _load_overview(connection) -> dict:
     offene_registrierungen = sum(
         1 for r in web_registration_repo.list_all(connection) if not r.is_fully_processed
     )
-    offene_aufnahmen = len(person_onboarding_repo.list_in_progress(connection))
+    open_onboardings = len(person_onboarding_repo.list_in_progress(connection))
 
     action_items: list[tuple[str, Optional[str]]] = []
     if not settings.qr_iban.strip():
@@ -127,7 +127,7 @@ def _load_overview(connection) -> dict:
         "action_items": action_items,
         "legs": leg_rows,
         "offene_registrierungen": offene_registrierungen,
-        "offene_aufnahmen": offene_aufnahmen,
+        "offene_aufnahmen": open_onboardings,
     }
 
 
@@ -167,7 +167,7 @@ def dashboard_page() -> None:
                     ui.label(
                         f"📋 {overview['offene_aufnahmen']} Aufnahme(n) in Bearbeitung."
                     ).classes("text-body2")
-                    ui.link("→ Zu den Aufnahmen", "/aufnahmen").classes("text-body2")
+                    ui.link("→ Zu den Aufnahmen", "/onboardings").classes("text-body2")
             if not has_issues:
                 ui.label("✓ Keine offenen Punkte.").classes("text-body2")
 

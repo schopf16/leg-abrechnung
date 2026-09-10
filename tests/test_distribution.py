@@ -134,7 +134,7 @@ def _reading(db, metering_point_id: int, moment: datetime, direction: str, kwh: 
         db: Database connection fixture.
         metering_point_id: MeteringPoint the reading belongs to.
         moment: Interval start.
-        direction: "bezug" or "einspeisung".
+        direction: "consumption" or "feed_in".
         kwh: Energy for the interval.
 
     Returns:

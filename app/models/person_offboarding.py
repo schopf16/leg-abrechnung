@@ -2,17 +2,17 @@
 membership ending -- the reverse of `app.models.person_onboarding`, with
 exactly the same structure (a fixed, unordered set of step dates).
 
-Two triggers, one process, distinguished by `grund`:
-  - `"zahlungsverzug"`: prepared (never auto-started) from the Mahnwesen
-    once a person's 2. Mahnung is sent without payment following -- see
-    `app.domain.mahnwesen` and `app.gui.pages.mahnwesen`. Michael still
+Two triggers, one process, distinguished by `reason`:
+  - `"zahlungsverzug"`: prepared (never auto-started) from the dunning
+    once a person's 2. dunning notice is sent without payment following -- see
+    `app.domain.dunning` and `app.gui.pages.dunning`. Michael still
     confirms the actual start himself.
   - `"freiwillig"`: a normal voluntary exit (member resigns, moves away),
     started manually, exactly like a manual "+ Aufnahme starten".
   - `"sonstig"`: anything else.
 
-Ending a membership here never touches the Debitoren claim: a Person's
-Saldo (`app.models.account_entry`) is entirely independent of this table.
+Ending a membership here never touches the receivables claim: a Person's
+balance (`app.models.account_entry`) is entirely independent of this table.
 Someone excluded for non-payment still owes what they owed.
 """
 
@@ -25,14 +25,14 @@ from typing import Optional
 #: `(PersonOffboarding attribute name, German label)` pairs -- mirrors
 #: `app.models.person_onboarding.STEPS`.
 STEPS: list[tuple[str, str]] = [
-    ("beschlossen_am", "Austritt/Ausschluss beschlossen"),
+    ("decided_at", "Austritt/Ausschluss beschlossen"),
     ("metering_point_exit_at", "Austrittsdatum Messpunkt festgelegt"),
-    ("bkw_informiert_am", "BKW informiert"),
-    ("person_bestaetigt_am", "Person schriftlich bestätigt"),
+    ("bkw_informed_at", "BKW informiert"),
+    ("person_confirmed_at", "Person schriftlich bestätigt"),
 ]
 
-#: Valid values for `PersonOffboarding.grund`.
-GRUND_OPTIONS: dict[str, str] = {
+#: Valid values for `PersonOffboarding.reason`.
+REASON_OPTIONS: dict[str, str] = {
     "zahlungsverzug": "Zahlungsverzug",
     "freiwillig": "Freiwilliger Austritt",
     "sonstig": "Sonstiges",
@@ -46,26 +46,26 @@ class PersonOffboarding:
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         person_id: The Person being tracked (one tracking row per Person).
-        grund: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"`.
-        beschlossen_am: Date of step 1, "Austritt/Ausschluss beschlossen",
+        reason: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"`.
+        decided_at: Date of step 1, "Austritt/Ausschluss beschlossen",
             or `None`.
         metering_point_exit_at: Date of step 2, "Austrittsdatum MeteringPoint
             festgelegt", or `None`. Setting this in the GUI offers to end
             the person's currently open `Assignment`(en) with this date as
-            `valid_to` -- never automatic, see `app.gui.pages.austritte`.
-        bkw_informiert_am: Date of step 3, "BKW informiert", or `None`.
-        person_bestaetigt_am: Date of step 4, "Person schriftlich
+            `valid_to` -- never automatic, see `app.gui.pages.offboardings`.
+        bkw_informed_at: Date of step 3, "BKW informiert", or `None`.
+        person_confirmed_at: Date of step 4, "Person schriftlich
             bestätigt", or `None`.
         created_at: ISO-8601 timestamp tracking was started for this Person.
     """
 
     id: Optional[int]
     person_id: int
-    grund: str
-    beschlossen_am: Optional[date]
+    reason: str
+    decided_at: Optional[date]
     metering_point_exit_at: Optional[date]
-    bkw_informiert_am: Optional[date]
-    person_bestaetigt_am: Optional[date]
+    bkw_informed_at: Optional[date]
+    person_confirmed_at: Optional[date]
     created_at: str
 
     @property
@@ -141,11 +141,11 @@ class PersonOffboarding:
         return PersonOffboarding(
             id=row["id"],
             person_id=row["person_id"],
-            grund=row["grund"],
-            beschlossen_am=_date(row["beschlossen_am"]),
+            reason=row["reason"],
+            decided_at=_date(row["decided_at"]),
             metering_point_exit_at=_date(row["metering_point_exit_at"]),
-            bkw_informiert_am=_date(row["bkw_informiert_am"]),
-            person_bestaetigt_am=_date(row["person_bestaetigt_am"]),
+            bkw_informed_at=_date(row["bkw_informed_at"]),
+            person_confirmed_at=_date(row["person_confirmed_at"]),
             created_at=row["created_at"],
         )
 
@@ -216,8 +216,8 @@ def start_for_person(
     connection: sqlite3.Connection,
     person_id: int,
     *,
-    grund: str,
-    beschlossen_am: Optional[date] = None,
+    reason: str,
+    decided_at: Optional[date] = None,
 ) -> PersonOffboarding:
     """Start offboarding tracking for a Person, or return its existing tracker.
 
@@ -226,9 +226,9 @@ def start_for_person(
     Args:
         connection: Open SQLite connection.
         person_id: Primary key of the person to start tracking for.
-        grund: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"` -- only
+        reason: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"` -- only
             used if a tracker does not already exist.
-        beschlossen_am: Date to record for step 1, or `None` to leave it
+        decided_at: Date to record for step 1, or `None` to leave it
             unset for now.
 
     Returns:
@@ -240,13 +240,13 @@ def start_for_person(
 
     cursor = connection.execute(
         """
-        INSERT INTO person_offboarding (person_id, grund, beschlossen_am, created_at)
+        INSERT INTO person_offboarding (person_id, reason, decided_at, created_at)
         VALUES (?, ?, ?, ?)
         """,
         (
             person_id,
-            grund,
-            beschlossen_am.isoformat() if beschlossen_am else None,
+            reason,
+            decided_at.isoformat() if decided_at else None,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -272,16 +272,16 @@ def update(connection: sqlite3.Connection, offboarding: PersonOffboarding) -> No
     connection.execute(
         """
         UPDATE person_offboarding SET
-            grund = ?, beschlossen_am = ?, metering_point_exit_at = ?,
-            bkw_informiert_am = ?, person_bestaetigt_am = ?
+            reason = ?, decided_at = ?, metering_point_exit_at = ?,
+            bkw_informed_at = ?, person_confirmed_at = ?
         WHERE id = ?
         """,
         (
-            offboarding.grund,
-            offboarding.beschlossen_am.isoformat() if offboarding.beschlossen_am else None,
+            offboarding.reason,
+            offboarding.decided_at.isoformat() if offboarding.decided_at else None,
             offboarding.metering_point_exit_at.isoformat() if offboarding.metering_point_exit_at else None,
-            offboarding.bkw_informiert_am.isoformat() if offboarding.bkw_informiert_am else None,
-            offboarding.person_bestaetigt_am.isoformat() if offboarding.person_bestaetigt_am else None,
+            offboarding.bkw_informed_at.isoformat() if offboarding.bkw_informed_at else None,
+            offboarding.person_confirmed_at.isoformat() if offboarding.person_confirmed_at else None,
             offboarding.id,
         ),
     )

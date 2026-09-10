@@ -363,7 +363,7 @@ def web_registrierungen_page() -> None:
                     person_onboarding_repo.start_for_person(
                         connection,
                         saved_person.id,
-                        angemeldet_am=_parse_submitted_date(reg.submitted_at),
+                        registered_at=_parse_submitted_date(reg.submitted_at),
                     )
                 refresh()
 

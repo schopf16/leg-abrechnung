@@ -10,12 +10,12 @@ Sign-convention glossary (read this before touching anything here):
         negative = the LEG owes the person more (an executed payout is
                    therefore recorded POSITIVE -- it neutralizes a credit)
 
-    GUI convention (Debitoren page only, per the way Michael thinks about
+    GUI convention (receivables page only, per the way Michael thinks about
     it -- "positive = Guthaben/zu viel bezahlt, negative = Schulden"):
-        the displayed "Saldo" is the NEGATED running balance.
+        the displayed "balance" is the NEGATED running balance.
 
     The negation happens in exactly one place: the GUI layer that renders
-    a person's Saldo. Never negate anything when storing or summing
+    a person's balance. Never negate anything when storing or summing
     `amount_rappen` here -- that is how a sign bug gets introduced.
 
 Deliberately does NOT duplicate `billing_run_items.net_amount_rappen`
@@ -23,11 +23,11 @@ Deliberately does NOT duplicate `billing_run_items.net_amount_rappen`
 source of truth for invoiced amounts, so there is no shadow copy that
 could drift out of sync. This table only records what the *bank*
 actually confirmed: payments received, payouts executed, or a manual
-correction. A person's running Saldo is therefore always
+correction. A person's running balance is therefore always
 
     SUM(billing_run_items.net_amount_rappen) + SUM(account_entries.amount_rappen)
 
-computed live (see `get_saldo_rappen`/`get_all_saldi`), never stored.
+computed live (see `get_balance_rappen`/`get_all_saldi`), never stored.
 """
 
 import sqlite3
@@ -53,7 +53,7 @@ class AccountEntry:
             bank's booking date for a bank-confirmed entry).
         billing_run_item_id: The invoice/credit this booking is for, if
             known -- purely for traceability in the person's transaction
-            history, never used to compute the Saldo (that is always a
+            history, never used to compute the balance (that is always a
             person-level sum, see the module docstring).
         bank_transaction_id: The imported bank statement entry this
             booking originated from, or `None` for a manual `korrektur`.
@@ -183,8 +183,8 @@ def list_for_person(connection: sqlite3.Connection, person_id: int) -> list[Acco
     return [AccountEntry.from_row(row) for row in rows]
 
 
-def get_saldo_rappen(connection: sqlite3.Connection, person_id: int) -> int:
-    """Compute one person's current running Saldo, internal sign convention.
+def get_balance_rappen(connection: sqlite3.Connection, person_id: int) -> int:
+    """Compute one person's current running balance, internal sign convention.
 
     Args:
         connection: Open SQLite connection.
@@ -199,21 +199,21 @@ def get_saldo_rappen(connection: sqlite3.Connection, person_id: int) -> int:
         SELECT
             COALESCE((SELECT SUM(net_amount_rappen) FROM billing_run_items WHERE person_id = ?), 0)
             + COALESCE((SELECT SUM(amount_rappen) FROM account_entries WHERE person_id = ?), 0)
-            AS saldo
+            AS balance
         """,
         (person_id, person_id),
     ).fetchone()
-    return row["saldo"]
+    return row["balance"]
 
 
 def get_remaining_for_item(connection: sqlite3.Connection, item_id: int, net_amount_rappen: int) -> int:
     """Compute how much of one specific billing run item is still open.
 
-    Unlike the person-level Saldo (which nets everything together and is
-    what gates whether a Mahnung is raised at all, see `app.domain.
-    mahnwesen`), this only counts payments/corrections explicitly linked
+    Unlike the person-level balance (which nets everything together and is
+    what gates whether a dunning notice is raised at all, see `app.domain.
+    dunning`), this only counts payments/corrections explicitly linked
     to *this* item via `billing_run_item_id` -- the well-defined subset a
-    Mahnung's own QR-bill can safely charge without guessing how a
+    dunning notice's own QR-bill can safely charge without guessing how a
     person-level payment not tied to any specific invoice should be
     allocated across several open items.
 
@@ -227,7 +227,7 @@ def get_remaining_for_item(connection: sqlite3.Connection, item_id: int, net_amo
         The remaining amount in internal sign convention (positive =
         still owed to the LEG), never negative -- clamped to `0` once
         item-linked payments cover the item, even if they overshoot it
-        (the excess becomes a general credit on the person's Saldo, not a
+        (the excess becomes a general credit on the person's balance, not a
         negative "remaining" on this one item).
     """
     row = connection.execute(
@@ -238,9 +238,9 @@ def get_remaining_for_item(connection: sqlite3.Connection, item_id: int, net_amo
 
 
 def get_all_saldi(connection: sqlite3.Connection) -> dict[int, int]:
-    """Compute every person's current running Saldo in one grouped query.
+    """Compute every person's current running balance in one grouped query.
 
-    Avoids an N+1 query pattern on the Debitoren list page -- see
+    Avoids an N+1 query pattern on the receivables list page -- see
     `_load_metering_point_lookup` in `app.importers.import_service` for the
     same rationale applied elsewhere in this codebase.
 
@@ -248,7 +248,7 @@ def get_all_saldi(connection: sqlite3.Connection) -> dict[int, int]:
         connection: Open SQLite connection.
 
     Returns:
-        A dict mapping `person_id` to its Saldo (internal sign
+        A dict mapping `person_id` to its balance (internal sign
         convention). A person with neither billing history nor account
         entries is simply absent (treat a missing key as `0`).
     """

@@ -76,13 +76,13 @@ def _billing_context(db):
     run, items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
     distribution = compute_quarter_distribution(db, leg.id, *SUMMER_QUARTER)
     settings = settings_repo.get_settings(db)
-    # generate_person_bill_pdf prints item.faellig_am verbatim (never
+    # generate_person_bill_pdf prints item.due_date verbatim (never
     # recomputes it) since the export_service.py fix for Finding #2 --
     # tests calling it directly (bypassing export_billing_run_documents,
     # which is the only real caller that freezes this itself) must set it.
     due_date = date.today().isoformat()
     for item in items:
-        item.faellig_am = due_date
+        item.due_date = due_date
     return run, items, distribution, leg, settings
 
 
@@ -106,19 +106,19 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
+        admin_fee_consumption_rp_per_kwh=0.0, admin_fee_feed_in_rp_per_kwh=0.0,
         paper_invoice_rappen=0, extra_backup_dir="",
         metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
-        onboarding_ueberfaellig_tage=30,
+        onboarding_overdue_days=30,
         leg_founding_min_persons=7,
-        rechnung_email_betreff="Ihre Abrechnung",
-        rechnung_email_text="Guten Tag",
-        mahnung_neue_frist_tage=14,
-        mahnung_bagatellgrenze_rappen=500,
-        mahnung1_email_betreff="1. Mahnung",
-        mahnung1_email_text="Guten Tag",
-        mahnung2_email_betreff="2. Mahnung",
-        mahnung2_email_text="Guten Tag",
+        invoice_email_subject="Ihre Abrechnung",
+        invoice_email_body="Guten Tag",
+        dunning_new_deadline_days=14,
+        dunning_minimum_rappen=500,
+        dunning1_email_subject="1. Mahnung",
+        dunning1_email_body="Guten Tag",
+        dunning2_email_subject="2. Mahnung",
+        dunning2_email_body="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
@@ -155,19 +155,19 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     settings = LegSettings(
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
+        admin_fee_consumption_rp_per_kwh=0.0, admin_fee_feed_in_rp_per_kwh=0.0,
         paper_invoice_rappen=0, extra_backup_dir="",
         metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
-        onboarding_ueberfaellig_tage=30,
+        onboarding_overdue_days=30,
         leg_founding_min_persons=7,
-        rechnung_email_betreff="Ihre Abrechnung",
-        rechnung_email_text="Guten Tag",
-        mahnung_neue_frist_tage=14,
-        mahnung_bagatellgrenze_rappen=500,
-        mahnung1_email_betreff="1. Mahnung",
-        mahnung1_email_text="Guten Tag",
-        mahnung2_email_betreff="2. Mahnung",
-        mahnung2_email_text="Guten Tag",
+        invoice_email_subject="Ihre Abrechnung",
+        invoice_email_body="Guten Tag",
+        dunning_new_deadline_days=14,
+        dunning_minimum_rappen=500,
+        dunning1_email_subject="1. Mahnung",
+        dunning1_email_body="Guten Tag",
+        dunning2_email_subject="2. Mahnung",
+        dunning2_email_body="Guten Tag",
         updated_at="",
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
@@ -193,7 +193,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
 
 
 def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(db, tmp_path):
-    """A prosumer's document (both Bezug and Vergütung tables) is long enough to
+    """A prosumer's document (both consumption and Vergütung tables) is long enough to
     push the QR-bill onto a second page rather than overlapping the content.
 
     The demo data's prosumers are net credits (see the credit-note test
@@ -268,11 +268,11 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     person = person_repo.get(db, consumer_item.person_id)
     person_result = distribution.person_results[consumer_item.person_id]
     # Strip the admin fees this item happens to carry, so the document is
-    # down to its simplest possible shape: one Bezug table plus the net
+    # down to its simplest possible shape: one consumption table plus the net
     # settlement. The fee rows are driven entirely by the item's own
     # (frozen) fields now, not by `settings` -- see app.domain.billing.
-    consumer_item.verwaltungsaufwand_bezug_rappen = 0
-    consumer_item.verwaltungsaufwand_einspeisung_rappen = 0
+    consumer_item.admin_fee_consumption_rappen = 0
+    consumer_item.admin_fee_feed_in_rappen = 0
     consumer_item.paper_invoice_rappen = 0
 
     output_path = tmp_path / "consumer_no_fees.pdf"
@@ -284,7 +284,7 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     assert _page_count(output_path) == 1
 
 
-def test_generate_person_bill_pdf_shows_verwaltungsaufwand_section_when_person_pays_paper_invoice(db, tmp_path):
+def test_generate_person_bill_pdf_shows_admin_fee_section_when_person_pays_paper_invoice(db, tmp_path):
     """Beat (demo person with `paper_invoice=True`) gets a document that
     renders without error even with the extra fee section present."""
     run, items, distribution, leg, settings = _billing_context(db)
@@ -365,10 +365,10 @@ def test_export_billing_run_documents_writes_one_pdf_per_person(db, tmp_path, mo
     assert all(item.pdf_path for item in stored_items)
 
 
-def test_export_billing_run_documents_freezes_faellig_am_and_never_resets_it_on_reexport(db, tmp_path, monkeypatch):
+def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_reexport(db, tmp_path, monkeypatch):
     """Finding #2: a re-export (e.g. to fix a typo in the LEG address) must
     keep printing/using the due date already communicated to the person
-    and already relied upon by app.domain.mahnwesen -- never push it back
+    and already relied upon by app.domain.dunning -- never push it back
     out by another PAYMENT_TERM just because the PDF was regenerated."""
     import app.pdf.export_service as export_service
 
@@ -379,10 +379,10 @@ def test_export_billing_run_documents_freezes_faellig_am_and_never_resets_it_on_
     run, _items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
 
     export_service.export_billing_run_documents(db, run)
-    first_due_dates = {item.id: item.faellig_am for item in billing_run_repo.list_items(db, run.id)}
+    first_due_dates = {item.id: item.due_date for item in billing_run_repo.list_items(db, run.id)}
     assert all(due is not None for due in first_due_dates.values())
 
     export_service.export_billing_run_documents(db, run)
-    second_due_dates = {item.id: item.faellig_am for item in billing_run_repo.list_items(db, run.id)}
+    second_due_dates = {item.id: item.due_date for item in billing_run_repo.list_items(db, run.id)}
 
     assert second_due_dates == first_due_dates

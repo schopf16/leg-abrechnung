@@ -1307,4 +1307,54 @@ Freundliche Grüsse';
             ALTER TABLE billing_run_items RENAME COLUMN papierrechnung_rappen TO paper_invoice_rappen;
         """,
     ),
+    Migration(
+        version=42,
+        description="Translate billing, dunning (Mahnwesen), settings and "
+        "onboarding/offboarding columns to English: verwaltungsaufwand_* -> "
+        "admin_fee_consumption_*/admin_fee_feed_in_*, faellig_am -> "
+        "due_date, mahnstufe -> dunning_level, letzte_mahnung_am -> "
+        "last_dunning_at, mahnung_frist_tage -> dunning_deadline_days on "
+        "billing_run_items; the invoice/Mahnung template settings and "
+        "thresholds on leg_settings; table mahnung_log -> dunning_log with "
+        "level/amount_rappen; the step dates on person_onboarding and "
+        "person_offboarding (grund -> reason). NOT touched: the stored "
+        "enum values person_offboarding.reason ('freiwillig', ...), "
+        "account_entries.kind and billing_runs.status, and the German "
+        "{betrag}/{neue_frist} placeholders in stored Mahnung templates "
+        "(administrator data). Sixth step of the English translation, see "
+        "migration 37. Pure renames, no data touched.",
+        sql="""
+            ALTER TABLE leg_settings RENAME COLUMN verwaltungsaufwand_bezug_rp_per_kwh TO admin_fee_consumption_rp_per_kwh;
+            ALTER TABLE leg_settings RENAME COLUMN verwaltungsaufwand_einspeisung_rp_per_kwh TO admin_fee_feed_in_rp_per_kwh;
+            ALTER TABLE leg_settings RENAME COLUMN onboarding_ueberfaellig_tage TO onboarding_overdue_days;
+            ALTER TABLE leg_settings RENAME COLUMN rechnung_email_betreff TO invoice_email_subject;
+            ALTER TABLE leg_settings RENAME COLUMN rechnung_email_text TO invoice_email_body;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung_neue_frist_tage TO dunning_new_deadline_days;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung_bagatellgrenze_rappen TO dunning_minimum_rappen;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung1_email_betreff TO dunning1_email_subject;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung1_email_text TO dunning1_email_body;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung2_email_betreff TO dunning2_email_subject;
+            ALTER TABLE leg_settings RENAME COLUMN mahnung2_email_text TO dunning2_email_body;
+            ALTER TABLE billing_run_items RENAME COLUMN verwaltungsaufwand_bezug_rappen TO admin_fee_consumption_rappen;
+            ALTER TABLE billing_run_items RENAME COLUMN verwaltungsaufwand_einspeisung_rappen TO admin_fee_feed_in_rappen;
+            ALTER TABLE billing_run_items RENAME COLUMN verwaltungsaufwand_bezug_rp_per_kwh TO admin_fee_consumption_rp_per_kwh;
+            ALTER TABLE billing_run_items RENAME COLUMN verwaltungsaufwand_einspeisung_rp_per_kwh TO admin_fee_feed_in_rp_per_kwh;
+            ALTER TABLE billing_run_items RENAME COLUMN faellig_am TO due_date;
+            ALTER TABLE billing_run_items RENAME COLUMN mahnstufe TO dunning_level;
+            ALTER TABLE billing_run_items RENAME COLUMN letzte_mahnung_am TO last_dunning_at;
+            ALTER TABLE billing_run_items RENAME COLUMN mahnung_frist_tage TO dunning_deadline_days;
+            ALTER TABLE mahnung_log RENAME TO dunning_log;
+            ALTER TABLE dunning_log RENAME COLUMN stufe TO level;
+            ALTER TABLE dunning_log RENAME COLUMN betrag_rappen TO amount_rappen;
+            ALTER TABLE person_onboarding RENAME COLUMN angemeldet_am TO registered_at;
+            ALTER TABLE person_onboarding RENAME COLUMN leg_zugewiesen_am TO leg_assigned_at;
+            ALTER TABLE person_onboarding RENAME COLUMN vertrag_unterzeichnet_am TO contract_signed_at;
+            ALTER TABLE person_onboarding RENAME COLUMN bkw_angemeldet_am TO bkw_registered_at;
+            ALTER TABLE person_onboarding RENAME COLUMN bkw_bestaetigt_am TO bkw_confirmed_at;
+            ALTER TABLE person_offboarding RENAME COLUMN grund TO reason;
+            ALTER TABLE person_offboarding RENAME COLUMN beschlossen_am TO decided_at;
+            ALTER TABLE person_offboarding RENAME COLUMN bkw_informiert_am TO bkw_informed_at;
+            ALTER TABLE person_offboarding RENAME COLUMN person_bestaetigt_am TO person_confirmed_at;
+        """,
+    ),
 ]

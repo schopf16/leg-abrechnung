@@ -32,7 +32,7 @@ PRINT_COLUMNS = [
     ("BKW-Bezeichnung", "bkw_designation"),
     ("Standorte", "sites_count"),
     ("Prosumer : Consumer", "prosumer_consumer"),
-    ("Hinweis", "hinweis"),
+    ("Hinweis", "hint"),
     ("Bemerkung", "note"),
 ]
 
@@ -47,7 +47,7 @@ def _mix_badge(mix) -> str:
         A short text badge -- 🟢 if both sides are present, 🔴 if the
         substation area is one-sided (or empty).
     """
-    symbol = "🔴" if mix.ist_einseitig else "🟢"
+    symbol = "🔴" if mix.is_one_sided else "🟢"
     return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
 
 
@@ -83,7 +83,7 @@ def _to_row(
         "bkw_designation": substation_area.bkw_designation,
         "sites_count": len(site_ids),
         "prosumer_consumer": prosumer_consumer,
-        "hinweis": mix.hinweis,
+        "hint": mix.hint,
         "note": substation_area.note,
         "_search": search_text,
     }
@@ -147,8 +147,8 @@ def substation_areas_page() -> None:
                         ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
                             "dense flat color=negative"
                         )
-                if row["hinweis"]:
-                    ui.label(row["hinweis"]).classes("w-full text-body2 text-negative")
+                if row["hint"]:
+                    ui.label(row["hint"]).classes("w-full text-body2 text-negative")
                 if row["note"]:
                     ui.label(row["note"]).classes("w-full text-body2 text-grey-7")
 

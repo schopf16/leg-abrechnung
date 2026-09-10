@@ -57,7 +57,7 @@ def test_create_demo_data_is_guarded_against_double_run(db):
 
 
 def test_winter_quarter_has_zero_production(db):
-    """Every Einspeisung reading in the winter fixture quarter is zero."""
+    """Every feed-in reading in the winter fixture quarter is zero."""
     create_demo_data(db)
     start, end = quarter_bounds(*WINTER_QUARTER)
     rows = db.execute(

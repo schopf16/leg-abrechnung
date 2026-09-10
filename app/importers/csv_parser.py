@@ -4,12 +4,12 @@ Expected columns (semicolon- or comma-separated, header row required,
 column order does not matter, matching is case-insensitive):
 
     MeteringPoint;Zeitstempel;Richtung;Wert_kWh
-    CH1000000000000000000000001;2025-07-01T00:00:00;Bezug;0.123
-    CH1000000000000000000000001;2025-07-01T00:15:00;Bezug;0.150
+    CH1000000000000000000000001;2025-07-01T00:00:00;consumption;0.123
+    CH1000000000000000000000001;2025-07-01T00:15:00;consumption;0.150
 
 - `MeteringPoint`: metering point designation (business key, "designation").
 - `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
-- `Richtung`: "Bezug" or "Einspeisung" (German, case-insensitive; English
+- `Richtung`: "consumption" or "feed-in" (German, case-insensitive; English
   synonyms are also accepted, see `app.importers.base.validate_direction`).
 - `Wert_kWh`: energy for the interval, decimal point or comma.
 
