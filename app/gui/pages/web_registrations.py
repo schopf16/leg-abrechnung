@@ -52,12 +52,12 @@ from app.models.web_registration import WebRegistration, WebRegistrationMeter
 #: `(label, field)` pairs for the printed table.
 PRINT_COLUMNS = [
     ("Name", "name"),
-    ("Eingegangen", "eingegangen"),
+    ("Eingegangen", "submitted"),
     ("E-Mail", "email"),
     ("Telefon", "phone"),
     ("Adresse", "address"),
     ("BKW-Kundennummer", "bkw_customer_number"),
-    ("Zähler", "zaehler"),
+    ("Zähler", "meters"),
     ("Status", "status"),
 ]
 
@@ -73,12 +73,12 @@ def _print_row(reg: WebRegistration) -> dict:
     """
     return {
         "name": reg.display_name,
-        "eingegangen": reg.submitted_at,
+        "submitted": reg.submitted_at,
         "email": reg.email,
         "phone": reg.phone,
         "address": f"{reg.street} {reg.house_number}, {reg.postal_code} {reg.city}".strip(", "),
         "bkw_customer_number": reg.bkw_customer_number,
-        "zaehler": ", ".join(m.meter_number for m in reg.meters) or "-",
+        "meters": ", ".join(m.meter_number for m in reg.meters) or "-",
         "status": "Vollständig übernommen" if reg.is_fully_processed else "Offen",
     }
 
@@ -161,14 +161,14 @@ def _parse_submitted_date(value: str) -> date:
         return date.today()
 
 
-@ui.page("/web-registrierungen")
-def web_registrierungen_page() -> None:
+@ui.page("/web-registrations")
+def web_registrations_page() -> None:
     """Render the Web-Registrierungen inbox page.
 
     Returns:
         None.
     """
-    with page_frame("/web-registrierungen", "Web-Registrierungen"):
+    with page_frame("/web-registrations", "Web-Registrierungen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Registrierungen, die Interessierte über das Anmeldeformular "
@@ -181,7 +181,7 @@ def web_registrierungen_page() -> None:
             ).classes("text-body2 text-grey-8")
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
-                    rubrik="Web-Registrierungen",
+                    heading="Web-Registrierungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [_print_row(r) for r in visible_regs],
                     get_filter_description=lambda: (
@@ -487,8 +487,8 @@ def web_registrierungen_page() -> None:
                 ui.notify(str(exc), type="negative", timeout=8000)
                 return
             ui.notify(
-                f"{result.neu} neu, {result.aktualisiert} aktualisiert, "
-                f"{result.unveraendert} unverändert.",
+                f"{result.created} neu, {result.updated} aktualisiert, "
+                f"{result.unchanged} unverändert.",
                 type="positive",
             )
             for warning in result.warnings:

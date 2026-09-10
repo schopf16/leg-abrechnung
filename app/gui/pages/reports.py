@@ -44,14 +44,14 @@ def _type_label(item) -> str:
     return "Ausgeglichen"
 
 
-@ui.page("/auswertungen")
-def auswertungen_page() -> None:
+@ui.page("/reports")
+def reports_page() -> None:
     """Render the reports and plausibility-check page.
 
     Returns:
         None.
     """
-    with page_frame("/auswertungen", "Auswertungen"):
+    with page_frame("/reports", "Auswertungen"):
         ui.label(
             "Übersicht je Person für ein Quartal innerhalb einer LEG (auf "
             "Basis der aktuellen Messdaten und des aktuellen Preises -- "

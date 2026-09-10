@@ -48,13 +48,13 @@ def test_validate_metering_point_designation_rejects_lowercase_or_special_chars(
     assert error is not None
 
 
-def test_validate_land_accepts_empty_and_two_letters():
+def test_validate_country_accepts_empty_and_two_letters():
     assert validate_country("") is None
     assert validate_country("ch") is None
     assert validate_country("CH") is None
 
 
-def test_validate_land_rejects_wrong_length_or_digits():
+def test_validate_country_rejects_wrong_length_or_digits():
     assert validate_country("C") is not None
     assert validate_country("CHE") is not None
     assert validate_country("C1") is not None

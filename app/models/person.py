@@ -8,7 +8,7 @@ person can be billed somewhere other than where their meter is installed).
 
 A Person can be a company (`company` set), a natural person (`first_name`/
 `last_name` set, `company` empty), or a company with a named contact person
-(all three set) -- see `Person.display_name` and `Person.adressblock_zeilen`
+(all three set) -- see `Person.display_name` and `Person.address_block_lines`
 for how these combine for display.
 """
 
@@ -121,7 +121,7 @@ class Person:
         return self.company or self.full_name
 
     @property
-    def adressblock_zeilen(self) -> list[str]:
+    def address_block_lines(self) -> list[str]:
         """Recipient address block lines (company, salutation, personal name).
 
         Standard Swiss business-letter order: company name first, then the
@@ -241,7 +241,7 @@ def get_by_email(connection: sqlite3.Connection, email: str) -> Optional[Person]
     `contact_email` has no uniqueness constraint (unlike `customer_number`),
     so this returns the first match if several persons happen to share
     an address -- used only for an informational "does this already
-    exist?" lookup (see `app.gui.pages.web_registrierungen`), never as an
+    exist?" lookup (see `app.gui.pages.web_registrations`), never as an
     identity key.
 
     Args:

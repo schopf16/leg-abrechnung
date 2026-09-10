@@ -153,7 +153,7 @@ def test_person_created_survives_a_content_update_via_upsert(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="p@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
 
-    assert result.aktualisiert == 1
+    assert result.updated == 1
     updated = web_registration_repo.get_by_email(db, "p@example.ch")
     assert updated.phone == "222"
     assert updated.person_created is True
@@ -180,9 +180,9 @@ def test_sync_registrations_creates_new_row(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="new@example.ch")], []]):
         result = sync_registrations(db, "token")
 
-    assert result.neu == 1
-    assert result.aktualisiert == 0
-    assert result.unveraendert == 0
+    assert result.created == 1
+    assert result.updated == 0
+    assert result.unchanged == 0
     reg = web_registration_repo.get_by_email(db, "new@example.ch")
     assert reg is not None
     assert reg.is_fully_processed is False
@@ -193,7 +193,7 @@ def test_sync_registrations_creates_row_with_no_meters(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="nometer@example.ch", meters=[])], []]):
         result = sync_registrations(db, "token")
 
-    assert result.neu == 1
+    assert result.created == 1
     reg = web_registration_repo.get_by_email(db, "nometer@example.ch")
     assert reg.meters == []
 
@@ -203,7 +203,7 @@ def test_sync_registrations_creates_multiple_meter_rows(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="multi@example.ch", meters=meters)], []]):
         result = sync_registrations(db, "token")
 
-    assert result.neu == 1
+    assert result.created == 1
     reg = web_registration_repo.get_by_email(db, "multi@example.ch")
     assert [(m.meter_number, m.note) for m in reg.meters] == meters
 
@@ -219,8 +219,8 @@ def test_sync_registrations_unchanged_repeat_keeps_person_created(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="a@example.ch", meters=meters)], []]):
         result = sync_registrations(db, "token")
 
-    assert result.unveraendert == 1
-    assert result.aktualisiert == 0
+    assert result.unchanged == 1
+    assert result.updated == 0
     still_created = web_registration_repo.get_by_email(db, "a@example.ch")
     assert still_created.person_created is True
 
@@ -234,8 +234,8 @@ def test_sync_registrations_changed_field_updates_row_in_place(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="b@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
 
-    assert result.aktualisiert == 1
-    assert result.unveraendert == 0
+    assert result.updated == 1
+    assert result.unchanged == 0
     updated = web_registration_repo.get_by_email(db, "b@example.ch")
     assert updated.phone == "222"
     # person_created is not reset by an unrelated content change.
@@ -270,7 +270,7 @@ def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_p
     ):
         result = sync_registrations(db, "token")
 
-    assert result.aktualisiert == 1
+    assert result.updated == 1
     updated = web_registration_repo.get_by_email(db, "c@example.ch")
     by_number = {m.meter_number: m for m in updated.meters}
     assert set(by_number) == {"CH-KEEP", "CH-NEW"}
@@ -287,7 +287,7 @@ def test_sync_registrations_advances_cursor_for_noop_entries_too(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="d@example.ch")], []]):
         result = sync_registrations(db, "token")
 
-    assert result.unveraendert == 1
+    assert result.unchanged == 1
     assert settings_repo.get_settings(db).web_registration_cursor == 1
 
 
@@ -301,9 +301,9 @@ def test_sync_registrations_second_run_without_new_data_changes_nothing(db):
         result = sync_registrations(db, "token")
 
     mock_fetch.assert_called_once_with(cursor_before, "token")
-    assert result.neu == 0
-    assert result.aktualisiert == 0
-    assert result.unveraendert == 0
+    assert result.created == 0
+    assert result.updated == 0
+    assert result.unchanged == 0
     assert web_registration_repo.list_all(db) == before
     assert settings_repo.get_settings(db).web_registration_cursor == cursor_before
 
@@ -316,7 +316,7 @@ def test_sync_registrations_skips_entry_without_email(db):
     with patch(_SYNC_TARGET, side_effect=[batch, []]):
         result = sync_registrations(db, "token")
 
-    assert result.neu == 1
+    assert result.created == 1
     assert len(result.warnings) == 1
     assert "Kein Mail" in result.warnings[0]
     assert web_registration_repo.get_by_email(db, "f@example.ch") is not None
@@ -342,5 +342,5 @@ def test_sync_registrations_paginates_while_page_is_full(db, monkeypatch):
     result = sync_registrations(db, "token")
 
     assert calls == [0, 2, 3]
-    assert result.neu == 3
+    assert result.created == 3
     assert settings_repo.get_settings(db).web_registration_cursor == 3

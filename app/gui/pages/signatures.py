@@ -3,7 +3,7 @@
 
 A signature is never applied automatically -- it is only ever added to an
 outgoing email when explicitly chosen on the E-Mail-Versand page (see
-`app.gui.pages.email_versand`). Deleting one here has no effect on
+`app.gui.pages.email_dispatch`). Deleting one here has no effect on
 already-sent emails: their final text (signature included, if any) is
 already part of the logged history, not a live reference back to this
 table.
@@ -44,14 +44,14 @@ def _to_row(signature: Signature) -> dict:
     }
 
 
-@ui.page("/signaturen")
-def signaturen_page() -> None:
+@ui.page("/signatures")
+def signatures_page() -> None:
     """Render the Signaturen CRUD page with search.
 
     Returns:
         None.
     """
-    with page_frame("/signaturen", "Signaturen"):
+    with page_frame("/signatures", "Signaturen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Wiederverwendbare Signaturen für den E-Mail-Versand. Eine "
@@ -61,7 +61,7 @@ def signaturen_page() -> None:
             ).classes("text-body2 text-grey-8")
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
-                    rubrik="Signaturen",
+                    heading="Signaturen",
                     get_columns=lambda: table_columns(table),
                     get_rows=lambda: table.rows,
                     get_filter_description=lambda: (

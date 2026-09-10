@@ -1,9 +1,9 @@
 """Named, reusable email signatures.
 
 Maintained on their own page under "Kommunikation" (see
-`app.gui.pages.signaturen`), independent of any single send -- a
+`app.gui.pages.signatures`), independent of any single send -- a
 signature is picked (or not picked at all) per send on the E-Mail-Versand
-page (`app.gui.pages.email_versand`), never applied implicitly. Deleting a
+page (`app.gui.pages.email_dispatch`), never applied implicitly. Deleting a
 signature is always safe: nothing else references a signature by id, a
 past send's actually-used text is already part of its own logged body
 (see `app.models.email_log`), not a live reference back here.

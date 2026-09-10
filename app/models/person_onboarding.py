@@ -4,7 +4,7 @@ interested party's registration and full LEG membership.
 Deliberately a separate, optional table rather than columns on `Person`:
 a tracking row only exists once explicitly started (auto-started when a
 Web-Registrierung is taken over via "Person übernehmen", see
-`app.gui.pages.web_registrierungen`, or manually via `start_for_person`),
+`app.gui.pages.web_registrations`, or manually via `start_for_person`),
 so a Person who joined before this feature existed -- or was never routed
 through this pipeline -- never retroactively appears as having an
 overdue step.

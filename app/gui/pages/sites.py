@@ -102,7 +102,7 @@ def sites_page() -> None:
             ).classes("text-body2 text-grey-8")
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
-                    rubrik="Standorte",
+                    heading="Standorte",
                     get_columns=lambda: table_columns(table),
                     get_rows=lambda: table.rows,
                     get_filter_description=lambda: (

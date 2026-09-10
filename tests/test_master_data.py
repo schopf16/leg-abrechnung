@@ -155,20 +155,20 @@ def test_person_display_name_combines_company_and_contact(db):
     assert fetched.display_name == "Muster AG (Ansprech Person)"
 
 
-def test_person_adressblock_zeilen_includes_salutation_only_with_a_name(db):
+def test_person_address_block_lines_includes_salutation_only_with_a_name(db):
     """The recipient address block shows salutation only alongside a personal name."""
     company_only = _make_person("")
     company_only.company = "Nur Firma AG"
     company_only.salutation = "Herr"
-    assert company_only.adressblock_zeilen == ["Nur Firma AG"]
+    assert company_only.address_block_lines == ["Nur Firma AG"]
 
     with_contact = _make_person("Max Muster")
     with_contact.company = "Muster AG"
     with_contact.salutation = "Herr"
-    assert with_contact.adressblock_zeilen == ["Muster AG", "Herr", "Max Muster"]
+    assert with_contact.address_block_lines == ["Muster AG", "Herr", "Max Muster"]
 
 
-def test_person_billing_street_with_number_combines_strasse_and_hausnummer(db):
+def test_person_billing_street_with_number_combines_street_and_house_number(db):
     """The combined street line omits a missing Strasse or Hausnummer gracefully."""
     person = _make_person("Test")
     person.billing_street = "Musterstrasse"

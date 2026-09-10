@@ -70,7 +70,7 @@ def draw_recipient_block(canvas: Canvas, person: Person) -> None:
     y = PAGE_HEIGHT - 55 * mm
     canvas.setFont("Helvetica", 10)
     lines = [
-        *person.adressblock_zeilen,
+        *person.address_block_lines,
         person.billing_street_with_number,
         f"{person.billing_postal_code} {person.billing_city}",
     ]

@@ -46,7 +46,7 @@ def _load_overview(connection) -> dict:
         `(message, link)` tuples needing attention -- `link` is a route
         path to jump straight to the object in question, or `None` if no
         detail page exists for it), "legs" (per-LEG summary rows),
-        "offene_registrierungen" (count of not-yet-fully-processed Web-Registrierungen)
+        "open_registrations" (count of not-yet-fully-processed Web-Registrierungen)
         and "open_onboardings" (count of in-progress onboarding trackers,
         see `app.models.person_onboarding`) keys.
     """
@@ -57,7 +57,7 @@ def _load_overview(connection) -> dict:
     persons = person_repo.list_all(connection)
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
-    offene_registrierungen = sum(
+    open_registrations = sum(
         1 for r in web_registration_repo.list_all(connection) if not r.is_fully_processed
     )
     open_onboardings = len(person_onboarding_repo.list_in_progress(connection))
@@ -68,12 +68,12 @@ def _load_overview(connection) -> dict:
             (
                 "QR-IBAN ist in den Einstellungen noch nicht konfiguriert -- "
                 "QR-Rechnungen können nicht erzeugt werden.",
-                "/einstellungen",
+                "/settings",
             )
         )
     if not settings.address_street.strip():
         action_items.append(
-            ("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/einstellungen")
+            ("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/settings")
         )
 
     for warning in check_assignment_consistency(connection):
@@ -126,8 +126,8 @@ def _load_overview(connection) -> dict:
         },
         "action_items": action_items,
         "legs": leg_rows,
-        "offene_registrierungen": offene_registrierungen,
-        "offene_aufnahmen": open_onboardings,
+        "open_registrations": open_registrations,
+        "open_onboardings": open_onboardings,
     }
 
 
@@ -144,7 +144,7 @@ def dashboard_page() -> None:
         counts = overview["counts"]
 
         # -- Handlungsbedarf: whatever needs attention, front and centre. --
-        has_issues = bool(overview["action_items"]) or overview["offene_registrierungen"] > 0
+        has_issues = bool(overview["action_items"]) or overview["open_registrations"] > 0
         with ui.card().classes("w-full " + ("bg-red-1" if has_issues else "bg-green-1")):
             ui.label("Handlungsbedarf").classes("font-bold")
             if overview["action_items"]:
@@ -153,19 +153,19 @@ def dashboard_page() -> None:
                         ui.label(f"⚠ {message}").classes("text-negative text-body2")
                         if link:
                             ui.link("→ Ansehen", link).classes("text-body2")
-                ui.link("→ Details in den Auswertungen", "/auswertungen").classes("text-body2")
-            if overview["offene_registrierungen"]:
+                ui.link("→ Details in den Auswertungen", "/reports").classes("text-body2")
+            if overview["open_registrations"]:
                 with ui.row().classes("items-center gap-2"):
                     ui.label(
-                        f"📥 {overview['offene_registrierungen']} offene Web-Registrierung(en)."
+                        f"📥 {overview['open_registrations']} offene Web-Registrierung(en)."
                     ).classes("text-body2")
-                    ui.link("→ Zu den Web-Registrierungen", "/web-registrierungen").classes(
+                    ui.link("→ Zu den Web-Registrierungen", "/web-registrations").classes(
                         "text-body2"
                     )
-            if overview["offene_aufnahmen"]:
+            if overview["open_onboardings"]:
                 with ui.row().classes("items-center gap-2"):
                     ui.label(
-                        f"📋 {overview['offene_aufnahmen']} Aufnahme(n) in Bearbeitung."
+                        f"📋 {overview['open_onboardings']} Aufnahme(n) in Bearbeitung."
                     ).classes("text-body2")
                     ui.link("→ Zu den Aufnahmen", "/onboardings").classes("text-body2")
             if not has_issues:
@@ -215,7 +215,7 @@ def dashboard_page() -> None:
                     "auszuprobieren."
                 )
                 with ui.row().classes("gap-2 mt-2"):
-                    ui.button("Zu den Einstellungen", on_click=lambda: ui.navigate.to("/einstellungen"))
+                    ui.button("Zu den Einstellungen", on_click=lambda: ui.navigate.to("/settings"))
                     ui.button("Trafokreise erfassen", on_click=lambda: ui.navigate.to("/substation-areas")).props(
                         "flat"
                     )

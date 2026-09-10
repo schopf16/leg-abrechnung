@@ -4,7 +4,7 @@
 Deliberately renders a separate, plain HTML table for printing rather than
 printing the on-screen cards/table 1:1 -- the on-screen layout (wrapping
 card columns, icon buttons) makes a poor printout, whereas a compact table
-is easy to scan on paper. Always shows which list ("Rubrik") was printed
+is easy to scan on paper. Always shows which list ("heading") was printed
 and the print date/time; the currently active filter is optional and
 supplied by the calling page (`filter_description`), since not every page
 has one worth mentioning.
@@ -114,7 +114,7 @@ def table_columns(table: ui.table) -> list[tuple[str, str]]:
 
 def render_print_button(
     *,
-    rubrik: str,
+    heading: str,
     get_columns: Callable[[], list[tuple[str, str]]],
     get_rows: Callable[[], list[dict]],
     get_filter_description: Callable[[], Optional[str]] = lambda: None,
@@ -122,7 +122,7 @@ def render_print_button(
     """Render a "Drucken" button that prints the currently displayed rows.
 
     Args:
-        rubrik: Human-readable name of the list, printed as the page
+        heading: Human-readable name of the list, printed as the page
             heading (e.g. "persons", "Aufnahmen").
         get_columns: Callback returning the current `[(label, field), ...]`
             column definitions. A callback (not a plain list) so callers
@@ -153,7 +153,7 @@ def render_print_button(
         description = get_filter_description()
 
         parts = [
-            f"<div class='leg-print-heading'>{html.escape(rubrik)}</div>",
+            f"<div class='leg-print-heading'>{html.escape(heading)}</div>",
             "<div class='leg-print-meta'>Gedruckt am: "
             f"{html.escape(datetime.now().strftime('%d.%m.%Y %H:%M'))}</div>",
         ]

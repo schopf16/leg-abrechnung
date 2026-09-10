@@ -100,14 +100,14 @@ def _validation_warnings(subject: str, body: str, recipients: list[Person]) -> t
     return unknown, invalid_emails, missing
 
 
-@ui.page("/email-versand")
-def email_versand_page() -> None:
+@ui.page("/email-dispatch")
+def email_dispatch_page() -> None:
     """Render the E-Mail-Versand assistant and sent-history page.
 
     Returns:
         None.
     """
-    with page_frame("/email-versand", "E-Mail versenden"):
+    with page_frame("/email-dispatch", "E-Mail versenden"):
         ui.label(
             "Sendet eine persönliche E-Mail an alle Personen oder an die "
             "aktuellen Mitglieder einer LEG -- jede Person bekommt eine "

@@ -21,7 +21,7 @@ import re
 from typing import Optional
 
 #: Land: exactly 2 uppercase letters.
-_LAND_RE = re.compile(r"^[A-Z]{2}$")
+_COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
 #: identifier: exactly 11 uppercase alphanumeric characters.
 _IDENTIFIKATOR_RE = re.compile(r"^[0-9A-Z]{11}$")
 #: Full 33-character designation: Land + identifier + metering point number.
@@ -95,7 +95,7 @@ def validate_country(value: str) -> Optional[str]:
     candidate = value.strip().upper()
     if not candidate:
         return None
-    if not _LAND_RE.match(candidate):
+    if not _COUNTRY_RE.match(candidate):
         return "Land muss aus genau 2 Buchstaben bestehen."
     return None
 

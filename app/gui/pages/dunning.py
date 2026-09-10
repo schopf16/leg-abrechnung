@@ -63,7 +63,7 @@ def dunning_page() -> None:
                 "Ausschluss-Prüfung aus -- keine Mahngebühr auf irgendeiner Stufe."
             ).classes("text-body2 text-grey-8")
             render_print_button(
-                rubrik="Mahnwesen",
+                heading="Mahnwesen",
                 get_columns=lambda: PRINT_COLUMNS,
                 get_rows=lambda: [_print_row(c) for c in current_candidates],
             )

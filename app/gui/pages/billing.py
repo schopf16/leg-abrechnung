@@ -571,7 +571,7 @@ def billing_page() -> None:
 
                 with ui.row().classes("w-full justify-end gap-2 mt-4"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                    ui.link("Einstellungen anpassen", "/einstellungen").classes("self-center")
+                    ui.link("Einstellungen anpassen", "/settings").classes("self-center")
                     ui.button("Ansätze sind korrekt -- Rechnung erstellen", on_click=confirmed)
             dialog.open()
 

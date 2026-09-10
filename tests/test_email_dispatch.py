@@ -1,8 +1,8 @@
-"""Tests for the small pure helpers in app.gui.pages.email_versand (not
+"""Tests for the small pure helpers in app.gui.pages.email_dispatch (not
 the page rendering itself, which is only smoke-tested live -- see the
 rest of this app's GUI test conventions)."""
 
-from app.gui.pages.email_versand import _compose_body
+from app.gui.pages.email_dispatch import _compose_body
 
 
 def test_compose_body_returns_plain_body_when_no_signature_chosen():

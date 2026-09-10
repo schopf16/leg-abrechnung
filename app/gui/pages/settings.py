@@ -31,14 +31,14 @@ _DUNNING_PLACEHOLDER_HINT = ", ".join(
 )
 
 
-@ui.page("/einstellungen")
-def einstellungen_page() -> None:
+@ui.page("/settings")
+def settings_page() -> None:
     """Render the LEG-wide settings page.
 
     Returns:
         None.
     """
-    with page_frame("/einstellungen", "Stammdaten"):
+    with page_frame("/settings", "Stammdaten"):
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
 

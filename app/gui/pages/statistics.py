@@ -30,14 +30,14 @@ def _month_label(year: int, month: int) -> str:
     return f"{MONTH_NAMES_DE[month][:3]} {year}"
 
 
-@ui.page("/statistik")
-def statistik_page() -> None:
+@ui.page("/statistics")
+def statistics_page() -> None:
     """Render the Statistik page with energy-flow and growth charts.
 
     Returns:
         None.
     """
-    with page_frame("/statistik", "Statistik"):
+    with page_frame("/statistics", "Statistik"):
         ui.label(
             f"Entwicklung über die letzten {_MONTHS_SHOWN} Monate -- "
             "unabhängig von Abrechnungsläufen, rein zur Übersicht."

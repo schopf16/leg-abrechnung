@@ -35,7 +35,7 @@ def list_broadcast_recipients(connection) -> list[Person]:
         `person_repo.list_all`'s order. Purely a starting suggestion --
         the caller (GUI) lets the administrator add/remove individual
         recipients before actually sending, see `app.gui.pages.
-        email_versand`.
+        email_dispatch`.
     """
     return [
         p for p in person_repo.list_all(connection) if p.active and p.contact_email.strip()
@@ -120,7 +120,7 @@ async def send_broadcast_email(
         leg_id: LEG id, if `scope == "leg"`, else `None`.
         attachment_path: Optional file attached to every recipient's copy
             (the same one for the whole batch -- see `app.gui.pages.
-            email_versand`, which lets the administrator pick one file
+            email_dispatch`, which lets the administrator pick one file
             for the send). `None` for no attachment.
         attachment_filename: Filename shown for the attachment, required
             if `attachment_path` is given.

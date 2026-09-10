@@ -138,7 +138,7 @@ def delete_submissions(ids: list[int], token: str) -> int:
     """Delete submissions from the leg-ittigen.ch Worker database by id.
 
     This is a genuine, irrevocable delete on the remote D1 database --
-    there is no undo. See `app.gui.pages.web_registrierungen.on_delete`
+    there is no undo. See `app.gui.pages.web_registrations.on_delete`
     for the confirmation flow built around this.
 
     Args:

@@ -7,7 +7,7 @@ fields were deliberately chosen to mirror `Person` almost 1:1 (`company`,
 `iban`), but a registration can report zero, one or several meters
 (`WebRegistrationMeter`). Person, site and each meter's MeteringPoint are
 each taken over as their own explicit step (see `app.gui.pages.
-web_registrierungen`) -- matching a reported meter (and its site)
+web_registrations`) -- matching a reported meter (and its site)
 against a *new* record is a judgment call for the administrator, not a
 mechanical one. Assignment (linking a taken-over Person to a taken-over
 MeteringPoint) stays a manual step in `/assignments`.
@@ -35,7 +35,7 @@ class WebRegistrationMeter:
             purely a hint for the administrator.
         metering_point_created: Whether a `MeteringPoint` was actually created for
             this reported meter via "MeteringPoint übernehmen" (see
-            `app.gui.pages.web_registrierungen`). Only
+            `app.gui.pages.web_registrations`). Only
             `mark_metering_point_created` sets it; `upsert_from_submission`
             carries it forward by `meter_number` across a repeat
             submission, since that call otherwise replaces all of a
@@ -102,7 +102,7 @@ class WebRegistration:
             (insert or update).
         person_created: Whether a `Person` was actually created from this
             registration via "Person übernehmen" (see `app.gui.pages.
-            web_registrierungen`). Only `mark_person_created` sets it;
+            web_registrations`). Only `mark_person_created` sets it;
             used to decide whether deleting this registration (see
             `delete`) needs the strong irrevocable-data-loss warning.
         site_created: Whether a `site` was actually created from
@@ -443,7 +443,7 @@ def delete(connection: sqlite3.Connection, web_registration_id: int) -> None:
     Purely local -- callers that also want the corresponding submission
     removed from the remote leg-ittigen.ch Worker database must call
     `app.importers.cloudflare_client.delete_submissions` themselves (see
-    `app.gui.pages.web_registrierungen.on_delete`, which does both).
+    `app.gui.pages.web_registrations.on_delete`, which does both).
 
     Args:
         connection: Open SQLite connection.

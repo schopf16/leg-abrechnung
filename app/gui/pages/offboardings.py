@@ -87,7 +87,7 @@ def offboardings_page() -> None:
             ).classes("text-body2 text-grey-8")
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
-                    rubrik="Austritte",
+                    heading="Austritte",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [
                         _print_row(o, persons[o.person_id])

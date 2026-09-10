@@ -49,19 +49,19 @@ class RegistrationSyncResult:
     """Outcome of one `sync_registrations` run, for display in the GUI.
 
     Attributes:
-        neu: Number of newly created inbox rows.
-        aktualisiert: Number of existing rows updated because a repeat
+        created: Number of newly created inbox rows.
+        updated: Number of existing rows updated because a repeat
             submission for the same email changed its content (any
             compared field, or its reported meters).
-        unveraendert: Number of repeat submissions with identical content
+        unchanged: Number of repeat submissions with identical content
             to what is already stored (no-ops).
         warnings: Human-readable (German) messages about skipped entries
             (currently: submissions with no email address).
     """
 
-    neu: int = 0
-    aktualisiert: int = 0
-    unveraendert: int = 0
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -131,14 +131,14 @@ def _apply_submission(
     incoming = _to_registration(submission, existing)
 
     if existing is not None and _content_unchanged(existing, incoming):
-        result.unveraendert += 1
+        result.unchanged += 1
         return
 
     web_registration_repo.upsert_from_submission(connection, incoming)
     if existing is None:
-        result.neu += 1
+        result.created += 1
     else:
-        result.aktualisiert += 1
+        result.updated += 1
 
 
 def _content_unchanged(existing: WebRegistration, incoming: WebRegistration) -> bool:

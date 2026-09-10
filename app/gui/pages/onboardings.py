@@ -3,7 +3,7 @@ five real-world onboarding steps (see `app.models.person_onboarding`).
 
 A tracker only exists for a person once explicitly started -- either
 automatically when a Web-Registrierung is taken over ("Person übernehmen",
-see `app.gui.pages.web_registrierungen`), or manually here (e.g. for
+see `app.gui.pages.web_registrations`), or manually here (e.g. for
 someone who inquired by phone rather than through the web form). Deleting
 a tracker only discards the tracking record; it never touches the Person.
 """
@@ -102,7 +102,7 @@ def onboardings_page() -> None:
             ).classes("text-body2 text-grey-8")
             with ui.row().classes("gap-2 shrink-0"):
                 render_print_button(
-                    rubrik="Aufnahmen",
+                    heading="Aufnahmen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [
                         _print_row(o, persons[o.person_id], threshold_days)

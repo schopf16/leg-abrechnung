@@ -102,7 +102,7 @@ def receivables_page() -> None:
             only_dunning_switch = ui.switch("Nur fällige Mahnungen")
             only_offboarding_switch = ui.switch("Nur laufende Austritte")
             render_print_button(
-                rubrik="Debitoren",
+                heading="Debitoren",
                 get_columns=lambda: PRINT_COLUMNS,
                 get_rows=lambda: [_print_row(p, balance) for p, balance in visible_entries],
                 get_filter_description=lambda: _filter_description(),
