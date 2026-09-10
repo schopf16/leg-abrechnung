@@ -1,4 +1,4 @@
-"""Generates demo/test data: one Trafokreis, one LEG, four Standorte,
+"""Generates demo/test data: one substation area, one LEG, four Standorte,
 seven Messpunkte, five Personen (including a mid-quarter move), and
 synthetic 15-minute readings for one winter and one summer quarter.
 
@@ -11,7 +11,7 @@ data, and as the fixture basis for the distribution-engine unit tests (see
   min(P, C) = C`, testing the consumption-limited case) and sometimes falls
   short of it (testing the production-limited case).
 - A Messpunkt that changes Person mid-quarter (tenant move), exercising
-  the time-sliced Zuordnung lookup, while its Standort/Trafokreis and its
+  the time-sliced Zuordnung lookup, while its Standort/substation area and its
   LEG never change.
 """
 
@@ -26,14 +26,14 @@ from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.standort import Standort
-from app.models.trafokreis import Trafokreis
+from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
 #: Demo QR-IBAN (valid checksum, QR-IID range) so generated demo data can
@@ -223,9 +223,9 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
             f'"{_DEMO_MARKER_VORNAME} {_DEMO_MARKER_NACHNAME}" existiert schon).'
         )
 
-    trafokreis = _create_demo_trafokreis(connection)
+    substation_area = _create_demo_substation_area(connection)
     leg = _create_demo_leg(connection)
-    standorte = _create_demo_standorte(connection, trafokreis)
+    standorte = _create_demo_standorte(connection, substation_area)
     messpunkte = _create_demo_messpunkte(connection, standorte, leg)
     personen = _create_demo_personen(connection)
     _create_demo_zuordnungen(connection, personen, messpunkte)
@@ -239,31 +239,31 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     )
 
 
-def _create_demo_trafokreis(connection: sqlite3.Connection) -> Trafokreis:
-    """Insert the single demo Trafokreis all demo Standorte share.
+def _create_demo_substation_area(connection: sqlite3.Connection) -> SubstationArea:
+    """Insert the single demo substation area all demo Standorte share.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        The persisted `Trafokreis` (with `id` set).
+        The persisted `substation area` (with `id` set).
     """
-    trafokreis = Trafokreis(
+    substation_area = SubstationArea(
         id=None,
         name="Bern_TRA00001",
-        bkw_bezeichnung="TRA00001",
-        bemerkung="",
+        bkw_designation="TRA00001",
+        note="",
         created_at="",
     )
-    trafokreis.id = trafokreis_repo.create(connection, trafokreis)
-    return trafokreis
+    substation_area.id = substation_area_repo.create(connection, substation_area)
+    return substation_area
 
 
 def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
     """Insert the single demo LEG all demo Messpunkte share.
 
-    By default matches the demo Trafokreis 1:1 -- same name, since no
-    cross-Trafokreis grouping is demonstrated in the showcase data.
+    By default matches the demo substation area 1:1 -- same name, since no
+    cross-substation-area grouping is demonstrated in the showcase data.
 
     Args:
         connection: Open SQLite connection.
@@ -274,7 +274,7 @@ def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
     leg = Leg(
         id=None,
         name="Bern_TRA00001",
-        bemerkung="",
+        note="",
         created_at="",
     )
     leg.id = leg_repo.create(connection, leg)
@@ -282,13 +282,13 @@ def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
 
 
 def _create_demo_standorte(
-    connection: sqlite3.Connection, trafokreis: Trafokreis
+    connection: sqlite3.Connection, substation_area: SubstationArea
 ) -> dict[str, Standort]:
-    """Insert the four demo Standorte, all on the demo Trafokreis.
+    """Insert the four demo Standorte, all on the demo substation area.
 
     Args:
         connection: Open SQLite connection.
-        trafokreis: Trafokreis created by `_create_demo_trafokreis`.
+        substation area: substation area created by `_create_demo_substation_area`.
 
     Returns:
         A dict keyed by short handle ("anna", "beat", "carla",
@@ -297,19 +297,19 @@ def _create_demo_standorte(
     definitions = {
         "anna": Standort(
             id=None, adresse="Sonnenweg", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, created_at="",
+            substation_area_id=substation_area.id, created_at="",
         ),
         "beat": Standort(
             id=None, adresse="Sonnenweg", hausnummer="2", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, created_at="",
+            substation_area_id=substation_area.id, created_at="",
         ),
         "carla": Standort(
             id=None, adresse="Bergstrasse", hausnummer="3", plz="3001", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, created_at="",
+            substation_area_id=substation_area.id, created_at="",
         ),
         "bergstrasse4": Standort(
             id=None, adresse="Bergstrasse", hausnummer="4", plz="3001", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis.id, created_at="",
+            substation_area_id=substation_area.id, created_at="",
         ),
     }
     created = {}

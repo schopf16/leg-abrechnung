@@ -15,7 +15,7 @@ from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.standort import Standort
 
@@ -23,7 +23,7 @@ COLUMNS = [
     {"name": "adresse", "label": "Adresse", "field": "adresse", "align": "left", "sortable": True},
     {"name": "plz_gemeinde", "label": "PLZ / Gemeinde", "field": "plz_gemeinde", "align": "left"},
     {"name": "lage", "label": "Lage", "field": "lage", "align": "left"},
-    {"name": "trafokreis", "label": "Trafokreis", "field": "trafokreis", "align": "left"},
+    {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
@@ -50,19 +50,19 @@ def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
     return name, is_future
 
 
-def _to_row(standort: Standort, trafokreise: dict) -> dict:
+def _to_row(standort: Standort, substation_areas: dict) -> dict:
     """Convert a `Standort` into a row dict for the NiceGUI table.
 
     Args:
         standort: Standort to convert.
-        trafokreise: Preloaded `{trafokreis_id: Trafokreis}` lookup.
+        substation areas: Preloaded `{substation_area_id: substation area}` lookup.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
         `_search` key used for client-side filtering.
     """
-    trafokreis = trafokreise.get(standort.trafokreis_id)
-    trafokreis_name = trafokreis.name if trafokreis else "-"
+    substation_area = substation_areas.get(standort.substation_area_id)
+    substation_area_name = substation_area.name if substation_area else "-"
     search_text = " ".join(
         [
             standort.adresse,
@@ -70,7 +70,7 @@ def _to_row(standort: Standort, trafokreise: dict) -> dict:
             standort.plz,
             standort.gemeinde,
             standort.lage or "",
-            trafokreis_name,
+            substation_area_name,
         ]
     ).lower()
     return {
@@ -78,7 +78,7 @@ def _to_row(standort: Standort, trafokreise: dict) -> dict:
         "adresse": f"{standort.adresse} {standort.hausnummer}".strip(),
         "plz_gemeinde": f"{standort.plz} {standort.gemeinde}".strip(),
         "lage": standort.lage,
-        "trafokreis": trafokreis_name,
+        "substation_area": substation_area_name,
         "_search": search_text,
     }
 
@@ -147,8 +147,8 @@ def standorte_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                trafokreise = {t.id: t for t in trafokreis_repo.list_all(connection)}
-                all_rows = [_to_row(s, trafokreise) for s in standort_repo.list_all(connection)]
+                substation_areas = {t.id: t for t in substation_area_repo.list_all(connection)}
+                all_rows = [_to_row(s, substation_areas) for s in standort_repo.list_all(connection)]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
@@ -231,7 +231,7 @@ def standorte_page() -> None:
 
 @ui.page("/standorte/{standort_id}")
 def standort_detail_page(standort_id: int) -> None:
-    """Render one Standort's detail view: Adresse, Lage, Trafokreis, and its
+    """Render one Standort's detail view: Adresse, Lage, substation area, and its
     Messpunkte (each with its own LEG, see `app.models.leg`).
 
     Args:
@@ -242,9 +242,9 @@ def standort_detail_page(standort_id: int) -> None:
     """
     with connection_scope() as connection:
         standort = standort_repo.get(connection, standort_id)
-        trafokreis = (
-            trafokreis_repo.get(connection, standort.trafokreis_id)
-            if standort and standort.trafokreis_id
+        substation_area = (
+            substation_area_repo.get(connection, standort.substation_area_id)
+            if standort and standort.substation_area_id
             else None
         )
         messpunkte = messpunkt_repo.list_for_standort(connection, standort_id) if standort else []
@@ -263,7 +263,7 @@ def standort_detail_page(standort_id: int) -> None:
         ui.label(standort.adresse_vollstaendig).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Lage: {standort.lage or '-'}")
-            ui.label(f"Trafokreis: {trafokreis.name if trafokreis else '-'}")
+            ui.label(f"Trafokreis: {substation_area.name if substation_area else '-'}")
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")
         if messpunkte:

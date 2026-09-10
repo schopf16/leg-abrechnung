@@ -249,7 +249,7 @@ def zuordnungen_page() -> None:
                 standort_select.on_value_change(lambda _: on_standort_change())
 
                 def update_leg_warning() -> None:
-                    """Show a warning if the selected Messpunkt's LEG mixes Trafokreise.
+                    """Show a warning if the selected Messpunkt's LEG mixes substation areas.
 
                     Lets the administrator immediately see, while assigning
                     a Person, whether the resulting LEG membership implies
@@ -266,10 +266,10 @@ def zuordnungen_page() -> None:
                         composition = compute_leg_composition(connection, mp.leg_id)
                         leg = leg_repo.get(connection, mp.leg_id)
                     if composition.is_mixed and leg is not None:
-                        trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
+                        substation_area_names = ", ".join(t.name for t in composition.substation_areas)
                         leg_warning.text = (
                             f"⚠ Die LEG „{leg.name}“ dieses Messpunkts umfasst "
-                            f"mehrere Trafokreise ({trafokreis_names}) -- "
+                            f"mehrere Trafokreise ({substation_area_names}) -- "
                             "informieren Sie die Person ggf. über den "
                             "dadurch tieferen BKW-Rabatt."
                         )

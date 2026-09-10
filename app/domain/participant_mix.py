@@ -1,19 +1,19 @@
-"""Whether a Trafokreis or LEG has a workable mix of Prosumer and Consumer
+"""Whether a substation area or LEG has a workable mix of Prosumer and Consumer
 participants.
 
-Local sharing needs both sides: a Trafokreis/LEG with only Prosumer
+Local sharing needs both sides: a substation area/LEG with only Prosumer
 (everyone feeds in, nobody draws from the shared pool) or only Consumer
 (nobody feeds in, nothing to share) makes no sense to run as its own LEG,
 independent of any BKW discount-rate question. This module answers "does
-this Trafokreis/LEG have both sides at all", expressed as a simple
+this substation area/LEG have both sides at all", expressed as a simple
 Prosumer:Consumer participant-count ratio, and -- built on top of that --
-"could this Trafokreis now split off into its own LEG" once it has both
+"could this substation area now split off into its own LEG" once it has both
 sides but its participants are still folded into a larger, multi-
-Trafokreis LEG (a lower-BKW-discount arrangement, see
+substation area LEG (a lower-BKW-discount arrangement, see
 `app.domain.leg_composition`). That second question also requires the
-Trafokreis to have at least `LegSettings.leg_gruendung_min_personen`
+substation area to have at least `LegSettings.leg_gruendung_min_personen`
 people overall (`ParticipantMix.gesamt_personen`, default 7) -- both
-sides being present is necessary but not sufficient: a Trafokreis with
+sides being present is necessary but not sufficient: a substation area with
 just one Prosumer and one Consumer is rarely worth founding a dedicated
 LEG over, so `leg_should_split`/`find_upgrade_candidates` take this as an
 explicit `min_personen` parameter rather than hardcoding it.
@@ -29,7 +29,7 @@ Standort to be worth it):
         ones already running today; real customer data made this the
         permanent behaviour, not a toggle: an administrator who
         pre-enters a whole future quarter's move-ins in advance had every
-        Trafokreis/LEG here show 0:0 under a strict "started today" rule,
+        substation area/LEG here show 0:0 under a strict "started today" rule,
         until that date actually arrived) to at least one
         Einspeisung-Messpunkt in scope -- "kann Strom liefern". A person
         who both consumes and feeds in counts here too.
@@ -60,11 +60,11 @@ from app.domain.leg_composition import compute_leg_composition
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
-from app.models.trafokreis import Trafokreis
+from app.models.substation_area import SubstationArea
 
 
 def _moment(stichtag: Optional[date]) -> datetime:
@@ -81,7 +81,7 @@ def _moment(stichtag: Optional[date]) -> datetime:
 
 @dataclass
 class ParticipantMix:
-    """The Prosumer:Consumer participant balance for a Trafokreis or LEG.
+    """The Prosumer:Consumer participant balance for a substation area or LEG.
 
     Attributes:
         prosumer_count: Distinct persons counted as Prosumer (see module
@@ -98,7 +98,7 @@ class ParticipantMix:
 
         Returns:
             `True` if there are no Prosumer, or no Consumer, at all
-            (a Trafokreis/LEG with neither is not "one-sided", it is
+            (a substation area/LEG with neither is not "one-sided", it is
             simply empty -- also `True` in that case, since it equally
             cannot function as its own LEG).
         """
@@ -122,7 +122,7 @@ class ParticipantMix:
         exactly the two numbers shown together in `verhaeltnis` added up,
         matching how an administrator reads that badge. Used to gate the
         LEG-upgrade suggestion on `LegSettings.leg_gruendung_min_personen`
-        (see `leg_should_split`/`find_upgrade_candidates`): a Trafokreis
+        (see `leg_should_split`/`find_upgrade_candidates`): a substation area
         with both sides present but too few people overall is not worth
         splitting off into its own LEG.
 
@@ -156,7 +156,7 @@ def compute_participant_mix(
     """Compute the Prosumer:Consumer mix for an arbitrary set of Standorte.
 
     The one core computation, used both for a hypothetical "this
-    Trafokreis as its own LEG" check (`compute_participant_mix_for_trafokreis`)
+    substation area as its own LEG" check (`compute_participant_mix_for_substation_area`)
     and the real "this LEG, however it is actually composed" check
     (`compute_participant_mix_for_leg`).
 
@@ -188,20 +188,20 @@ def compute_participant_mix(
     return ParticipantMix(prosumer_count=len(prosumer_ids), consumer_count=len(consumer_ids))
 
 
-def compute_participant_mix_for_trafokreis(
-    connection: sqlite3.Connection, trafokreis_id: int, stichtag: Optional[date] = None
+def compute_participant_mix_for_substation_area(
+    connection: sqlite3.Connection, substation_area_id: int, stichtag: Optional[date] = None
 ) -> ParticipantMix:
-    """Hypothetical mix if this Trafokreis's Standorte formed their own LEG.
+    """Hypothetical mix if this substation area's Standorte formed their own LEG.
 
     Args:
         connection: Open SQLite connection.
-        trafokreis_id: Primary key of the Trafokreis.
+        substation_area_id: Primary key of the substation area.
         stichtag: Reference date, `None` for today.
 
     Returns:
-        The `ParticipantMix` for every Standort assigned to this Trafokreis.
+        The `ParticipantMix` for every Standort assigned to this substation area.
     """
-    standort_ids = [s.id for s in standort_repo.list_all(connection) if s.trafokreis_id == trafokreis_id]
+    standort_ids = [s.id for s in standort_repo.list_all(connection) if s.substation_area_id == substation_area_id]
     return compute_participant_mix(connection, standort_ids, stichtag)
 
 
@@ -229,13 +229,13 @@ def leg_should_split(
     connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None,
     *, min_personen: int = 0,
 ) -> bool:
-    """Whether a mixed LEG's Trafokreise would each work fine standalone.
+    """Whether a mixed LEG's substation areas would each work fine standalone.
 
-    If every Trafokreis a LEG spans would, on its own, already have both a
-    Prosumer and a Consumer (see `compute_participant_mix_for_trafokreis`)
+    If every substation area a LEG spans would, on its own, already have both a
+    Prosumer and a Consumer (see `compute_participant_mix_for_substation_area`)
     and enough people overall, splitting the LEG into one dedicated LEG
-    per Trafokreis strands nobody -- and earns every one of them the
-    better single-Trafokreis BKW discount instead of today's shared, lower
+    per substation area strands nobody -- and earns every one of them the
+    better single-substation area BKW discount instead of today's shared, lower
     one (the app never computes or displays the actual rate, see
     `app.domain.leg_composition`).
 
@@ -244,25 +244,25 @@ def leg_should_split(
         leg_id: Primary key of the LEG.
         stichtag: Reference date, `None` for today.
         min_personen: Minimum `ParticipantMix.gesamt_personen` each
-            Trafokreis must reach on its own for the split to be
+            substation area must reach on its own for the split to be
             suggested -- pass `LegSettings.leg_gruendung_min_personen`
             (default 0, i.e. no minimum, for callers that only care about
             the plain both-sides-present question).
 
     Returns:
-        `True` only if the LEG spans more than one Trafokreis (see
+        `True` only if the LEG spans more than one substation area (see
         `app.domain.leg_composition.compute_leg_composition`) AND *every*
-        one of those Trafokreise is independently non-one-sided and has
+        one of those substation areas is independently non-one-sided and has
         at least `min_personen` people -- deliberately requiring all of
-        them, not just one: if even a single Trafokreis would be
+        them, not just one: if even a single substation area would be
         one-sided or too small alone, splitting would strand its
         participants, so the LEG stays better off shared for now.
     """
     composition = compute_leg_composition(connection, leg_id)
     if not composition.is_mixed:
         return False
-    for trafokreis in composition.trafokreise:
-        mix = compute_participant_mix_for_trafokreis(connection, trafokreis.id, stichtag)
+    for substation_area in composition.substation_areas:
+        mix = compute_participant_mix_for_substation_area(connection, substation_area.id, stichtag)
         if mix.ist_einseitig or mix.gesamt_personen < min_personen:
             return False
     return True
@@ -270,21 +270,21 @@ def leg_should_split(
 
 @dataclass
 class UpgradeCandidate:
-    """A Trafokreis that could now form its own (better-discounted) LEG.
+    """A substation area that could now form its own (better-discounted) LEG.
 
     Attributes:
-        trafokreis: The Trafokreis with a newly-workable Prosumer/Consumer mix.
-        mixed_legs: The LEGs currently used by this Trafokreis's
-            participants that span more than one Trafokreis -- these are
+        substation area: The substation area with a newly-workable Prosumer/Consumer mix.
+        mixed_legs: The LEGs currently used by this substation area's
+            participants that span more than one substation area -- these are
             the ones a dedicated LEG would let them leave.
         person_count: Distinct persons (via a current-or-upcoming
-            Zuordnung) at this Trafokreis whose Messpunkt currently
+            Zuordnung) at this substation area whose Messpunkt currently
             belongs to one of `mixed_legs`.
-        mix: The hypothetical solo-Trafokreis `ParticipantMix` that shows
+        mix: The hypothetical solo-substation area `ParticipantMix` that shows
             this is now viable.
     """
 
-    trafokreis: Trafokreis
+    substation_area: SubstationArea
     mixed_legs: list[Leg]
     person_count: int
     mix: ParticipantMix
@@ -293,25 +293,25 @@ class UpgradeCandidate:
 def find_upgrade_candidates(
     connection: sqlite3.Connection, stichtag: Optional[date] = None, *, min_personen: int = 0
 ) -> list[UpgradeCandidate]:
-    """Find Trafokreise that now have both sides but are still split across
-    a multi-Trafokreis LEG.
+    """Find substation areas that now have both sides but are still split across
+    a multi-substation-area LEG.
 
     Args:
         connection: Open SQLite connection.
         stichtag: Reference date, `None` for today.
-        min_personen: Minimum `ParticipantMix.gesamt_personen` a Trafokreis
+        min_personen: Minimum `ParticipantMix.gesamt_personen` a substation area
             must reach to be suggested -- pass `LegSettings.
             leg_gruendung_min_personen` (default 0, i.e. no minimum). A
-            Trafokreis with only, say, one Prosumer and one Consumer is
+            substation area with only, say, one Prosumer and one Consumer is
             technically non-one-sided but rarely worth founding a
             dedicated LEG over; this keeps the suggestion from firing
             until there is a real number of people behind it.
 
     Returns:
-        One `UpgradeCandidate` per Trafokreis with a newly-workable
+        One `UpgradeCandidate` per substation area with a newly-workable
         Prosumer/Consumer mix (both sides present, `gesamt_personen >=
         min_personen`) whose participants are (at least partly) still in
-        a mixed LEG. A Trafokreis already fully moved into a dedicated
+        a mixed LEG. A substation area already fully moved into a dedicated
         LEG of its own produces no candidate -- the recommendation is
         already acted on.
     """
@@ -321,8 +321,8 @@ def find_upgrade_candidates(
     legs_by_id = {leg.id: leg for leg in leg_repo.list_all(connection)}
 
     candidates: list[UpgradeCandidate] = []
-    for trafokreis in trafokreis_repo.list_all(connection):
-        standort_ids = {s.id for s in standorte if s.trafokreis_id == trafokreis.id}
+    for substation_area in substation_area_repo.list_all(connection):
+        standort_ids = {s.id for s in standorte if s.substation_area_id == substation_area.id}
         if not standort_ids:
             continue
 
@@ -354,7 +354,7 @@ def find_upgrade_candidates(
 
         candidates.append(
             UpgradeCandidate(
-                trafokreis=trafokreis, mixed_legs=mixed_legs,
+                substation_area=substation_area, mixed_legs=mixed_legs,
                 person_count=len(person_ids), mix=mix,
             )
         )

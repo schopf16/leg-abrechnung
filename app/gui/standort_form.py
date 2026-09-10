@@ -12,7 +12,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.safe_notify import safe_notify
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models.standort import Standort
 
 #: Standort-shaped fields `open_standort_form`'s `prefill` dict may set for
@@ -61,8 +61,8 @@ def open_standort_form(
     prefill = prefill or {}
 
     with connection_scope() as connection:
-        trafokreise = trafokreis_repo.list_all(connection)
-    trafokreis_options = {t.id: t.name for t in trafokreise}
+        substation_areas = substation_area_repo.list_all(connection)
+    substation_area_options = {t.id: t.name for t in substation_areas}
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
         ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes(
@@ -86,10 +86,10 @@ def open_standort_form(
         lage = ui.input(
             "Lage (optional, z. B. Stockwerk)", value=existing.lage if existing else ""
         ).classes("w-full")
-        trafokreis_select = ui.select(
-            trafokreis_options,
+        substation_area_select = ui.select(
+            substation_area_options,
             label="Trafokreis",
-            value=existing.trafokreis_id if existing else None,
+            value=existing.substation_area_id if existing else None,
             with_input=True,
         ).classes("w-full")
         error_label = ui.label("").classes("text-negative")
@@ -143,7 +143,7 @@ def open_standort_form(
                         plz=plz.value.strip(),
                         gemeinde=gemeinde.value.strip(),
                         lage=lage.value.strip(),
-                        trafokreis_id=trafokreis_select.value,
+                        substation_area_id=substation_area_select.value,
                         created_at=existing.created_at,
                     )
                     standort_repo.update(connection, saved)
@@ -155,7 +155,7 @@ def open_standort_form(
                         plz=plz.value.strip(),
                         gemeinde=gemeinde.value.strip(),
                         lage=lage.value.strip(),
-                        trafokreis_id=trafokreis_select.value,
+                        substation_area_id=substation_area_select.value,
                         created_at="",
                     )
                     new_id = standort_repo.create(connection, saved)

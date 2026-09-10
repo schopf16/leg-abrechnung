@@ -31,7 +31,7 @@ def _make_standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, created_at="",
+            substation_area_id=None, created_at="",
         ),
     )
 
@@ -83,8 +83,8 @@ def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
 def test_monthly_energy_totals_filters_by_leg(db):
     """Passing a leg_id only counts readings from that LEG's Messpunkte."""
     standort_id = _make_standort(db)
-    leg_a = leg_repo.create(db, Leg(id=None, name="LEG A", bemerkung="", created_at=""))
-    leg_b = leg_repo.create(db, Leg(id=None, name="LEG B", bemerkung="", created_at=""))
+    leg_a = leg_repo.create(db, Leg(id=None, name="LEG A", note="", created_at=""))
+    leg_b = leg_repo.create(db, Leg(id=None, name="LEG B", note="", created_at=""))
     mp_a = _make_messpunkt(db, "CH-A", MESSRICHTUNG_BEZUG, standort_id, leg_id=leg_a)
     mp_b = _make_messpunkt(db, "CH-B", MESSRICHTUNG_BEZUG, standort_id, leg_id=leg_b)
 

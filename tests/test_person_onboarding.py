@@ -27,7 +27,7 @@ def _person(db, name: str = "Test") -> int:
 
 def test_migration_20_creates_person_onboarding_table_and_threshold_column(db):
     """A fresh database (migrated by the `db` fixture) has the new table/column."""
-    assert get_schema_version(db) == 36
+    assert get_schema_version(db) == 37
     assert settings_repo.get_settings(db).onboarding_ueberfaellig_tage == 30
     assert person_onboarding_repo.list_all(db) == []
 
@@ -114,7 +114,7 @@ def test_days_open_and_is_overdue_are_none_false_when_complete(db):
 
 def test_update_persists_all_steps_and_leg(db):
     person_id = _person(db)
-    leg_id = leg_repo.create(db, Leg(id=None, name="LEG Test", bemerkung="", created_at=""))
+    leg_id = leg_repo.create(db, Leg(id=None, name="LEG Test", note="", created_at=""))
     onboarding = person_onboarding_repo.start_for_person(db, person_id, angemeldet_am=date.today())
 
     onboarding.leg_zugewiesen_am = date.today()

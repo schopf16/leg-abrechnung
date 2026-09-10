@@ -10,7 +10,7 @@ from app.domain.quality_checks import (
     check_leg_upgrade_potential,
     check_onboarding_progress,
     check_reading_completeness,
-    check_trafokreis_einseitig,
+    check_substation_area_one_sided,
     check_unresolved_bank_transactions,
 )
 from app.models import bank_transaction as bank_transaction_repo
@@ -20,14 +20,14 @@ from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.standort import Standort
-from app.models.trafokreis import Trafokreis
+from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
 YEAR, QUARTER = 2025, 1
@@ -53,7 +53,7 @@ def _standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, created_at="",
+            substation_area_id=None, created_at="",
         ),
     )
 
@@ -61,7 +61,7 @@ def _standort(db) -> int:
 def _leg(db) -> int:
     """Create a LEG with a unique name and return its id."""
     name = f"Testkreis-{uuid.uuid4().hex[:8]}"
-    return leg_repo.create(db, Leg(id=None, name=name, bemerkung="", created_at=""))
+    return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
 def _messpunkt(db, messpunkt_bezeichnung: str, standort_id: int, leg_id: int | None = None) -> int:
@@ -316,18 +316,18 @@ def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
     assert check_unresolved_bank_transactions(db) == []
 
 
-def _trafokreis(db, name: str) -> int:
-    """Create a Trafokreis and return its id."""
-    return trafokreis_repo.create(db, Trafokreis(id=None, name=name, bkw_bezeichnung="", bemerkung="", created_at=""))
+def _substation_area(db, name: str) -> int:
+    """Create a substation area and return its id."""
+    return substation_area_repo.create(db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at=""))
 
 
-def _standort_in(db, trafokreis_id: int, *, adresse: str = "Weg") -> int:
-    """Create a Standort assigned to a Trafokreis and return its id."""
+def _standort_in(db, substation_area_id: int, *, adresse: str = "Weg") -> int:
+    """Create a Standort assigned to a substation area and return its id."""
     return standort_repo.create(
         db,
         Standort(
             id=None, adresse=adresse, hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis_id, created_at="",
+            substation_area_id=substation_area_id, created_at="",
         ),
     )
 
@@ -346,14 +346,14 @@ def _messpunkt_richtung(
     )
 
 
-def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_trafokreis(db):
+def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substation_area(db):
     """Below `LegSettings.leg_gruendung_min_personen` (default 7), a
-    non-one-sided Trafokreis with only 2 people is not flagged yet -- see
+    non-one-sided substation area with only 2 people is not flagged yet -- see
     `test_check_leg_upgrade_potential_respects_configurable_min_personen`."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort_in(db, trafokreis_id)
-    other_standort_id = _standort_in(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort_in(db, substation_area_id)
+    other_standort_id = _standort_in(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
@@ -375,17 +375,17 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_trafokrei
     warnings = check_leg_upgrade_potential(db)
 
     assert len(warnings) == 1
-    assert warnings[0].link == "/trafokreise"
+    assert warnings[0].link == "/substation-areas"
 
 
 def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
-    """Lowering the threshold below the default flags a Trafokreis that
+    """Lowering the threshold below the default flags a substation area that
     the default 7 would leave unflagged; raising it above 2 hides it
     again -- both directions of `LegSettings.leg_gruendung_min_personen`."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort_in(db, trafokreis_id)
-    other_standort_id = _standort_in(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort_in(db, substation_area_id)
+    other_standort_id = _standort_in(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
@@ -408,30 +408,30 @@ def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
     assert check_leg_upgrade_potential(db) == []
 
 
-def test_check_trafokreis_einseitig_flags_producer_only_trafokreis(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort_in(db, trafokreis_id)
+def test_check_substation_area_one_sided_flags_producer_only_substation_area(db):
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort_in(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _messpunkt_richtung(db, "CH1", standort_id, MESSRICHTUNG_EINSPEISUNG)
     zuordnung_repo.create(
         db, Zuordnung(id=None, person_id=person_id, messpunkt_id=einspeisung_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
     )
 
-    warnings = check_trafokreis_einseitig(db)
+    warnings = check_substation_area_one_sided(db)
 
     assert len(warnings) == 1
     assert "Nur Prosumer" in warnings[0].message
-    assert warnings[0].link == "/trafokreise"
+    assert warnings[0].link == "/substation-areas"
 
 
-def test_check_trafokreis_einseitig_no_warning_once_resolved_via_mixed_leg(db):
-    """The Trafokreis is still producer-only, but its one Messpunkt already
-    sits in a mixed (multi-Trafokreis) LEG -- the recommended fix is
+def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(db):
+    """The substation area is still producer-only, but its one Messpunkt already
+    sits in a mixed (multi-substation-area) LEG -- the recommended fix is
     already acted on, so no warning."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort_in(db, trafokreis_id)
-    other_standort_id = _standort_in(db, other_trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort_in(db, substation_area_id)
+    other_standort_id = _standort_in(db, other_substation_area_id)
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
@@ -443,4 +443,4 @@ def test_check_trafokreis_einseitig_no_warning_once_resolved_via_mixed_leg(db):
             db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
         )
 
-    assert check_trafokreis_einseitig(db) == []
+    assert check_substation_area_one_sided(db) == []

@@ -24,7 +24,7 @@ def _person(db, name: str = "P", email: str = "p@example.invalid") -> int:
 
 
 def _leg(db, name: str = "LEG Test") -> int:
-    return leg_repo.create(db, Leg(id=None, name=name, bemerkung="", created_at=""))
+    return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
 def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]:

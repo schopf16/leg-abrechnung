@@ -29,7 +29,7 @@ def _make_standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, created_at="",
+            substation_area_id=None, created_at="",
         ),
     )
 

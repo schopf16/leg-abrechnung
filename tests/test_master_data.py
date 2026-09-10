@@ -1,5 +1,5 @@
-"""Tests for Person/Messpunkt/Zuordnung/Leg/Trafokreis CRUD, consistency
-warnings, and LEG/Trafokreis composition."""
+"""Tests for Person/Messpunkt/Zuordnung/Leg/substation area CRUD, consistency
+warnings, and LEG/substation area composition."""
 
 import sqlite3
 from datetime import date
@@ -14,14 +14,14 @@ from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
 from app.models.person import Person
 from app.models.standort import Standort
-from app.models.trafokreis import Trafokreis
+from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
 
@@ -87,24 +87,24 @@ def _make_messpunkt(
     )
 
 
-def _make_trafokreis(db, name: str = "Bern_TRA00001") -> int:
-    """Create a minimal Trafokreis and return its id.
+def _make_substation_area(db, name: str = "Bern_TRA00001") -> int:
+    """Create a minimal substation area and return its id.
 
     Args:
         db: Database connection fixture.
         name: Name to assign (must be unique).
 
     Returns:
-        The new Trafokreis's id.
+        The new substation area's id.
     """
-    return trafokreis_repo.create(
-        db, Trafokreis(id=None, name=name, bkw_bezeichnung="", bemerkung="", created_at="")
+    return substation_area_repo.create(
+        db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at="")
     )
 
 
 def _make_standort(
     db,
-    trafokreis_id: int | None = None,
+    substation_area_id: int | None = None,
     adresse: str = "Musterstrasse",
     hausnummer: str = "1",
     plz: str = "3000",
@@ -113,7 +113,7 @@ def _make_standort(
 
     Args:
         db: Database connection fixture.
-        trafokreis_id: Foreign key of the assigned Trafokreis, or `None`.
+        substation_area_id: Foreign key of the assigned substation area, or `None`.
         adresse: Street name.
         hausnummer: House number.
         plz: Postal code.
@@ -125,7 +125,7 @@ def _make_standort(
         db,
         Standort(
             id=None, adresse=adresse, hausnummer=hausnummer, plz=plz, gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis_id, created_at="",
+            substation_area_id=substation_area_id, created_at="",
         ),
     )
 
@@ -515,7 +515,7 @@ def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:
     Returns:
         A `Leg` with `id=None`.
     """
-    return Leg(id=None, name=name, bemerkung="", created_at="")
+    return Leg(id=None, name=name, note="", created_at="")
 
 
 def test_leg_get_by_name_finds_exact_match(db):
@@ -539,68 +539,68 @@ def test_leg_name_is_unique(db):
         leg_repo.create(db, _make_leg("Ittigen_TRA21359"))
 
 
-def test_trafokreis_get_by_name_finds_exact_match(db):
-    """`get_by_name` finds a Trafokreis by its exact name."""
-    trafokreis_repo.create(
-        db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
+def test_substation_area_get_by_name_finds_exact_match(db):
+    """`get_by_name` finds a substation area by its exact name."""
+    substation_area_repo.create(
+        db, SubstationArea(id=None, name="Bern_TRA00001", bkw_designation="", note="", created_at="")
     )
 
-    found = trafokreis_repo.get_by_name(db, "Bern_TRA00001")
+    found = substation_area_repo.get_by_name(db, "Bern_TRA00001")
     assert found is not None
     assert found.name == "Bern_TRA00001"
 
 
-def test_trafokreis_get_by_name_returns_none_for_unknown_name(db):
-    """`get_by_name` returns `None` when no Trafokreis has that name."""
-    assert trafokreis_repo.get_by_name(db, "Unbekannt_TRA00000") is None
+def test_substation_area_get_by_name_returns_none_for_unknown_name(db):
+    """`get_by_name` returns `None` when no substation area has that name."""
+    assert substation_area_repo.get_by_name(db, "Unbekannt_TRA00000") is None
 
 
-def test_trafokreis_name_is_unique(db):
-    """Two Trafokreise cannot share the same name."""
-    trafokreis_repo.create(
-        db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
+def test_substation_area_name_is_unique(db):
+    """Two substation areas cannot share the same name."""
+    substation_area_repo.create(
+        db, SubstationArea(id=None, name="Bern_TRA00001", bkw_designation="", note="", created_at="")
     )
     with pytest.raises(Exception):
-        trafokreis_repo.create(
-            db, Trafokreis(id=None, name="Bern_TRA00001", bkw_bezeichnung="", bemerkung="", created_at="")
+        substation_area_repo.create(
+            db, SubstationArea(id=None, name="Bern_TRA00001", bkw_designation="", note="", created_at="")
         )
 
 
-def test_leg_composition_is_not_mixed_when_all_messpunkte_share_one_trafokreis(db):
-    """A LEG whose Messpunkte are all on one Trafokreis is not flagged as mixed."""
-    trafokreis_id = _make_trafokreis(db, "Bern_TRA00001")
-    standort_a = _make_standort(db, trafokreis_id)
-    standort_b = _make_standort(db, trafokreis_id)
+def test_leg_composition_is_not_mixed_when_all_messpunkte_share_one_substation_area(db):
+    """A LEG whose Messpunkte are all on one substation area is not flagged as mixed."""
+    substation_area_id = _make_substation_area(db, "Bern_TRA00001")
+    standort_a = _make_standort(db, substation_area_id)
+    standort_b = _make_standort(db, substation_area_id)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
     messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
     messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
-    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001"]
+    assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001"]
 
 
-def test_leg_composition_is_mixed_when_messpunkte_span_two_trafokreise(db):
-    """A LEG whose Messpunkte span two Trafokreise is flagged as mixed."""
-    trafokreis_a = _make_trafokreis(db, "Bern_TRA00001")
-    trafokreis_b = _make_trafokreis(db, "Bern_TRA00002")
-    standort_a = _make_standort(db, trafokreis_a)
-    standort_b = _make_standort(db, trafokreis_b)
+def test_leg_composition_is_mixed_when_messpunkte_span_two_substation_areas(db):
+    """A LEG whose Messpunkte span two substation areas is flagged as mixed."""
+    substation_area_a = _make_substation_area(db, "Bern_TRA00001")
+    substation_area_b = _make_substation_area(db, "Bern_TRA00002")
+    standort_a = _make_standort(db, substation_area_a)
+    standort_b = _make_standort(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Gemeinsame_LEG"))
     messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
     messpunkt_repo.create(db, _make_messpunkt("CH2", standort_id=standort_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert composition.is_mixed
-    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001", "Bern_TRA00002"]
+    assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001", "Bern_TRA00002"]
 
 
 def test_leg_composition_ignores_other_legs_messpunkte(db):
     """Messpunkte belonging to a different LEG don't count toward this LEG's composition."""
-    trafokreis_a = _make_trafokreis(db, "Bern_TRA00001")
-    trafokreis_b = _make_trafokreis(db, "Bern_TRA00002")
-    standort_a = _make_standort(db, trafokreis_a)
-    standort_b = _make_standort(db, trafokreis_b)
+    substation_area_a = _make_substation_area(db, "Bern_TRA00001")
+    substation_area_b = _make_substation_area(db, "Bern_TRA00002")
+    standort_a = _make_standort(db, substation_area_a)
+    standort_b = _make_standort(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
     other_leg_id = leg_repo.create(db, _make_leg("Bern_TRA00002"))
     messpunkt_repo.create(db, _make_messpunkt("CH1", standort_id=standort_a, leg_id=leg_id))
@@ -608,7 +608,7 @@ def test_leg_composition_ignores_other_legs_messpunkte(db):
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
-    assert [t.name for t in composition.trafokreise] == ["Bern_TRA00001"]
+    assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001"]
 
 
 def test_standort_find_by_address_finds_exact_match(db):

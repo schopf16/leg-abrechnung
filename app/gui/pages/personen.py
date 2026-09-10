@@ -1,6 +1,6 @@
 """Personen management page: list, search, create, edit, delete, and a
 detail drill-down showing the Person → Zuordnung → Messpunkt (→ LEG,
-→ Standort → Trafokreis) join (project prompt section 7,
+→ Standort → substation area) join (project prompt section 7,
 "Personen-Detailansicht").
 
 The list is rendered as one card per Person (not a single-row-per-person
@@ -29,7 +29,7 @@ from app.models import person_offboarding as person_offboarding_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.person_offboarding import GRUND_OPTIONS
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
@@ -89,7 +89,7 @@ DETAIL_COLUMNS = [
     {"name": "messpunkt_bezeichnung", "label": "Messpunkt", "field": "messpunkt_bezeichnung", "align": "left"},
     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
     {"name": "standort_adresse", "label": "Standort-Adresse", "field": "standort_adresse", "align": "left"},
-    {"name": "trafokreis", "label": "Trafokreis", "field": "trafokreis", "align": "left"},
+    {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
     {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left"},
     {"name": "gueltig_bis", "label": "Gültig bis", "field": "gueltig_bis", "align": "left"},
@@ -504,8 +504,8 @@ def person_detail_page(person_id: int) -> None:
 
         def refresh_detail() -> None:
             """Reload the person's Zuordnung → Messpunkt (→ LEG, → Standort
-            → Trafokreis) join, and warn if any involved LEG mixes
-            Trafokreise.
+            → substation area) join, and warn if any involved LEG mixes
+            substation areas.
 
             Filters to only current-or-upcoming Zuordnungen (not yet
             ended, `gueltig_von` may lie in the future -- see
@@ -531,9 +531,9 @@ def person_detail_page(person_id: int) -> None:
                     standort = (
                         standort_repo.get(inner_connection, mp.standort_id) if mp else None
                     )
-                    trafokreis = (
-                        trafokreis_repo.get(inner_connection, standort.trafokreis_id)
-                        if standort and standort.trafokreis_id
+                    substation_area = (
+                        substation_area_repo.get(inner_connection, standort.substation_area_id)
+                        if standort and standort.substation_area_id
                         else None
                     )
                     leg = (
@@ -549,7 +549,7 @@ def person_detail_page(person_id: int) -> None:
                             if mp
                             else "?",
                             "standort_adresse": standort.adresse_vollstaendig if standort else "?",
-                            "trafokreis": trafokreis.name if trafokreis else "-",
+                            "substation_area": substation_area.name if substation_area else "-",
                             "leg": leg.name if leg else "-",
                             "gueltig_von": z.gueltig_von.isoformat(),
                             "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
@@ -562,10 +562,10 @@ def person_detail_page(person_id: int) -> None:
                     if not composition.is_mixed:
                         continue
                     leg = leg_repo.get(inner_connection, leg_id)
-                    trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
+                    substation_area_names = ", ".join(t.name for t in composition.substation_areas)
                     mixed_warnings.append(
                         f"⚠ Die LEG „{leg.name}“ dieser Person umfasst mehrere "
-                        f"Trafokreise ({trafokreis_names}) -- die BKW gewährt "
+                        f"Trafokreise ({substation_area_names}) -- die BKW gewährt "
                         "dafür vermutlich einen tieferen Rabatt. Informieren "
                         "Sie die Person ggf. darüber."
                     )

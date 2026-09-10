@@ -2,7 +2,7 @@
 
 Two independent views: energy flow (Bezug/Einspeisung/Saldo, optionally
 scoped to one LEG) and master-data growth (cumulative Personen/
-Messpunkte/Standorte/Trafokreise/LEGs), both aggregated by
+Messpunkte/Standorte/substation areas/LEGs), both aggregated by
 `app.domain.statistics`.
 """
 
@@ -95,7 +95,7 @@ def statistik_page() -> None:
                     {"name": "Personen", "type": "line", "data": [g.personen for g in growth]},
                     {"name": "Messpunkte", "type": "line", "data": [g.messpunkte for g in growth]},
                     {"name": "Standorte", "type": "line", "data": [g.standorte for g in growth]},
-                    {"name": "Trafokreise", "type": "line", "data": [g.trafokreise for g in growth]},
+                    {"name": "Trafokreise", "type": "line", "data": [g.substation_areas for g in growth]},
                     {"name": "LEGs", "type": "line", "data": [g.legs for g in growth]},
                 ],
             }

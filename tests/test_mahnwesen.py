@@ -38,7 +38,7 @@ def _billing_item(
     faellig_am: str | None = None, mahnstufe: int = 0, letzte_mahnung_am: str | None = None,
 ) -> "BillingRunItem":
     leg_id = leg_repo.create(
-        db, Leg(id=None, name=f"LEG {person_id}-{net_amount_rappen}-{id(object())}", bemerkung="", created_at="")
+        db, Leg(id=None, name=f"LEG {person_id}-{net_amount_rappen}-{id(object())}", note="", created_at="")
     )
     run_id = billing_run_repo.create_run(
         db,

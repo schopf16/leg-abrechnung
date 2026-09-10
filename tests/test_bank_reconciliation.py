@@ -31,7 +31,7 @@ def _person(db, *, name="Anna", email="anna@example.invalid", iban="", kundennum
 
 def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]:
     leg_id = leg_repo.create(
-        db, Leg(id=None, name=f"LEG {person_id}-{net_amount_rappen}-{id(object())}", bemerkung="", created_at="")
+        db, Leg(id=None, name=f"LEG {person_id}-{net_amount_rappen}-{id(object())}", note="", created_at="")
     )
     run_id = billing_run_repo.create_run(
         db,

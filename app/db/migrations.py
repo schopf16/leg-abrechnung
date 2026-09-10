@@ -1171,4 +1171,26 @@ Freundliche Grüsse';
             ALTER TABLE email_broadcast_log ADD COLUMN attachment_filename TEXT;
         """,
     ),
+    Migration(
+        version=37,
+        description="Translate the Trafokreis entity to English: the table "
+        "becomes 'substation_area', its 'bkw_bezeichnung' becomes "
+        "'bkw_designation', and the referencing column standort.trafokreis_id "
+        "becomes substation_area_id. Also renames 'bemerkung' to 'note' on "
+        "both tables carrying it (the renamed table and leg) -- they share "
+        "the field name in Python, so they have to move together. First "
+        "step of translating the whole codebase (identifiers, filenames and "
+        "schema) to English so the project can be shared publicly; only the "
+        "German GUI texts stay German. SQLite rewrites the foreign-key "
+        "clauses of referencing tables automatically on RENAME TO (verified "
+        "on 3.50), so no data is touched and every existing database "
+        "migrates in place.",
+        sql="""
+            ALTER TABLE trafokreis RENAME TO substation_area;
+            ALTER TABLE substation_area RENAME COLUMN bkw_bezeichnung TO bkw_designation;
+            ALTER TABLE substation_area RENAME COLUMN bemerkung TO note;
+            ALTER TABLE leg RENAME COLUMN bemerkung TO note;
+            ALTER TABLE standort RENAME COLUMN trafokreis_id TO substation_area_id;
+        """,
+    ),
 ]

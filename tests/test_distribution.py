@@ -53,12 +53,12 @@ def _leg(db) -> int:
     """Create a LEG with a unique name and return its id."""
     return leg_repo.create(
         db,
-        Leg(id=None, name=f"Testkreis-{uuid.uuid4().hex[:8]}", bemerkung="", created_at=""),
+        Leg(id=None, name=f"Testkreis-{uuid.uuid4().hex[:8]}", note="", created_at=""),
     )
 
 
 def _standort(db) -> int:
-    """Create a minimal Standort (no Trafokreis needed for these tests) and
+    """Create a minimal Standort (no substation area needed for these tests) and
     return its id.
 
     Args:
@@ -71,7 +71,7 @@ def _standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Musterstrasse", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, created_at="",
+            substation_area_id=None, created_at="",
         ),
     )
 

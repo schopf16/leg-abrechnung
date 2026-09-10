@@ -59,13 +59,13 @@ def _standort(db) -> int:
         db,
         Standort(
             id=None, adresse="Testweg", hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=None, created_at="",
+            substation_area_id=None, created_at="",
         ),
     )
 
 
 def _leg(db, name: str = "LEG Test") -> int:
-    return leg_repo.create(db, Leg(id=None, name=name, bemerkung="", created_at=""))
+    return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
 def _messpunkt(db, bezeichnung: str, standort_id: int, leg_id) -> int:

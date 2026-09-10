@@ -59,9 +59,9 @@ class LegSettings:
             open before it is flagged as overdue in the quality checks.
         leg_gruendung_min_personen: Minimum `app.domain.participant_mix.
             ParticipantMix.gesamt_personen` (Prosumer- plus Consumer-count)
-            a Trafokreis must reach, in addition to already having both a
+            a substation area must reach, in addition to already having both a
             Prosumer and a Consumer, before the app suggests splitting it
-            off its current multi-Trafokreis LEG into its own, better-
+            off its current multi-substation-area LEG into its own, better-
             discounted one. Default 7.
         rechnung_email_betreff: Subject template for invoice emails (see
             `app.emailing.bulk_send.send_invoice_emails`), may contain

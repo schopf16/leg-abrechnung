@@ -28,7 +28,7 @@ def test_create_and_list_all_round_trip(db):
 
 
 def test_create_stores_leg_id_for_leg_scope(db):
-    leg_id = leg_repo.create(db, Leg(id=None, name="LEG Test", bemerkung="", created_at=""))
+    leg_id = leg_repo.create(db, Leg(id=None, name="LEG Test", note="", created_at=""))
     email_log_repo.create(
         db, scope="leg", leg_id=leg_id, subject="s", body="b", recipient_emails=["a@example.invalid"]
     )

@@ -1,5 +1,5 @@
 """Tests for app.domain.participant_mix (Prosumer:Consumer ratio,
-one-sided Trafokreise, LEG upgrade candidates)."""
+one-sided substation areas, LEG upgrade candidates)."""
 
 import itertools
 from datetime import date
@@ -9,13 +9,13 @@ from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import person as person_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
 from app.models.person import Person
 from app.models.standort import Standort
-from app.models.trafokreis import Trafokreis
+from app.models.substation_area import SubstationArea
 from app.models.zuordnung import Zuordnung
 
 _bezeichnung_counter = itertools.count(1)
@@ -35,20 +35,20 @@ def _person(db, name: str = "Test") -> int:
     )
 
 
-def _trafokreis(db, name: str) -> int:
-    return trafokreis_repo.create(db, Trafokreis(id=None, name=name, bkw_bezeichnung="", bemerkung="", created_at=""))
+def _substation_area(db, name: str) -> int:
+    return substation_area_repo.create(db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at=""))
 
 
 def _leg(db, name: str) -> int:
-    return leg_repo.create(db, Leg(id=None, name=name, bemerkung="", created_at=""))
+    return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
-def _standort(db, trafokreis_id: int, *, adresse: str = "Weg") -> int:
+def _standort(db, substation_area_id: int, *, adresse: str = "Weg") -> int:
     return standort_repo.create(
         db,
         Standort(
             id=None, adresse=adresse, hausnummer="1", plz="3000", gemeinde="Bern", lage="",
-            trafokreis_id=trafokreis_id, created_at="",
+            substation_area_id=substation_area_id, created_at="",
         ),
     )
 
@@ -71,8 +71,8 @@ def _zuordnung(db, person_id: int, messpunkt_id: int, von: date, bis: date | Non
 
 
 def test_consumer_counted_for_bezug_person(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
@@ -85,8 +85,8 @@ def test_consumer_counted_for_bezug_person(db):
 
 
 def test_prosumer_counted_for_einspeisung_person(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
@@ -101,8 +101,8 @@ def test_prosumer_counted_for_einspeisung_person(db):
 def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     """A person with both a Bezug- and an Einspeisung-Messpunkt is
     deliberately counted in both totals -- see module docstring."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
     einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
@@ -119,8 +119,8 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
 
 
 def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2020, 1, 1), date(2020, 12, 31))
@@ -136,8 +136,8 @@ def test_not_yet_started_zuordnung_counts_as_prosumer_and_consumer(db):
     Zuordnung was pre-entered for the following quarter's move-ins. A
     not-yet-started Zuordnung is now always relevant here (`Zuordnung.
     is_current_or_upcoming`), not just once its start date arrives."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
     einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
@@ -162,34 +162,34 @@ def test_empty_scope_is_not_flagged_as_einseitig(db):
 
 
 def test_hinweis_nur_lieferanten(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
     _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
 
-    mix = participant_mix.compute_participant_mix_for_trafokreis(db, trafokreis_id)
+    mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
     assert "Nur Prosumer" in mix.hinweis
 
 
 def test_hinweis_nur_bezueger(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
     _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
 
-    mix = participant_mix.compute_participant_mix_for_trafokreis(db, trafokreis_id)
+    mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
     assert "Nur Consumer" in mix.hinweis
 
 
-def test_upgrade_candidate_found_when_mixed_leg_and_trafokreis_now_workable(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable(db):
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
 
     mixed_leg_id = _leg(db, "Gemischte LEG")
     person_id = _person(db)
@@ -203,15 +203,15 @@ def test_upgrade_candidate_found_when_mixed_leg_and_trafokreis_now_workable(db):
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
-    matching = [c for c in candidates if c.trafokreis.id == trafokreis_id]
+    matching = [c for c in candidates if c.substation_area.id == substation_area_id]
     assert len(matching) == 1
     assert matching[0].mixed_legs[0].id == mixed_leg_id
     assert matching[0].person_count == 1
 
 
 def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     dedicated_leg_id = _leg(db, "Dedizierte LEG")
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)
@@ -221,18 +221,18 @@ def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
-    assert [c for c in candidates if c.trafokreis.id == trafokreis_id] == []
+    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
 
 
 def test_upgrade_candidate_hidden_below_min_personen(db):
-    """A Trafokreis with both sides present but too few people overall is
+    """A substation area with both sides present but too few people overall is
     not suggested -- the same setup that produces a candidate with
     `min_personen=0` (the default) produces none once the threshold
     exceeds the 2 people actually present."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
 
     mixed_leg_id = _leg(db, "Gemischte LEG")
     person_id = _person(db)
@@ -246,20 +246,20 @@ def test_upgrade_candidate_hidden_below_min_personen(db):
 
     candidates = participant_mix.find_upgrade_candidates(db, min_personen=3)
 
-    assert [c for c in candidates if c.trafokreis.id == trafokreis_id] == []
+    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
 
     candidates = participant_mix.find_upgrade_candidates(db, min_personen=2)
 
-    assert len([c for c in candidates if c.trafokreis.id == trafokreis_id]) == 1
+    assert len([c for c in candidates if c.substation_area.id == substation_area_id]) == 1
 
 
-def test_no_upgrade_candidate_for_a_still_one_sided_trafokreis(db):
-    """Even in a mixed LEG, a Trafokreis with only one side present is not
+def test_no_upgrade_candidate_for_a_still_one_sided_substation_area(db):
+    """Even in a mixed LEG, a substation area with only one side present is not
     an upgrade candidate -- it genuinely cannot stand alone yet."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
@@ -271,14 +271,14 @@ def test_no_upgrade_candidate_for_a_still_one_sided_trafokreis(db):
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
-    assert [c for c in candidates if c.trafokreis.id == trafokreis_id] == []
+    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
 
 
-def test_leg_should_split_when_every_trafokreis_is_independently_green(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+def test_leg_should_split_when_every_substation_area_is_independently_green(db):
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
@@ -296,19 +296,19 @@ def test_leg_should_split_when_every_trafokreis_is_independently_green(db):
     assert participant_mix.leg_should_split(db, mixed_leg_id) is True
 
 
-def test_leg_should_not_split_when_one_trafokreis_would_be_one_sided_alone(db):
-    """Splitting would strand this Trafokreis's participants -- the LEG
+def test_leg_should_not_split_when_one_substation_area_would_be_one_sided_alone(db):
+    """Splitting would strand this substation area's participants -- the LEG
     stays better off shared, even though it is mixed."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
     einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
-    # This Trafokreis only has a producer -- would be one-sided alone.
+    # This substation area only has a producer -- would be one-sided alone.
     other_person_id = _person(db, "Andere")
     other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
@@ -318,13 +318,13 @@ def test_leg_should_not_split_when_one_trafokreis_would_be_one_sided_alone(db):
 
 
 def test_leg_should_not_split_below_min_personen(db):
-    """Every Trafokreis is independently non-one-sided (would split under
+    """Every substation area is independently non-one-sided (would split under
     the default `min_personen=0`), but each only has 2 people -- raising
     the threshold above that turns the recommendation off again."""
-    trafokreis_id = _trafokreis(db, "TK1")
-    other_trafokreis_id = _trafokreis(db, "TK2")
-    standort_id = _standort(db, trafokreis_id)
-    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+    substation_area_id = _substation_area(db, "TK1")
+    other_substation_area_id = _substation_area(db, "TK2")
+    standort_id = _standort(db, substation_area_id)
+    other_standort_id = _standort(db, other_substation_area_id, adresse="Anderswo")
     mixed_leg_id = _leg(db, "Gemischte LEG")
 
     person_id = _person(db)
@@ -344,8 +344,8 @@ def test_leg_should_not_split_below_min_personen(db):
 
 
 def test_leg_should_not_split_when_not_mixed(db):
-    trafokreis_id = _trafokreis(db, "TK1")
-    standort_id = _standort(db, trafokreis_id)
+    substation_area_id = _substation_area(db, "TK1")
+    standort_id = _standort(db, substation_area_id)
     dedicated_leg_id = _leg(db, "Dedizierte LEG")
     person_id = _person(db)
     bezug_id = _messpunkt(db, standort_id, dedicated_leg_id, MESSRICHTUNG_BEZUG)

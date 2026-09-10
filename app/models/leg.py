@@ -1,10 +1,10 @@
 """LEG (Lokale Elektrizitätsgemeinschaft): the administrative and billing
 group an individual Messpunkt opts into. Attached to the Messpunkt itself,
 never to a Standort or Person directly -- two Messpunkte at the very same
-Standort (and thus the same Trafokreis, see `app.models.trafokreis`) can
+Standort (and thus the same substation area, see `app.models.substation_area`) can
 belong to different LEGs, and one LEG can combine Messpunkte spread across
-several Trafokreise if their owners agree to bill jointly (at a
-correspondingly lower BKW discount for the cross-Trafokreis share, which
+several substation areas if their owners agree to bill jointly (at a
+correspondingly lower BKW discount for the cross-substation-area share, which
 this app never computes but can flag -- see `app.domain.leg_composition`).
 
 Billing runs (see `app.domain.billing`) are scoped to exactly one LEG at a
@@ -26,17 +26,17 @@ class Leg:
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
-        name: The LEG's name -- typically the Trafokreis designation it
+        name: The LEG's name -- typically the substation area designation it
             matches 1:1, a self-chosen name otherwise (e.g. a joint LEG
-            spanning several Trafokreise). Must be unique, and is what
+            spanning several substation areas). Must be unique, and is what
             appears on this LEG's invoices.
-        bemerkung: Free-text notes (optional).
+        note: Free-text notes (optional).
         created_at: ISO-8601 creation timestamp.
     """
 
     id: Optional[int]
     name: str
-    bemerkung: str
+    note: str
     created_at: str
 
     @staticmethod
@@ -52,7 +52,7 @@ class Leg:
         return Leg(
             id=row["id"],
             name=row["name"],
-            bemerkung=row["bemerkung"],
+            note=row["note"],
             created_at=row["created_at"],
         )
 
@@ -114,12 +114,12 @@ def create(connection: sqlite3.Connection, leg: Leg) -> int:
     """
     cursor = connection.execute(
         """
-        INSERT INTO leg (name, bemerkung, created_at)
+        INSERT INTO leg (name, note, created_at)
         VALUES (?, ?, ?)
         """,
         (
             leg.name,
-            leg.bemerkung,
+            leg.note,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
@@ -147,10 +147,10 @@ def update(connection: sqlite3.Connection, leg: Leg) -> None:
     connection.execute(
         """
         UPDATE leg SET
-            name = ?, bemerkung = ?
+            name = ?, note = ?
         WHERE id = ?
         """,
-        (leg.name, leg.bemerkung, leg.id),
+        (leg.name, leg.note, leg.id),
     )
     connection.commit()
 

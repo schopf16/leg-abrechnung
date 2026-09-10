@@ -5,7 +5,7 @@ invoice/credit-note sum balance (lives in `app.domain.billing.
 verify_sum_balance`, re-exposed here for a single import point),
 Messpunkte that have no LEG assigned yet, interested persons whose
 onboarding (`app.models.person_onboarding`) has been stuck on its current
-step for too long, and the one-sided-Trafokreis / LEG-upgrade signals from
+step for too long, and the one-sided-substation area / LEG-upgrade signals from
 `app.domain.participant_mix`.
 """
 
@@ -23,7 +23,7 @@ from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 
 #: Expected number of 15-minute readings per Messpunkt per full calendar day.
@@ -238,10 +238,10 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
 
 
 def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag Trafokreise that could now split off into their own, better-
+    """Flag substation areas that could now split off into their own, better-
     discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
 
-    Gated on `LegSettings.leg_gruendung_min_personen` -- a Trafokreis with
+    Gated on `LegSettings.leg_gruendung_min_personen` -- a substation area with
     both a Prosumer and a Consumer but too few people overall is not
     flagged, see that setting's docstring.
 
@@ -249,7 +249,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
         connection: Open SQLite connection.
 
     Returns:
-        A `QualityWarning` per Trafokreis with newly-viable upgrade potential.
+        A `QualityWarning` per substation area with newly-viable upgrade potential.
     """
     min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
     warnings: list[QualityWarning] = []
@@ -257,43 +257,43 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
         leg_names = ", ".join(f"„{leg.name}“" for leg in candidate.mixed_legs)
         warnings.append(
             QualityWarning(
-                category="trafokreis_wechsel_potential",
+                category="substation_area_upgrade_potential",
                 message=(
-                    f"Trafokreis „{candidate.trafokreis.name}“ hat jetzt sowohl "
+                    f"Trafokreis „{candidate.substation_area.name}“ hat jetzt sowohl "
                     f"Prosumer als auch Consumer ({candidate.mix.verhaeltnis}) -- "
                     f"{candidate.person_count} Person(en) in {leg_names} könnten "
                     "in ein eigenes LEG wechseln."
                 ),
-                link="/trafokreise",
+                link="/substation-areas",
             )
         )
     return warnings
 
 
-def check_trafokreis_einseitig(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag Trafokreise with participants on only one side (nothing to
+def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag substation areas with participants on only one side (nothing to
     actually share locally), unless already resolved via a mixed LEG.
 
-    See `app.domain.participant_mix.compute_participant_mix_for_trafokreis`.
-    A Trafokreis whose Messpunkte are *all* already in a mixed (multi-
-    Trafokreis) LEG is not flagged -- the recommended fix is already acted
-    on. A Trafokreis with no participants at all yet is not flagged either
+    See `app.domain.participant_mix.compute_participant_mix_for_substation_area`.
+    A substation area whose Messpunkte are *all* already in a mixed (multi-
+    substation area) LEG is not flagged -- the recommended fix is already acted
+    on. A substation area with no participants at all yet is not flagged either
     (nothing to warn about).
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        A `QualityWarning` per still-one-sided Trafokreis.
+        A `QualityWarning` per still-one-sided substation area.
     """
     warnings: list[QualityWarning] = []
     standorte = standort_repo.list_all(connection)
     messpunkte = messpunkt_repo.list_all(connection)
-    for trafokreis in trafokreis_repo.list_all(connection):
-        mix = participant_mix.compute_participant_mix_for_trafokreis(connection, trafokreis.id)
+    for substation_area in substation_area_repo.list_all(connection):
+        mix = participant_mix.compute_participant_mix_for_substation_area(connection, substation_area.id)
         if mix.hinweis is None:
             continue
-        standort_ids = {s.id for s in standorte if s.trafokreis_id == trafokreis.id}
+        standort_ids = {s.id for s in standorte if s.substation_area_id == substation_area.id}
         leg_ids_here = {
             mp.leg_id for mp in messpunkte if mp.standort_id in standort_ids and mp.leg_id is not None
         }
@@ -304,9 +304,9 @@ def check_trafokreis_einseitig(connection: sqlite3.Connection) -> list[QualityWa
             continue
         warnings.append(
             QualityWarning(
-                category="trafokreis_einseitig",
-                message=f"Trafokreis „{trafokreis.name}“: {mix.hinweis}",
-                link="/trafokreise",
+                category="substation_area_one_sided",
+                message=f"Trafokreis „{substation_area.name}“: {mix.hinweis}",
+                link="/substation-areas",
             )
         )
     return warnings

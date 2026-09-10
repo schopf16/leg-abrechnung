@@ -20,7 +20,7 @@ from app.domain.quality_checks import (
     check_leg_assignment,
     check_leg_upgrade_potential,
     check_onboarding_progress,
-    check_trafokreis_einseitig,
+    check_substation_area_one_sided,
     check_unresolved_bank_transactions,
 )
 from app.gui.navigation import page_frame
@@ -31,7 +31,7 @@ from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models import web_registration as web_registration_repo
 
 
@@ -50,7 +50,7 @@ def _load_overview(connection) -> dict:
         and "offene_aufnahmen" (count of in-progress onboarding trackers,
         see `app.models.person_onboarding`) keys.
     """
-    trafokreise = trafokreis_repo.list_all(connection)
+    substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
     standorte = standort_repo.list_all(connection)
     messpunkte = messpunkt_repo.list_all(connection)
@@ -84,7 +84,7 @@ def _load_overview(connection) -> dict:
         action_items.append((warning.message, warning.link))
     for warning in check_unresolved_bank_transactions(connection):
         action_items.append((warning.message, warning.link))
-    for warning in check_trafokreis_einseitig(connection):
+    for warning in check_substation_area_one_sided(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_leg_upgrade_potential(connection):
         action_items.append((warning.message, warning.link))
@@ -95,10 +95,10 @@ def _load_overview(connection) -> dict:
         latest_run = max(leg_runs, key=lambda r: (r.period_year, r.period_quarter), default=None)
         composition = compute_leg_composition(connection, leg.id)
         if composition.is_mixed:
-            trafokreis_names = ", ".join(t.name for t in composition.trafokreise)
+            substation_area_names = ", ".join(t.name for t in composition.substation_areas)
             action_items.append(
                 (
-                    f"LEG „{leg.name}“ umfasst mehrere Trafokreise ({trafokreis_names}) "
+                    f"LEG „{leg.name}“ umfasst mehrere Trafokreise ({substation_area_names}) "
                     "-- tieferer BKW-Rabatt möglich.",
                     "/legs",
                 )
@@ -117,7 +117,7 @@ def _load_overview(connection) -> dict:
 
     return {
         "counts": {
-            "trafokreise": len(trafokreise),
+            "substation_areas": len(substation_areas),
             "standorte": len(standorte),
             "legs": len(legs),
             "messpunkte": len(messpunkte),
@@ -175,7 +175,7 @@ def dashboard_page() -> None:
         ui.label("Kennzahlen").classes("text-lg font-bold mt-4")
         with ui.row().classes("gap-4 flex-wrap"):
             for label, key in (
-                ("Trafokreise", "trafokreise"),
+                ("Trafokreise", "substation_areas"),
                 ("Standorte", "standorte"),
                 ("LEGs", "legs"),
                 ("Messpunkte", "messpunkte"),
@@ -216,6 +216,6 @@ def dashboard_page() -> None:
                 )
                 with ui.row().classes("gap-2 mt-2"):
                     ui.button("Zu den Einstellungen", on_click=lambda: ui.navigate.to("/einstellungen"))
-                    ui.button("Trafokreise erfassen", on_click=lambda: ui.navigate.to("/trafokreise")).props(
+                    ui.button("Trafokreise erfassen", on_click=lambda: ui.navigate.to("/substation-areas")).props(
                         "flat"
                     )

@@ -20,7 +20,7 @@ from app.gui.pages import (  # noqa: F401
     signaturen,
     standorte,
     statistik,
-    trafokreise,
+    substation_areas,
     web_registrierungen,
     zuordnungen,
 )

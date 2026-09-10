@@ -5,7 +5,7 @@ Messpunkte can only exchange energy if they belong to the same LEG
 (project requirement -- "es soll nicht über alle Messstationen
 ausgeglichen werden, sondern nur innerhalb der Trafostation"; LEG
 membership is a property of the individual Messpunkt, see
-`app.models.leg` -- by default a LEG matches one physical Trafokreis, but
+`app.models.leg` -- by default a LEG matches one physical substation area, but
 it can deliberately span several, see `app.domain.leg_composition`). Every
 Messpunkt with readings in the requested quarter must therefore have a
 resolved LEG before this runs at all -- regardless of which LEG's

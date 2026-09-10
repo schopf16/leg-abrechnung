@@ -1,29 +1,29 @@
 """LEGs management page: list, search, create, edit, delete.
 
 Rendered as one card per LEG (not a single-row-per-LEG table): once
-Bemerkung has any real content, a flat table either forces horizontal
+note has any real content, a flat table either forces horizontal
 scrolling (wide fixed columns) or, if wrapped, very tall rows that push
 everything else below the fold -- neither is acceptable. Cards let the
-Bemerkung and the Trafokreis(e) summary each wrap onto their own
+note and the substation area(e) summary each wrap onto their own
 full-width line instead, so one entry takes the 2-3 lines it actually
 needs and no more (same rationale as `app.gui.pages.personen`).
 
 A LEG cannot be deleted while Messpunkte still reference it (see
 `app.models.leg.LegInUseError`). Its `name` must be unique -- by default
-it matches the physical Trafokreis its Messpunkte are on, but a LEG can
-combine Messpunkte from several Trafokreise if their owners agree to bill
+it matches the physical substation area its Messpunkte are on, but a LEG can
+combine Messpunkte from several substation areas if their owners agree to bill
 jointly. The name is also what appears on this LEG's invoices, checked
 live as the administrator types.
 
-A LEG whose Messpunkte span more than one Trafokreis is shown as "Nicht
-Preisoptimiert" here (see `app.domain.leg_composition`), its Trafokreise
+A LEG whose Messpunkte span more than one substation area is shown as "Nicht
+Preisoptimiert" here (see `app.domain.leg_composition`), its substation areas
 listed one per line -- the grid operator (BKW) only grants the full
-same-Trafokreis discount within one Trafokreis. No separate warning
+same-substation-area discount within one substation area. No separate warning
 banner repeats this above the list; it is visible enough per card. If
-every one of those Trafokreise would also work fine as its own LEG (see
+every one of those substation areas would also work fine as its own LEG (see
 `app.domain.participant_mix.leg_should_split`), the line is highlighted
 instead as "🌟 Aufteilen empfehlenswert". A more targeted hint -- which
-specific Trafokreis has newly become viable, and how many people could
+specific substation area has newly become viable, and how many people could
 move -- is shown above the list (see `app.domain.participant_mix.
 find_upgrade_candidates`) and, per affected Messpunkt, as a coloured star
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
@@ -45,7 +45,7 @@ from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
 from app.models import settings as settings_repo
 from app.models import standort as standort_repo
-from app.models import trafokreis as trafokreis_repo
+from app.models import substation_area as substation_area_repo
 from app.models.leg import Leg, LegInUseError
 from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
 
@@ -59,9 +59,9 @@ MESSRICHTUNG_LABELS = {
 PRINT_COLUMNS = [
     ("Name", "name"),
     ("Messpunkte", "messpunkte_count"),
-    ("Trafokreis(e)", "trafokreise"),
+    ("Trafokreis(e)", "substation_areas"),
     ("Prosumer : Consumer", "prosumer_consumer"),
-    ("Bemerkung", "bemerkung"),
+    ("Bemerkung", "note"),
 ]
 
 
@@ -93,40 +93,40 @@ def _to_row(connection, leg: Leg, *, min_personen: int) -> dict:
         plus a hidden `_search` key used for client-side filtering.
     """
     composition = compute_leg_composition(connection, leg.id)
-    trafokreis_names_liste = [t.name for t in composition.trafokreise]
-    trafokreis_names = ", ".join(trafokreis_names_liste) or "-"
+    substation_area_names_list = [t.name for t in composition.substation_areas]
+    substation_area_names = ", ".join(substation_area_names_list) or "-"
     should_split = leg_should_split(connection, leg.id, min_personen=min_personen)
-    if not composition.trafokreise:
-        trafokreise_status = "-"
+    if not composition.substation_areas:
+        substation_areas_status = "-"
     elif should_split:
-        trafokreise_status = (
-            f"🌟 Aufteilen empfehlenswert ({len(trafokreis_names_liste)} Trafokreise) -- "
+        substation_areas_status = (
+            f"🌟 Aufteilen empfehlenswert ({len(substation_area_names_list)} Trafokreise) -- "
             "besserer BKW-Rabatt möglich"
         )
     elif composition.is_mixed:
-        trafokreise_status = f"Nicht Preisoptimiert ({len(trafokreis_names_liste)} Trafokreise)"
+        substation_areas_status = f"Nicht Preisoptimiert ({len(substation_area_names_list)} Trafokreise)"
     else:
-        trafokreise_status = "✓ Preisoptimiert"
+        substation_areas_status = "✓ Preisoptimiert"
     mix = compute_participant_mix_for_leg(connection, leg.id)
-    search_text = " ".join([leg.name, leg.bemerkung or "", trafokreis_names]).lower()
+    search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
     return {
         "id": leg.id,
         "name": leg.name,
         "messpunkte_count": leg_repo.count_messpunkte(connection, leg.id),
         # Flattened for the printout/CSV export (a single-cell text), see
         # app.gui.print_list -- the on-screen card uses trafokreise_status/
-        # trafokreise_liste instead, to list the Trafokreise one per line.
-        "trafokreise": (
-            f"{trafokreise_status}: {trafokreis_names}" if composition.trafokreise else trafokreise_status
+        # trafokreise_liste instead, to list the substation areas one per line.
+        "substation_areas": (
+            f"{substation_areas_status}: {substation_area_names}" if composition.substation_areas else substation_areas_status
         ),
-        "trafokreise_status": trafokreise_status,
-        # Only listed on-screen for a single Trafokreis -- a LEG can span
+        "substation_areas_status": substation_areas_status,
+        # Only listed on-screen for a single substation area -- a LEG can span
         # a dozen or more, and the point of this card is a fast overview,
         # not an exhaustive list (the full list of Messpunkte with their
-        # Trafokreis is one click away on this LEG's own detail page).
-        "trafokreise_liste": trafokreis_names_liste if len(trafokreis_names_liste) <= 1 else [],
+        # substation area is one click away on this LEG's own detail page).
+        "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
         "prosumer_consumer": _mix_badge(mix),
-        "bemerkung": leg.bemerkung,
+        "note": leg.note,
         "should_split": should_split,
         "_search": search_text,
     }
@@ -195,11 +195,11 @@ def legs_page() -> None:
                 with ui.column().classes(
                     "w-full gap-0" + (" bg-amber-3 rounded px-2 py-1" if row["should_split"] else "")
                 ):
-                    ui.label(row["trafokreise_status"]).classes("text-body2")
-                    for trafokreis_name in row["trafokreise_liste"]:
-                        ui.label(trafokreis_name).classes("text-body2 text-grey-7 ml-4")
-                if row["bemerkung"]:
-                    ui.label(row["bemerkung"]).classes("w-full text-body2 text-grey-7")
+                    ui.label(row["substation_areas_status"]).classes("text-body2")
+                    for substation_area_name in row["substation_areas_list"]:
+                        ui.label(substation_area_name).classes("text-body2 text-grey-7 ml-4")
+                if row["note"]:
+                    ui.label(row["note"]).classes("w-full text-body2 text-grey-7")
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value.
@@ -229,25 +229,25 @@ def legs_page() -> None:
                 legs = leg_repo.list_all(connection)
                 all_rows = [_to_row(connection, leg, min_personen=min_personen) for leg in legs]
 
-                # Aggregated per LEG, naming each candidate Trafokreis
+                # Aggregated per LEG, naming each candidate substation area
                 # individually -- a LEG can be the "too spread out" target
-                # of more than one Trafokreis's upgrade candidacy (see
+                # of more than one substation area's upgrade candidacy (see
                 # app.domain.participant_mix.UpgradeCandidate), and the
-                # point of this hint is to say exactly *which* Trafokreis
+                # point of this hint is to say exactly *which* substation area
                 # to found a new LEG for, not just that "some" people could
                 # move.
                 upgrade_info_by_leg: dict[int, list[tuple[str, int]]] = {}
                 for candidate in find_upgrade_candidates(connection, min_personen=min_personen):
                     for mixed_leg in candidate.mixed_legs:
                         upgrade_info_by_leg.setdefault(mixed_leg.id, []).append(
-                            (candidate.trafokreis.name, candidate.person_count)
+                            (candidate.substation_area.name, candidate.person_count)
                         )
 
                 mixed_warnings = []
                 for leg in legs:
-                    for trafokreis_name, person_count in upgrade_info_by_leg.get(leg.id, []):
+                    for substation_area_name, person_count in upgrade_info_by_leg.get(leg.id, []):
                         mixed_warnings.append(
-                            f"⭐ Trafokreis „{trafokreis_name}“ hat genug Prosumer und "
+                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Prosumer und "
                             f"Consumer für eine eigene LEG -- {person_count} Person(en) "
                             f"aus „{leg.name}“ könnten dorthin wechseln."
                         )
@@ -278,9 +278,9 @@ def legs_page() -> None:
                     value=existing.name if existing else "",
                 ).classes("w-full").props("debounce=300")
                 duplicate_warning = ui.label("").classes("text-warning")
-                bemerkung = ui.textarea(
+                note = ui.textarea(
                     "Bemerkung (optional)",
-                    value=existing.bemerkung if existing else "",
+                    value=existing.note if existing else "",
                 ).classes("w-full").props("rows=3")
                 error_label = ui.label("").classes("text-negative")
 
@@ -324,7 +324,7 @@ def legs_page() -> None:
                                 updated = Leg(
                                     id=existing.id,
                                     name=name.value.strip(),
-                                    bemerkung=bemerkung.value.strip(),
+                                    note=note.value.strip(),
                                     created_at=existing.created_at,
                                 )
                                 leg_repo.update(connection, updated)
@@ -332,7 +332,7 @@ def legs_page() -> None:
                                 new_leg = Leg(
                                     id=None,
                                     name=name.value.strip(),
-                                    bemerkung=bemerkung.value.strip(),
+                                    note=note.value.strip(),
                                     created_at="",
                                 )
                                 leg_repo.create(connection, new_leg)
@@ -402,36 +402,36 @@ def legs_page() -> None:
 
 
 def _messpunkt_row_for_leg(
-    mp, standorte: dict, trafokreise: dict, upgrade_trafokreis_ids: set[int]
+    mp, standorte: dict, substation_areas: dict, upgrade_substation_area_ids: set[int]
 ) -> dict:
     """Convert one Messpunkt of a LEG into a row dict for the detail table.
 
     Args:
         mp: Messpunkt to convert.
         standorte: Preloaded `{standort_id: Standort}` lookup.
-        trafokreise: Preloaded `{trafokreis_id: Trafokreis}` lookup.
-        upgrade_trafokreis_ids: Trafokreis ids that are upgrade candidates
+        substation areas: Preloaded `{substation_area_id: substation area}` lookup.
+        upgrade_substation_area_ids: substation area ids that are upgrade candidates
             for this specific LEG (see `app.domain.participant_mix.
             find_upgrade_candidates` -- filtered by the caller to
             candidates whose `mixed_legs` includes this LEG). A Messpunkt
-            on one of these Trafokreise is marked with a star: it is one
+            on one of these substation areas is marked with a star: it is one
             of the ones an administrator should move into a new, dedicated
-            LEG for that Trafokreis.
+            LEG for that substation area.
 
     Returns:
         A dict with the fields required by `leg_detail_page`'s table.
     """
     standort = standorte.get(mp.standort_id)
-    trafokreis = (
-        trafokreise.get(standort.trafokreis_id) if standort and standort.trafokreis_id else None
+    substation_area = (
+        substation_areas.get(standort.substation_area_id) if standort and standort.substation_area_id else None
     )
     return {
         "id": mp.id,
         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
         "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
         "standort_adresse": standort.adresse_vollstaendig if standort else "?",
-        "trafokreis": trafokreis.name if trafokreis else "-",
-        "is_upgrade_candidate": trafokreis is not None and trafokreis.id in upgrade_trafokreis_ids,
+        "substation_area": substation_area.name if substation_area else "-",
+        "is_upgrade_candidate": substation_area is not None and substation_area.id in upgrade_substation_area_ids,
         "leg_id": mp.leg_id,
     }
 
@@ -442,7 +442,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
     Deliberately just the LEG field -- not the full `app.gui.
     messpunkt_form`, which also edits Bezeichnung/Standort/PV data not
     relevant here. This is the fast path for splitting a few people out
-    of a LEG that spans several Trafokreise, right from that LEG's own
+    of a LEG that spans several substation areas, right from that LEG's own
     detail view, instead of looking each Messpunkt up individually on the
     Messpunkte page.
 
@@ -493,7 +493,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
 @ui.page("/legs/{leg_id}")
 def leg_detail_page(leg_id: int) -> None:
     """Render one LEG's detail view: its Messpunkte, each with the
-    Trafokreis assigned via its Standort (see `app.models.standort`),
+    substation area assigned via its Standort (see `app.models.standort`),
     sortable by clicking a column header, plus a quick "LEG ändern"
     action per row.
 
@@ -514,8 +514,8 @@ def leg_detail_page(leg_id: int) -> None:
 
         ui.link("← Zurück zu LEGs", "/legs")
         ui.label(leg.name).classes("text-xl font-bold mt-2")
-        if leg.bemerkung:
-            ui.label(leg.bemerkung).classes("text-body2 text-grey-7")
+        if leg.note:
+            ui.label(leg.note).classes("text-body2 text-grey-7")
 
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
         upgrade_hint_column = ui.column().classes("w-full gap-0")
@@ -535,8 +535,8 @@ def leg_detail_page(leg_id: int) -> None:
                     "field": "standort_adresse", "align": "left", "sortable": True,
                 },
                 {
-                    "name": "trafokreis", "label": "Trafokreis",
-                    "field": "trafokreis", "align": "left", "sortable": True,
+                    "name": "substation_area", "label": "Trafokreis",
+                    "field": "substation_area", "align": "left", "sortable": True,
                 },
                 {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ],
@@ -544,7 +544,7 @@ def leg_detail_page(leg_id: int) -> None:
             row_key="id",
         ).classes("w-full mt-2")
         table.add_slot(
-            "body-cell-trafokreis",
+            "body-cell-substation_area",
             r'''
             <q-td :props="props" :class="props.row.is_upgrade_candidate ? 'text-amber-9' : ''">
                 <span v-if="props.row.is_upgrade_candidate">⭐ </span>{{ props.value }}
@@ -571,11 +571,11 @@ def leg_detail_page(leg_id: int) -> None:
             with connection_scope() as inner_connection:
                 min_personen = settings_repo.get_settings(inner_connection).leg_gruendung_min_personen
                 standorte = {s.id: s for s in standort_repo.list_all(inner_connection)}
-                trafokreise = {t.id: t for t in trafokreis_repo.list_all(inner_connection)}
+                substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
                 messpunkte = [
                     mp for mp in messpunkt_repo.list_all(inner_connection) if mp.leg_id == leg_id
                 ]
-                # Which Trafokreis(e), among the ones this LEG spans, could
+                # Which substation area(e), among the ones this LEG spans, could
                 # now be split off into their own -- named explicitly
                 # rather than just hinting that "some" Messpunkte should
                 # move, see the module docstring.
@@ -583,9 +583,9 @@ def leg_detail_page(leg_id: int) -> None:
                     c for c in find_upgrade_candidates(inner_connection, min_personen=min_personen)
                     if any(l.id == leg_id for l in c.mixed_legs)
                 ]
-                upgrade_trafokreis_ids = {c.trafokreis.id for c in upgrade_candidates}
+                upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
                 table.rows = [
-                    _messpunkt_row_for_leg(mp, standorte, trafokreise, upgrade_trafokreis_ids)
+                    _messpunkt_row_for_leg(mp, standorte, substation_areas, upgrade_substation_area_ids)
                     for mp in messpunkte
                 ]
             table.update()
@@ -595,7 +595,7 @@ def leg_detail_page(leg_id: int) -> None:
             with upgrade_hint_column:
                 for candidate in upgrade_candidates:
                     ui.label(
-                        f"⭐ Trafokreis „{candidate.trafokreis.name}“ hat genug Prosumer und "
+                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Prosumer und "
                         f"Consumer für eine eigene LEG -- {candidate.person_count} Person(en) auf "
                         "den unten markierten Messpunkten könnten dorthin wechseln."
                     ).classes("text-body2 text-amber-9")
