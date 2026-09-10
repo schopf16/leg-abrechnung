@@ -31,8 +31,8 @@ class LegSettings:
         verwaltungsaufwand_einspeisung_rp_per_kwh: The same kind of
             administrative surcharge, charged on a person's
             locally-delivered production ("Einspeisung") instead.
-        papierrechnung_rappen: Flat fee in Rappen charged to persons with
-            `Person.papierrechnung` set (paper invoice by post).
+        paper_invoice_rappen: Flat fee in Rappen charged to persons with
+            `Person.paper_invoice` set (paper invoice by post).
         extra_backup_dir: Optional second directory every backup is also
             copied into (e.g. a network drive), in addition to the fixed
             `backups/` folder -- see `app.backup.backup_service`. Empty
@@ -57,8 +57,8 @@ class LegSettings:
         onboarding_ueberfaellig_tage: Number of days a person's current
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
-        leg_gruendung_min_personen: Minimum `app.domain.participant_mix.
-            ParticipantMix.gesamt_personen` (Prosumer- plus Consumer-count)
+        leg_founding_min_persons: Minimum `app.domain.participant_mix.
+            ParticipantMix.total_persons` (Prosumer- plus Consumer-count)
             a substation area must reach, in addition to already having both a
             Prosumer and a Consumer, before the app suggests splitting it
             off its current multi-substation-area LEG into its own, better-
@@ -100,13 +100,13 @@ class LegSettings:
     price_rp_per_kwh: float
     verwaltungsaufwand_bezug_rp_per_kwh: float
     verwaltungsaufwand_einspeisung_rp_per_kwh: float
-    papierrechnung_rappen: int
+    paper_invoice_rappen: int
     extra_backup_dir: str
     metering_point_country: str
     metering_point_identifier: str
     web_registration_cursor: int
     onboarding_ueberfaellig_tage: int
-    leg_gruendung_min_personen: int
+    leg_founding_min_persons: int
     rechnung_email_betreff: str
     rechnung_email_text: str
     mahnung_neue_frist_tage: int
@@ -136,13 +136,13 @@ class LegSettings:
             price_rp_per_kwh=row["price_rp_per_kwh"],
             verwaltungsaufwand_bezug_rp_per_kwh=row["verwaltungsaufwand_bezug_rp_per_kwh"],
             verwaltungsaufwand_einspeisung_rp_per_kwh=row["verwaltungsaufwand_einspeisung_rp_per_kwh"],
-            papierrechnung_rappen=row["papierrechnung_rappen"],
+            paper_invoice_rappen=row["paper_invoice_rappen"],
             extra_backup_dir=row["extra_backup_dir"],
             metering_point_country=row["metering_point_country"],
             metering_point_identifier=row["metering_point_identifier"],
             web_registration_cursor=row["web_registration_cursor"],
             onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
-            leg_gruendung_min_personen=row["leg_gruendung_min_personen"],
+            leg_founding_min_persons=row["leg_founding_min_persons"],
             rechnung_email_betreff=row["rechnung_email_betreff"],
             rechnung_email_text=row["rechnung_email_text"],
             mahnung_neue_frist_tage=row["mahnung_neue_frist_tage"],
@@ -193,10 +193,10 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             address_street = ?, address_zip = ?, address_city = ?,
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             verwaltungsaufwand_bezug_rp_per_kwh = ?, verwaltungsaufwand_einspeisung_rp_per_kwh = ?,
-            papierrechnung_rappen = ?,
+            paper_invoice_rappen = ?,
             extra_backup_dir = ?, metering_point_country = ?, metering_point_identifier = ?,
             web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
-            leg_gruendung_min_personen = ?,
+            leg_founding_min_persons = ?,
             rechnung_email_betreff = ?, rechnung_email_text = ?,
             mahnung_neue_frist_tage = ?, mahnung_bagatellgrenze_rappen = ?,
             mahnung1_email_betreff = ?, mahnung1_email_text = ?,
@@ -212,13 +212,13 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.price_rp_per_kwh,
             settings.verwaltungsaufwand_bezug_rp_per_kwh,
             settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
-            settings.papierrechnung_rappen,
+            settings.paper_invoice_rappen,
             settings.extra_backup_dir,
             settings.metering_point_country,
             settings.metering_point_identifier,
             settings.web_registration_cursor,
             settings.onboarding_ueberfaellig_tage,
-            settings.leg_gruendung_min_personen,
+            settings.leg_founding_min_persons,
             settings.rechnung_email_betreff,
             settings.rechnung_email_text,
             settings.mahnung_neue_frist_tage,

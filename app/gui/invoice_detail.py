@@ -84,11 +84,11 @@ def open_invoice_detail(item_id: int) -> None:
                     ui.label("Datum: PDF noch nicht erzeugt").classes("text-body2 text-grey-6")
             if person is not None:
                 with ui.column().classes("gap-0"):
-                    ui.label(f"Kunden-Nr.: {person.kundennummer_formatiert}").classes("text-body2")
-                    ui.label(person.anzeige_name).classes("text-body2")
+                    ui.label(f"Kunden-Nr.: {person.formatted_customer_number}").classes("text-body2")
+                    ui.label(person.display_name).classes("text-body2")
                     ui.label(
-                        f"{person.rechnungsadresse_strasse_vollstaendig}, "
-                        f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}"
+                        f"{person.billing_street_with_number}, "
+                        f"{person.billing_postal_code} {person.billing_city}"
                     ).classes("text-caption text-grey-6")
 
         ui.separator().classes("my-2")
@@ -110,7 +110,7 @@ def open_invoice_detail(item_id: int) -> None:
         if (
             item.verwaltungsaufwand_bezug_rappen > 0
             or item.verwaltungsaufwand_einspeisung_rappen > 0
-            or item.papierrechnung_rappen > 0
+            or item.paper_invoice_rappen > 0
         ):
             # Rates read from the item itself (frozen at billing time),
             # never from `settings` -- see app.domain.billing's docstring
@@ -131,10 +131,10 @@ def open_invoice_detail(item_id: int) -> None:
                         f"{item.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f} Rp./kWh)"
                     )
                     ui.label(f"{item.verwaltungsaufwand_einspeisung_rappen / 100:.2f} CHF")
-            if item.papierrechnung_rappen > 0:
+            if item.paper_invoice_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label("Kosten Papierrechnung")
-                    ui.label(f"{item.papierrechnung_rappen / 100:.2f} CHF")
+                    ui.label(f"{item.paper_invoice_rappen / 100:.2f} CHF")
 
         ui.separator().classes("my-2")
 

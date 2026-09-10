@@ -1,7 +1,7 @@
 """Statistik page: trend charts over the last 12 months.
 
 Two independent views: energy flow (Bezug/Einspeisung/Saldo, optionally
-scoped to one LEG) and master-data growth (cumulative Personen/
+scoped to one LEG) and master-data growth (cumulative persons/
 metering points/sites/substation areas/LEGs), both aggregated by
 `app.domain.statistics`.
 """
@@ -92,7 +92,7 @@ def statistik_page() -> None:
                 "xAxis": {"type": "category", "data": [_month_label(g.year, g.month) for g in growth]},
                 "yAxis": {"type": "value"},
                 "series": [
-                    {"name": "Personen", "type": "line", "data": [g.personen for g in growth]},
+                    {"name": "Personen", "type": "line", "data": [g.persons for g in growth]},
                     {"name": "Messpunkte", "type": "line", "data": [g.metering_points for g in growth]},
                     {"name": "Standorte", "type": "line", "data": [g.sites for g in growth]},
                     {"name": "Trafokreise", "type": "line", "data": [g.substation_areas for g in growth]},

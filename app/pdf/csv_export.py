@@ -35,7 +35,7 @@ def generate_invoice_list_csv(
         run: The billing run to list invoices for.
         items: All line items of the run (only persons owing the LEG
             money, i.e. `net_amount_rappen > 0`, are listed).
-        persons: Person lookup by id, for names and Kundennummern.
+        persons: Person lookup by id, for names and customer numbers.
         output_path: Destination path for the generated CSV.
 
     Returns:
@@ -51,13 +51,13 @@ def generate_invoice_list_csv(
         )
         for item in invoice_items:
             person = persons.get(item.person_id)
-            kundennummer = person.kundennummer if person else item.person_id
-            reference = generate_qrr_reference(kundennummer, run.id, item.id)
+            customer_number = person.customer_number if person else item.person_id
+            reference = generate_qrr_reference(customer_number, run.id, item.id)
             writer.writerow(
                 [
                     item.id,
-                    person.kundennummer if person else "",
-                    person.anzeige_name if person else f"Person #{item.person_id}",
+                    person.customer_number if person else "",
+                    person.display_name if person else f"Person #{item.person_id}",
                     reference,
                     f"{item.net_amount_rappen / 100:.2f}",
                     due_date.strftime("%d.%m.%Y"),
@@ -76,7 +76,7 @@ def generate_payout_list_csv(
     Args:
         items: All line items of the run (only persons owed money by the
             LEG, i.e. `net_amount_rappen < 0`, are listed).
-        persons: Person lookup by id, for names, Kundennummern and IBANs.
+        persons: Person lookup by id, for names, customer numbers and IBANs.
         output_path: Destination path for the generated CSV.
 
     Returns:
@@ -91,8 +91,8 @@ def generate_payout_list_csv(
             person = persons.get(item.person_id)
             writer.writerow(
                 [
-                    person.kundennummer if person else "",
-                    person.anzeige_name if person else f"Person #{item.person_id}",
+                    person.customer_number if person else "",
+                    person.display_name if person else f"Person #{item.person_id}",
                     person.iban if person else "",
                     f"{-item.net_amount_rappen / 100:.2f}",
                 ]

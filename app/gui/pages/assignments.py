@@ -125,7 +125,7 @@ def assignments_page() -> None:
                 groups.setdefault(z.metering_point_id, []).append(
                     {
                         "assignment": z,
-                        "person_name": persons[z.person_id].anzeige_name
+                        "person_name": persons[z.person_id].display_name
                         if z.person_id in persons
                         else "?",
                         "valid_from": z.valid_from.isoformat(),
@@ -200,10 +200,10 @@ def assignments_page() -> None:
             # but stay selectable when editing a Assignment that already points
             # at one (see app.models.person.delete).
             selectable_persons = [
-                p for p in persons if p.aktiv or (existing and p.id == existing.person_id)
+                p for p in persons if p.active or (existing and p.id == existing.person_id)
             ]
             person_options = {
-                p.id: p.anzeige_name + ("" if p.aktiv else " (inaktiv)") for p in selectable_persons
+                p.id: p.display_name + ("" if p.active else " (inaktiv)") for p in selectable_persons
             }
 
             initial_site_id = (

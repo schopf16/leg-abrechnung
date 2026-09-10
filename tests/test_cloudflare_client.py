@@ -52,8 +52,8 @@ def test_fetch_new_registrations_parses_successful_response():
 
     assert len(submissions) == 2
     assert submissions[0].cloudflare_id == 1
-    assert submissions[0].vorname == "Anna"
-    assert submissions[0].nachname == "Muster"
+    assert submissions[0].first_name == "Anna"
+    assert submissions[0].last_name == "Muster"
     assert submissions[0].meters == [("CH1022201234500000000000000032841", "PV")]
     mock_get.assert_called_once()
     _, kwargs = mock_get.call_args
@@ -132,12 +132,12 @@ def test_fetch_new_registrations_filters_out_non_registration_form_type():
 
 
 def test_fetch_new_registrations_strips_whitespace_from_payload_fields():
-    entry = _api_entry(1, vorname="  Anna  ", email="  anna@example.ch  ")
+    entry = _api_entry(1, first_name="  Anna  ", email="  anna@example.ch  ")
     response = httpx.Response(200, json=[entry])
     with patch(_GET_TARGET, return_value=response):
         submissions = fetch_new_registrations(0, "token")
 
-    assert submissions[0].vorname == "Anna"
+    assert submissions[0].first_name == "Anna"
     assert submissions[0].email == "anna@example.ch"
 
 

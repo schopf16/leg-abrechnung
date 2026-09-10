@@ -38,7 +38,7 @@ def list_broadcast_recipients(connection) -> list[Person]:
         email_versand`.
     """
     return [
-        p for p in person_repo.list_all(connection) if p.aktiv and p.kontakt_email.strip()
+        p for p in person_repo.list_all(connection) if p.active and p.contact_email.strip()
     ]
 
 
@@ -69,7 +69,7 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
     recipients = []
     for person_id in person_ids:
         person = person_repo.get(connection, person_id)
-        if person is not None and person.kontakt_email.strip():
+        if person is not None and person.contact_email.strip():
             recipients.append(person)
     return recipients
 
@@ -154,21 +154,21 @@ async def send_broadcast_email(
             await graph_client.send_email(
                 config,
                 access_token,
-                to_address=person.kontakt_email,
-                to_name=person.anzeige_name,
+                to_address=person.contact_email,
+                to_name=person.display_name,
                 subject=rendered_subject,
                 body=rendered_body,
                 attachment_path=attachment_path,
                 attachment_filename=attachment_filename,
             )
-            result.sent.append(person.anzeige_name)
-            sent_emails.append(person.kontakt_email)
+            result.sent.append(person.display_name)
+            sent_emails.append(person.contact_email)
         except graph_client.GraphAuthError:
             if on_progress:
                 on_progress(index + 1, total)
             raise
         except graph_client.GraphApiError as exc:
-            result.errors.append(f"{person.anzeige_name}: {exc}")
+            result.errors.append(f"{person.display_name}: {exc}")
         if on_progress:
             on_progress(index + 1, total)
 
@@ -209,7 +209,7 @@ async def send_invoice_emails(
     Returns:
         The `EmailSendResult`. A line item is skipped (not attempted,
         never counts as an error) if: the person has opted for paper
-        invoices (`Person.papierrechnung`), has no contact email, has no
+        invoices (`Person.paper_invoice`), has no contact email, has no
         generated PDF yet (`item.pdf_path` empty -- PDFs must be
         exported first), or was already emailed (`item.email_sent_at`
         set -- see `resend_invoice_email` to force a specific resend).
@@ -231,7 +231,7 @@ async def send_invoice_emails(
         person = person_repo.get(connection, item.person_id)
         skip_reason = invoice_skip_reason(person, item)
         if skip_reason is not None:
-            name = person.anzeige_name if person else f"Person #{item.person_id}"
+            name = person.display_name if person else f"Person #{item.person_id}"
             result.skipped.append(f"{name}: {skip_reason}")
             if on_progress:
                 on_progress(index + 1, total)
@@ -241,13 +241,13 @@ async def send_invoice_emails(
             await _send_one_invoice_email(
                 connection, config, access_token, run, item, person, leg, subject, body
             )
-            result.sent.append(person.anzeige_name)
+            result.sent.append(person.display_name)
         except graph_client.GraphAuthError:
             if on_progress:
                 on_progress(index + 1, total)
             raise
         except graph_client.GraphApiError as exc:
-            result.errors.append(f"{person.anzeige_name}: {exc}")
+            result.errors.append(f"{person.display_name}: {exc}")
         if on_progress:
             on_progress(index + 1, total)
 
@@ -283,8 +283,8 @@ async def resend_invoice_email(
     person = person_repo.get(connection, item.person_id)
     if person is None:
         raise ValueError(f"Person #{item.person_id} existiert nicht mehr.")
-    if not person.kontakt_email.strip():
-        raise ValueError(f"{person.anzeige_name} hat keine E-Mail-Adresse hinterlegt.")
+    if not person.contact_email.strip():
+        raise ValueError(f"{person.display_name} hat keine E-Mail-Adresse hinterlegt.")
     if not item.pdf_path:
         raise ValueError("Für diese Position wurde noch kein PDF erzeugt.")
 
@@ -317,9 +317,9 @@ def invoice_skip_reason(person: Optional[Person], item: BillingRunItem) -> Optio
     """
     if person is None:
         return "Person existiert nicht mehr."
-    if person.papierrechnung:
+    if person.paper_invoice:
         return "bevorzugt Papierrechnung."
-    if not person.kontakt_email.strip():
+    if not person.contact_email.strip():
         return "keine E-Mail-Adresse hinterlegt."
     if not item.pdf_path:
         return "PDF noch nicht erzeugt."
@@ -370,8 +370,8 @@ async def _send_one_invoice_email(
     await graph_client.send_email(
         config,
         access_token,
-        to_address=person.kontakt_email,
-        to_name=person.anzeige_name,
+        to_address=person.contact_email,
+        to_name=person.display_name,
         subject=render_template(subject, values),
         body=render_template(body, values),
         attachment_path=Path(item.pdf_path),

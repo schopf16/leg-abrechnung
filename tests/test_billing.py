@@ -1,5 +1,5 @@
 """Tests for the combined per-person net billing computation, final-step
-rounding, the admin fees (Verwaltungsaufwand/Papierrechnung), and the
+rounding, the admin fees (Verwaltungsaufwand/paper invoice), and the
 sum-balance check."""
 
 from app.domain.billing import (
@@ -29,7 +29,7 @@ def _item(person_id: int, net_amount_rappen: int) -> BillingRunItem:
     return BillingRunItem(
         id=None, billing_run_id=0, person_id=person_id,
         consumed_kwh=0, produced_kwh=0, price_rp_per_kwh=12,
-        verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+        verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
         net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
     )
 
@@ -160,7 +160,7 @@ def test_verwaltungsaufwand_rates_are_frozen_onto_the_item():
     assert items[0].verwaltungsaufwand_einspeisung_rp_per_kwh == 0.3
 
 
-def test_papierrechnung_applied_only_when_person_opted_in():
+def test_paper_invoice_applied_only_when_person_opted_in():
     """The flat paper-invoice fee only applies to persons flagged for it."""
     distribution = DistributionResult(
         leg_id=1, year=2025, quarter=1,
@@ -172,9 +172,9 @@ def test_papierrechnung_applied_only_when_person_opted_in():
     items = compute_billing_items(distribution, 12.0, 0.0, 0.0, 200, {1: True, 2: False})
     items_by_person = {i.person_id: i for i in items}
 
-    assert items_by_person[1].papierrechnung_rappen == 200
+    assert items_by_person[1].paper_invoice_rappen == 200
     assert items_by_person[1].net_amount_rappen == 10 * 12 + 200
-    assert items_by_person[2].papierrechnung_rappen == 0
+    assert items_by_person[2].paper_invoice_rappen == 0
     assert items_by_person[2].net_amount_rappen == 10 * 12
 
 
@@ -206,12 +206,12 @@ def test_verify_sum_balance_ignores_admin_fees():
     """Admin fees added on top of a balanced energy net don't break the balance check."""
     balanced_energy_item_to_leg = BillingRunItem(
         id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=50, papierrechnung_rappen=200,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=50, paper_invoice_rappen=200,
         net_amount_rappen=120 + 50 + 200, pdf_path=None, created_at="",
     )
     balanced_energy_item_by_leg = BillingRunItem(
         id=None, billing_run_id=0, person_id=2, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
         net_amount_rappen=-120, pdf_path=None, created_at="",
     )
     check = verify_sum_balance([balanced_energy_item_to_leg, balanced_energy_item_by_leg])
@@ -226,7 +226,7 @@ def test_verify_sum_balance_ignores_verwaltungsaufwand_einspeisung_too():
     producer-side counterpart."""
     item = BillingRunItem(
         id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+        price_rp_per_kwh=12, verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
         verwaltungsaufwand_einspeisung_rappen=30,
         net_amount_rappen=-120 + 30, pdf_path=None, created_at="",
     )

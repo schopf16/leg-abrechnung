@@ -2,8 +2,8 @@
 the public form on leg-ittigen.ch (see `app.importers.registration_sync`).
 
 One row per Cloudflare submission (not per reported meter): the form
-fields were deliberately chosen to mirror `Person` almost 1:1 (`firma`,
-`anrede`, `vorname`, `nachname`, address, contact, `bkw_kundennummer`,
+fields were deliberately chosen to mirror `Person` almost 1:1 (`company`,
+`salutation`, `first_name`, `last_name`, address, contact, `bkw_customer_number`,
 `iban`), but a registration can report zero, one or several meters
 (`WebRegistrationMeter`). Person, site and each meter's MeteringPoint are
 each taken over as their own explicit step (see `app.gui.pages.
@@ -81,19 +81,19 @@ class WebRegistration:
         cloudflare_id: The id of the raw submission this row currently
             reflects, in the leg-ittigen.ch API -- unique, since at any
             time each row is a snapshot of exactly one submission.
-        firma: Submitted company name, or `""`.
-        anrede: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
-        vorname: Submitted first name.
-        nachname: Submitted last name.
+        company: Submitted company name, or `""`.
+        salutation: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
+        first_name: Submitted first name.
+        last_name: Submitted last name.
         street: Submitted street name (without house number).
         house_number: Submitted house number.
         postal_code: Submitted postal code.
         city: Submitted city.
         email: Submitted email address -- the matching key across repeat
             submissions (see class docstring).
-        telefon: Optional submitted phone number.
-        bkw_kundennummer: Submitted BKW customer number, free text (unlike
-            `Person.bkw_kundennummer`, which is a validated integer --
+        phone: Optional submitted phone number.
+        bkw_customer_number: Submitted BKW customer number, free text (unlike
+            `Person.bkw_customer_number`, which is a validated integer --
             the website does not validate this field).
         iban: Optional submitted IBAN, free text (not validated here).
         message: Optional free-text remark from the submitter.
@@ -114,17 +114,17 @@ class WebRegistration:
 
     id: Optional[int]
     cloudflare_id: int
-    firma: str
-    anrede: str
-    vorname: str
-    nachname: str
+    company: str
+    salutation: str
+    first_name: str
+    last_name: str
     street: str
     house_number: str
     postal_code: str
     city: str
     email: str
-    telefon: str
-    bkw_kundennummer: str
+    phone: str
+    bkw_customer_number: str
     iban: str
     message: str
     submitted_at: str
@@ -134,18 +134,18 @@ class WebRegistration:
     meters: list[WebRegistrationMeter] = field(default_factory=list)
 
     @property
-    def anzeige_name(self) -> str:
-        """Single-line display name, mirroring `Person.anzeige_name`.
+    def display_name(self) -> str:
+        """Single-line display name, mirroring `Person.display_name`.
 
         Returns:
             `"Firma (Vorname Nachname)"` if both are set, just the
             company name or just the personal name if only one is, or
             `""` if neither is set.
         """
-        voller_name = " ".join(p for p in (self.vorname, self.nachname) if p)
-        if self.firma and voller_name:
-            return f"{self.firma} ({voller_name})"
-        return self.firma or voller_name
+        full_name = " ".join(p for p in (self.first_name, self.last_name) if p)
+        if self.company and full_name:
+            return f"{self.company} ({full_name})"
+        return self.company or full_name
 
     @property
     def is_fully_processed(self) -> bool:
@@ -179,17 +179,17 @@ class WebRegistration:
         return WebRegistration(
             id=row["id"],
             cloudflare_id=row["cloudflare_id"],
-            firma=row["firma"],
-            anrede=row["anrede"],
-            vorname=row["vorname"],
-            nachname=row["nachname"],
+            company=row["company"],
+            salutation=row["salutation"],
+            first_name=row["first_name"],
+            last_name=row["last_name"],
             street=row["street"],
             house_number=row["house_number"],
             postal_code=row["postal_code"],
             city=row["city"],
             email=row["email"],
-            telefon=row["telefon"],
-            bkw_kundennummer=row["bkw_kundennummer"],
+            phone=row["phone"],
+            bkw_customer_number=row["bkw_customer_number"],
             iban=row["iban"],
             message=row["message"],
             submitted_at=row["submitted_at"],
@@ -303,24 +303,24 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
         cursor = connection.execute(
             """
             INSERT INTO web_registration
-                (cloudflare_id, firma, anrede, vorname, nachname, street, house_number,
-                 postal_code, city, email, telefon, bkw_kundennummer, iban, message,
+                (cloudflare_id, company, salutation, first_name, last_name, street, house_number,
+                 postal_code, city, email, phone, bkw_customer_number, iban, message,
                  submitted_at, imported_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 registration.cloudflare_id,
-                registration.firma,
-                registration.anrede,
-                registration.vorname,
-                registration.nachname,
+                registration.company,
+                registration.salutation,
+                registration.first_name,
+                registration.last_name,
                 registration.street,
                 registration.house_number,
                 registration.postal_code,
                 registration.city,
                 registration.email,
-                registration.telefon,
-                registration.bkw_kundennummer,
+                registration.phone,
+                registration.bkw_customer_number,
                 registration.iban,
                 registration.message,
                 registration.submitted_at,
@@ -332,25 +332,25 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
         connection.execute(
             """
             UPDATE web_registration SET
-                cloudflare_id = ?, firma = ?, anrede = ?, vorname = ?, nachname = ?,
-                street = ?, house_number = ?, postal_code = ?, city = ?, email = ?, telefon = ?,
-                bkw_kundennummer = ?, iban = ?, message = ?, submitted_at = ?,
+                cloudflare_id = ?, company = ?, salutation = ?, first_name = ?, last_name = ?,
+                street = ?, house_number = ?, postal_code = ?, city = ?, email = ?, phone = ?,
+                bkw_customer_number = ?, iban = ?, message = ?, submitted_at = ?,
                 imported_at = ?
             WHERE id = ?
             """,
             (
                 registration.cloudflare_id,
-                registration.firma,
-                registration.anrede,
-                registration.vorname,
-                registration.nachname,
+                registration.company,
+                registration.salutation,
+                registration.first_name,
+                registration.last_name,
                 registration.street,
                 registration.house_number,
                 registration.postal_code,
                 registration.city,
                 registration.email,
-                registration.telefon,
-                registration.bkw_kundennummer,
+                registration.phone,
+                registration.bkw_customer_number,
                 registration.iban,
                 registration.message,
                 registration.submitted_at,

@@ -49,7 +49,7 @@ class MonthlyGrowth:
     Attributes:
         year: Calendar year.
         month: Calendar month, 1 to 12.
-        personen: Number of Personen created on or before this month.
+        persons: Number of persons created on or before this month.
         metering_points: Number of metering points created on or before this month.
         sites: Number of sites created on or before this month.
         substation areas: Number of substation areas created on or before this month.
@@ -58,7 +58,7 @@ class MonthlyGrowth:
 
     year: int
     month: int
-    personen: int
+    persons: int
     metering_points: int
     sites: int
     substation_areas: int
@@ -149,7 +149,7 @@ def monthly_growth_counts(
     """
     window = trailing_months(reference_date or date.today(), months)
 
-    personen = _creation_dates(connection, "person")
+    persons = _creation_dates(connection, "person")
     metering_points = _creation_dates(connection, "metering_point")
     sites = _creation_dates(connection, "site")
     substation_areas = _creation_dates(connection, "substation_area")
@@ -162,7 +162,7 @@ def monthly_growth_counts(
             MonthlyGrowth(
                 year=year,
                 month=month,
-                personen=sum(1 for d in personen if d <= last_day),
+                persons=sum(1 for d in persons if d <= last_day),
                 metering_points=sum(1 for d in metering_points if d <= last_day),
                 sites=sum(1 for d in sites if d <= last_day),
                 substation_areas=sum(1 for d in substation_areas if d <= last_day),

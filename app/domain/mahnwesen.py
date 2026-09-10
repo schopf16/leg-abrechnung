@@ -219,7 +219,7 @@ async def send_mahnung(connection, config: Optional[GraphConfig], candidate: Mah
     """Render, send (or leave for manual printing) and log one Mahnung.
 
     Always generates the PDF (needed either as an email attachment or for
-    Michael to print/send by post -- mirrors `Person.papierrechnung`'s
+    Michael to print/send by post -- mirrors `Person.paper_invoice`'s
     existing invoice-email behavior). Always advances every included item
     to *its own* target stage (not necessarily `candidate.stufe`, which is
     only the letter's tone -- see `MahnKandidat.item_target_stufen`) and
@@ -246,19 +246,19 @@ async def send_mahnung(connection, config: Optional[GraphConfig], candidate: Mah
     output_dir = OUTPUT_DIR / "Mahnungen" / date.today().isoformat()
     output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = output_dir / (
-        f"Mahnung{candidate.stufe}_{_sanitize_filename_part(person.anzeige_name)}_{person.id}.pdf"
+        f"Mahnung{candidate.stufe}_{_sanitize_filename_part(person.display_name)}_{person.id}.pdf"
     )
     generate_mahnung_pdf(connection, candidate, body, settings, pdf_path)
 
-    if person.kontakt_email.strip() and not person.papierrechnung:
+    if person.contact_email.strip() and not person.paper_invoice:
         if config is None:
             raise ValueError("Graph-Konfiguration fehlt, E-Mail-Versand nicht möglich.")
         access_token = await graph_client.get_access_token(config)
         await graph_client.send_email(
             config,
             access_token,
-            to_address=person.kontakt_email,
-            to_name=person.anzeige_name,
+            to_address=person.contact_email,
+            to_name=person.display_name,
             subject=subject,
             body=body,
             attachment_path=pdf_path,

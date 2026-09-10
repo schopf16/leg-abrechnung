@@ -8,7 +8,7 @@ shows, in order:
 1. Bezug (consumption) for the whole quarter, as one summed line.
 2. Vergütung (production) for the whole quarter, as one summed line.
 3. Verwaltungsaufwand (admin surcharge on consumption) and Kosten
-   Papierrechnung (flat paper-invoice fee), if either applies.
+   paper invoice (flat paper-invoice fee), if either applies.
 4. The net settlement: consumption value minus production value plus the
    two fees above, rounded to the nearest Rappen exactly once for the
    energy portion (the fees are their own already-rounded/exact lines --
@@ -108,7 +108,7 @@ def generate_person_bill_pdf(
             authoritative, already-rounded `net_amount_rappen`,
             `verwaltungsaufwand_bezug_rappen`/
             `verwaltungsaufwand_einspeisung_rappen` and
-            `papierrechnung_rappen` used for the QR-bill and payment list).
+            `paper_invoice_rappen` used for the QR-bill and payment list).
             `item.faellig_am` must already be resolved by the caller
             (see `app.pdf.export_service.export_billing_run`) -- printed
             verbatim here, never recomputed, so a re-export can never
@@ -142,7 +142,7 @@ def generate_person_bill_pdf(
             f"Abrechnung Nr. {item.id}",
             f"Datum: {date.today().strftime('%d.%m.%Y')}",
             f"Zahlbar bis: {date.fromisoformat(item.faellig_am).strftime('%d.%m.%Y')}",
-            f"Kunden-Nr.: {person.kundennummer_formatiert}",
+            f"Kunden-Nr.: {person.formatted_customer_number}",
             f"Periode: {period}",
         ],
     )
@@ -184,7 +184,7 @@ def generate_person_bill_pdf(
     if (
         item.verwaltungsaufwand_bezug_rappen > 0
         or item.verwaltungsaufwand_einspeisung_rappen > 0
-        or item.papierrechnung_rappen > 0
+        or item.paper_invoice_rappen > 0
     ):
         # Rates read from the item itself, never from `settings` -- these
         # are frozen at billing time, so a later rate change in
@@ -214,13 +214,13 @@ def generate_person_bill_pdf(
                 "Kosten Papierrechnung",
                 "",
                 "",
-                f"{item.papierrechnung_rappen / 100:.2f}",
+                f"{item.paper_invoice_rappen / 100:.2f}",
             )
         )
         fee_total_chf = (
             item.verwaltungsaufwand_bezug_rappen
             + item.verwaltungsaufwand_einspeisung_rappen
-            + item.papierrechnung_rappen
+            + item.paper_invoice_rappen
         ) / 100
         y = draw_monthly_table(
             canvas,
@@ -263,7 +263,7 @@ def generate_person_bill_pdf(
         if y < CONTENT_BOTTOM_Y:
             canvas.showPage()
 
-        reference = generate_qrr_reference(person.kundennummer, run.id, item.id)
+        reference = generate_qrr_reference(person.customer_number, run.id, item.id)
         bill = build_qr_bill(settings, leg, person, net_amount_chf, reference)
         draw_qr_bill(canvas, bill)
 

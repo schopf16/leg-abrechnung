@@ -40,11 +40,11 @@ def _person(db, name: str) -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="", firma="", vorname=name, nachname="",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name=name, last_name="",
+            contact_email="", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
         ),
     )
 
@@ -233,7 +233,7 @@ def test_production_deficit_splits_proportionally_across_consumers(db):
     assert result.total_consumed_local_kwh() == pytest.approx(result.total_produced_local_kwh())
 
 
-def test_mid_period_move_splits_metering_point_between_two_personen(db):
+def test_mid_period_move_splits_metering_point_between_two_persons(db):
     """A MeteringPoint reassigned mid-quarter attributes readings to the correct person."""
     leg_id = _leg(db)
     site = _site(db)
@@ -353,7 +353,7 @@ def test_metering_point_without_readings_does_not_block_run(db):
 
 
 def test_distribution_scoped_to_one_leg_excludes_other_legs_metering_points(db):
-    """Two Personen on different LEGs never share, even with matching P(t)/C(t)."""
+    """Two persons on different LEGs never share, even with matching P(t)/C(t)."""
     leg_a = _leg(db)
     leg_b = _leg(db)
     site_a = _site(db)

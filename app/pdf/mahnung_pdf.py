@@ -83,7 +83,7 @@ def generate_mahnung_pdf(
                 f"{candidate.stufe}. Mahnung",
                 f"Datum: {date.today().strftime('%d.%m.%Y')}",
                 f"Zu Abrechnung Nr. {item.id}",
-                f"Kunden-Nr.: {person.kundennummer_formatiert}",
+                f"Kunden-Nr.: {person.formatted_customer_number}",
             ],
         )
 
@@ -94,7 +94,7 @@ def generate_mahnung_pdf(
         if y < CONTENT_BOTTOM_Y:
             canvas.showPage()
 
-        reference = generate_qrr_reference(person.kundennummer, run.id, item.id)
+        reference = generate_qrr_reference(person.customer_number, run.id, item.id)
         bill = build_qr_bill(
             settings, leg, person, Decimal(remaining_rappen) / 100, reference
         )

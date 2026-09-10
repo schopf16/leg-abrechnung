@@ -13,17 +13,17 @@ def _person(db, name: str = "Test") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="", firma="", vorname=name, nachname="",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name=name, last_name="",
+            contact_email="", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
         ),
     )
 
 
 def test_migration_27_creates_person_offboarding_table(db):
-    assert get_schema_version(db) == 40
+    assert get_schema_version(db) == 41
     assert person_offboarding_repo.list_all(db) == []
 
 

@@ -58,7 +58,7 @@ def _metering_point_designation_row(
     designation: str, *, classes: str = "font-bold"
 ) -> None:
     """Render the metering point designation with an inline copy-to-clipboard
-    button (same pattern as `app.gui.pages.personen._kundennummer_row`).
+    button (same pattern as `app.gui.pages.persons._customer_number_row`).
 
     Args:
         designation: The metering point designation to show.
@@ -93,7 +93,7 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
     if assignment is None:
         return "-", False
     person = person_repo.get(connection, assignment.person_id)
-    name = person.anzeige_name if person else "?"
+    name = person.display_name if person else "?"
     is_future = assignment.valid_from > date.today()
     return name, is_future
 

@@ -6,7 +6,7 @@ horizontal scrolling (wide fixed columns) or, if wrapped, very tall rows
 that push everything else below the fold -- neither is acceptable. Cards
 let the note wrap onto its own full-width line instead, so one entry
 takes the 2-3 lines it actually needs and no more (same rationale as
-`app.gui.pages.personen`).
+`app.gui.pages.persons`).
 
 A substation area cannot be deleted while sites still reference it (see
 `app.models.substation_area.SubstationAreaInUseError`). Its `name` must be unique,
@@ -176,11 +176,11 @@ def substation_areas_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
+                min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
                 sites = site_repo.list_all(connection)
                 upgrade_substation_area_ids = {
                     c.substation_area.id
-                    for c in find_upgrade_candidates(connection, min_personen=min_personen)
+                    for c in find_upgrade_candidates(connection, min_persons=min_persons)
                 }
                 all_rows = [
                     _to_row(

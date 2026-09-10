@@ -54,9 +54,9 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("Eingegangen", "eingegangen"),
     ("E-Mail", "email"),
-    ("Telefon", "telefon"),
+    ("Telefon", "phone"),
     ("Adresse", "address"),
-    ("BKW-Kundennummer", "bkw_kundennummer"),
+    ("BKW-Kundennummer", "bkw_customer_number"),
     ("Zähler", "zaehler"),
     ("Status", "status"),
 ]
@@ -72,12 +72,12 @@ def _print_row(reg: WebRegistration) -> dict:
         A dict with the fields required by `PRINT_COLUMNS`.
     """
     return {
-        "name": reg.anzeige_name,
+        "name": reg.display_name,
         "eingegangen": reg.submitted_at,
         "email": reg.email,
-        "telefon": reg.telefon,
+        "phone": reg.phone,
         "address": f"{reg.street} {reg.house_number}, {reg.postal_code} {reg.city}".strip(", "),
-        "bkw_kundennummer": reg.bkw_kundennummer,
+        "bkw_customer_number": reg.bkw_customer_number,
         "zaehler": ", ".join(m.meter_number for m in reg.meters) or "-",
         "status": "Vollständig übernommen" if reg.is_fully_processed else "Offen",
     }
@@ -110,7 +110,7 @@ def _registration_status(
 
     Args:
         reg: Registration to check.
-        known_person_emails: Every existing Person's non-empty `kontakt_email`.
+        known_person_emails: Every existing Person's non-empty `contact_email`.
         known_site_addresses: Every existing site's
             `(street, house_number, plz)`, lowercased.
         known_metering_points: Every existing MeteringPoint's `designation`.
@@ -126,9 +126,9 @@ def _registration_status(
     )
 
 
-def _parse_bkw_kundennummer(value: str) -> Optional[int]:
-    """Try to interpret a registration's free-text BKW-Kundennummer as an
-    integer, for prefilling `Person.bkw_kundennummer` (which is validated).
+def _parse_bkw_customer_number(value: str) -> Optional[int]:
+    """Try to interpret a registration's free-text BKW-customer number as an
+    integer, for prefilling `Person.bkw_customer_number` (which is validated).
 
     Args:
         value: Free-text value as submitted through the web form.
@@ -232,7 +232,7 @@ def web_registrierungen_page() -> None:
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         with ui.row().classes("items-center gap-2"):
-                            ui.label(reg.anzeige_name or "-").classes("font-bold")
+                            ui.label(reg.display_name or "-").classes("font-bold")
                             if reg.is_fully_processed:
                                 ui.badge("Vollständig übernommen", color="grey")
                         ui.label(f"Eingegangen: {reg.submitted_at}").classes(
@@ -240,12 +240,12 @@ def web_registrierungen_page() -> None:
                         )
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(reg.email or "-")
-                        ui.label(reg.telefon or "-").classes("text-grey-7")
+                        ui.label(reg.phone or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(f"{reg.street} {reg.house_number}".strip() or "-")
                         ui.label(f"{reg.postal_code} {reg.city}".strip() or "-")
                     with ui.column().classes("gap-0 min-w-[180px]"):
-                        ui.label(f"BKW-Kundennummer: {reg.bkw_kundennummer or '-'}")
+                        ui.label(f"BKW-Kundennummer: {reg.bkw_customer_number or '-'}")
                         ui.label(f"IBAN: {reg.iban or '-'}").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(reg.message or "-").classes("text-grey-7")
@@ -295,7 +295,7 @@ def web_registrierungen_page() -> None:
             with connection_scope() as connection:
                 all_regs = web_registration_repo.list_all(connection)
                 known_person_emails = {
-                    p.kontakt_email for p in person_repo.list_all(connection) if p.kontakt_email
+                    p.contact_email for p in person_repo.list_all(connection) if p.contact_email
                 }
                 known_site_addresses = {
                     (s.street.strip().lower(), s.house_number.strip().lower(), s.postal_code.strip().lower())
@@ -341,21 +341,21 @@ def web_registrierungen_page() -> None:
                 None.
             """
             prefill = {
-                "firma": reg.firma,
-                "anrede": reg.anrede,
-                "vorname": reg.vorname,
-                "nachname": reg.nachname,
+                "company": reg.company,
+                "salutation": reg.salutation,
+                "first_name": reg.first_name,
+                "last_name": reg.last_name,
                 "street": reg.street,
                 "house_number": reg.house_number,
                 "postal_code": reg.postal_code,
                 "city": reg.city,
                 "email": reg.email,
-                "telefon": reg.telefon,
+                "phone": reg.phone,
                 "iban": reg.iban,
             }
-            bkw_kundennummer = _parse_bkw_kundennummer(reg.bkw_kundennummer)
-            if bkw_kundennummer is not None:
-                prefill["bkw_kundennummer"] = bkw_kundennummer
+            bkw_customer_number = _parse_bkw_customer_number(reg.bkw_customer_number)
+            if bkw_customer_number is not None:
+                prefill["bkw_customer_number"] = bkw_customer_number
 
             def on_person_saved(saved_person) -> None:
                 with connection_scope() as connection:
@@ -432,7 +432,7 @@ def web_registrierungen_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'"{reg.anzeige_name or reg.email}" wirklich löschen?').classes(
+                ui.label(f'"{reg.display_name or reg.email}" wirklich löschen?').classes(
                     "font-bold"
                 )
                 if not reg.is_fully_processed:

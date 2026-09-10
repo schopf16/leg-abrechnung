@@ -64,7 +64,7 @@ def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int
         status = f"{step_label} (seit {onboarding.days_open()} Tagen)"
         if onboarding.is_overdue(threshold_days):
             status += " -- überfällig"
-    row = {"person": person.anzeige_name, "status": status}
+    row = {"person": person.display_name, "status": status}
     for attr, _ in STEPS:
         value = getattr(onboarding, attr)
         row[attr] = value.isoformat() if value else ""
@@ -153,7 +153,7 @@ def aufnahmen_page() -> None:
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         with ui.row().classes("items-center gap-2"):
-                            ui.link(person.anzeige_name, f"/personen/{person.id}").classes(
+                            ui.link(person.display_name, f"/persons/{person.id}").classes(
                                 "font-bold"
                             )
                             if onboarding.is_complete:
@@ -241,7 +241,7 @@ def aufnahmen_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'Aufnahmeprozess von "{person.anzeige_name}" wirklich löschen?')
+                ui.label(f'Aufnahmeprozess von "{person.display_name}" wirklich löschen?')
                 ui.label(
                     "Nur die Nachverfolgung wird entfernt -- die Person "
                     "selbst bleibt bestehen."
@@ -275,7 +275,7 @@ def aufnahmen_page() -> None:
             if not available_persons:
                 ui.notify("Alle Personen werden bereits nachverfolgt.", type="warning")
                 return
-            person_options = {p.id: p.anzeige_name for p in available_persons}
+            person_options = {p.id: p.display_name for p in available_persons}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Aufnahme starten").classes("text-lg font-bold")

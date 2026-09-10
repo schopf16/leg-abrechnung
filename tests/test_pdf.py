@@ -107,10 +107,10 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
-        papierrechnung_rappen=0, extra_backup_dir="",
+        paper_invoice_rappen=0, extra_backup_dir="",
         metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
-        leg_gruendung_min_personen=7,
+        leg_founding_min_persons=7,
         rechnung_email_betreff="Ihre Abrechnung",
         rechnung_email_text="Guten Tag",
         mahnung_neue_frist_tage=14,
@@ -123,10 +123,10 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
     person = Person(
-        id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
-        rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
-        rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
-        kundennummer=12345678, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+        id=1, salutation="", company="", first_name="Max", last_name="Muster", contact_email="", contact_phone="",
+        billing_street="Strasse", billing_house_number="1", billing_postal_code="8000",
+        billing_city="Zürich", billing_country="CH", iban="",
+        customer_number=12345678, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
 
@@ -156,10 +156,10 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
         address_street="Weg 1", address_zip="3000", address_city="Bern",
         address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
         verwaltungsaufwand_bezug_rp_per_kwh=0.0, verwaltungsaufwand_einspeisung_rp_per_kwh=0.0,
-        papierrechnung_rappen=0, extra_backup_dir="",
+        paper_invoice_rappen=0, extra_backup_dir="",
         metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
         onboarding_ueberfaellig_tage=30,
-        leg_gruendung_min_personen=7,
+        leg_founding_min_persons=7,
         rechnung_email_betreff="Ihre Abrechnung",
         rechnung_email_text="Guten Tag",
         mahnung_neue_frist_tage=14,
@@ -172,10 +172,10 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
     person = Person(
-        id=1, anrede="", firma="", vorname="Max", nachname="Muster", kontakt_email="", kontakt_telefon="",
-        rechnungsadresse_strasse="Strasse", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="8000",
-        rechnungsadresse_ort="Zürich", rechnungsadresse_land="CH", iban="",
-        kundennummer=12345678, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+        id=1, salutation="", company="", first_name="Max", last_name="Muster", contact_email="", contact_phone="",
+        billing_street="Strasse", billing_house_number="1", billing_postal_code="8000",
+        billing_city="Zürich", billing_country="CH", iban="",
+        customer_number=12345678, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
     bill = build_qr_bill(settings, leg, person, Decimal("10.00"), ref)
@@ -273,7 +273,7 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     # (frozen) fields now, not by `settings` -- see app.domain.billing.
     consumer_item.verwaltungsaufwand_bezug_rappen = 0
     consumer_item.verwaltungsaufwand_einspeisung_rappen = 0
-    consumer_item.papierrechnung_rappen = 0
+    consumer_item.paper_invoice_rappen = 0
 
     output_path = tmp_path / "consumer_no_fees.pdf"
     generate_person_bill_pdf(
@@ -284,11 +284,11 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     assert _page_count(output_path) == 1
 
 
-def test_generate_person_bill_pdf_shows_verwaltungsaufwand_section_when_person_pays_papierrechnung(db, tmp_path):
-    """Beat (demo person with `papierrechnung=True`) gets a document that
+def test_generate_person_bill_pdf_shows_verwaltungsaufwand_section_when_person_pays_paper_invoice(db, tmp_path):
+    """Beat (demo person with `paper_invoice=True`) gets a document that
     renders without error even with the extra fee section present."""
     run, items, distribution, leg, settings = _billing_context(db)
-    beat = next(p for p in person_repo.list_all(db) if p.papierrechnung)
+    beat = next(p for p in person_repo.list_all(db) if p.paper_invoice)
     item = next(i for i in items if i.person_id == beat.id)
     person_result = distribution.person_results[item.person_id]
 
@@ -296,7 +296,7 @@ def test_generate_person_bill_pdf_shows_verwaltungsaufwand_section_when_person_p
     generate_person_bill_pdf(run, item, person_result, beat, leg, settings, output_path)
 
     _assert_is_pdf(output_path)
-    assert item.papierrechnung_rappen > 0
+    assert item.paper_invoice_rappen > 0
 
 
 def test_generate_invoice_list_csv_lists_debtors_with_matching_reference_numbers(db, tmp_path):
@@ -315,9 +315,9 @@ def test_generate_invoice_list_csv_lists_debtors_with_matching_reference_numbers
     assert len(rows) == len(debtor_items)
     rows_by_reference = {row["Referenznummer"]: row for row in rows}
     for item in debtor_items:
-        reference = generate_qrr_reference(persons[item.person_id].kundennummer, run.id, item.id)
+        reference = generate_qrr_reference(persons[item.person_id].customer_number, run.id, item.id)
         row = rows_by_reference[reference]
-        assert row["Name"] == persons[item.person_id].anzeige_name
+        assert row["Name"] == persons[item.person_id].display_name
         assert round(float(row["Betrag (CHF)"]), 2) == round(item.net_amount_rappen / 100, 2)
 
 

@@ -25,12 +25,12 @@ def _person(db, name: str = "Test") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="", firma="", vorname=name, nachname="",
-            kontakt_email=f"{name.lower()}@example.invalid", kontakt_telefon="",
-            rechnungsadresse_strasse="Weg", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="3000",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None,
-            papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name=name, last_name="",
+            contact_email=f"{name.lower()}@example.invalid", contact_phone="",
+            billing_street="Weg", billing_house_number="1", billing_postal_code="3000",
+            billing_city="Bern", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None,
+            paper_invoice=False, active=True, created_at="",
         ),
     )
 
@@ -115,7 +115,7 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     assert mix.consumer_count == 1
     assert mix.ist_einseitig is False
     assert mix.verhaeltnis == "1:1"
-    assert mix.gesamt_personen == 2  # a true prosumer is counted on both sides, see above
+    assert mix.total_persons == 2  # a true prosumer is counted on both sides, see above
 
 
 def test_ended_assignment_before_stichtag_no_longer_counts(db):
@@ -224,10 +224,10 @@ def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
     assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
 
 
-def test_upgrade_candidate_hidden_below_min_personen(db):
+def test_upgrade_candidate_hidden_below_min_persons(db):
     """A substation area with both sides present but too few people overall is
     not suggested -- the same setup that produces a candidate with
-    `min_personen=0` (the default) produces none once the threshold
+    `min_persons=0` (the default) produces none once the threshold
     exceeds the 2 people actually present."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
@@ -244,11 +244,11 @@ def test_upgrade_candidate_hidden_below_min_personen(db):
     other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
     _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
-    candidates = participant_mix.find_upgrade_candidates(db, min_personen=3)
+    candidates = participant_mix.find_upgrade_candidates(db, min_persons=3)
 
     assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
 
-    candidates = participant_mix.find_upgrade_candidates(db, min_personen=2)
+    candidates = participant_mix.find_upgrade_candidates(db, min_persons=2)
 
     assert len([c for c in candidates if c.substation_area.id == substation_area_id]) == 1
 
@@ -317,9 +317,9 @@ def test_leg_should_not_split_when_one_substation_area_would_be_one_sided_alone(
     assert participant_mix.leg_should_split(db, mixed_leg_id) is False
 
 
-def test_leg_should_not_split_below_min_personen(db):
+def test_leg_should_not_split_below_min_persons(db):
     """Every substation area is independently non-one-sided (would split under
-    the default `min_personen=0`), but each only has 2 people -- raising
+    the default `min_persons=0`), but each only has 2 people -- raising
     the threshold above that turns the recommendation off again."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
@@ -339,8 +339,8 @@ def test_leg_should_not_split_below_min_personen(db):
     ):
         _assignment(db, pid, mp_id, date(2026, 1, 1))
 
-    assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=2) is True
-    assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=3) is False
+    assert participant_mix.leg_should_split(db, mixed_leg_id, min_persons=2) is True
+    assert participant_mix.leg_should_split(db, mixed_leg_id, min_persons=3) is False
 
 
 def test_leg_should_not_split_when_not_mixed(db):

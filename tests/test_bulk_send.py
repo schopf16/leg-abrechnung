@@ -34,22 +34,22 @@ from app.models.assignment import Assignment
 
 
 def _person(db, name: str = "P", email: str = "p@example.invalid",
-            papierrechnung: bool = False) -> int:
+            paper_invoice: bool = False) -> int:
     """Create a Person (fantasy email, never a real address) and return its id.
 
-    Always created active -- `person_repo.create` ignores any `aktiv`
-    value and always creates active; use `person_repo.set_aktiv` afterwards
+    Always created active -- `person_repo.create` ignores any `active`
+    value and always creates active; use `person_repo.set_active` afterwards
     to deactivate.
     """
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="Frau", firma="", vorname=name, nachname="Test",
-            kontakt_email=email, kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None,
-            papierrechnung=papierrechnung, aktiv=True, created_at="",
+            id=None, salutation="Frau", company="", first_name=name, last_name="Test",
+            contact_email=email, contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None,
+            paper_invoice=paper_invoice, active=True, created_at="",
         ),
     )
 
@@ -97,9 +97,9 @@ def test_list_broadcast_recipients_includes_active_with_email(db):
 
 def test_list_broadcast_recipients_excludes_inactive(db):
     # Person.create() always creates active (deactivation happens only via
-    # set_aktiv, see app.models.person) -- deactivate it afterwards.
+    # set_active, see app.models.person) -- deactivate it afterwards.
     person_id = _person(db, "Inaktiv", email="inaktiv@example.invalid")
-    person_repo.set_aktiv(db, person_id, False)
+    person_repo.set_active(db, person_id, False)
     assert list_broadcast_recipients(db) == []
 
 
@@ -291,12 +291,12 @@ def test_send_broadcast_email_returns_early_for_no_recipients(db):
 # -- send_invoice_emails / resend_invoice_email --------------------------------
 
 def _run_with_item(
-    db, *, papierrechnung=False, email="anna@example.invalid", pdf_path="rechnung.pdf",
+    db, *, paper_invoice=False, email="anna@example.invalid", pdf_path="rechnung.pdf",
     net_amount_rappen=5000,
 ) -> tuple[BillingRun, BillingRunItem]:
     """Create a Leg, a Person, a BillingRun and one BillingRunItem for them."""
     leg_id = _leg(db)
-    person_id = _person(db, "Anna", email=email, papierrechnung=papierrechnung)
+    person_id = _person(db, "Anna", email=email, paper_invoice=paper_invoice)
     run_id = billing_run_repo.create_run(
         db, BillingRun(id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
                         created_at="", price_rp_per_kwh=20.0, status="erstellt", notes=""),
@@ -307,7 +307,7 @@ def _run_with_item(
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=pdf_path, created_at="",
             )
         ],
@@ -317,8 +317,8 @@ def _run_with_item(
     return run, item
 
 
-def test_send_invoice_emails_skips_papierrechnung(db):
-    run, _ = _run_with_item(db, papierrechnung=True)
+def test_send_invoice_emails_skips_paper_invoice(db):
+    run, _ = _run_with_item(db, paper_invoice=True)
     with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
          patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))

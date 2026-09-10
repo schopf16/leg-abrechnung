@@ -29,31 +29,31 @@ def _make_person(name: str = "Test Person") -> Person:
     """Build an unpersisted `Person` for use in tests.
 
     Args:
-        name: Full name to assign, stored entirely in `vorname` (tests
-            only ever compare against the combined `voller_name`/
-            `anzeige_name`, never the individual parts).
+        name: Full name to assign, stored entirely in `first_name` (tests
+            only ever compare against the combined `full_name`/
+            `display_name`, never the individual parts).
 
     Returns:
         A `Person` with `id=None`.
     """
     return Person(
         id=None,
-        anrede="",
-        firma="",
-        vorname=name,
-        nachname="",
-        kontakt_email="test@example.ch",
-        kontakt_telefon="",
-        rechnungsadresse_strasse="Musterstrasse",
-        rechnungsadresse_hausnummer="1",
-        rechnungsadresse_plz="3000",
-        rechnungsadresse_ort="Bern",
-        rechnungsadresse_land="CH",
+        salutation="",
+        company="",
+        first_name=name,
+        last_name="",
+        contact_email="test@example.ch",
+        contact_phone="",
+        billing_street="Musterstrasse",
+        billing_house_number="1",
+        billing_postal_code="3000",
+        billing_city="Bern",
+        billing_country="CH",
         iban="CH9300762011623852957",
-        kundennummer=None,
-        bkw_kundennummer=None,
-        papierrechnung=False,
-        aktiv=True,
+        customer_number=None,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
         created_at="",
     )
 
@@ -135,108 +135,108 @@ def test_person_crud_roundtrip(db):
     person_id = person_repo.create(db, _make_person())
     fetched = person_repo.get(db, person_id)
     assert fetched is not None
-    assert fetched.anzeige_name == "Test Person"
+    assert fetched.display_name == "Test Person"
 
-    fetched.nachname = "Geändert"
+    fetched.last_name = "Geändert"
     person_repo.update(db, fetched)
-    assert person_repo.get(db, person_id).anzeige_name == "Test Person Geändert"
+    assert person_repo.get(db, person_id).display_name == "Test Person Geändert"
 
     person_repo.delete(db, person_id)
     assert person_repo.get(db, person_id) is None
 
 
-def test_person_anzeige_name_combines_firma_and_contact(db):
+def test_person_display_name_combines_company_and_contact(db):
     """A Person with both Firma and a contact person shows both, company first."""
     person = _make_person("Ansprech Person")
-    person.firma = "Muster AG"
+    person.company = "Muster AG"
     person_id = person_repo.create(db, person)
 
     fetched = person_repo.get(db, person_id)
-    assert fetched.anzeige_name == "Muster AG (Ansprech Person)"
+    assert fetched.display_name == "Muster AG (Ansprech Person)"
 
 
-def test_person_adressblock_zeilen_includes_anrede_only_with_a_name(db):
-    """The recipient address block shows Anrede only alongside a personal name."""
-    firma_only = _make_person("")
-    firma_only.firma = "Nur Firma AG"
-    firma_only.anrede = "Herr"
-    assert firma_only.adressblock_zeilen == ["Nur Firma AG"]
+def test_person_adressblock_zeilen_includes_salutation_only_with_a_name(db):
+    """The recipient address block shows salutation only alongside a personal name."""
+    company_only = _make_person("")
+    company_only.company = "Nur Firma AG"
+    company_only.salutation = "Herr"
+    assert company_only.adressblock_zeilen == ["Nur Firma AG"]
 
     with_contact = _make_person("Max Muster")
-    with_contact.firma = "Muster AG"
-    with_contact.anrede = "Herr"
+    with_contact.company = "Muster AG"
+    with_contact.salutation = "Herr"
     assert with_contact.adressblock_zeilen == ["Muster AG", "Herr", "Max Muster"]
 
 
-def test_person_rechnungsadresse_strasse_vollstaendig_combines_strasse_and_hausnummer(db):
+def test_person_billing_street_with_number_combines_strasse_and_hausnummer(db):
     """The combined street line omits a missing Strasse or Hausnummer gracefully."""
     person = _make_person("Test")
-    person.rechnungsadresse_strasse = "Musterstrasse"
-    person.rechnungsadresse_hausnummer = "12a"
-    assert person.rechnungsadresse_strasse_vollstaendig == "Musterstrasse 12a"
+    person.billing_street = "Musterstrasse"
+    person.billing_house_number = "12a"
+    assert person.billing_street_with_number == "Musterstrasse 12a"
 
-    person.rechnungsadresse_hausnummer = ""
-    assert person.rechnungsadresse_strasse_vollstaendig == "Musterstrasse"
+    person.billing_house_number = ""
+    assert person.billing_street_with_number == "Musterstrasse"
 
 
-def test_person_kundennummer_is_auto_assigned_and_unique(db):
-    """`create` always assigns a fresh, unique 6-digit Kundennummer."""
+def test_person_customer_number_is_auto_assigned_and_unique(db):
+    """`create` always assigns a fresh, unique 6-digit customer number."""
     first_id = person_repo.create(db, _make_person("A"))
     second_id = person_repo.create(db, _make_person("B"))
 
     first = person_repo.get(db, first_id)
     second = person_repo.get(db, second_id)
 
-    assert first.kundennummer is not None
-    assert second.kundennummer is not None
-    assert 100_000 <= first.kundennummer <= 999_999
-    assert first.kundennummer != second.kundennummer
+    assert first.customer_number is not None
+    assert second.customer_number is not None
+    assert 100_000 <= first.customer_number <= 999_999
+    assert first.customer_number != second.customer_number
 
 
-def test_person_kundennummer_ignores_caller_supplied_value(db):
-    """`create` always auto-assigns a Kundennummer, ignoring `person.kundennummer`."""
+def test_person_customer_number_ignores_caller_supplied_value(db):
+    """`create` always auto-assigns a customer number, ignoring `person.customer_number`."""
     person = _make_person("A")
-    person.kundennummer = None  # what every caller actually passes for a new Person
+    person.customer_number = None  # what every caller actually passes for a new Person
     person_id = person_repo.create(db, person)
 
     fetched = person_repo.get(db, person_id)
-    assert fetched.kundennummer is not None
+    assert fetched.customer_number is not None
 
 
-def test_person_kundennummer_survives_update(db):
-    """Updating a person never changes their Kundennummer."""
+def test_person_customer_number_survives_update(db):
+    """Updating a person never changes their customer number."""
     person_id = person_repo.create(db, _make_person())
     original = person_repo.get(db, person_id)
 
-    original.vorname = "Neuer Name"
+    original.first_name = "Neuer Name"
     person_repo.update(db, original)
 
-    assert person_repo.get(db, person_id).kundennummer == original.kundennummer
+    assert person_repo.get(db, person_id).customer_number == original.customer_number
 
 
 def test_person_get_by_email_finds_match(db):
     person_repo.create(db, _make_person())
     found = person_repo.get_by_email(db, "test@example.ch")
     assert found is not None
-    assert found.kontakt_email == "test@example.ch"
+    assert found.contact_email == "test@example.ch"
 
 
 def test_person_get_by_email_returns_none_for_unknown_email(db):
     assert person_repo.get_by_email(db, "unknown@example.ch") is None
 
 
-def test_person_kundennummer_formatiert_groups_digits(db):
-    """`kundennummer_formatiert` groups the 6 digits as "XXX XXX"."""
+def test_person_formatted_customer_number_groups_digits(db):
+    """`formatted_customer_number` groups the 6 digits as "XXX XXX"."""
     person_id = person_repo.create(db, _make_person())
     person = person_repo.get(db, person_id)
-    formatted = person.kundennummer_formatiert
-    digits = f"{person.kundennummer:06d}"
+    formatted = person.formatted_customer_number
+    digits = f"{person.customer_number:06d}"
     assert formatted == f"{digits[:3]} {digits[3:]}"
 
 
-def test_migration_21_reassigns_existing_8_digit_kundennummer_to_6_digits(monkeypatch):
+def test_migration_21_reassigns_existing_8_digit_customer_number_to_6_digits(monkeypatch):
     """Migration 21 gives every pre-existing Person a fresh, unique 6-digit
-    Kundennummer -- simulates a real database that still has old 8-digit
+    customer number -- simulates a real database that still has old 8-digit
     numbers from before the format change."""
     migrations_before_21 = [m for m in MIGRATIONS if m.version < 21]
     connection = sqlite3.connect(":memory:")
@@ -246,18 +246,28 @@ def test_migration_21_reassigns_existing_8_digit_kundennummer_to_6_digits(monkey
     monkeypatch.setattr(schema_module, "MIGRATIONS", migrations_before_21)
     schema_module.initialize_database(connection)
 
-    person_id = person_repo.create(connection, _make_person("Alt"))
-    connection.execute(
-        "UPDATE person SET kundennummer = 80083138 WHERE id = ?", (person_id,)
+    # Raw SQL on purpose: at schema version 20 the person table still has
+    # its original German column names (renamed to English only in
+    # migration 41), so the current person_repo cannot write to it.
+    cursor = connection.execute(
+        """
+        INSERT INTO person (anrede, firma, vorname, nachname, kontakt_email, kontakt_telefon,
+                            rechnungsadresse_strasse, rechnungsadresse_hausnummer,
+                            rechnungsadresse_plz, rechnungsadresse_ort, rechnungsadresse_land,
+                            iban, kundennummer, papierrechnung, aktiv, created_at)
+        VALUES ('', '', 'Alt', '', 'test@example.ch', '', 'Musterstrasse', '1', '3000', 'Bern',
+                'CH', '', 80083138, 0, 1, '2025-01-01T00:00:00+00:00')
+        """
     )
+    person_id = cursor.lastrowid
     connection.commit()
 
     monkeypatch.setattr(schema_module, "MIGRATIONS", MIGRATIONS)
     schema_module.migrate_to_latest(connection)
 
     migrated = person_repo.get(connection, person_id)
-    assert 100_000 <= migrated.kundennummer <= 999_999
-    assert migrated.kundennummer != 80083138
+    assert 100_000 <= migrated.customer_number <= 999_999
+    assert migrated.customer_number != 80083138
 
 
 def test_metering_point_rejects_unknown_direction(db):
@@ -675,7 +685,7 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=12.0,
-                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=120, pdf_path=None, created_at="",
             ),
         ],
@@ -683,13 +693,13 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
 
     deleted = person_repo.delete(db, person_id)
     assert deleted is False
-    # The person and their Kundennummer/history must still exist, just inactive.
+    # The person and their customer number/history must still exist, just inactive.
     person = person_repo.get(db, person_id)
     assert person is not None
-    assert person.aktiv is False
+    assert person.active is False
 
-    person_repo.set_aktiv(db, person_id, True)
-    assert person_repo.get(db, person_id).aktiv is True
+    person_repo.set_active(db, person_id, True)
+    assert person_repo.get(db, person_id).active is True
 
 
 def test_person_delete_succeeds_without_billing_history(db):

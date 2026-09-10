@@ -8,19 +8,19 @@ from app.pdf.qr_reference import generate_qrr_reference, parse_qrr_reference
 
 
 @pytest.mark.parametrize(
-    "kundennummer, billing_run_id, item_id",
+    "customer_number, billing_run_id, item_id",
     [
         (123456, 42, 999),
         (100000, 1, 1),
         (999999, 999999, 999999999999),
     ],
 )
-def test_round_trip_recovers_original_ids(kundennummer, billing_run_id, item_id):
-    reference = generate_qrr_reference(kundennummer, billing_run_id, item_id)
+def test_round_trip_recovers_original_ids(customer_number, billing_run_id, item_id):
+    reference = generate_qrr_reference(customer_number, billing_run_id, item_id)
     decoded = parse_qrr_reference(reference)
 
     assert decoded is not None
-    assert decoded.kundennummer == kundennummer
+    assert decoded.customer_number == customer_number
     assert decoded.billing_run_id == billing_run_id
     assert decoded.item_id == item_id
 

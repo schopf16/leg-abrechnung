@@ -1,4 +1,4 @@
-"""Time-bounded assignments of metering points to Personen (assignment history).
+"""Time-bounded assignments of metering points to persons (assignment history).
 
 A MeteringPoint is physically fixed to a site, but the person billed for
 it can change over time (e.g. a tenant moving out mid-quarter). Each row

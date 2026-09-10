@@ -89,9 +89,9 @@ def einstellungen_page() -> None:
                 step=0.01,
                 format="%.4f",
             ).classes("w-full")
-            papierrechnung_fee = ui.number(
+            paper_invoice_fee = ui.number(
                 "Kosten Papierrechnung (CHF, pro Abrechnung)",
-                value=current.papierrechnung_rappen / 100,
+                value=current.paper_invoice_rappen / 100,
                 min=0,
                 step=0.5,
                 format="%.2f",
@@ -113,7 +113,7 @@ def einstellungen_page() -> None:
                 if verwaltungsaufwand_einspeisung.value is None or verwaltungsaufwand_einspeisung.value < 0:
                     error_label.text = "Verwaltungsaufwand Einspeisung muss positiv sein."
                     return
-                if papierrechnung_fee.value is None or papierrechnung_fee.value < 0:
+                if paper_invoice_fee.value is None or paper_invoice_fee.value < 0:
                     error_label.text = "Kosten Papierrechnung müssen positiv sein."
                     return
                 qr_iban_problem = validate_qr_iban(qr_iban.value)
@@ -130,13 +130,13 @@ def einstellungen_page() -> None:
                     price_rp_per_kwh=float(price.value),
                     verwaltungsaufwand_bezug_rp_per_kwh=float(verwaltungsaufwand_bezug.value),
                     verwaltungsaufwand_einspeisung_rp_per_kwh=float(verwaltungsaufwand_einspeisung.value),
-                    papierrechnung_rappen=round(float(papierrechnung_fee.value) * 100),
+                    paper_invoice_rappen=round(float(paper_invoice_fee.value) * 100),
                     extra_backup_dir=current.extra_backup_dir,
                     metering_point_country=current.metering_point_country,
                     metering_point_identifier=current.metering_point_identifier,
                     web_registration_cursor=current.web_registration_cursor,
                     onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
-                    leg_gruendung_min_personen=current.leg_gruendung_min_personen,
+                    leg_founding_min_persons=current.leg_founding_min_persons,
                     rechnung_email_betreff=current.rechnung_email_betreff,
                     rechnung_email_text=current.rechnung_email_text,
                     mahnung_neue_frist_tage=current.mahnung_neue_frist_tage,
@@ -252,35 +252,35 @@ def einstellungen_page() -> None:
             "eine eigene, besser rabattierte LEG auszugliedern."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
-            leg_gruendung_min_personen = ui.number(
+            leg_founding_min_persons = ui.number(
                 "Mindestanzahl Personen",
-                value=current.leg_gruendung_min_personen,
+                value=current.leg_founding_min_persons,
                 min=1,
                 step=1,
                 format="%.0f",
             ).classes("w-full")
             leg_gruendung_error = ui.label("").classes("text-negative")
 
-            def save_leg_gruendung_min_personen() -> None:
+            def save_leg_founding_min_persons() -> None:
                 """Validate and persist the LEG-founding minimum person count.
 
                 Returns:
                     None.
                 """
                 if (
-                    leg_gruendung_min_personen.value is None
-                    or leg_gruendung_min_personen.value < 1
+                    leg_founding_min_persons.value is None
+                    or leg_founding_min_persons.value < 1
                 ):
                     leg_gruendung_error.text = "Muss mindestens 1 sein."
                     return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
-                    settings.leg_gruendung_min_personen = int(leg_gruendung_min_personen.value)
+                    settings.leg_founding_min_persons = int(leg_founding_min_persons.value)
                     settings_repo.update_settings(connection, settings)
                 leg_gruendung_error.text = ""
                 ui.notify("LEG-Gründung-Einstellung gespeichert.", type="positive")
 
-            ui.button("Speichern", on_click=save_leg_gruendung_min_personen).classes("mt-2")
+            ui.button("Speichern", on_click=save_leg_founding_min_persons).classes("mt-2")
 
         ui.separator().classes("my-6")
 

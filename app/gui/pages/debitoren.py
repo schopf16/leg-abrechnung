@@ -1,6 +1,6 @@
 """Debitoren page: every Person's running account balance, a camt.053/
 camt.054 bank statement import with automatic (QRR) and suggested
-(IBAN/name/Kundennummer) reconciliation, and a persistent queue of not-yet-
+(IBAN/name/customer number) reconciliation, and a persistent queue of not-yet-
 resolved bank transactions so nothing imported is ever silently lost.
 
 Display sign convention: `account_entry.get_saldo_rappen` uses the same
@@ -36,7 +36,7 @@ from app.models.bank_transaction import BankTransaction
 from app.models.person import Person
 
 PRINT_COLUMNS = [
-    ("Kunden-Nr.", "kundennummer"),
+    ("Kunden-Nr.", "customer_number"),
     ("Name", "name"),
     ("Saldo (CHF)", "saldo"),
 ]
@@ -117,8 +117,8 @@ def debitoren_page() -> None:
 
         def _print_row(person: Person, saldo_rappen: int) -> dict:
             return {
-                "kundennummer": person.kundennummer_formatiert,
-                "name": person.anzeige_name,
+                "customer_number": person.formatted_customer_number,
+                "name": person.display_name,
                 "saldo": f"{_display_saldo_chf(saldo_rappen):.2f}",
             }
 
@@ -140,8 +140,8 @@ def debitoren_page() -> None:
             with ui.card().classes("w-full"):
                 with ui.row().classes("w-full items-center gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(person.anzeige_name).classes("font-bold")
-                        ui.label(f"Kunden-Nr. {person.kundennummer_formatiert}").classes(
+                        ui.label(person.display_name).classes("font-bold")
+                        ui.label(f"Kunden-Nr. {person.formatted_customer_number}").classes(
                             "text-caption text-grey-6"
                         )
                     ui.label(f"{_display_saldo_chf(saldo_rappen):.2f} CHF").classes(
@@ -156,8 +156,8 @@ def debitoren_page() -> None:
             needle = (search_input.value or "").strip().lower()
 
             def matches(person: Person, saldo_rappen: int) -> bool:
-                if needle and needle not in person.anzeige_name.lower() and needle not in str(
-                    person.kundennummer or ""
+                if needle and needle not in person.display_name.lower() and needle not in str(
+                    person.customer_number or ""
                 ):
                     return False
                 if only_forderung_switch.value and not (saldo_rappen > 0):
@@ -205,7 +205,7 @@ def debitoren_page() -> None:
                 saldo_rappen = account_entry_repo.get_saldo_rappen(connection, person.id)
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
-                ui.label(person.anzeige_name).classes("text-lg font-bold")
+                ui.label(person.display_name).classes("text-lg font-bold")
                 ui.label(f"Saldo: {_display_saldo_chf(saldo_rappen):.2f} CHF").classes(
                     "font-bold " + _saldo_color_class(saldo_rappen)
                 )
@@ -308,7 +308,7 @@ def debitoren_page() -> None:
             import_result_column.clear()
             pending_resolution_selects.clear()
             with connection_scope() as connection:
-                person_options = {p.id: p.anzeige_name for p in person_repo.list_all(connection)}
+                person_options = {p.id: p.display_name for p in person_repo.list_all(connection)}
 
             with import_result_column:
                 if parse_result.warnings:
@@ -427,7 +427,7 @@ def debitoren_page() -> None:
 
         def render_open_transaction_row(tx: BankTransaction) -> None:
             with connection_scope() as connection:
-                person_options = {p.id: p.anzeige_name for p in person_repo.list_all(connection)}
+                person_options = {p.id: p.display_name for p in person_repo.list_all(connection)}
 
             with ui.row().classes("w-full items-center gap-3 border-b py-1"):
                 reversal_flag = " ⚠ STORNO" if tx.is_reversal else ""
@@ -460,7 +460,7 @@ def debitoren_page() -> None:
             with ui.row().classes("w-full items-center gap-3 border-b py-1"):
                 ui.label(
                     f"{tx.booking_date} -- {tx.credit_debit_indicator} "
-                    f"{tx.amount_rappen / 100:.2f} CHF -- {person.anzeige_name if person else '?'} "
+                    f"{tx.amount_rappen / 100:.2f} CHF -- {person.display_name if person else '?'} "
                     f"({tx.status})"
                 ).classes("text-body2 flex-grow")
 

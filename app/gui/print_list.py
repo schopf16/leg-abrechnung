@@ -123,7 +123,7 @@ def render_print_button(
 
     Args:
         rubrik: Human-readable name of the list, printed as the page
-            heading (e.g. "Personen", "Aufnahmen").
+            heading (e.g. "persons", "Aufnahmen").
         get_columns: Callback returning the current `[(label, field), ...]`
             column definitions. A callback (not a plain list) so callers
             whose columns depend on runtime state can stay accurate; most

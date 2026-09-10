@@ -121,7 +121,7 @@ def _load_overview(connection) -> dict:
             "sites": len(sites),
             "legs": len(legs),
             "metering_points": len(metering_points),
-            "personen": len(persons),
+            "persons": len(persons),
             "runs": len(runs),
         },
         "action_items": action_items,
@@ -179,7 +179,7 @@ def dashboard_page() -> None:
                 ("Standorte", "sites"),
                 ("LEGs", "legs"),
                 ("Messpunkte", "metering_points"),
-                ("Personen", "personen"),
+                ("Personen", "persons"),
                 ("Abrechnungsläufe", "runs"),
             ):
                 with ui.card().classes("w-40"):
@@ -200,7 +200,7 @@ def dashboard_page() -> None:
             ).classes("w-full mt-2")
 
         # -- Erste Schritte: only relevant while there is barely any data. --
-        if counts["personen"] == 0:
+        if counts["persons"] == 0:
             with ui.card().classes("mt-6 bg-blue-1"):
                 ui.label("Erste Schritte").classes("font-bold")
                 ui.markdown(

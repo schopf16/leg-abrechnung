@@ -17,8 +17,8 @@ from app.models import settings as settings_repo
 from app.models import substation_area as substation_area_repo
 
 
-def test_create_demo_data_creates_five_personen_and_seven_metering_points(db):
-    """The generator creates 4 showcase Personen + 1 move fixture, and 7 metering points."""
+def test_create_demo_data_creates_five_persons_and_seven_metering_points(db):
+    """The generator creates 4 showcase persons + 1 move fixture, and 7 metering points."""
     summary = create_demo_data(db)
     assert len(summary.person_ids) == 5
     assert len(summary.metering_point_ids) == 7
@@ -96,12 +96,12 @@ def test_summer_quarter_has_both_surplus_and_deficit_intervals(db):
     assert deficit_intervals > 0
 
 
-def test_demo_move_splits_metering_point_between_two_personen(db):
+def test_demo_move_splits_metering_point_between_two_persons(db):
     """The Bergstrasse-4 MeteringPoint is assigned to Erika, then to David, never both."""
     create_demo_data(db)
-    personen = {p.anzeige_name: p for p in person_repo.list_all(db)}
-    erika = personen["Erika Vorgängerin (Demo, Umzug-Beispiel)"]
-    david = personen["David Demo (Demo)"]
+    persons = {p.display_name: p for p in person_repo.list_all(db)}
+    erika = persons["Erika Vorgängerin (Demo, Umzug-Beispiel)"]
+    david = persons["David Demo (Demo)"]
 
     rows = db.execute(
         """

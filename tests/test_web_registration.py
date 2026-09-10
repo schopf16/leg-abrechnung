@@ -15,16 +15,16 @@ _SYNC_TARGET = "app.importers.registration_sync.fetch_new_registrations"
 def _submission(
     cloudflare_id: int,
     email: str = "anna@example.ch",
-    firma: str = "",
-    anrede: str = "Frau",
-    vorname: str = "Anna",
-    nachname: str = "Muster",
+    company: str = "",
+    salutation: str = "Frau",
+    first_name: str = "Anna",
+    last_name: str = "Muster",
     street: str = "Musterweg",
     house_number: str = "1",
     postal_code: str = "3063",
     city: str = "Ittigen",
-    telefon: str = "",
-    bkw_kundennummer: str = "",
+    phone: str = "",
+    bkw_customer_number: str = "",
     iban: str = "",
     message: str = "",
     submitted_at: str = "2026-01-01T10:00:00",
@@ -33,17 +33,17 @@ def _submission(
     """Build a `RegistrationSubmission` with sensible defaults for tests."""
     return RegistrationSubmission(
         cloudflare_id=cloudflare_id,
-        firma=firma,
-        anrede=anrede,
-        vorname=vorname,
-        nachname=nachname,
+        company=company,
+        salutation=salutation,
+        first_name=first_name,
+        last_name=last_name,
         street=street,
         house_number=house_number,
         postal_code=postal_code,
         city=city,
         email=email,
-        telefon=telefon,
-        bkw_kundennummer=bkw_kundennummer,
+        phone=phone,
+        bkw_customer_number=bkw_customer_number,
         iban=iban,
         message=message,
         submitted_at=submitted_at,
@@ -53,7 +53,7 @@ def _submission(
 
 def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 40
+    assert get_schema_version(db) == 41
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -145,17 +145,17 @@ def test_is_fully_processed_true_with_no_meters_once_person_and_site_done(db):
 
 def test_person_created_survives_a_content_update_via_upsert(db):
     """A repeat submission with changed content must not reset person_created."""
-    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="p@example.ch", telefon="111")], []]):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="p@example.ch", phone="111")], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "p@example.ch")
     web_registration_repo.mark_person_created(db, reg.id)
 
-    with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="p@example.ch", telefon="222")], []]):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="p@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
 
     assert result.aktualisiert == 1
     updated = web_registration_repo.get_by_email(db, "p@example.ch")
-    assert updated.telefon == "222"
+    assert updated.phone == "222"
     assert updated.person_created is True
 
 
@@ -186,7 +186,7 @@ def test_sync_registrations_creates_new_row(db):
     reg = web_registration_repo.get_by_email(db, "new@example.ch")
     assert reg is not None
     assert reg.is_fully_processed is False
-    assert reg.anzeige_name == "Anna Muster"
+    assert reg.display_name == "Anna Muster"
 
 
 def test_sync_registrations_creates_row_with_no_meters(db):
@@ -226,18 +226,18 @@ def test_sync_registrations_unchanged_repeat_keeps_person_created(db):
 
 
 def test_sync_registrations_changed_field_updates_row_in_place(db):
-    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="b@example.ch", telefon="111")], []]):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="b@example.ch", phone="111")], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "b@example.ch")
     web_registration_repo.mark_person_created(db, reg.id)
 
-    with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="b@example.ch", telefon="222")], []]):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="b@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
 
     assert result.aktualisiert == 1
     assert result.unveraendert == 0
     updated = web_registration_repo.get_by_email(db, "b@example.ch")
-    assert updated.telefon == "222"
+    assert updated.phone == "222"
     # person_created is not reset by an unrelated content change.
     assert updated.person_created is True
     # The row is updated in place, not duplicated.
@@ -310,8 +310,8 @@ def test_sync_registrations_second_run_without_new_data_changes_nothing(db):
 
 def test_sync_registrations_skips_entry_without_email(db):
     batch = [
-        _submission(1, email="", vorname="Kein", nachname="Mail"),
-        _submission(2, email="f@example.ch", vorname="Mit", nachname="Mail"),
+        _submission(1, email="", first_name="Kein", last_name="Mail"),
+        _submission(2, email="f@example.ch", first_name="Mit", last_name="Mail"),
     ]
     with patch(_SYNC_TARGET, side_effect=[batch, []]):
         result = sync_registrations(db, "token")

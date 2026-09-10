@@ -6,7 +6,7 @@ scrolling (wide fixed columns) or, if wrapped, very tall rows that push
 everything else below the fold -- neither is acceptable. Cards let the
 note and the substation area(e) summary each wrap onto their own
 full-width line instead, so one entry takes the 2-3 lines it actually
-needs and no more (same rationale as `app.gui.pages.personen`).
+needs and no more (same rationale as `app.gui.pages.persons`).
 
 A LEG cannot be deleted while metering points still reference it (see
 `app.models.leg.LegInUseError`). Its `name` must be unique -- by default
@@ -79,13 +79,13 @@ def _mix_badge(mix) -> str:
     return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
 
 
-def _to_row(connection, leg: Leg, *, min_personen: int) -> dict:
+def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
     """Convert a `Leg` into a row dict backing both the card and the printout.
 
     Args:
         connection: Open SQLite connection.
         leg: LEG to convert.
-        min_personen: `LegSettings.leg_gruendung_min_personen`, passed
+        min_persons: `LegSettings.leg_founding_min_persons`, passed
             through to `leg_should_split`.
 
     Returns:
@@ -95,7 +95,7 @@ def _to_row(connection, leg: Leg, *, min_personen: int) -> dict:
     composition = compute_leg_composition(connection, leg.id)
     substation_area_names_list = [t.name for t in composition.substation_areas]
     substation_area_names = ", ".join(substation_area_names_list) or "-"
-    should_split = leg_should_split(connection, leg.id, min_personen=min_personen)
+    should_split = leg_should_split(connection, leg.id, min_persons=min_persons)
     if not composition.substation_areas:
         substation_areas_status = "-"
     elif should_split:
@@ -225,9 +225,9 @@ def legs_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
+                min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
                 legs = leg_repo.list_all(connection)
-                all_rows = [_to_row(connection, leg, min_personen=min_personen) for leg in legs]
+                all_rows = [_to_row(connection, leg, min_persons=min_persons) for leg in legs]
 
                 # Aggregated per LEG, naming each candidate substation area
                 # individually -- a LEG can be the "too spread out" target
@@ -237,7 +237,7 @@ def legs_page() -> None:
                 # to found a new LEG for, not just that "some" people could
                 # move.
                 upgrade_info_by_leg: dict[int, list[tuple[str, int]]] = {}
-                for candidate in find_upgrade_candidates(connection, min_personen=min_personen):
+                for candidate in find_upgrade_candidates(connection, min_persons=min_persons):
                     for mixed_leg in candidate.mixed_legs:
                         upgrade_info_by_leg.setdefault(mixed_leg.id, []).append(
                             (candidate.substation_area.name, candidate.person_count)
@@ -569,7 +569,7 @@ def leg_detail_page(leg_id: int) -> None:
                 None.
             """
             with connection_scope() as inner_connection:
-                min_personen = settings_repo.get_settings(inner_connection).leg_gruendung_min_personen
+                min_persons = settings_repo.get_settings(inner_connection).leg_founding_min_persons
                 sites = {s.id: s for s in site_repo.list_all(inner_connection)}
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
                 metering_points = [
@@ -580,7 +580,7 @@ def leg_detail_page(leg_id: int) -> None:
                 # rather than just hinting that "some" metering points should
                 # move, see the module docstring.
                 upgrade_candidates = [
-                    c for c in find_upgrade_candidates(inner_connection, min_personen=min_personen)
+                    c for c in find_upgrade_candidates(inner_connection, min_persons=min_persons)
                     if any(l.id == leg_id for l in c.mixed_legs)
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}

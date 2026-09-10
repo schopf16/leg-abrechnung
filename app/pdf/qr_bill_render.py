@@ -43,7 +43,7 @@ def build_qr_bill(
             and address (shared across all LEGs).
         leg: The LEG this document is billed under, providing the
             creditor name.
-        person: The billed person, whose Rechnungsadresse becomes the
+        person: The billed person, whose billing address becomes the
             debtor address.
         amount_chf: Amount to collect, in Swiss francs, or `None` to create
             a QR-bill with no fixed amount encoded (an "open amount" bill).
@@ -55,7 +55,7 @@ def build_qr_bill(
 
     Raises:
         QrBillConfigurationError: If the LEG settings or the person's
-            Rechnungsadresse are missing required fields, or the QR-IBAN
+            billing address are missing required fields, or the QR-IBAN
             is invalid.
     """
     try:
@@ -69,11 +69,11 @@ def build_qr_bill(
                 "country": settings.address_country or "CH",
             },
             debtor={
-                "name": person.anzeige_name,
-                "street": person.rechnungsadresse_strasse_vollstaendig,
-                "pcode": person.rechnungsadresse_plz,
-                "city": person.rechnungsadresse_ort,
-                "country": person.rechnungsadresse_land or "CH",
+                "name": person.display_name,
+                "street": person.billing_street_with_number,
+                "pcode": person.billing_postal_code,
+                "city": person.billing_city,
+                "country": person.billing_country or "CH",
             },
             amount=str(amount_chf) if amount_chf is not None else None,
             reference_number=reference,

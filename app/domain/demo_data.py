@@ -1,5 +1,5 @@
 """Generates demo/test data: one substation area, one LEG, four sites,
-seven metering points, five Personen (including a mid-quarter move), and
+seven metering points, five persons (including a mid-quarter move), and
 synthetic 15-minute readings for one winter and one summer quarter.
 
 Used both to let the administrator click through the app with realistic
@@ -44,7 +44,7 @@ _DEMO_QR_IBAN = "CH5730000123456789012"
 #: real-world magnitudes (see `app.domain.billing`).
 _DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH = 0.5
 _DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH = 0.5
-_DEMO_PAPIERRECHNUNG_RAPPEN = 200
+_DEMO_PAPER_INVOICE_RAPPEN = 200
 
 #: Year used for the generated demo quarters. Chosen in the past so both
 #: quarters are always complete, regardless of when the app is run.
@@ -58,10 +58,10 @@ WINTER_QUARTER = (DEMO_YEAR, 4)
 SUMMER_QUARTER = (DEMO_YEAR, 3)
 
 #: Marker used to detect "demo data already created" and to keep the
-#: generator idempotent. Combined (see `Person.voller_name`) this reads
-#: "Anna Muster (Demo)", same as before the Vorname/Nachname split.
-_DEMO_MARKER_VORNAME = "Anna"
-_DEMO_MARKER_NACHNAME = "Muster (Demo)"
+#: generator idempotent. Combined (see `Person.full_name`) this reads
+#: "Anna Muster (Demo)", same as before the first-/last-name split.
+_DEMO_MARKER_FIRST_NAME = "Anna"
+_DEMO_MARKER_LAST_NAME = "Muster (Demo)"
 
 #: Typical household load shape, average kW per hour-of-day (index 0-23).
 _HOURLY_LOAD_KW = [
@@ -83,7 +83,7 @@ class DemoDataSummary:
     """Result of a successful demo data generation run.
 
     Attributes:
-        person_ids: Database ids of the created Personen.
+        person_ids: Database ids of the created persons.
         metering_point_ids: Database ids of the created metering points.
         reading_count: Total number of reading rows inserted.
     """
@@ -107,8 +107,8 @@ def demo_data_exists(connection: sqlite3.Connection) -> bool:
         `True` if a person with the demo marker name exists.
     """
     row = connection.execute(
-        "SELECT 1 FROM person WHERE vorname = ? AND nachname = ?",
-        (_DEMO_MARKER_VORNAME, _DEMO_MARKER_NACHNAME),
+        "SELECT 1 FROM person WHERE first_name = ? AND last_name = ?",
+        (_DEMO_MARKER_FIRST_NAME, _DEMO_MARKER_LAST_NAME),
     ).fetchone()
     return row is not None
 
@@ -202,7 +202,7 @@ def _generate_readings_for_quarter(
 
 def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     """Create the full demo data set: LEG, sites, metering points,
-    Personen, assignments, readings.
+    persons, assignments, readings.
 
     Idempotent guard: raises `DemoDataAlreadyExists` if the marker person
     is already present, so the button in the UI can be clicked safely
@@ -220,20 +220,20 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     if demo_data_exists(connection):
         raise DemoDataAlreadyExists(
             "Demo-Daten wurden bereits erzeugt (Person "
-            f'"{_DEMO_MARKER_VORNAME} {_DEMO_MARKER_NACHNAME}" existiert schon).'
+            f'"{_DEMO_MARKER_FIRST_NAME} {_DEMO_MARKER_LAST_NAME}" existiert schon).'
         )
 
     substation_area = _create_demo_substation_area(connection)
     leg = _create_demo_leg(connection)
     sites = _create_demo_sites(connection, substation_area)
     metering_points = _create_demo_metering_points(connection, sites, leg)
-    personen = _create_demo_personen(connection)
-    _create_demo_assignments(connection, personen, metering_points)
+    persons = _create_demo_persons(connection)
+    _create_demo_assignments(connection, persons, metering_points)
     reading_count = _create_demo_readings(connection, metering_points)
     _set_demo_leg_settings(connection)
 
     return DemoDataSummary(
-        person_ids=[p.id for p in personen.values()],
+        person_ids=[p.id for p in persons.values()],
         metering_point_ids=[mp.id for mp in metering_points.values()],
         reading_count=reading_count,
     )
@@ -379,8 +379,8 @@ def _create_demo_metering_points(
     return created
 
 
-def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
-    """Insert the four showcase Personen plus one "previous tenant".
+def _create_demo_persons(connection: sqlite3.Connection) -> dict[str, Person]:
+    """Insert the four showcase persons plus one "previous tenant".
 
     Args:
         connection: Open SQLite connection.
@@ -391,43 +391,43 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
     """
     definitions = {
         "anna": Person(
-            id=None, anrede="Frau", firma="", vorname=_DEMO_MARKER_VORNAME, nachname=_DEMO_MARKER_NACHNAME,
-            kontakt_email="anna.muster@example.ch", kontakt_telefon="",
-            rechnungsadresse_strasse="Sonnenweg", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="3000",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="CH9300762011623852957", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
+            id=None, salutation="Frau", company="", first_name=_DEMO_MARKER_FIRST_NAME, last_name=_DEMO_MARKER_LAST_NAME,
+            contact_email="anna.muster@example.ch", contact_phone="",
+            billing_street="Sonnenweg", billing_house_number="1", billing_postal_code="3000",
+            billing_city="Bern", billing_country="CH",
+            iban="CH9300762011623852957", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True,
             created_at="",
         ),
         "beat": Person(
-            id=None, anrede="Herr", firma="", vorname="Beat", nachname="Beispiel (Demo)",
-            kontakt_email="beat.beispiel@example.ch", kontakt_telefon="",
-            rechnungsadresse_strasse="Sonnenweg", rechnungsadresse_hausnummer="2", rechnungsadresse_plz="3000",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="CH5604835012345678009", kundennummer=None, bkw_kundennummer=None, papierrechnung=True, aktiv=True,
+            id=None, salutation="Herr", company="", first_name="Beat", last_name="Beispiel (Demo)",
+            contact_email="beat.beispiel@example.ch", contact_phone="",
+            billing_street="Sonnenweg", billing_house_number="2", billing_postal_code="3000",
+            billing_city="Bern", billing_country="CH",
+            iban="CH5604835012345678009", customer_number=None, bkw_customer_number=None, paper_invoice=True, active=True,
             created_at="",
         ),
         "carla": Person(
-            id=None, anrede="Frau", firma="Consumer AG (Demo)", vorname="Carla", nachname="Consumer",
-            kontakt_email="carla.consumer@example.ch", kontakt_telefon="",
-            rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="3", rechnungsadresse_plz="3001",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
+            id=None, salutation="Frau", company="Consumer AG (Demo)", first_name="Carla", last_name="Consumer",
+            contact_email="carla.consumer@example.ch", contact_phone="",
+            billing_street="Bergstrasse", billing_house_number="3", billing_postal_code="3001",
+            billing_city="Bern", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True,
             created_at="",
         ),
         "david": Person(
-            id=None, anrede="Herr", firma="", vorname="David", nachname="Demo (Demo)",
-            kontakt_email="david.demo@example.ch", kontakt_telefon="",
-            rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="4", rechnungsadresse_plz="3001",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
+            id=None, salutation="Herr", company="", first_name="David", last_name="Demo (Demo)",
+            contact_email="david.demo@example.ch", contact_phone="",
+            billing_street="Bergstrasse", billing_house_number="4", billing_postal_code="3001",
+            billing_city="Bern", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True,
             created_at="",
         ),
         "erika": Person(
-            id=None, anrede="Frau", firma="", vorname="Erika", nachname="Vorgängerin (Demo, Umzug-Beispiel)",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="Bergstrasse", rechnungsadresse_hausnummer="4", rechnungsadresse_plz="3001",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True,
+            id=None, salutation="Frau", company="", first_name="Erika", last_name="Vorgängerin (Demo, Umzug-Beispiel)",
+            contact_email="", contact_phone="",
+            billing_street="Bergstrasse", billing_house_number="4", billing_postal_code="3001",
+            billing_city="Bern", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True,
             created_at="",
         ),
     }
@@ -440,20 +440,20 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
 
 def _create_demo_assignments(
     connection: sqlite3.Connection,
-    personen: dict[str, Person],
+    persons: dict[str, Person],
     metering_points: dict[str, MeteringPoint],
 ) -> None:
     """Insert assignments, including the mid-quarter move example.
 
     The "bergstrasse4_bezug" MeteringPoint is assigned to Erika (previous
     tenant) until 2025-08-15 and to David from 2025-08-16 onward, so a
-    single MeteringPoint's readings are split between two Personen within the
+    single MeteringPoint's readings are split between two persons within the
     summer demo quarter -- while its site (Bergstrasse 4) and its own
     LEG never change.
 
     Args:
         connection: Open SQLite connection.
-        personen: Personen created by `_create_demo_personen`.
+        persons: persons created by `_create_demo_persons`.
         metering_points: metering points created by `_create_demo_metering_points`.
 
     Returns:
@@ -475,7 +475,7 @@ def _create_demo_assignments(
             connection,
             Assignment(
                 id=None,
-                person_id=personen[person_handle].id,
+                person_id=persons[person_handle].id,
                 metering_point_id=metering_points[metering_point_handle].id,
                 valid_from=summer_start.date(),
                 valid_to=None,
@@ -488,7 +488,7 @@ def _create_demo_assignments(
         connection,
         Assignment(
             id=None,
-            person_id=personen["erika"].id,
+            person_id=persons["erika"].id,
             metering_point_id=metering_points["bergstrasse4_bezug"].id,
             valid_from=summer_start.date(),
             valid_to=move_date - timedelta(days=1),
@@ -499,7 +499,7 @@ def _create_demo_assignments(
         connection,
         Assignment(
             id=None,
-            person_id=personen["david"].id,
+            person_id=persons["david"].id,
             metering_point_id=metering_points["bergstrasse4_bezug"].id,
             valid_from=move_date,
             valid_to=None,
@@ -580,5 +580,5 @@ def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
     settings.qr_iban = _DEMO_QR_IBAN
     settings.verwaltungsaufwand_bezug_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_BEZUG_RP_PER_KWH
     settings.verwaltungsaufwand_einspeisung_rp_per_kwh = _DEMO_VERWALTUNGSAUFWAND_EINSPEISUNG_RP_PER_KWH
-    settings.papierrechnung_rappen = _DEMO_PAPIERRECHNUNG_RAPPEN
+    settings.paper_invoice_rappen = _DEMO_PAPER_INVOICE_RAPPEN
     settings_repo.update_settings(connection, settings)

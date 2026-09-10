@@ -26,7 +26,7 @@ For every 15-minute interval `t`, independently per LEG:
 
 Each MeteringPoint's interval share is then attributed to whichever Person was
 assigned to it at that exact moment (see `app.models.assignment`), so a
-mid-quarter move splits a MeteringPoint's energy between two Personen
+mid-quarter move splits a MeteringPoint's energy between two persons
 automatically. Moving never changes the MeteringPoint, its site, or that
 MeteringPoint's LEG -- only which Person the Assignment points at.
 """
@@ -112,7 +112,7 @@ class DistributionResult:
     interval_count: int = 0
 
     def total_consumed_local_kwh(self) -> float:
-        """Sum of locally-sourced consumption across all Personen.
+        """Sum of locally-sourced consumption across all persons.
 
         Returns:
             The total in kWh.
@@ -120,7 +120,7 @@ class DistributionResult:
         return sum(r.consumed_local_kwh for r in self.person_results.values())
 
     def total_produced_local_kwh(self) -> float:
-        """Sum of locally-delivered production across all Personen.
+        """Sum of locally-delivered production across all persons.
 
         Returns:
             The total in kWh.

@@ -11,12 +11,12 @@ Prosumer:Consumer participant-count ratio, and -- built on top of that --
 sides but its participants are still folded into a larger, multi-
 substation area LEG (a lower-BKW-discount arrangement, see
 `app.domain.leg_composition`). That second question also requires the
-substation area to have at least `LegSettings.leg_gruendung_min_personen`
-people overall (`ParticipantMix.gesamt_personen`, default 7) -- both
+substation area to have at least `LegSettings.leg_founding_min_persons`
+people overall (`ParticipantMix.total_persons`, default 7) -- both
 sides being present is necessary but not sufficient: a substation area with
 just one Prosumer and one Consumer is rarely worth founding a dedicated
 LEG over, so `leg_should_split`/`find_upgrade_candidates` take this as an
-explicit `min_personen` parameter rather than hardcoding it.
+explicit `min_persons` parameter rather than hardcoding it.
 
 Terms used here, deliberately simple (an earlier, more legally-precise
 model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
@@ -114,14 +114,14 @@ class ParticipantMix:
         return f"{self.prosumer_count}:{self.consumer_count}"
 
     @property
-    def gesamt_personen(self) -> int:
+    def total_persons(self) -> int:
         """The simple sum of `prosumer_count` and `consumer_count`.
 
         A true prosumer is counted on both sides (see the module
         docstring), so this is not a deduplicated headcount -- it is
         exactly the two numbers shown together in `verhaeltnis` added up,
         matching how an administrator reads that badge. Used to gate the
-        LEG-upgrade suggestion on `LegSettings.leg_gruendung_min_personen`
+        LEG-upgrade suggestion on `LegSettings.leg_founding_min_persons`
         (see `leg_should_split`/`find_upgrade_candidates`): a substation area
         with both sides present but too few people overall is not worth
         splitting off into its own LEG.
@@ -227,7 +227,7 @@ def compute_participant_mix_for_leg(
 
 def leg_should_split(
     connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None,
-    *, min_personen: int = 0,
+    *, min_persons: int = 0,
 ) -> bool:
     """Whether a mixed LEG's substation areas would each work fine standalone.
 
@@ -243,9 +243,9 @@ def leg_should_split(
         connection: Open SQLite connection.
         leg_id: Primary key of the LEG.
         stichtag: Reference date, `None` for today.
-        min_personen: Minimum `ParticipantMix.gesamt_personen` each
+        min_persons: Minimum `ParticipantMix.total_persons` each
             substation area must reach on its own for the split to be
-            suggested -- pass `LegSettings.leg_gruendung_min_personen`
+            suggested -- pass `LegSettings.leg_founding_min_persons`
             (default 0, i.e. no minimum, for callers that only care about
             the plain both-sides-present question).
 
@@ -253,7 +253,7 @@ def leg_should_split(
         `True` only if the LEG spans more than one substation area (see
         `app.domain.leg_composition.compute_leg_composition`) AND *every*
         one of those substation areas is independently non-one-sided and has
-        at least `min_personen` people -- deliberately requiring all of
+        at least `min_persons` people -- deliberately requiring all of
         them, not just one: if even a single substation area would be
         one-sided or too small alone, splitting would strand its
         participants, so the LEG stays better off shared for now.
@@ -263,7 +263,7 @@ def leg_should_split(
         return False
     for substation_area in composition.substation_areas:
         mix = compute_participant_mix_for_substation_area(connection, substation_area.id, stichtag)
-        if mix.ist_einseitig or mix.gesamt_personen < min_personen:
+        if mix.ist_einseitig or mix.total_persons < min_persons:
             return False
     return True
 
@@ -291,7 +291,7 @@ class UpgradeCandidate:
 
 
 def find_upgrade_candidates(
-    connection: sqlite3.Connection, stichtag: Optional[date] = None, *, min_personen: int = 0
+    connection: sqlite3.Connection, stichtag: Optional[date] = None, *, min_persons: int = 0
 ) -> list[UpgradeCandidate]:
     """Find substation areas that now have both sides but are still split across
     a multi-substation-area LEG.
@@ -299,9 +299,9 @@ def find_upgrade_candidates(
     Args:
         connection: Open SQLite connection.
         stichtag: Reference date, `None` for today.
-        min_personen: Minimum `ParticipantMix.gesamt_personen` a substation area
+        min_persons: Minimum `ParticipantMix.total_persons` a substation area
             must reach to be suggested -- pass `LegSettings.
-            leg_gruendung_min_personen` (default 0, i.e. no minimum). A
+            leg_founding_min_persons` (default 0, i.e. no minimum). A
             substation area with only, say, one Prosumer and one Consumer is
             technically non-one-sided but rarely worth founding a
             dedicated LEG over; this keeps the suggestion from firing
@@ -309,8 +309,8 @@ def find_upgrade_candidates(
 
     Returns:
         One `UpgradeCandidate` per substation area with a newly-workable
-        Prosumer/Consumer mix (both sides present, `gesamt_personen >=
-        min_personen`) whose participants are (at least partly) still in
+        Prosumer/Consumer mix (both sides present, `total_persons >=
+        min_persons`) whose participants are (at least partly) still in
         a mixed LEG. A substation area already fully moved into a dedicated
         LEG of its own produces no candidate -- the recommendation is
         already acted on.
@@ -327,7 +327,7 @@ def find_upgrade_candidates(
             continue
 
         mix = compute_participant_mix(connection, list(site_ids), stichtag)
-        if mix.ist_einseitig or mix.gesamt_personen < min_personen:
+        if mix.ist_einseitig or mix.total_persons < min_persons:
             continue
 
         leg_ids_here = {

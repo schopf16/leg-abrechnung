@@ -1263,4 +1263,48 @@ Freundliche Grüsse';
             ALTER TABLE assignment RENAME COLUMN gueltig_bis TO valid_to;
         """,
     ),
+    Migration(
+        version=41,
+        description="Translate the Person fields to English (the table name "
+        "'person' already is): salutation/company/first_name/last_name/"
+        "contact_email/contact_phone, billing_street/billing_house_number/"
+        "billing_postal_code/billing_city/billing_country, customer_number/"
+        "bkw_customer_number, paper_invoice, active. The identical field "
+        "names on web_registration (company/salutation/first_name/last_name/"
+        "phone/bkw_customer_number), leg_settings.papierrechnung_rappen and "
+        "billing_run_items.papierrechnung_rappen (-> paper_invoice_rappen) "
+        "and leg_settings.leg_gruendung_min_personen (-> "
+        "leg_founding_min_persons) move along. NOT touched: the German "
+        "{vorname}/{nachname}/{anrede}/{firma}/{kundennummer} placeholders "
+        "in stored email templates and signatures -- those are the "
+        "administrator's own data and keep working unchanged (see "
+        "app.emailing.templates). Fifth step of the English translation, "
+        "see migration 37. Pure renames, no data touched.",
+        sql="""
+            ALTER TABLE person RENAME COLUMN anrede TO salutation;
+            ALTER TABLE person RENAME COLUMN firma TO company;
+            ALTER TABLE person RENAME COLUMN vorname TO first_name;
+            ALTER TABLE person RENAME COLUMN nachname TO last_name;
+            ALTER TABLE person RENAME COLUMN kontakt_email TO contact_email;
+            ALTER TABLE person RENAME COLUMN kontakt_telefon TO contact_phone;
+            ALTER TABLE person RENAME COLUMN rechnungsadresse_strasse TO billing_street;
+            ALTER TABLE person RENAME COLUMN rechnungsadresse_hausnummer TO billing_house_number;
+            ALTER TABLE person RENAME COLUMN rechnungsadresse_plz TO billing_postal_code;
+            ALTER TABLE person RENAME COLUMN rechnungsadresse_ort TO billing_city;
+            ALTER TABLE person RENAME COLUMN rechnungsadresse_land TO billing_country;
+            ALTER TABLE person RENAME COLUMN kundennummer TO customer_number;
+            ALTER TABLE person RENAME COLUMN bkw_kundennummer TO bkw_customer_number;
+            ALTER TABLE person RENAME COLUMN papierrechnung TO paper_invoice;
+            ALTER TABLE person RENAME COLUMN aktiv TO active;
+            ALTER TABLE web_registration RENAME COLUMN firma TO company;
+            ALTER TABLE web_registration RENAME COLUMN anrede TO salutation;
+            ALTER TABLE web_registration RENAME COLUMN vorname TO first_name;
+            ALTER TABLE web_registration RENAME COLUMN nachname TO last_name;
+            ALTER TABLE web_registration RENAME COLUMN telefon TO phone;
+            ALTER TABLE web_registration RENAME COLUMN bkw_kundennummer TO bkw_customer_number;
+            ALTER TABLE leg_settings RENAME COLUMN papierrechnung_rappen TO paper_invoice_rappen;
+            ALTER TABLE leg_settings RENAME COLUMN leg_gruendung_min_personen TO leg_founding_min_persons;
+            ALTER TABLE billing_run_items RENAME COLUMN papierrechnung_rappen TO paper_invoice_rappen;
+        """,
+    ),
 ]

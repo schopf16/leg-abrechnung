@@ -46,7 +46,7 @@ def _print_row(offboarding: PersonOffboarding, person: Person) -> dict:
         _, step_label = offboarding.current_step
         status = f"{step_label} (seit {offboarding.days_open()} Tagen)"
     row = {
-        "person": person.anzeige_name,
+        "person": person.display_name,
         "grund": GRUND_OPTIONS.get(offboarding.grund, offboarding.grund),
         "status": status,
     }
@@ -126,7 +126,7 @@ def austritte_page() -> None:
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         with ui.row().classes("items-center gap-2"):
-                            ui.link(person.anzeige_name, f"/personen/{person.id}").classes("font-bold")
+                            ui.link(person.display_name, f"/persons/{person.id}").classes("font-bold")
                             ui.badge(GRUND_OPTIONS.get(offboarding.grund, offboarding.grund))
                             if offboarding.is_complete:
                                 ui.badge("Abgeschlossen", color="positive")
@@ -202,7 +202,7 @@ def austritte_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'Austrittsprozess von "{person.anzeige_name}" wirklich löschen?')
+                ui.label(f'Austrittsprozess von "{person.display_name}" wirklich löschen?')
                 ui.label(
                     "Nur die Nachverfolgung wird entfernt -- die Person, "
                     "ihre Zuordnungen und ihr Saldo bleiben unverändert."
@@ -234,7 +234,7 @@ def austritte_page() -> None:
             if not available_persons:
                 ui.notify("Für alle Personen läuft bereits ein Austrittsprozess.", type="warning")
                 return
-            person_options = {p.id: p.anzeige_name for p in available_persons}
+            person_options = {p.id: p.display_name for p in available_persons}
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Austritt starten").classes("text-lg font-bold")

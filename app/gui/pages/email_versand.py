@@ -1,5 +1,5 @@
 """E-Mail-Versand page: a guided, step-by-step assistant for sending a
-personalized email to all Personen or to one LEG's current members, plus
+personalized email to all persons or to one LEG's current members, plus
 a history of past sends.
 
 Every recipient gets their own, separate Graph API call (see
@@ -207,16 +207,16 @@ def email_versand_page() -> None:
                     with connection_scope() as inner_connection:
                         already_ids = {p.id for p in recipients}
                         add_options = {
-                            p.id: f"{p.anzeige_name} ({p.kontakt_email})"
+                            p.id: f"{p.display_name} ({p.contact_email})"
                             for p in person_repo.list_all(inner_connection)
-                            if p.id not in already_ids and p.kontakt_email.strip()
+                            if p.id not in already_ids and p.contact_email.strip()
                         }
                     with recipients_container:
                         if not recipients:
                             ui.label("Keine Empfänger.").classes("text-grey-6")
                         for person in list(recipients):
                             with ui.row().classes("w-full items-center gap-2"):
-                                ui.label(f"{person.anzeige_name} ({person.kontakt_email})").classes(
+                                ui.label(f"{person.display_name} ({person.contact_email})").classes(
                                     "flex-grow"
                                 )
                                 ui.button(
@@ -387,8 +387,8 @@ def email_versand_page() -> None:
                         for person in invalid_emails:
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(
-                                    f"⚠ {person.anzeige_name}: E-Mail-Adresse "
-                                    f"ungültig ({person.kontakt_email or '-'})"
+                                    f"⚠ {person.display_name}: E-Mail-Adresse "
+                                    f"ungültig ({person.contact_email or '-'})"
                                 ).classes("text-negative text-body2")
                                 ui.button(
                                     "Bearbeiten", on_click=lambda p=person: fix_person(p)
@@ -396,7 +396,7 @@ def email_versand_page() -> None:
                         for person, fields in missing:
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(
-                                    f"⚠ {person.anzeige_name}: fehlende Angabe "
+                                    f"⚠ {person.display_name}: fehlende Angabe "
                                     f"für {', '.join(fields)}"
                                 ).classes("text-negative text-body2")
                                 ui.button(

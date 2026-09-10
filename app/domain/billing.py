@@ -22,9 +22,9 @@ derived from repeated addition of the same rounded figure:
   verwaltungsaufwand_einspeisung_rp_per_kwh`, rounded to the nearest
   Rappen. Independent of the Bezug rate above -- either can be zero while
   the other is not.
-- `papierrechnung_rappen`: a flat fee, copied verbatim from
-  `LegSettings.papierrechnung_rappen` if the person has
-  `Person.papierrechnung` set, else 0.
+- `paper_invoice_rappen`: a flat fee, copied verbatim from
+  `LegSettings.paper_invoice_rappen` if the person has
+  `Person.paper_invoice` set, else 0.
 
 Both `verwaltungsaufwand_*_rp_per_kwh` rates actually used are frozen
 directly onto each `BillingRunItem` (mirroring how `price_rp_per_kwh` is
@@ -108,8 +108,8 @@ def compute_billing_items(
     price_rp_per_kwh: float,
     verwaltungsaufwand_bezug_rp_per_kwh: float,
     verwaltungsaufwand_einspeisung_rp_per_kwh: float,
-    papierrechnung_rappen: int,
-    papierrechnung_by_person: dict[int, bool],
+    paper_invoice_rappen: int,
+    paper_invoice_by_person: dict[int, bool],
 ) -> list[BillingRunItem]:
     """Derive one combined, netted billing item per person.
 
@@ -127,10 +127,10 @@ def compute_billing_items(
         verwaltungsaufwand_einspeisung_rp_per_kwh: Administrative
             surcharge in Rappen per kWh, charged on `produced_local_kwh`
             -- independent of the Bezug rate above.
-        papierrechnung_rappen: Flat paper-invoice fee in Rappen, applied
-            to persons present (and `True`) in `papierrechnung_by_person`.
-        papierrechnung_by_person: Whether each person receives a paper
-            invoice (see `Person.papierrechnung`), keyed by person id.
+        paper_invoice_rappen: Flat paper-invoice fee in Rappen, applied
+            to persons present (and `True`) in `paper_invoice_by_person`.
+        paper_invoice_by_person: Whether each person receives a paper
+            invoice (see `Person.paper_invoice`), keyed by person id.
             A person missing from this dict is treated as `False`.
 
     Returns:
@@ -154,7 +154,7 @@ def compute_billing_items(
         verwaltungsaufwand_einspeisung = round_to_rappen(
             totals.produced_local_kwh * verwaltungsaufwand_einspeisung_rp_per_kwh
         )
-        papierrechnung = papierrechnung_rappen if papierrechnung_by_person.get(person_id) else 0
+        paper_invoice = paper_invoice_rappen if paper_invoice_by_person.get(person_id) else 0
 
         items.append(
             BillingRunItem(
@@ -168,10 +168,10 @@ def compute_billing_items(
                 verwaltungsaufwand_einspeisung_rappen=verwaltungsaufwand_einspeisung,
                 verwaltungsaufwand_bezug_rp_per_kwh=verwaltungsaufwand_bezug_rp_per_kwh,
                 verwaltungsaufwand_einspeisung_rp_per_kwh=verwaltungsaufwand_einspeisung_rp_per_kwh,
-                papierrechnung_rappen=papierrechnung,
+                paper_invoice_rappen=paper_invoice,
                 net_amount_rappen=(
                     energy_net_rappen + verwaltungsaufwand_bezug
-                    + verwaltungsaufwand_einspeisung + papierrechnung
+                    + verwaltungsaufwand_einspeisung + paper_invoice
                 ),
                 pdf_path=None,
                 created_at="",
@@ -184,7 +184,7 @@ def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
     """Check that money owed to the LEG balances money owed by the LEG, energy-wise.
 
     Admin fees (`verwaltungsaufwand_bezug_rappen`,
-    `verwaltungsaufwand_einspeisung_rappen`, `papierrechnung_rappen`) are
+    `verwaltungsaufwand_einspeisung_rappen`, `paper_invoice_rappen`) are
     deliberately excluded -- they are pure LEG revenue with no matching
     producer-side payout, so including them would make this check flag a
     perfectly healthy run as "unbalanced". See the module docstring.
@@ -198,7 +198,7 @@ def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
     """
     energy_net_by_item = [
         i.net_amount_rappen - i.verwaltungsaufwand_bezug_rappen
-        - i.verwaltungsaufwand_einspeisung_rappen - i.papierrechnung_rappen
+        - i.verwaltungsaufwand_einspeisung_rappen - i.paper_invoice_rappen
         for i in items
     ]
     total_owed_to_leg = sum(n for n in energy_net_by_item if n > 0)
@@ -241,14 +241,14 @@ def create_or_replace_billing_run(
 
     settings = settings_repo.get_settings(connection)
     distribution = compute_quarter_distribution(connection, leg_id, year, quarter)
-    papierrechnung_by_person = {p.id: p.papierrechnung for p in person_repo.list_all(connection)}
+    paper_invoice_by_person = {p.id: p.paper_invoice for p in person_repo.list_all(connection)}
     items = compute_billing_items(
         distribution,
         settings.price_rp_per_kwh,
         settings.verwaltungsaufwand_bezug_rp_per_kwh,
         settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
-        settings.papierrechnung_rappen,
-        papierrechnung_by_person,
+        settings.paper_invoice_rappen,
+        paper_invoice_by_person,
     )
     control_check = verify_sum_balance(items)
 

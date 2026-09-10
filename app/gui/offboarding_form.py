@@ -57,7 +57,7 @@ def open_offboarding_form(
         None.
     """
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
-        ui.label(f"Austritt/Ausschluss: {person.anzeige_name}").classes("text-lg font-bold")
+        ui.label(f"Austritt/Ausschluss: {person.display_name}").classes("text-lg font-bold")
         ui.label(f"Grund: {GRUND_OPTIONS.get(offboarding.grund, offboarding.grund)}").classes(
             "text-caption text-grey-6"
         )
@@ -147,7 +147,7 @@ def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
         return
 
     with ui.dialog() as confirm, ui.card():
-        ui.label(f"Zuordnung(en) von {person.anzeige_name} per {exit_date.isoformat()} beenden?").classes(
+        ui.label(f"Zuordnung(en) von {person.display_name} per {exit_date.isoformat()} beenden?").classes(
             "font-bold"
         )
         for z in open_assignments:

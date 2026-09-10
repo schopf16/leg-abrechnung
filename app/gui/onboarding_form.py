@@ -3,7 +3,7 @@
 Used both by the Aufnahmen page and the Person detail page, so a tracker
 can be edited directly from wherever the administrator happens to be
 looking at it, without a page change -- mirrors how `app.gui.person_form`
-is shared between the Personen and Web-Registrierungen pages.
+is shared between the persons and Web-Registrierungen pages.
 """
 
 from datetime import date, datetime
@@ -57,7 +57,7 @@ def open_onboarding_form(
     leg_options = {leg.id: leg.name for leg in legs}
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
-        ui.label(f"Aufnahmeprozess: {person.anzeige_name}").classes("text-lg font-bold")
+        ui.label(f"Aufnahmeprozess: {person.display_name}").classes("text-lg font-bold")
         ui.label(
             "Datum je Schritt eintragen, sobald er erledigt ist. Kein "
             "Schritt ist Pflicht, die Reihenfolge wird nicht erzwungen."

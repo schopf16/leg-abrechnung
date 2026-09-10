@@ -14,16 +14,16 @@ from app.models.person import Person
 from app.pdf.qr_reference import generate_qrr_reference
 
 
-def _person(db, *, name="Anna", email="anna@example.invalid", iban="", kundennummer_hint=None) -> "Person":
+def _person(db, *, name="Anna", email="anna@example.invalid", iban="", customer_number_hint=None) -> "Person":
     person_id = person_repo.create(
         db,
         Person(
-            id=None, anrede="Frau", firma="", vorname=name, nachname="Muster",
-            kontakt_email=email, kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban=iban, kundennummer=None, bkw_kundennummer=None,
-            papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="Frau", company="", first_name=name, last_name="Muster",
+            contact_email=email, contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban=iban, customer_number=None, bkw_customer_number=None,
+            paper_invoice=False, active=True, created_at="",
         ),
     )
     return person_repo.get(db, person_id)
@@ -46,7 +46,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
             )
         ],
@@ -67,7 +67,7 @@ def _tx(**overrides) -> ParsedBankTransaction:
 def test_valid_qrr_reference_auto_matches(db):
     person = _person(db)
     run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
-    reference = generate_qrr_reference(person.kundennummer, run_id, item_id)
+    reference = generate_qrr_reference(person.customer_number, run_id, item_id)
     tx = _tx(amount_rappen=10_000, structured_reference=reference)
 
     result = bank_reconciliation.find_match(db, tx)
@@ -77,13 +77,13 @@ def test_valid_qrr_reference_auto_matches(db):
     assert result.matched_billing_run_item_id == item_id
 
 
-def test_qrr_reference_with_mismatched_kundennummer_falls_through_to_candidates(db):
-    """A structurally valid reference whose decoded kundennummer does not
+def test_qrr_reference_with_mismatched_customer_number_falls_through_to_candidates(db):
+    """A structurally valid reference whose decoded customer_number does not
     match the item's actual person must not be trusted -- it should fall
     back to the suggestion path instead of a wrong auto-match."""
     person = _person(db, iban="CH9300762011623852957")
     run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
-    # A reference encoding a *different* kundennummer than the real one.
+    # A reference encoding a *different* customer_number than the real one.
     corrupted_reference = generate_qrr_reference(999999, run_id, item_id)
     tx = _tx(
         amount_rappen=10_000, structured_reference=corrupted_reference,
@@ -99,7 +99,7 @@ def test_qrr_reference_with_mismatched_kundennummer_falls_through_to_candidates(
 def test_reversal_is_never_auto_matched_even_with_valid_reference(db):
     person = _person(db)
     run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
-    reference = generate_qrr_reference(person.kundennummer, run_id, item_id)
+    reference = generate_qrr_reference(person.customer_number, run_id, item_id)
     tx = _tx(amount_rappen=10_000, structured_reference=reference, is_reversal=True)
 
     result = bank_reconciliation.find_match(db, tx)
@@ -119,18 +119,18 @@ def test_iban_exact_match_ranks_above_name_similarity(db):
     assert result.candidates[0].confidence == "iban_exact"
 
 
-def test_kundennummer_in_remittance_text_is_a_strong_candidate(db):
+def test_customer_number_in_remittance_text_is_a_strong_candidate(db):
     person = _person(db, name="Bettina")
     tx = _tx(
         counterparty_name="Ganz anderer Name",
-        remittance_text=f"Kundennummer {person.kundennummer}, danke",
+        remittance_text=f"Kundennummer {person.customer_number}, danke",
     )
 
     result = bank_reconciliation.find_match(db, tx)
 
     assert result.status == "suggested_pending_review"
     assert result.candidates[0].person_id == person.id
-    assert result.candidates[0].confidence == "kundennummer_text"
+    assert result.candidates[0].confidence == "customer_number_text"
 
 
 def test_ambiguous_name_candidates_are_all_surfaced_without_auto_matching(db):

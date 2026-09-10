@@ -29,16 +29,16 @@ from app.models.web_registration import WebRegistration, WebRegistrationMeter
 #: WebRegistration fields compared to decide whether a repeat submission
 #: actually changed anything (meters are compared separately as a set).
 _COMPARED_FIELDS = (
-    "firma",
-    "anrede",
-    "vorname",
-    "nachname",
+    "company",
+    "salutation",
+    "first_name",
+    "last_name",
     "street",
     "house_number",
     "postal_code",
     "city",
-    "telefon",
-    "bkw_kundennummer",
+    "phone",
+    "bkw_customer_number",
     "iban",
     "message",
 )
@@ -120,7 +120,7 @@ def _apply_submission(
         None.
     """
     if not submission.email:
-        who = f"{submission.vorname} {submission.nachname}".strip() or submission.firma or "?"
+        who = f"{submission.first_name} {submission.last_name}".strip() or submission.company or "?"
         result.warnings.append(
             f"Registrierung von „{who}“ (Cloudflare-ID {submission.cloudflare_id}) "
             "übersprungen: keine E-Mail-Adresse angegeben."
@@ -176,17 +176,17 @@ def _to_registration(
     return WebRegistration(
         id=existing.id if existing else None,
         cloudflare_id=submission.cloudflare_id,
-        firma=submission.firma,
-        anrede=submission.anrede,
-        vorname=submission.vorname,
-        nachname=submission.nachname,
+        company=submission.company,
+        salutation=submission.salutation,
+        first_name=submission.first_name,
+        last_name=submission.last_name,
         street=submission.street,
         house_number=submission.house_number,
         postal_code=submission.postal_code,
         city=submission.city,
         email=submission.email,
-        telefon=submission.telefon,
-        bkw_kundennummer=submission.bkw_kundennummer,
+        phone=submission.phone,
+        bkw_customer_number=submission.bkw_customer_number,
         iban=submission.iban,
         message=submission.message,
         submitted_at=submission.submitted_at,

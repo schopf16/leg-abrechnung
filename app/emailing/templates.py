@@ -1,4 +1,4 @@
-"""Placeholder substitution for email texts (`{vorname}`, `{anrede}`, ...).
+"""Placeholder substitution for email texts (`{first_name}`, `{salutation}`, ...).
 
 Shared by the broadcast/LEG email composer and the invoice email template
 (see `app.gui.pages.email_versand` and `app.gui.pages.abrechnung`) -- one
@@ -17,12 +17,12 @@ from app.models.person import Person
 
 #: Placeholder name -> value extractor, available in every email text.
 PERSON_PLACEHOLDERS: dict[str, Callable[[Person], str]] = {
-    "anrede": lambda p: p.anrede,
-    "vorname": lambda p: p.vorname,
-    "nachname": lambda p: p.nachname,
-    "firma": lambda p: p.firma,
-    "kundennummer": lambda p: p.kundennummer_formatiert,
-    "email": lambda p: p.kontakt_email,
+    "anrede": lambda p: p.salutation,
+    "vorname": lambda p: p.first_name,
+    "nachname": lambda p: p.last_name,
+    "firma": lambda p: p.company,
+    "kundennummer": lambda p: p.formatted_customer_number,
+    "email": lambda p: p.contact_email,
 }
 
 _PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
@@ -93,8 +93,8 @@ def validate_person_placeholders(
 
     Args:
         template: Raw text to check (only placeholders it actually uses
-            are checked -- an unused `{firma}` never triggers a warning
-            just because some recipient has no `firma`).
+            are checked -- an unused `{company}` never triggers a warning
+            just because some recipient has no `company`).
         recipients: Persons the email would be sent to.
 
     Returns:
@@ -114,9 +114,9 @@ def validate_person_placeholders(
 
 
 def find_invalid_email_addresses(recipients: list[Person]) -> list[Person]:
-    """Find recipients whose `kontakt_email` is not even plausibly valid.
+    """Find recipients whose `contact_email` is not even plausibly valid.
 
-    `Person.kontakt_email` has no format validation at the model level, so
+    `Person.contact_email` has no format validation at the model level, so
     a garbage value would otherwise only surface as a Graph API failure
     at send time. This is a lightweight plausibility check only (contains
     "@", a "." somewhere after it) -- not full RFC 5322 validation.
@@ -130,7 +130,7 @@ def find_invalid_email_addresses(recipients: list[Person]) -> list[Person]:
     """
     invalid = []
     for person in recipients:
-        email = person.kontakt_email.strip()
+        email = person.contact_email.strip()
         at_index = email.find("@")
         if at_index <= 0 or "." not in email[at_index + 1 :]:
             invalid.append(person)

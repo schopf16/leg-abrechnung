@@ -12,20 +12,20 @@ from app.models.person import Person
 
 
 def _person(
-    vorname: str = "Anna",
-    nachname: str = "Muster",
-    anrede: str = "Frau",
-    firma: str = "",
+    first_name: str = "Anna",
+    last_name: str = "Muster",
+    salutation: str = "Frau",
+    company: str = "",
     email: str = "anna@example.invalid",
 ) -> Person:
     """Build an unpersisted `Person` for use in tests."""
     return Person(
-        id=1, anrede=anrede, firma=firma, vorname=vorname, nachname=nachname,
-        kontakt_email=email, kontakt_telefon="",
-        rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-        rechnungsadresse_ort="", rechnungsadresse_land="CH",
-        iban="", kundennummer=123456, bkw_kundennummer=None, papierrechnung=False,
-        aktiv=True, created_at="",
+        id=1, salutation=salutation, company=company, first_name=first_name, last_name=last_name,
+        contact_email=email, contact_phone="",
+        billing_street="", billing_house_number="", billing_postal_code="",
+        billing_city="", billing_country="CH",
+        iban="", customer_number=123456, bkw_customer_number=None, paper_invoice=False,
+        active=True, created_at="",
     )
 
 
@@ -58,24 +58,24 @@ def test_find_unknown_placeholders_empty_when_all_known():
 
 
 def test_validate_person_placeholders_flags_empty_used_field():
-    with_anrede = _person(anrede="Frau")
-    without_anrede = _person(anrede="")
+    with_salutation = _person(salutation="Frau")
+    without_salutation = _person(salutation="")
     problems = validate_person_placeholders(
-        "Guten Tag {anrede} {nachname}", [with_anrede, without_anrede]
+        "Guten Tag {anrede} {nachname}", [with_salutation, without_salutation]
     )
-    assert [p.anrede for p, _ in problems] == [""]
+    assert [p.salutation for p, _ in problems] == [""]
     assert problems[0][1] == ["anrede"]
 
 
 def test_validate_person_placeholders_ignores_unused_placeholder():
-    """A person missing `firma` is not flagged if the template never uses `{firma}`."""
-    person = _person(firma="")
+    """A person missing `company` is not flagged if the template never uses `{company}`."""
+    person = _person(company="")
     problems = validate_person_placeholders("Guten Tag {vorname}", [person])
     assert problems == []
 
 
 def test_validate_person_placeholders_empty_when_template_has_no_placeholders():
-    problems = validate_person_placeholders("Kein Platzhalter hier.", [_person(anrede="")])
+    problems = validate_person_placeholders("Kein Platzhalter hier.", [_person(salutation="")])
     assert problems == []
 
 

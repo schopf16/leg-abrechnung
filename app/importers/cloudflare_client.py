@@ -34,18 +34,18 @@ class RegistrationSubmission:
 
     Attributes:
         cloudflare_id: The submission's id in the source system.
-        firma: Submitted company name, or `""`.
-        anrede: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
-        vorname: Submitted first name.
-        nachname: Submitted last name.
+        company: Submitted company name, or `""`.
+        salutation: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
+        first_name: Submitted first name.
+        last_name: Submitted last name.
         strasse: Submitted street name (without house number).
         house_number: Submitted house number.
         plz: Submitted postal code.
         ort: Submitted city.
         email: Submitted email address -- possibly empty, callers must
             handle that case (see `app.importers.registration_sync`).
-        telefon: Optional submitted phone number.
-        bkw_kundennummer: Submitted BKW customer number, free text.
+        phone: Optional submitted phone number.
+        bkw_customer_number: Submitted BKW customer number, free text.
         iban: Optional submitted IBAN, free text.
         message: Optional free-text remark from the submitter.
         submitted_at: Submission timestamp as reported by the API.
@@ -55,17 +55,17 @@ class RegistrationSubmission:
     """
 
     cloudflare_id: int
-    firma: str
-    anrede: str
-    vorname: str
-    nachname: str
+    company: str
+    salutation: str
+    first_name: str
+    last_name: str
     street: str
     house_number: str
     postal_code: str
     city: str
     email: str
-    telefon: str
-    bkw_kundennummer: str
+    phone: str
+    bkw_customer_number: str
     iban: str
     message: str
     submitted_at: str
@@ -231,17 +231,17 @@ def _to_submission(entry: dict) -> RegistrationSubmission:
     payload = entry.get("payload") or {}
     return RegistrationSubmission(
         cloudflare_id=entry["id"],
-        firma=(payload.get("firma") or "").strip(),
-        anrede=(payload.get("anrede") or "").strip(),
-        vorname=(payload.get("vorname") or "").strip(),
-        nachname=(payload.get("nachname") or "").strip(),
+        company=(payload.get("firma") or "").strip(),
+        salutation=(payload.get("anrede") or "").strip(),
+        first_name=(payload.get("vorname") or "").strip(),
+        last_name=(payload.get("nachname") or "").strip(),
         street=(payload.get("strasse") or "").strip(),
         house_number=(payload.get("hausnummer") or "").strip(),
         postal_code=(payload.get("plz") or "").strip(),
         city=(payload.get("ort") or "").strip(),
         email=(payload.get("email") or "").strip(),
-        telefon=(payload.get("telefon") or "").strip(),
-        bkw_kundennummer=(payload.get("bkw_kundennummer") or "").strip(),
+        phone=(payload.get("telefon") or "").strip(),
+        bkw_customer_number=(payload.get("bkw_kundennummer") or "").strip(),
         iban=(payload.get("iban") or "").strip(),
         message=(payload.get("message") or "").strip(),
         submitted_at=entry.get("created_at", ""),

@@ -104,7 +104,7 @@ def export_billing_run_documents(
             )
             continue
 
-        filename = f"Abrechnung_{_sanitize_filename_part(person.anzeige_name)}_{item.id}.pdf"
+        filename = f"Abrechnung_{_sanitize_filename_part(person.display_name)}_{item.id}.pdf"
         path = output_dir / filename
 
         # Freeze the due date on first export only -- a re-export (e.g. to
@@ -122,7 +122,7 @@ def export_billing_run_documents(
                 run, item, person_result, person, leg, settings, path
             )
         except QrBillConfigurationError as exc:
-            result.errors.append(f"{person.anzeige_name}: {exc}")
+            result.errors.append(f"{person.display_name}: {exc}")
             continue
 
         billing_run_repo.set_item_pdf_path(connection, item.id, str(path))

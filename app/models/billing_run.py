@@ -12,7 +12,7 @@ class BillingRun:
 
     Local sharing only ever happens within one LEG (see
     `app.domain.distribution`), so a billing run covers one LEG's
-    Personen for one quarter -- a Person with metering points in more than one
+    persons for one quarter -- a Person with metering points in more than one
     LEG gets one item (and one PDF) per LEG they participate in, from that
     LEG's separate run.
 
@@ -83,15 +83,15 @@ class BillingRunItem:
             `consumed_kwh`, already rounded to the nearest Rappen (its own
             distinct billed line, not subject to the "round only once"
             rule that applies to the energy net amount).
-        papierrechnung_rappen: Flat paper-invoice fee, copied verbatim
-            from `LegSettings.papierrechnung_rappen` if the person has
-            `Person.papierrechnung` set, else 0.
+        paper_invoice_rappen: Flat paper-invoice fee, copied verbatim
+            from `LegSettings.paper_invoice_rappen` if the person has
+            `Person.paper_invoice` set, else 0.
         net_amount_rappen: The full invoiced total -- rounded energy net
             (`consumed_kwh * price - produced_kwh * price`, the *only*
             rounding step for the energy portion, see
             `app.domain.billing`) plus `verwaltungsaufwand_bezug_rappen`
             plus `verwaltungsaufwand_einspeisung_rappen` plus
-            `papierrechnung_rappen`.
+            `paper_invoice_rappen`.
         pdf_path: Filesystem path of the generated PDF, once created.
         created_at: ISO-8601 creation timestamp.
         email_sent_at: ISO-8601 timestamp of the last successful invoice
@@ -147,7 +147,7 @@ class BillingRunItem:
     produced_kwh: float
     price_rp_per_kwh: float
     verwaltungsaufwand_bezug_rappen: int
-    papierrechnung_rappen: int
+    paper_invoice_rappen: int
     net_amount_rappen: int
     pdf_path: Optional[str]
     created_at: str
@@ -206,7 +206,7 @@ class BillingRunItem:
             produced_kwh=row["produced_kwh"],
             price_rp_per_kwh=row["price_rp_per_kwh"],
             verwaltungsaufwand_bezug_rappen=row["verwaltungsaufwand_bezug_rappen"],
-            papierrechnung_rappen=row["papierrechnung_rappen"],
+            paper_invoice_rappen=row["paper_invoice_rappen"],
             net_amount_rappen=row["net_amount_rappen"],
             pdf_path=row["pdf_path"],
             created_at=row["created_at"],
@@ -366,7 +366,7 @@ def add_items(
                  price_rp_per_kwh, verwaltungsaufwand_bezug_rappen,
                  verwaltungsaufwand_einspeisung_rappen,
                  verwaltungsaufwand_bezug_rp_per_kwh, verwaltungsaufwand_einspeisung_rp_per_kwh,
-                 papierrechnung_rappen, net_amount_rappen, pdf_path, created_at)
+                 paper_invoice_rappen, net_amount_rappen, pdf_path, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -379,7 +379,7 @@ def add_items(
                 item.verwaltungsaufwand_einspeisung_rappen,
                 item.verwaltungsaufwand_bezug_rp_per_kwh,
                 item.verwaltungsaufwand_einspeisung_rp_per_kwh,
-                item.papierrechnung_rappen,
+                item.paper_invoice_rappen,
                 item.net_amount_rappen,
                 item.pdf_path,
                 datetime.now(timezone.utc).isoformat(),

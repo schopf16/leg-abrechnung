@@ -18,12 +18,12 @@ def _person(db, name: str = "P") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="Frau", firma="", vorname=name, nachname="Muster",
-            kontakt_email="p@example.invalid", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None,
-            papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="Frau", company="", first_name=name, last_name="Muster",
+            contact_email="p@example.invalid", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None,
+            paper_invoice=False, active=True, created_at="",
         ),
     )
 
@@ -45,7 +45,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int, *, faellig_am: str
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="2026-01-01T00:00:00",
             )
         ],

@@ -38,11 +38,11 @@ def _person(db, name: str = "P") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, anrede="", firma="", vorname=name, nachname="",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name=name, last_name="",
+            contact_email="", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
         ),
     )
 
@@ -223,7 +223,7 @@ def test_check_onboarding_progress_flags_overdue_step(db):
     assert any(w.category == "aufnahme_ueberfaellig" for w in warnings)
     assert "Overdue" in warnings[0].message
     # Links straight to the person's detail page.
-    assert warnings[0].link == f"/personen/{person_id}"
+    assert warnings[0].link == f"/persons/{person_id}"
 
 
 def test_check_onboarding_progress_ignores_step_within_threshold(db):
@@ -347,9 +347,9 @@ def _metering_point_direction(
 
 
 def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substation_area(db):
-    """Below `LegSettings.leg_gruendung_min_personen` (default 7), a
+    """Below `LegSettings.leg_founding_min_persons` (default 7), a
     non-one-sided substation area with only 2 people is not flagged yet -- see
-    `test_check_leg_upgrade_potential_respects_configurable_min_personen`."""
+    `test_check_leg_upgrade_potential_respects_configurable_min_persons`."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
     site_id = _site_in(db, substation_area_id)
@@ -369,7 +369,7 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
 
     settings = settings_repo.get_settings(db)
-    settings.leg_gruendung_min_personen = 2
+    settings.leg_founding_min_persons = 2
     settings_repo.update_settings(db, settings)
 
     warnings = check_leg_upgrade_potential(db)
@@ -378,10 +378,10 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     assert warnings[0].link == "/substation-areas"
 
 
-def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
+def test_check_leg_upgrade_potential_respects_configurable_min_persons(db):
     """Lowering the threshold below the default flags a substation area that
     the default 7 would leave unflagged; raising it above 2 hides it
-    again -- both directions of `LegSettings.leg_gruendung_min_personen`."""
+    again -- both directions of `LegSettings.leg_founding_min_persons`."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
     site_id = _site_in(db, substation_area_id)
@@ -399,11 +399,11 @@ def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
         )
 
     settings = settings_repo.get_settings(db)
-    settings.leg_gruendung_min_personen = 2
+    settings.leg_founding_min_persons = 2
     settings_repo.update_settings(db, settings)
     assert len(check_leg_upgrade_potential(db)) == 1
 
-    settings.leg_gruendung_min_personen = 3
+    settings.leg_founding_min_persons = 3
     settings_repo.update_settings(db, settings)
     assert check_leg_upgrade_potential(db) == []
 

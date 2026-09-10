@@ -194,7 +194,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
         if not onboarding.is_overdue(threshold_days):
             continue
         person = person_repo.get(connection, onboarding.person_id)
-        person_name = person.anzeige_name if person else f"Person #{onboarding.person_id}"
+        person_name = person.display_name if person else f"Person #{onboarding.person_id}"
         _, step_label = onboarding.current_step
         warnings.append(
             QualityWarning(
@@ -204,7 +204,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
                     f"{onboarding.days_open()} Tagen bei Schritt "
                     f'"{step_label}".'
                 ),
-                link=f"/personen/{person.id}" if person is not None else None,
+                link=f"/persons/{person.id}" if person is not None else None,
             )
         )
 
@@ -241,7 +241,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
     """Flag substation areas that could now split off into their own, better-
     discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
 
-    Gated on `LegSettings.leg_gruendung_min_personen` -- a substation area with
+    Gated on `LegSettings.leg_founding_min_persons` -- a substation area with
     both a Prosumer and a Consumer but too few people overall is not
     flagged, see that setting's docstring.
 
@@ -251,9 +251,9 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
     Returns:
         A `QualityWarning` per substation area with newly-viable upgrade potential.
     """
-    min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
+    min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
     warnings: list[QualityWarning] = []
-    for candidate in participant_mix.find_upgrade_candidates(connection, min_personen=min_personen):
+    for candidate in participant_mix.find_upgrade_candidates(connection, min_persons=min_persons):
         leg_names = ", ".join(f"„{leg.name}“" for leg in candidate.mixed_legs)
         warnings.append(
             QualityWarning(

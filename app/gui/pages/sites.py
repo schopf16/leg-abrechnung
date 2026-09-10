@@ -45,7 +45,7 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
     if assignment is None:
         return "-", False
     person = person_repo.get(connection, assignment.person_id)
-    name = person.anzeige_name if person else "?"
+    name = person.display_name if person else "?"
     is_future = assignment.valid_from > date.today()
     return name, is_future
 

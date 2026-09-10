@@ -1,10 +1,10 @@
-"""Personen management page: list, search, create, edit, delete, and a
+"""persons management page: list, search, create, edit, delete, and a
 detail drill-down showing the Person → Assignment → MeteringPoint (→ LEG,
 → site → substation area) join (project prompt section 7,
-"Personen-Detailansicht").
+"persons-Detailansicht").
 
 The list is rendered as one card per Person (not a single-row-per-person
-table): a Person has enough fields (Name/Firma, Kontakt, Rechnungsadresse,
+table): a Person has enough fields (Name/Firma, Kontakt, billing address,
 IBAN) that a flat table forces horizontal scrolling. Cards let each group
 of fields wrap onto its own line instead.
 """
@@ -41,24 +41,24 @@ DIRECTION_LABELS = {
 }
 
 
-def _copy_kundennummer(person: Person) -> None:
-    """Copy a person's formatted Kundennummer to the clipboard and confirm.
+def _copy_customer_number(person: Person) -> None:
+    """Copy a person's formatted customer number to the clipboard and confirm.
 
     Args:
-        person: Person whose Kundennummer to copy.
+        person: Person whose customer number to copy.
 
     Returns:
         None.
     """
-    ui.clipboard.write(person.kundennummer_formatiert)
+    ui.clipboard.write(person.formatted_customer_number)
     safe_notify("Kundennummer kopiert.")
 
 
-def _kundennummer_row(person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6") -> None:
+def _customer_number_row(person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6") -> None:
     """Render the Kunden-Nr. label with an inline copy-to-clipboard button.
 
     Args:
-        person: Person whose Kundennummer to show.
+        person: Person whose customer number to show.
         label: Text preceding the formatted number (e.g. "Kunden-Nr." or
             "Kunden-Nr.:", to match the two slightly different label
             styles used on the list and detail pages).
@@ -68,18 +68,18 @@ def _kundennummer_row(person: Person, *, label: str = "Kunden-Nr.", classes: str
         None.
     """
     with ui.row().classes("items-center gap-1"):
-        ui.label(f"{label} {person.kundennummer_formatiert}").classes(classes)
-        ui.button(icon="content_copy", on_click=lambda: _copy_kundennummer(person)).props(
+        ui.label(f"{label} {person.formatted_customer_number}").classes(classes)
+        ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
             "dense flat size=sm"
         ).tooltip("Kundennummer kopieren")
 
 
 #: `(label, field)` pairs for the printed table.
 PRINT_COLUMNS = [
-    ("Kunden-Nr.", "kundennummer"),
+    ("Kunden-Nr.", "customer_number"),
     ("Name", "name"),
     ("E-Mail", "email"),
-    ("Telefon", "telefon"),
+    ("Telefon", "phone"),
     ("Rechnungsadresse", "address"),
     ("IBAN", "iban"),
     ("Status", "status"),
@@ -106,16 +106,16 @@ def _print_row(person: Person) -> dict:
         A dict with the fields required by `PRINT_COLUMNS`.
     """
     return {
-        "kundennummer": person.kundennummer_formatiert,
-        "name": person.anzeige_name,
-        "email": person.kontakt_email,
-        "telefon": person.kontakt_telefon,
+        "customer_number": person.formatted_customer_number,
+        "name": person.display_name,
+        "email": person.contact_email,
+        "phone": person.contact_phone,
         "address": (
-            f"{person.rechnungsadresse_strasse_vollstaendig}, "
-            f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}"
+            f"{person.billing_street_with_number}, "
+            f"{person.billing_postal_code} {person.billing_city}"
         ),
         "iban": format_iban(person.iban) if person.iban else "",
-        "status": "Aktiv" if person.aktiv else "Inaktiv",
+        "status": "Aktiv" if person.active else "Inaktiv",
     }
 
 
@@ -124,7 +124,7 @@ def _search_text_for_person(connection, person: Person) -> str:
 
     Covers the person's own fields plus the designation and site
     address of every MeteringPoint ever assigned to them (project prompt
-    section 8: Personen search also reaches into their assignments).
+    section 8: persons search also reaches into their assignments).
 
     Args:
         connection: Open SQLite connection.
@@ -134,21 +134,21 @@ def _search_text_for_person(connection, person: Person) -> str:
         A single lowercase string containing all searchable text.
     """
     parts = [
-        person.firma,
-        person.vorname,
-        person.nachname,
-        person.kontakt_email,
-        person.kontakt_telefon,
-        person.rechnungsadresse_strasse,
-        person.rechnungsadresse_hausnummer,
-        person.rechnungsadresse_plz,
-        person.rechnungsadresse_ort,
-        person.kundennummer_formatiert,
-        # Also index the Kundennummer without its grouping space, so a
+        person.company,
+        person.first_name,
+        person.last_name,
+        person.contact_email,
+        person.contact_phone,
+        person.billing_street,
+        person.billing_house_number,
+        person.billing_postal_code,
+        person.billing_city,
+        person.formatted_customer_number,
+        # Also index the customer number without its grouping space, so a
         # search entered without spaces (e.g. pasted from elsewhere) still
         # matches the formatted "XXX XXX" display value.
-        str(person.kundennummer) if person.kundennummer is not None else "",
-        str(person.bkw_kundennummer) if person.bkw_kundennummer is not None else "",
+        str(person.customer_number) if person.customer_number is not None else "",
+        str(person.bkw_customer_number) if person.bkw_customer_number is not None else "",
     ]
     for z in assignment_repo.list_for_person(connection, person.id):
         mp = metering_point_repo.get(connection, z.metering_point_id)
@@ -161,14 +161,14 @@ def _search_text_for_person(connection, person: Person) -> str:
     return " ".join(p for p in parts if p).lower()
 
 
-@ui.page("/personen")
-def personen_page() -> None:
-    """Render the Personen list page with search, CRUD, and a link to each detail view.
+@ui.page("/persons")
+def persons_page() -> None:
+    """Render the persons list page with search, CRUD, and a link to each detail view.
 
     Returns:
         None.
     """
-    with page_frame("/personen", "Personen"):
+    with page_frame("/persons", "Personen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Personen oder Firmen, die an der LEG teilnehmen (Bezüger, "
@@ -220,35 +220,35 @@ def personen_page() -> None:
             Returns:
                 None.
             """
-            with ui.card().classes("w-full" + ("" if person.aktiv else " opacity-60")):
+            with ui.card().classes("w-full" + ("" if person.active else " opacity-60")):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         with ui.row().classes("items-center gap-2"):
-                            ui.label(person.anzeige_name).classes("font-bold")
-                            if not person.aktiv:
+                            ui.label(person.display_name).classes("font-bold")
+                            if not person.active:
                                 ui.badge("Inaktiv", color="grey")
-                        _kundennummer_row(person)
-                        if person.bkw_kundennummer is not None:
-                            ui.label(f"BKW-Kunden-Nr. {person.bkw_kundennummer}").classes(
+                        _customer_number_row(person)
+                        if person.bkw_customer_number is not None:
+                            ui.label(f"BKW-Kunden-Nr. {person.bkw_customer_number}").classes(
                                 "text-caption text-grey-6"
                             )
                     with ui.column().classes("gap-0 min-w-[180px]"):
-                        ui.label(person.kontakt_email or "-")
-                        ui.label(person.kontakt_telefon or "-").classes("text-grey-7")
+                        ui.label(person.contact_email or "-")
+                        ui.label(person.contact_phone or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(person.rechnungsadresse_strasse_vollstaendig or "-")
+                        ui.label(person.billing_street_with_number or "-")
                         ui.label(
-                            f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort}".strip()
+                            f"{person.billing_postal_code} {person.billing_city}".strip()
                         )
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
                         ui.label(
-                            "Papierrechnung: " + ("ja" if person.papierrechnung else "nein")
+                            "Papierrechnung: " + ("ja" if person.paper_invoice else "nein")
                         ).classes("text-grey-7")
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
                         ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
-                        if person.aktiv:
+                        if person.active:
                             ui.button(icon="delete", on_click=lambda: on_remove(person)).props(
                                 "dense flat color=negative"
                             )
@@ -271,7 +271,7 @@ def personen_page() -> None:
             visible_persons = [
                 person
                 for person, search_text in all_entries
-                if (person.aktiv or show_inactive_switch.value) and (not needle or needle in search_text)
+                if (person.active or show_inactive_switch.value) and (not needle or needle in search_text)
             ]
             list_container.clear()
             with list_container:
@@ -302,7 +302,7 @@ def personen_page() -> None:
             Returns:
                 None.
             """
-            ui.navigate.to(f"/personen/{person.id}")
+            ui.navigate.to(f"/persons/{person.id}")
 
         def on_edit(person: Person) -> None:
             """Card edit-button handler: open the edit dialog for this person.
@@ -322,7 +322,7 @@ def personen_page() -> None:
 
             If the person still has billing history, they are deactivated
             instead of deleted (see `person_repo.delete`) -- their
-            Kundennummer and Abrechnungshistorie stay intact, but they are
+            customer number and Abrechnungshistorie stay intact, but they are
             hidden from selection for new assignments.
 
             Args:
@@ -332,7 +332,7 @@ def personen_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'"{person.anzeige_name}" wirklich löschen?')
+                ui.label(f'"{person.display_name}" wirklich löschen?')
                 ui.label(
                     "Falls bereits Abrechnungen für diese Person bestehen, "
                     "wird sie stattdessen nur deaktiviert (nicht gelöscht) -- "
@@ -371,7 +371,7 @@ def personen_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                person_repo.set_aktiv(connection, person.id, True)
+                person_repo.set_active(connection, person.id, True)
             # notify before refresh() -- see save() above for why
             safe_notify("Person wieder aktiviert.", type="positive")
             refresh()
@@ -379,7 +379,7 @@ def personen_page() -> None:
         refresh()
 
 
-@ui.page("/personen/{person_id}")
+@ui.page("/persons/{person_id}")
 def person_detail_page(person_id: int) -> None:
     """Render one person's detail view: Stammdaten plus their assignment history.
 
@@ -392,34 +392,34 @@ def person_detail_page(person_id: int) -> None:
     with connection_scope() as connection:
         person = person_repo.get(connection, person_id)
 
-    with page_frame("/personen", "Person" if person is None else person.anzeige_name):
+    with page_frame("/persons", "Person" if person is None else person.display_name):
         if person is None:
             ui.label("Person nicht gefunden.").classes("text-negative")
-            ui.link("← Zurück zu Personen", "/personen")
+            ui.link("← Zurück zu Personen", "/persons")
             return
 
-        ui.link("← Zurück zu Personen", "/personen")
-        ui.label(person.anzeige_name).classes("text-xl font-bold mt-2")
+        ui.link("← Zurück zu Personen", "/persons")
+        ui.label(person.display_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
-            if not person.aktiv:
+            if not person.active:
                 ui.label("Status: Inaktiv (deaktiviert)").classes("text-negative")
-            _kundennummer_row(person, label="Kunden-Nr.:", classes="")
-            if person.bkw_kundennummer is not None:
-                ui.label(f"BKW-Kundennummer: {person.bkw_kundennummer}")
-            if person.firma:
-                ui.label(f"Firma: {person.firma}")
-            ui.label(f"Anrede: {person.anrede or '-'}")
-            ui.label(f"Vorname/Nachname: {person.voller_name or '-'}")
-            ui.label(f"E-Mail: {person.kontakt_email or '-'}")
-            ui.label(f"Telefon: {person.kontakt_telefon or '-'}")
+            _customer_number_row(person, label="Kunden-Nr.:", classes="")
+            if person.bkw_customer_number is not None:
+                ui.label(f"BKW-Kundennummer: {person.bkw_customer_number}")
+            if person.company:
+                ui.label(f"Firma: {person.company}")
+            ui.label(f"Anrede: {person.salutation or '-'}")
+            ui.label(f"Vorname/Nachname: {person.full_name or '-'}")
+            ui.label(f"E-Mail: {person.contact_email or '-'}")
+            ui.label(f"Telefon: {person.contact_phone or '-'}")
             ui.label(
                 "Rechnungsadresse: "
-                f"{person.rechnungsadresse_strasse_vollstaendig}, "
-                f"{person.rechnungsadresse_plz} {person.rechnungsadresse_ort} "
-                f"({person.rechnungsadresse_land})"
+                f"{person.billing_street_with_number}, "
+                f"{person.billing_postal_code} {person.billing_city} "
+                f"({person.billing_country})"
             )
             ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
-            ui.label(f"Papierrechnung: {'ja' if person.papierrechnung else 'nein'}")
+            ui.label(f"Papierrechnung: {'ja' if person.paper_invoice else 'nein'}")
 
         with connection_scope() as connection:
             onboarding = person_onboarding_repo.get_by_person(connection, person_id)

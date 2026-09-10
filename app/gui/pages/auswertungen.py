@@ -115,20 +115,20 @@ def auswertungen_page() -> None:
                     with connection_scope() as connection:
                         settings = settings_repo.get_settings(connection)
                         distribution = compute_quarter_distribution(connection, leg_id, year, quarter)
-                        papierrechnung_by_person = {
-                            p.id: p.papierrechnung for p in person_repo.list_all(connection)
+                        paper_invoice_by_person = {
+                            p.id: p.paper_invoice for p in person_repo.list_all(connection)
                         }
                         items = compute_billing_items(
                             distribution,
                             settings.price_rp_per_kwh,
                             settings.verwaltungsaufwand_bezug_rp_per_kwh,
                             settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
-                            settings.papierrechnung_rappen,
-                            papierrechnung_by_person,
+                            settings.paper_invoice_rappen,
+                            paper_invoice_by_person,
                         )
                         control_check = verify_sum_balance(items)
                         person_names = {
-                            p.id: p.anzeige_name for p in person_repo.list_all(connection)
+                            p.id: p.display_name for p in person_repo.list_all(connection)
                         }
                 except LegNotAssignedError as exc:
                     ui.label(f"⚠ {exc}").classes("text-negative")

@@ -147,7 +147,7 @@ def abrechnung_page() -> None:
             )
             with connection_scope() as connection:
                 person_names = {
-                    p.id: p.anzeige_name for p in person_repo.list_all(connection)
+                    p.id: p.display_name for p in person_repo.list_all(connection)
                 }
                 leg_name = leg_options.get(run.leg_id, "?")
 
@@ -315,7 +315,7 @@ def abrechnung_page() -> None:
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(
-                    f'Rechnung von "{person.anzeige_name}" wurde bereits am '
+                    f'Rechnung von "{person.display_name}" wurde bereits am '
                     f"{item.email_sent_at[:10]} per E-Mail gesendet. Trotzdem erneut senden?"
                 )
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
@@ -396,7 +396,7 @@ def abrechnung_page() -> None:
                         person = persons.get(item.person_id)
                         reason = bulk_send.invoice_skip_reason(person, item)
                         if reason:
-                            name = person.anzeige_name if person else f"Person #{item.person_id}"
+                            name = person.display_name if person else f"Person #{item.person_id}"
                             skip_lines.append(f"{name}: {reason}")
                         else:
                             eligible_persons.append(person)
@@ -417,8 +417,8 @@ def abrechnung_page() -> None:
                             )
                         for person in invalid_emails:
                             ui.label(
-                                f"⚠ {person.anzeige_name}: E-Mail-Adresse ungültig "
-                                f"({person.kontakt_email or '-'})"
+                                f"⚠ {person.display_name}: E-Mail-Adresse ungültig "
+                                f"({person.contact_email or '-'})"
                             ).classes("text-negative text-body2")
 
                 subject_input.on_value_change(lambda _: refresh_info())
@@ -562,7 +562,7 @@ def abrechnung_page() -> None:
                         f"{settings.verwaltungsaufwand_einspeisung_rp_per_kwh:.4f} Rp./kWh"
                     )
                     ui.label(
-                        f"Kosten Papierrechnung: {settings.papierrechnung_rappen / 100:.2f} CHF"
+                        f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF"
                     )
 
                 def confirmed() -> None:

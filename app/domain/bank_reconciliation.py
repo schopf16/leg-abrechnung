@@ -6,13 +6,13 @@ Two paths, by design (see the Debitoren plan):
 
 1. **Deterministic**: a CRDT entry whose structured reference decodes
    (via `app.pdf.qr_reference.parse_qrr_reference`) to a real billing run
-   item, whose person's Kundennummer matches the decoded one. This is
+   item, whose person's customer number matches the decoded one. This is
    booked automatically -- no human confirmation needed, since the
    reference already proves which invoice this is.
 
 2. **Suggested**: everything else (no/invalid reference, a reversal, or a
    DBIT payout, which never carries a QRR reference at all). Candidates
-   are found by exact IBAN match, a Kundennummer mentioned in the
+   are found by exact IBAN match, a customer number mentioned in the
    remittance free text, or name similarity -- never auto-booked, always
    presented for a human to confirm or correct.
 
@@ -56,7 +56,7 @@ class MatchCandidate:
             person whose amount matches the transaction, if one was
             found -- `None` if no amount match exists (e.g. a
             prepayment before any invoice exists yet for this person).
-        confidence: `"iban_exact"`, `"kundennummer_text"` or `"name_amount"`.
+        confidence: `"iban_exact"`, `"customer_number_text"` or `"name_amount"`.
         name_similarity: The `difflib` ratio behind a `"name_amount"`
             candidate, `None` for the other confidence levels.
     """
@@ -123,7 +123,7 @@ def _try_auto_match(
 
     Returns:
         An `"auto_matched"` `MatchResult` if the reference decodes to a
-        real item whose person's Kundennummer matches, else `None`
+        real item whose person's customer number matches, else `None`
         (falls through to the suggestion path).
     """
     if not transaction.structured_reference:
@@ -135,7 +135,7 @@ def _try_auto_match(
     if item is None or item.billing_run_id != decoded.billing_run_id:
         return None
     person = person_repo.get(connection, item.person_id)
-    if person is None or person.kundennummer != decoded.kundennummer:
+    if person is None or person.customer_number != decoded.customer_number:
         return None
     return MatchResult(
         status="auto_matched", matched_person_id=person.id, matched_billing_run_item_id=item.id
@@ -171,11 +171,11 @@ def _find_candidates(
 
         if counterparty_iban and candidate_person.iban and normalize_iban(candidate_person.iban) == counterparty_iban:
             confidence = "iban_exact"
-        elif candidate_person.kundennummer is not None and str(candidate_person.kundennummer) in remittance_numbers:
-            confidence = "kundennummer_text"
+        elif candidate_person.customer_number is not None and str(candidate_person.customer_number) in remittance_numbers:
+            confidence = "customer_number_text"
         else:
             ratio = difflib.SequenceMatcher(
-                None, transaction.counterparty_name.strip().lower(), candidate_person.anzeige_name.strip().lower()
+                None, transaction.counterparty_name.strip().lower(), candidate_person.display_name.strip().lower()
             ).ratio()
             if ratio >= _NAME_SIMILARITY_THRESHOLD:
                 confidence = "name_amount"
@@ -189,7 +189,7 @@ def _find_candidates(
         # assignment, no merge-with-existing check needed.
         best_by_person[candidate_person.id] = MatchCandidate(
             person_id=candidate_person.id,
-            person_name=candidate_person.anzeige_name,
+            person_name=candidate_person.display_name,
             billing_run_item_id=_best_matching_item_id(connection, candidate_person.id, transaction),
             confidence=confidence,
             name_similarity=name_similarity,
@@ -214,7 +214,7 @@ def _priority_for(confidence: str, name_similarity: Optional[float]) -> float:
     """
     if confidence == "iban_exact":
         return 3.0
-    if confidence == "kundennummer_text":
+    if confidence == "customer_number_text":
         return 2.0
     return 1.0 + (name_similarity or 0.0)
 

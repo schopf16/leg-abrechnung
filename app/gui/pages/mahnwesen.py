@@ -27,7 +27,7 @@ from app.models.person import Person
 
 
 PRINT_COLUMNS = [
-    ("Person", "person"), ("Kunden-Nr.", "kundennummer"), ("Stufe", "stufe"), ("Betrag (CHF)", "betrag"),
+    ("Person", "person"), ("Kunden-Nr.", "customer_number"), ("Stufe", "stufe"), ("Betrag (CHF)", "betrag"),
 ]
 
 
@@ -41,8 +41,8 @@ def _print_row(candidate: "mahnwesen.MahnKandidat") -> dict:
         A dict with the fields required by `PRINT_COLUMNS`.
     """
     return {
-        "person": candidate.person.anzeige_name,
-        "kundennummer": candidate.person.kundennummer_formatiert,
+        "person": candidate.person.display_name,
+        "customer_number": candidate.person.formatted_customer_number,
         "stufe": str(candidate.stufe),
         "betrag": f"{candidate.total_open_rappen / 100:.2f}",
     }
@@ -75,10 +75,10 @@ def mahnwesen_page() -> None:
             with ui.card().classes("w-full"):
                 with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(candidate.person.anzeige_name).classes("font-bold")
+                        ui.label(candidate.person.display_name).classes("font-bold")
                         ui.label(
                             f"{len(candidate.items)} offene Position(en), Kunden-Nr. "
-                            f"{candidate.person.kundennummer_formatiert}"
+                            f"{candidate.person.formatted_customer_number}"
                         ).classes("text-caption text-grey-6")
                     ui.badge(f"Stufe {candidate.stufe}", color="warning" if candidate.stufe == 1 else "negative")
                     ui.label(f"{candidate.total_open_rappen / 100:.2f} CHF").classes("font-bold ml-auto")
@@ -120,7 +120,7 @@ def mahnwesen_page() -> None:
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Ausschluss-Prozess vorbereiten?").classes("text-lg font-bold")
                 ui.label(
-                    f"Die 2. Mahnung an {person.anzeige_name} wurde soeben versendet. "
+                    f"Die 2. Mahnung an {person.display_name} wurde soeben versendet. "
                     "Falls die Zahlung weiterhin ausbleibt, kann der Ausschluss-Prozess "
                     "gestartet werden (beendet die Mitgliedschaft, nie die offene "
                     "Forderung -- siehe „Debitoren“)."
@@ -150,12 +150,12 @@ def mahnwesen_page() -> None:
             subject, body = mahnwesen.render_mahnung_text(settings, candidate)
             channel = (
                 "E-Mail (mit PDF-Anhang)"
-                if candidate.person.kontakt_email.strip() and not candidate.person.papierrechnung
+                if candidate.person.contact_email.strip() and not candidate.person.paper_invoice
                 else "nur PDF (zum Ausdrucken/Selbstversand -- keine E-Mail-Adresse oder Papierrechnung bevorzugt)"
             )
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
-                ui.label(f"{candidate.stufe}. Mahnung an {candidate.person.anzeige_name}").classes(
+                ui.label(f"{candidate.stufe}. Mahnung an {candidate.person.display_name}").classes(
                     "text-lg font-bold"
                 )
                 ui.label(f"Versandkanal: {channel}").classes("text-caption text-grey-6")
@@ -172,7 +172,7 @@ def mahnwesen_page() -> None:
                 async def do_send() -> None:
                     send_button.disable()
                     config = None
-                    if candidate.person.kontakt_email.strip() and not candidate.person.papierrechnung:
+                    if candidate.person.contact_email.strip() and not candidate.person.paper_invoice:
                         try:
                             config = get_graph_config()
                         except ConfigError as exc:
@@ -186,7 +186,7 @@ def mahnwesen_page() -> None:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
                         return
-                    safe_notify(f"{candidate.stufe}. Mahnung an {candidate.person.anzeige_name} versendet.", type="positive")
+                    safe_notify(f"{candidate.stufe}. Mahnung an {candidate.person.display_name} versendet.", type="positive")
                     dialog.close()
                     refresh_candidates()
                     refresh_history()
@@ -205,7 +205,7 @@ def mahnwesen_page() -> None:
         def refresh_history() -> None:
             with connection_scope() as connection:
                 logs = mahnung_log_repo.list_all(connection)
-                person_names = {p.id: p.anzeige_name for p in person_repo.list_all(connection)}
+                person_names = {p.id: p.display_name for p in person_repo.list_all(connection)}
             history_container.clear()
             with history_container:
                 if not logs:

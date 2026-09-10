@@ -30,11 +30,11 @@ def _make_live_db(path) -> None:
     person_repo.create(
         connection,
         Person(
-            id=None, anrede="", firma="", vorname="Original", nachname="",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name="Original", last_name="",
+            contact_email="", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
         ),
     )
     connection.close()
@@ -50,7 +50,7 @@ def test_create_backup_produces_restorable_snapshot(tmp_path):
 
     assert backup_path.exists()
     connection = sqlite3.connect(str(backup_path))
-    names = [row[0] for row in connection.execute("SELECT vorname FROM person")]
+    names = [row[0] for row in connection.execute("SELECT first_name FROM person")]
     connection.close()
     assert names == ["Original"]
 
@@ -81,11 +81,11 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
     person_repo.create(
         connection,
         Person(
-            id=None, anrede="", firma="", vorname="Added later", nachname="",
-            kontakt_email="", kontakt_telefon="",
-            rechnungsadresse_strasse="", rechnungsadresse_hausnummer="", rechnungsadresse_plz="",
-            rechnungsadresse_ort="", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None, papierrechnung=False, aktiv=True, created_at="",
+            id=None, salutation="", company="", first_name="Added later", last_name="",
+            contact_email="", contact_phone="",
+            billing_street="", billing_house_number="", billing_postal_code="",
+            billing_city="", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
         ),
     )
     connection.close()
@@ -94,14 +94,14 @@ def test_restore_backup_replaces_live_database_and_creates_safety_backup(tmp_pat
 
     # The live DB is back to the pre-change (backed up) state.
     connection = create_connection(db_path)
-    names = {row["vorname"] for row in connection.execute("SELECT vorname FROM person")}
+    names = {row["first_name"] for row in connection.execute("SELECT first_name FROM person")}
     connection.close()
     assert names == {"Original"}
 
     # A safety backup of the state just before restoring was taken.
     assert result.safety_backup_path.exists()
     safety_connection = sqlite3.connect(str(result.safety_backup_path))
-    safety_names = {row[0] for row in safety_connection.execute("SELECT vorname FROM person")}
+    safety_names = {row[0] for row in safety_connection.execute("SELECT first_name FROM person")}
     safety_connection.close()
     assert safety_names == {"Original", "Added later"}
 

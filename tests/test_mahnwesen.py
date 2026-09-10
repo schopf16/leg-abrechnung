@@ -18,16 +18,16 @@ from app.models.person import Person
 from app.pdf import mahnung_pdf
 
 
-def _person(db, name: str = "P", email: str = "p@example.invalid", papierrechnung: bool = False) -> "Person":
+def _person(db, name: str = "P", email: str = "p@example.invalid", paper_invoice: bool = False) -> "Person":
     person_id = person_repo.create(
         db,
         Person(
-            id=None, anrede="Frau", firma="", vorname=name, nachname="Muster",
-            kontakt_email=email, kontakt_telefon="",
-            rechnungsadresse_strasse="Weg", rechnungsadresse_hausnummer="1", rechnungsadresse_plz="3000",
-            rechnungsadresse_ort="Bern", rechnungsadresse_land="CH",
-            iban="", kundennummer=None, bkw_kundennummer=None,
-            papierrechnung=papierrechnung, aktiv=True, created_at="",
+            id=None, salutation="Frau", company="", first_name=name, last_name="Muster",
+            contact_email=email, contact_phone="",
+            billing_street="Weg", billing_house_number="1", billing_postal_code="3000",
+            billing_city="Bern", billing_country="CH",
+            iban="", customer_number=None, bkw_customer_number=None,
+            paper_invoice=paper_invoice, active=True, created_at="",
         ),
     )
     return person_repo.get(db, person_id)
@@ -53,7 +53,7 @@ def _billing_item(
             BillingRunItem(
                 id=None, billing_run_id=run_id, person_id=person_id,
                 consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                verwaltungsaufwand_bezug_rappen=0, papierrechnung_rappen=0,
+                verwaltungsaufwand_bezug_rappen=0, paper_invoice_rappen=0,
                 net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
             )
         ],
@@ -180,7 +180,7 @@ def test_send_mahnung_sends_email_with_pdf_attachment_and_advances_stufe(db, tmp
     assert pdf_path.exists()
     mock_send.assert_called_once()
     _, kwargs = mock_send.call_args
-    assert kwargs["to_address"] == person.kontakt_email
+    assert kwargs["to_address"] == person.contact_email
     assert kwargs["attachment_path"] == pdf_path
 
     updated_item = billing_run_repo.get_item(db, item.id)
@@ -193,9 +193,9 @@ def test_send_mahnung_sends_email_with_pdf_attachment_and_advances_stufe(db, tmp
     assert logs[0].billing_run_item_ids == [item.id]
 
 
-def test_send_mahnung_skips_email_for_papierrechnung_person_but_still_generates_pdf(db, tmp_path, monkeypatch):
+def test_send_mahnung_skips_email_for_paper_invoice_person_but_still_generates_pdf(db, tmp_path, monkeypatch):
     monkeypatch.setattr(mahnwesen, "OUTPUT_DIR", tmp_path)
-    person = _person(db, papierrechnung=True)
+    person = _person(db, paper_invoice=True)
     settings = settings_repo.get_settings(db)
     settings.address_street, settings.address_zip, settings.address_city = "Weg 1", "3000", "Bern"
     settings.qr_iban = "CH4431999123000889012"
