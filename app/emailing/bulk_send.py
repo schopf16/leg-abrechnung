@@ -43,15 +43,17 @@ def list_broadcast_recipients(connection) -> list[Person]:
 
 
 def list_leg_recipients(connection, leg_id: int) -> list[Person]:
-    """List the persons currently assigned to any Messpunkt of one LEG.
+    """List the persons currently or soon assigned to any Messpunkt of one LEG.
 
     Args:
         connection: Open SQLite connection.
         leg_id: LEG to resolve members for.
 
     Returns:
-        Persons with a currently active Zuordnung (see `Zuordnung.
-        covers`) to a Messpunkt in this LEG, deduplicated (a person can
+        Persons with a current-or-upcoming Zuordnung (`Zuordnung.
+        is_current_or_upcoming` -- an assignment entered ahead of its
+        start date, e.g. next quarter's move-ins prepared in advance,
+        counts too) to a Messpunkt in this LEG, deduplicated (a person can
         hold more than one Messpunkt in the same LEG), with a non-empty
         contact email. Purely a starting suggestion, same caveat as
         `list_broadcast_recipients`.
@@ -61,7 +63,7 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
     person_ids: dict[int, None] = {}  # insertion-ordered set
     for messpunkt in messpunkte:
         for zuordnung in zuordnung_repo.list_for_messpunkt(connection, messpunkt.id):
-            if zuordnung.covers(now):
+            if zuordnung.is_current_or_upcoming(now):
                 person_ids.setdefault(zuordnung.person_id, None)
 
     recipients = []
@@ -100,6 +102,8 @@ async def send_broadcast_email(
     *,
     scope: str,
     leg_id: Optional[int] = None,
+    attachment_path: Optional[Path] = None,
+    attachment_filename: Optional[str] = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> EmailSendResult:
     """Send a personalized email to each of an explicit list of recipients.
@@ -114,6 +118,12 @@ async def send_broadcast_email(
         body: Email body, may contain `{placeholder}`s.
         scope: `"alle"` or `"leg"`, recorded in the sent-history log.
         leg_id: LEG id, if `scope == "leg"`, else `None`.
+        attachment_path: Optional file attached to every recipient's copy
+            (the same one for the whole batch -- see `app.gui.pages.
+            email_versand`, which lets the administrator pick one file
+            for the send). `None` for no attachment.
+        attachment_filename: Filename shown for the attachment, required
+            if `attachment_path` is given.
         on_progress: Called as `on_progress(done, total)` after each send
             attempt (success, skip, or failure) -- lets the GUI show a
             live progress bar. Optional.
@@ -148,6 +158,8 @@ async def send_broadcast_email(
                 to_name=person.anzeige_name,
                 subject=rendered_subject,
                 body=rendered_body,
+                attachment_path=attachment_path,
+                attachment_filename=attachment_filename,
             )
             result.sent.append(person.anzeige_name)
             sent_emails.append(person.kontakt_email)
@@ -168,6 +180,7 @@ async def send_broadcast_email(
             subject=subject,
             body=body,
             recipient_emails=sent_emails,
+            attachment_filename=attachment_filename,
         )
     return result
 

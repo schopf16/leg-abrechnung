@@ -57,6 +57,12 @@ class LegSettings:
         onboarding_ueberfaellig_tage: Number of days a person's current
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
+        leg_gruendung_min_personen: Minimum `app.domain.participant_mix.
+            ParticipantMix.gesamt_personen` (Prosumer- plus Consumer-count)
+            a Trafokreis must reach, in addition to already having both a
+            Prosumer and a Consumer, before the app suggests splitting it
+            off its current multi-Trafokreis LEG into its own, better-
+            discounted one. Default 7.
         rechnung_email_betreff: Subject template for invoice emails (see
             `app.emailing.bulk_send.send_invoice_emails`), may contain
             `{placeholder}`s (see `app.emailing.templates`). Written once
@@ -100,6 +106,7 @@ class LegSettings:
     messpunkt_identifikator: str
     web_registration_cursor: int
     onboarding_ueberfaellig_tage: int
+    leg_gruendung_min_personen: int
     rechnung_email_betreff: str
     rechnung_email_text: str
     mahnung_neue_frist_tage: int
@@ -135,6 +142,7 @@ class LegSettings:
             messpunkt_identifikator=row["messpunkt_identifikator"],
             web_registration_cursor=row["web_registration_cursor"],
             onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
+            leg_gruendung_min_personen=row["leg_gruendung_min_personen"],
             rechnung_email_betreff=row["rechnung_email_betreff"],
             rechnung_email_text=row["rechnung_email_text"],
             mahnung_neue_frist_tage=row["mahnung_neue_frist_tage"],
@@ -188,6 +196,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             papierrechnung_rappen = ?,
             extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
             web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
+            leg_gruendung_min_personen = ?,
             rechnung_email_betreff = ?, rechnung_email_text = ?,
             mahnung_neue_frist_tage = ?, mahnung_bagatellgrenze_rappen = ?,
             mahnung1_email_betreff = ?, mahnung1_email_text = ?,
@@ -209,6 +218,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.messpunkt_identifikator,
             settings.web_registration_cursor,
             settings.onboarding_ueberfaellig_tage,
+            settings.leg_gruendung_min_personen,
             settings.rechnung_email_betreff,
             settings.rechnung_email_text,
             settings.mahnung_neue_frist_tage,

@@ -487,15 +487,20 @@ def abrechnung_page() -> None:
         def run_billing() -> None:
             """Compute (or recompute) the billing run for the selected LEG and quarter.
 
+            Only ever called from `confirm_rates_then_run_billing`, right
+            after that dialog's own `dialog.close()` -- every notification
+            below therefore needs `safe_notify`, not a plain `ui.notify`,
+            see `app.gui.safe_notify`'s module docstring.
+
             Returns:
                 None.
             """
             if leg_select.value is None:
-                ui.notify("Bitte eine LEG wählen.", type="warning")
+                safe_notify("Bitte eine LEG wählen.", type="warning")
                 return
             period = selector.selected_period
             if period is None:
-                ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
+                safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
                 return
             year, quarter = period
             try:
@@ -507,14 +512,14 @@ def abrechnung_page() -> None:
                 result_column.clear()
                 with result_column:
                     ui.label(f"⚠ {exc}").classes("text-negative")
-                ui.notify("Abrechnung nicht möglich: LEG-Zuweisung fehlt.", type="negative")
+                safe_notify("Abrechnung nicht möglich: LEG-Zuweisung fehlt.", type="negative")
                 return
             render_result(run, items, control_check, distribution)
-            refresh_runs_table()
-            ui.notify(
+            safe_notify(
                 f"Abrechnung für {leg_options[leg_select.value]}, Q{quarter} {year} erstellt.",
                 type="positive",
             )
+            refresh_runs_table()
 
         def confirm_rates_then_run_billing() -> None:
             """Show the currently configured billing rates for confirmation,

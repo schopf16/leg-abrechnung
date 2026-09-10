@@ -13,6 +13,7 @@ from app.backup.backup_service import (
 )
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
+from app.gui.safe_notify import safe_notify
 from app.models import settings as settings_repo
 
 
@@ -169,14 +170,19 @@ def backup_page() -> None:
                             confirm.close()
                             return
                         confirm.close()
-                        refresh_backups_table()
-                        ui.notify(
+                        # notify before refresh_backups_table() -- see
+                        # app.gui.safe_notify's module docstring for why a
+                        # plain ui.notify() here can raise "parent element
+                        # ... has been deleted" once the dialog it was
+                        # called from is gone.
+                        safe_notify(
                             "Wiederherstellung abgeschlossen. Sicherheits-Backup: "
                             f"{result.safety_backup_path.name}. Bitte die App neu "
                             "starten.",
                             type="positive",
                             timeout=10000,
                         )
+                        refresh_backups_table()
 
                     ui.button("Wiederherstellen", on_click=do_restore, color="negative")
             confirm.open()

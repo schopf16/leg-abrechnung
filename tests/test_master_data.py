@@ -302,6 +302,24 @@ def test_zuordnung_covers_respects_open_and_closed_ranges():
     assert not bounded.covers(_dt(2025, 4, 1))
 
 
+def test_zuordnung_is_current_or_upcoming_counts_a_not_yet_started_assignment():
+    """Unlike `covers`, a Zuordnung entered ahead of its start date (e.g.
+    next quarter's move-ins prepared in advance) already counts -- only
+    one that has actually ended (`gueltig_bis` in the past) does not."""
+    future = Zuordnung(
+        id=1, person_id=1, messpunkt_id=1,
+        gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+    )
+    assert not future.covers(_dt(2026, 9, 10))
+    assert future.is_current_or_upcoming(_dt(2026, 9, 10))
+
+    ended = Zuordnung(
+        id=2, person_id=2, messpunkt_id=1,
+        gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
+    )
+    assert not ended.is_current_or_upcoming(_dt(2025, 4, 1))
+
+
 def _dt(year: int, month: int, day: int):
     """Build a naive `datetime` at midnight for the given date.
 
@@ -336,6 +354,77 @@ def test_zuordnung_get_finds_by_id(db):
     assert found.person_id == person_id
 
     assert zuordnung_repo.get(db, zuordnung_id + 999) is None
+
+
+def test_get_relevant_for_messpunkt_prefers_the_already_started_one(db):
+    """Both an already-started and a not-yet-started Zuordnung exist --
+    the already-started one is the "currently assigned" answer."""
+    standort_id = _make_standort(db)
+    person_a = person_repo.create(db, _make_person("Anna"))
+    person_b = person_repo.create(db, _make_person("Beat"))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2026, 8, 31), created_at="",
+        ),
+    )
+    zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+        ),
+    )
+
+    found = zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 6, 1))
+    assert found is not None
+    assert found.person_id == person_a
+
+
+def test_get_relevant_for_messpunkt_falls_back_to_soonest_upcoming(db):
+    """Nothing has started yet -- falls back to the soonest-starting
+    upcoming Zuordnung instead of reporting "unassigned"."""
+    standort_id = _make_standort(db)
+    person_a = person_repo.create(db, _make_person("Anna"))
+    person_b = person_repo.create(db, _make_person("Beat"))
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2027, 3, 1), gueltig_bis=None, created_at="",
+        ),
+    )
+    zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+        ),
+    )
+
+    found = zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 9, 10))
+    assert found is not None
+    assert found.person_id == person_b
+
+
+def test_get_relevant_for_messpunkt_ignores_ended_zuordnung(db):
+    """A Zuordnung that has already ended is not "upcoming" -- an empty
+    history (or one with only past assignments) reports `None`."""
+    standort_id = _make_standort(db)
+    person_id = person_repo.create(db, _make_person())
+    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(standort_id=standort_id))
+    zuordnung_repo.create(
+        db,
+        Zuordnung(
+            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            gueltig_von=date(2020, 1, 1), gueltig_bis=date(2020, 12, 31), created_at="",
+        ),
+    )
+
+    assert zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 9, 10)) is None
 
 
 def test_find_warnings_detects_gap(db):

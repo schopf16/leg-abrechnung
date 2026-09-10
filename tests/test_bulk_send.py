@@ -3,7 +3,7 @@ orchestration -- graph_client is mocked throughout, no real network calls
 and no real SMTP/Graph server involved)."""
 
 import asyncio
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -116,6 +116,22 @@ def test_list_leg_recipients_includes_current_member(db):
     messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
     person_id = _person(db, "Anna", email="anna@example.invalid")
     _zuordnung(db, person_id, messpunkt_id, date(2020, 1, 1))
+
+    recipients = list_leg_recipients(db, leg_id)
+    assert [p.id for p in recipients] == [person_id]
+
+
+def test_list_leg_recipients_includes_not_yet_started_zuordnung(db):
+    """An administrator who pre-enters next quarter's move-ins weeks or
+    months in advance still gets them included -- this is the behaviour
+    real customer data forced: a strict "already started" check had every
+    LEG's recipient list come back empty until the Zuordnung's exact start
+    date arrived (`Zuordnung.is_current_or_upcoming`, unconditional)."""
+    leg_id = _leg(db)
+    standort_id = _standort(db)
+    messpunkt_id = _messpunkt(db, "CH-A", standort_id, leg_id)
+    person_id = _person(db, "Anna", email="anna@example.invalid")
+    _zuordnung(db, person_id, messpunkt_id, date.today() + timedelta(days=90))
 
     recipients = list_leg_recipients(db, leg_id)
     assert [p.id for p in recipients] == [person_id]
@@ -240,6 +256,27 @@ def test_send_broadcast_email_calls_on_progress_per_recipient(db):
         )
 
     assert progress_calls == [(1, 2), (2, 2)]
+
+
+def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(db, tmp_path):
+    person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
+    person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
+    attachment_path = tmp_path / "einladung.pdf"
+    attachment_path.write_bytes(b"%PDF-fake-content")
+
+    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
+         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+        asyncio.run(
+            send_broadcast_email(
+                db, "config", [person_a, person_b], "s", "b", scope="alle",
+                attachment_path=attachment_path, attachment_filename="einladung.pdf",
+            )
+        )
+
+    for call in mock_send.call_args_list:
+        assert call.kwargs["attachment_path"] == attachment_path
+        assert call.kwargs["attachment_filename"] == "einladung.pdf"
+    assert email_log_repo.list_all(db)[0].attachment_filename == "einladung.pdf"
 
 
 def test_send_broadcast_email_returns_early_for_no_recipients(db):

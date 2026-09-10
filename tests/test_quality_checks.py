@@ -347,6 +347,9 @@ def _messpunkt_richtung(
 
 
 def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_trafokreis(db):
+    """Below `LegSettings.leg_gruendung_min_personen` (default 7), a
+    non-one-sided Trafokreis with only 2 people is not flagged yet -- see
+    `test_check_leg_upgrade_potential_respects_configurable_min_personen`."""
     trafokreis_id = _trafokreis(db, "TK1")
     other_trafokreis_id = _trafokreis(db, "TK2")
     standort_id = _standort_in(db, trafokreis_id)
@@ -363,10 +366,46 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_trafokrei
             db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
         )
 
+    assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
+
+    settings = settings_repo.get_settings(db)
+    settings.leg_gruendung_min_personen = 2
+    settings_repo.update_settings(db, settings)
+
     warnings = check_leg_upgrade_potential(db)
 
     assert len(warnings) == 1
     assert warnings[0].link == "/trafokreise"
+
+
+def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
+    """Lowering the threshold below the default flags a Trafokreis that
+    the default 7 would leave unflagged; raising it above 2 hides it
+    again -- both directions of `LegSettings.leg_gruendung_min_personen`."""
+    trafokreis_id = _trafokreis(db, "TK1")
+    other_trafokreis_id = _trafokreis(db, "TK2")
+    standort_id = _standort_in(db, trafokreis_id)
+    other_standort_id = _standort_in(db, other_trafokreis_id, adresse="Anderswo")
+    mixed_leg_id = _leg(db)
+
+    person_id = _person(db)
+    bezug_id = _messpunkt_richtung(db, "CH1", standort_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    einspeisung_id = _messpunkt_richtung(db, "CH2", standort_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    other_person_id = _person(db, "Andere")
+    other_mp_id = _messpunkt_richtung(db, "CH3", other_standort_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
+        zuordnung_repo.create(
+            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        )
+
+    settings = settings_repo.get_settings(db)
+    settings.leg_gruendung_min_personen = 2
+    settings_repo.update_settings(db, settings)
+    assert len(check_leg_upgrade_potential(db)) == 1
+
+    settings.leg_gruendung_min_personen = 3
+    settings_repo.update_settings(db, settings)
+    assert check_leg_upgrade_potential(db) == []
 
 
 def test_check_trafokreis_einseitig_flags_producer_only_trafokreis(db):

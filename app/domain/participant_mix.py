@@ -10,23 +10,45 @@ Prosumer:Consumer participant-count ratio, and -- built on top of that --
 "could this Trafokreis now split off into its own LEG" once it has both
 sides but its participants are still folded into a larger, multi-
 Trafokreis LEG (a lower-BKW-discount arrangement, see
-`app.domain.leg_composition`).
+`app.domain.leg_composition`). That second question also requires the
+Trafokreis to have at least `LegSettings.leg_gruendung_min_personen`
+people overall (`ParticipantMix.gesamt_personen`, default 7) -- both
+sides being present is necessary but not sufficient: a Trafokreis with
+just one Prosumer and one Consumer is rarely worth founding a dedicated
+LEG over, so `leg_should_split`/`find_upgrade_candidates` take this as an
+explicit `min_personen` parameter rather than hardcoding it.
 
 Terms used here, deliberately simple (an earlier, more legally-precise
 model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
 StromVV -- turned out to need too much manual, hard-to-obtain data per
 Standort to be worth it):
 
-    Prosumer: a person with an active Zuordnung to at least one
+    Prosumer: a person with a current-or-upcoming Zuordnung (see
+        `app.models.zuordnung.Zuordnung.is_current_or_upcoming` -- counts
+        an assignment pre-entered ahead of its start date too, not just
+        ones already running today; real customer data made this the
+        permanent behaviour, not a toggle: an administrator who
+        pre-enters a whole future quarter's move-ins in advance had every
+        Trafokreis/LEG here show 0:0 under a strict "started today" rule,
+        until that date actually arrived) to at least one
         Einspeisung-Messpunkt in scope -- "kann Strom liefern". A person
         who both consumes and feeds in counts here too.
-    Consumer: a person with an active Zuordnung to at least one
-        Bezug-Messpunkt in scope -- "bezieht Strom". Same overlap applies.
+    Consumer: a person with a current-or-upcoming Zuordnung to at least
+        one Bezug-Messpunkt in scope -- "bezieht Strom". Same overlap
+        applies.
 
 A true prosumer (feeds in AND consumes) is deliberately counted on both
 sides -- the question this module answers is whether a supply side and a
 demand side both exist at all, not a strict partition of people into two
 disjoint camps.
+
+This is deliberately different from billing/distribution
+(`app.domain.distribution`) and the historical reading-completeness check
+(`app.domain.quality_checks.check_reading_completeness`), which both keep
+using the strict `Zuordnung.covers` unaffected by anything here --
+attributing energy to someone before their Zuordnung's exact start date
+would be a real correctness bug there, unlike for this module's
+"does/will this arrangement work" question.
 """
 
 import sqlite3
@@ -92,6 +114,24 @@ class ParticipantMix:
         return f"{self.prosumer_count}:{self.consumer_count}"
 
     @property
+    def gesamt_personen(self) -> int:
+        """The simple sum of `prosumer_count` and `consumer_count`.
+
+        A true prosumer is counted on both sides (see the module
+        docstring), so this is not a deduplicated headcount -- it is
+        exactly the two numbers shown together in `verhaeltnis` added up,
+        matching how an administrator reads that badge. Used to gate the
+        LEG-upgrade suggestion on `LegSettings.leg_gruendung_min_personen`
+        (see `leg_should_split`/`find_upgrade_candidates`): a Trafokreis
+        with both sides present but too few people overall is not worth
+        splitting off into its own LEG.
+
+        Returns:
+            `prosumer_count + consumer_count`.
+        """
+        return self.prosumer_count + self.consumer_count
+
+    @property
     def hinweis(self) -> Optional[str]:
         """A German one-liner if exactly one side is empty, else `None`.
 
@@ -123,7 +163,7 @@ def compute_participant_mix(
     Args:
         connection: Open SQLite connection.
         standort_ids: Standorte to include.
-        stichtag: Reference date for which Zuordnungen count as active,
+        stichtag: Reference date for which Zuordnungen count as relevant,
             `None` for today.
 
     Returns:
@@ -138,7 +178,7 @@ def compute_participant_mix(
         if messpunkt.standort_id not in standort_ids_set:
             continue
         for zuordnung in zuordnung_repo.list_for_messpunkt(connection, messpunkt.id):
-            if not zuordnung.covers(moment):
+            if not zuordnung.is_current_or_upcoming(moment):
                 continue
             if messpunkt.messrichtung == MESSRICHTUNG_EINSPEISUNG:
                 prosumer_ids.add(zuordnung.person_id)
@@ -186,37 +226,46 @@ def compute_participant_mix_for_leg(
 
 
 def leg_should_split(
-    connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None
+    connection: sqlite3.Connection, leg_id: int, stichtag: Optional[date] = None,
+    *, min_personen: int = 0,
 ) -> bool:
     """Whether a mixed LEG's Trafokreise would each work fine standalone.
 
     If every Trafokreis a LEG spans would, on its own, already have both a
-    Prosumer and a Consumer (see `compute_participant_mix_for_trafokreis`),
-    splitting the LEG into one dedicated LEG per Trafokreis strands nobody
-    -- and earns every one of them the better single-Trafokreis BKW
-    discount instead of today's shared, lower one (the app never computes
-    or displays the actual rate, see `app.domain.leg_composition`).
+    Prosumer and a Consumer (see `compute_participant_mix_for_trafokreis`)
+    and enough people overall, splitting the LEG into one dedicated LEG
+    per Trafokreis strands nobody -- and earns every one of them the
+    better single-Trafokreis BKW discount instead of today's shared, lower
+    one (the app never computes or displays the actual rate, see
+    `app.domain.leg_composition`).
 
     Args:
         connection: Open SQLite connection.
         leg_id: Primary key of the LEG.
         stichtag: Reference date, `None` for today.
+        min_personen: Minimum `ParticipantMix.gesamt_personen` each
+            Trafokreis must reach on its own for the split to be
+            suggested -- pass `LegSettings.leg_gruendung_min_personen`
+            (default 0, i.e. no minimum, for callers that only care about
+            the plain both-sides-present question).
 
     Returns:
         `True` only if the LEG spans more than one Trafokreis (see
         `app.domain.leg_composition.compute_leg_composition`) AND *every*
-        one of those Trafokreise is independently non-one-sided --
-        deliberately requiring all of them, not just one: if even a single
-        Trafokreis would be one-sided alone, splitting would strand its
+        one of those Trafokreise is independently non-one-sided and has
+        at least `min_personen` people -- deliberately requiring all of
+        them, not just one: if even a single Trafokreis would be
+        one-sided or too small alone, splitting would strand its
         participants, so the LEG stays better off shared for now.
     """
     composition = compute_leg_composition(connection, leg_id)
     if not composition.is_mixed:
         return False
-    return all(
-        not compute_participant_mix_for_trafokreis(connection, trafokreis.id, stichtag).ist_einseitig
-        for trafokreis in composition.trafokreise
-    )
+    for trafokreis in composition.trafokreise:
+        mix = compute_participant_mix_for_trafokreis(connection, trafokreis.id, stichtag)
+        if mix.ist_einseitig or mix.gesamt_personen < min_personen:
+            return False
+    return True
 
 
 @dataclass
@@ -228,9 +277,9 @@ class UpgradeCandidate:
         mixed_legs: The LEGs currently used by this Trafokreis's
             participants that span more than one Trafokreis -- these are
             the ones a dedicated LEG would let them leave.
-        person_count: Distinct persons (via an active Zuordnung) at this
-            Trafokreis whose Messpunkt currently belongs to one of
-            `mixed_legs`.
+        person_count: Distinct persons (via a current-or-upcoming
+            Zuordnung) at this Trafokreis whose Messpunkt currently
+            belongs to one of `mixed_legs`.
         mix: The hypothetical solo-Trafokreis `ParticipantMix` that shows
             this is now viable.
     """
@@ -242,7 +291,7 @@ class UpgradeCandidate:
 
 
 def find_upgrade_candidates(
-    connection: sqlite3.Connection, stichtag: Optional[date] = None
+    connection: sqlite3.Connection, stichtag: Optional[date] = None, *, min_personen: int = 0
 ) -> list[UpgradeCandidate]:
     """Find Trafokreise that now have both sides but are still split across
     a multi-Trafokreis LEG.
@@ -250,13 +299,21 @@ def find_upgrade_candidates(
     Args:
         connection: Open SQLite connection.
         stichtag: Reference date, `None` for today.
+        min_personen: Minimum `ParticipantMix.gesamt_personen` a Trafokreis
+            must reach to be suggested -- pass `LegSettings.
+            leg_gruendung_min_personen` (default 0, i.e. no minimum). A
+            Trafokreis with only, say, one Prosumer and one Consumer is
+            technically non-one-sided but rarely worth founding a
+            dedicated LEG over; this keeps the suggestion from firing
+            until there is a real number of people behind it.
 
     Returns:
         One `UpgradeCandidate` per Trafokreis with a newly-workable
-        Prosumer/Consumer mix whose participants are (at least partly)
-        still in a mixed LEG. A Trafokreis already fully moved into a
-        dedicated LEG of its own produces no candidate -- the
-        recommendation is already acted on.
+        Prosumer/Consumer mix (both sides present, `gesamt_personen >=
+        min_personen`) whose participants are (at least partly) still in
+        a mixed LEG. A Trafokreis already fully moved into a dedicated
+        LEG of its own produces no candidate -- the recommendation is
+        already acted on.
     """
     moment = _moment(stichtag)
     standorte = standort_repo.list_all(connection)
@@ -270,7 +327,7 @@ def find_upgrade_candidates(
             continue
 
         mix = compute_participant_mix(connection, list(standort_ids), stichtag)
-        if mix.ist_einseitig:
+        if mix.ist_einseitig or mix.gesamt_personen < min_personen:
             continue
 
         leg_ids_here = {
@@ -292,7 +349,7 @@ def find_upgrade_candidates(
             if mp.standort_id not in standort_ids or mp.leg_id not in mixed_leg_ids:
                 continue
             for zuordnung in zuordnung_repo.list_for_messpunkt(connection, mp.id):
-                if zuordnung.covers(moment):
+                if zuordnung.is_current_or_upcoming(moment):
                     person_ids.add(zuordnung.person_id)
 
         candidates.append(

@@ -1110,4 +1110,65 @@ Freundliche Grüsse';
             ALTER TABLE messpunkt DROP COLUMN betrieb_max_500h;
         """,
     ),
+    Migration(
+        version=33,
+        description="Add leg_settings.zuordnung_termine_ignorieren: a global, "
+        "off-by-default switch for whether the Trafokreis/LEG Prosumer:Consumer "
+        "overview (app.domain.participant_mix) and the 'Personen einer LEG' "
+        "E-Mail-Empfaengerliste (app.emailing.bulk_send.list_leg_recipients) "
+        "count a Zuordnung whose gueltig_von has not started yet -- found via a "
+        "real customer database where every Zuordnung was pre-entered for the "
+        "following quarter, making every overview show 0:0 and every LEG email "
+        "have zero recipients until that date actually arrived. Off (0, "
+        "'Termine beruecksichtigen') matches the strict, pre-existing "
+        "Zuordnung.covers() behaviour; on (1) switches every affected view to "
+        "Zuordnung.is_current_or_upcoming() instead. Purely additive.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN zuordnung_termine_ignorieren INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
+    Migration(
+        version=34,
+        description="Remove migration 33's global switch again: rather than a "
+        "toggle, ignoring a Zuordnung's start date is now simply the permanent "
+        "behaviour everywhere it matters (Trafokreis/LEG Prosumer:Consumer "
+        "overview, LEG-E-Mail-Empfaengerliste, and now also the 'currently "
+        "assigned person' shown on Messpunkte/Standorte/Personen -- see "
+        "app.models.zuordnung.get_relevant_for_messpunkt) -- billing/"
+        "distribution and the historical reading-completeness check keep using "
+        "the strict Zuordnung.covers() unaffected by any of this, as they "
+        "always have. A not-yet-started Zuordnung is marked in the UI instead "
+        "of hidden, so what is upcoming vs. already active stays visible "
+        "without a setting to remember. Drops leg_settings."
+        "zuordnung_termine_ignorieren.",
+        sql="""
+            ALTER TABLE leg_settings DROP COLUMN zuordnung_termine_ignorieren;
+        """,
+    ),
+    Migration(
+        version=35,
+        description="Add leg_settings.leg_gruendung_min_personen: the "
+        "minimum number of people (app.domain.participant_mix.ParticipantMix."
+        "gesamt_personen -- Prosumer- plus Consumer-count) a Trafokreis must "
+        "have, in addition to already having both a Prosumer and a Consumer, "
+        "before the app suggests splitting it off its current multi-"
+        "Trafokreis LEG into its own, better-discounted one (Trafokreise/LEGs "
+        "overview badges and the dashboard's price-optimization hint). "
+        "Editable in Einstellungen; defaults to 7. Purely additive.",
+        sql="""
+            ALTER TABLE leg_settings ADD COLUMN leg_gruendung_min_personen INTEGER NOT NULL DEFAULT 7;
+        """,
+    ),
+    Migration(
+        version=36,
+        description="Add email_broadcast_log.attachment_filename: records "
+        "the name of the file (if any) an administrator attached to a "
+        "broadcast/LEG email send (app.emailing.bulk_send.send_broadcast_email, "
+        "app.gui.pages.email_versand), so the sent-history stays a complete "
+        "record of what was actually sent. NULL for a send without an "
+        "attachment, including every existing row. Purely additive.",
+        sql="""
+            ALTER TABLE email_broadcast_log ADD COLUMN attachment_filename TEXT;
+        """,
+    ),
 ]

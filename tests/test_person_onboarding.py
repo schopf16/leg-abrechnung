@@ -27,7 +27,7 @@ def _person(db, name: str = "Test") -> int:
 
 def test_migration_20_creates_person_onboarding_table_and_threshold_column(db):
     """A fresh database (migrated by the `db` fixture) has the new table/column."""
-    assert get_schema_version(db) == 32
+    assert get_schema_version(db) == 36
     assert settings_repo.get_settings(db).onboarding_ueberfaellig_tage == 30
     assert person_onboarding_repo.list_all(db) == []
 

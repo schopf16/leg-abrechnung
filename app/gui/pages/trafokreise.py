@@ -19,6 +19,8 @@ from app.db.connection import connection_scope
 from app.domain.participant_mix import compute_participant_mix_for_trafokreis, find_upgrade_candidates
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
+from app.gui.safe_notify import safe_notify
+from app.models import settings as settings_repo
 from app.models import standort as standort_repo
 from app.models import trafokreis as trafokreis_repo
 from app.models.trafokreis import Trafokreis, TrafokreisInUseError
@@ -49,7 +51,9 @@ def _mix_badge(mix) -> str:
     return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
 
 
-def _to_row(connection, trafokreis: Trafokreis, standort_ids: set[int], upgrade_trafokreis_ids: set[int]) -> dict:
+def _to_row(
+    connection, trafokreis: Trafokreis, standort_ids: set[int], upgrade_trafokreis_ids: set[int],
+) -> dict:
     """Convert a `Trafokreis` into a row dict backing both the card and the printout.
 
     Args:
@@ -172,9 +176,11 @@ def trafokreise_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
+                min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
                 standorte = standort_repo.list_all(connection)
                 upgrade_trafokreis_ids = {
-                    c.trafokreis.id for c in find_upgrade_candidates(connection)
+                    c.trafokreis.id
+                    for c in find_upgrade_candidates(connection, min_personen=min_personen)
                 }
                 all_rows = [
                     _to_row(
@@ -274,8 +280,12 @@ def trafokreise_page() -> None:
                         error_label.text = f"Fehler beim Speichern: {exc}"
                         return
                     dialog.close()
+                    # notify before refresh() -- see app.gui.safe_notify's
+                    # module docstring for why a plain ui.notify() here can
+                    # raise "parent element ... has been deleted" once the
+                    # card this dialog was opened from is gone.
+                    safe_notify("Gespeichert.", type="positive")
                     refresh()
-                    ui.notify("Gespeichert.", type="positive")
 
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
@@ -318,11 +328,12 @@ def trafokreise_page() -> None:
                                 trafokreis_repo.delete(connection, trafokreis_id)
                         except TrafokreisInUseError as exc:
                             confirm.close()
-                            ui.notify(str(exc), type="negative")
+                            safe_notify(str(exc), type="negative")
                             return
                         confirm.close()
+                        # notify before refresh() -- see save() above for why
+                        safe_notify("Gelöscht.", type="warning")
                         refresh()
-                        ui.notify("Gelöscht.", type="warning")
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()

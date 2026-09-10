@@ -493,14 +493,27 @@ def person_detail_page(person_id: int) -> None:
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")
         leg_warnings_column = ui.column().classes("w-full")
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        detail_table.add_slot(
+            "body-cell-gueltig_von",
+            r'''
+            <q-td :props="props" :class="props.row.is_future ? 'text-orange-8' : ''">
+                {{ props.value }}
+            </q-td>
+            ''',
+        )
 
         def refresh_detail() -> None:
             """Reload the person's Zuordnung → Messpunkt (→ LEG, → Standort
             → Trafokreis) join, and warn if any involved LEG mixes
             Trafokreise.
 
-            Filters to only currently valid Zuordnungen unless
-            `show_all_switch` is on.
+            Filters to only current-or-upcoming Zuordnungen (not yet
+            ended, `gueltig_von` may lie in the future -- see
+            `app.models.zuordnung.Zuordnung.is_current_or_upcoming`)
+            unless `show_all_switch` is on, which also shows past,
+            already-ended ones ("Historie"). `gueltig_von`/`gueltig_bis`
+            are shown as explicit columns, so a not-yet-started row is
+            still distinguishable without extra marking.
 
             Returns:
                 None.
@@ -511,10 +524,8 @@ def person_detail_page(person_id: int) -> None:
                 rows = []
                 leg_ids_involved: set[int] = set()
                 for z in zuordnungen:
-                    is_current = z.gueltig_von <= today and (
-                        z.gueltig_bis is None or z.gueltig_bis >= today
-                    )
-                    if not show_all_switch.value and not is_current:
+                    is_relevant = z.gueltig_bis is None or z.gueltig_bis >= today
+                    if not show_all_switch.value and not is_relevant:
                         continue
                     mp = messpunkt_repo.get(inner_connection, z.messpunkt_id)
                     standort = (
@@ -542,6 +553,7 @@ def person_detail_page(person_id: int) -> None:
                             "leg": leg.name if leg else "-",
                             "gueltig_von": z.gueltig_von.isoformat(),
                             "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
+                            "is_future": z.gueltig_von > today,
                         }
                     )
                 mixed_warnings = []

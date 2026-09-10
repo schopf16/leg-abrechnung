@@ -115,6 +115,7 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     assert mix.consumer_count == 1
     assert mix.ist_einseitig is False
     assert mix.verhaeltnis == "1:1"
+    assert mix.gesamt_personen == 2  # a true prosumer is counted on both sides, see above
 
 
 def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
@@ -128,6 +129,25 @@ def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
 
     assert mix.consumer_count == 0
     assert mix.prosumer_count == 0
+
+
+def test_not_yet_started_zuordnung_counts_as_prosumer_and_consumer(db):
+    """Real customer data surfaced this: every LEG showed 0:0 because every
+    Zuordnung was pre-entered for the following quarter's move-ins. A
+    not-yet-started Zuordnung is now always relevant here (`Zuordnung.
+    is_current_or_upcoming`), not just once its start date arrives."""
+    trafokreis_id = _trafokreis(db, "TK1")
+    standort_id = _standort(db, trafokreis_id)
+    person_id = _person(db)
+    bezug_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, standort_id, None, MESSRICHTUNG_EINSPEISUNG)
+    _zuordnung(db, person_id, bezug_id, date(2026, 12, 1))
+    _zuordnung(db, person_id, einspeisung_id, date(2026, 12, 1))
+
+    mix = participant_mix.compute_participant_mix(db, [standort_id], stichtag=date(2026, 9, 10))
+
+    assert mix.consumer_count == 1
+    assert mix.prosumer_count == 1
 
 
 def test_empty_scope_is_not_flagged_as_einseitig(db):
@@ -204,6 +224,35 @@ def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
     assert [c for c in candidates if c.trafokreis.id == trafokreis_id] == []
 
 
+def test_upgrade_candidate_hidden_below_min_personen(db):
+    """A Trafokreis with both sides present but too few people overall is
+    not suggested -- the same setup that produces a candidate with
+    `min_personen=0` (the default) produces none once the threshold
+    exceeds the 2 people actually present."""
+    trafokreis_id = _trafokreis(db, "TK1")
+    other_trafokreis_id = _trafokreis(db, "TK2")
+    standort_id = _standort(db, trafokreis_id)
+    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+
+    mixed_leg_id = _leg(db, "Gemischte LEG")
+    person_id = _person(db)
+    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
+    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    other_person_id = _person(db, "Andere")
+    other_mp_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
+
+    candidates = participant_mix.find_upgrade_candidates(db, min_personen=3)
+
+    assert [c for c in candidates if c.trafokreis.id == trafokreis_id] == []
+
+    candidates = participant_mix.find_upgrade_candidates(db, min_personen=2)
+
+    assert len([c for c in candidates if c.trafokreis.id == trafokreis_id]) == 1
+
+
 def test_no_upgrade_candidate_for_a_still_one_sided_trafokreis(db):
     """Even in a mixed LEG, a Trafokreis with only one side present is not
     an upgrade candidate -- it genuinely cannot stand alone yet."""
@@ -266,6 +315,32 @@ def test_leg_should_not_split_when_one_trafokreis_would_be_one_sided_alone(db):
         _zuordnung(db, pid, mp_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, mixed_leg_id) is False
+
+
+def test_leg_should_not_split_below_min_personen(db):
+    """Every Trafokreis is independently non-one-sided (would split under
+    the default `min_personen=0`), but each only has 2 people -- raising
+    the threshold above that turns the recommendation off again."""
+    trafokreis_id = _trafokreis(db, "TK1")
+    other_trafokreis_id = _trafokreis(db, "TK2")
+    standort_id = _standort(db, trafokreis_id)
+    other_standort_id = _standort(db, other_trafokreis_id, adresse="Anderswo")
+    mixed_leg_id = _leg(db, "Gemischte LEG")
+
+    person_id = _person(db)
+    bezug_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    einspeisung_id = _messpunkt(db, standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    other_person_id = _person(db, "Andere")
+    other_bezug_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_BEZUG)
+    other_einspeisung_id = _messpunkt(db, other_standort_id, mixed_leg_id, MESSRICHTUNG_EINSPEISUNG)
+    for pid, mp_id in (
+        (person_id, bezug_id), (person_id, einspeisung_id),
+        (other_person_id, other_bezug_id), (other_person_id, other_einspeisung_id),
+    ):
+        _zuordnung(db, pid, mp_id, date(2026, 1, 1))
+
+    assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=2) is True
+    assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=3) is False
 
 
 def test_leg_should_not_split_when_not_mixed(db):

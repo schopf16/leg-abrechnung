@@ -14,6 +14,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
+from app.gui.safe_notify import safe_notify
 from app.models import signature as signature_repo
 from app.models.signature import Signature
 
@@ -188,8 +189,12 @@ def signaturen_page() -> None:
                         error_label.text = f"Fehler beim Speichern: {exc}"
                         return
                     dialog.close()
+                    # notify before refresh() -- see app.gui.safe_notify's
+                    # module docstring for why a plain ui.notify() here can
+                    # raise "parent element ... has been deleted" once the
+                    # dialog it was called from is gone.
+                    safe_notify("Gespeichert.", type="positive")
                     refresh()
-                    ui.notify("Gespeichert.", type="positive")
 
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
@@ -233,8 +238,9 @@ def signaturen_page() -> None:
                         with connection_scope() as connection:
                             signature_repo.delete(connection, signature_id)
                         confirm.close()
+                        # notify before refresh() -- see save() above for why
+                        safe_notify("Gelöscht.", type="warning")
                         refresh()
-                        ui.notify("Gelöscht.", type="warning")
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()

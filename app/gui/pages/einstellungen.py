@@ -136,6 +136,7 @@ def einstellungen_page() -> None:
                     messpunkt_identifikator=current.messpunkt_identifikator,
                     web_registration_cursor=current.web_registration_cursor,
                     onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
+                    leg_gruendung_min_personen=current.leg_gruendung_min_personen,
                     rechnung_email_betreff=current.rechnung_email_betreff,
                     rechnung_email_text=current.rechnung_email_text,
                     mahnung_neue_frist_tage=current.mahnung_neue_frist_tage,
@@ -237,6 +238,49 @@ def einstellungen_page() -> None:
                 ui.notify("Aufnahmeprozess-Einstellung gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save_onboarding_threshold).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("LEG-Gründung").classes("text-lg font-bold")
+        ui.label(
+            "Ein Trafokreis braucht mindestens einen Prosumer und einen "
+            "Consumer, um lokal verteilen zu können -- das prüft die App "
+            "immer. Zusätzlich muss er insgesamt mindestens so viele "
+            "Personen (Prosumer- plus Consumer-Anzahl) haben, wie hier "
+            "hinterlegt, damit „Trafokreise“, „LEGs“ und die Übersicht "
+            "vorschlagen, ihn aus einer LEG mit mehreren Trafokreisen in "
+            "eine eigene, besser rabattierte LEG auszugliedern."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            leg_gruendung_min_personen = ui.number(
+                "Mindestanzahl Personen",
+                value=current.leg_gruendung_min_personen,
+                min=1,
+                step=1,
+                format="%.0f",
+            ).classes("w-full")
+            leg_gruendung_error = ui.label("").classes("text-negative")
+
+            def save_leg_gruendung_min_personen() -> None:
+                """Validate and persist the LEG-founding minimum person count.
+
+                Returns:
+                    None.
+                """
+                if (
+                    leg_gruendung_min_personen.value is None
+                    or leg_gruendung_min_personen.value < 1
+                ):
+                    leg_gruendung_error.text = "Muss mindestens 1 sein."
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.leg_gruendung_min_personen = int(leg_gruendung_min_personen.value)
+                    settings_repo.update_settings(connection, settings)
+                leg_gruendung_error.text = ""
+                ui.notify("LEG-Gründung-Einstellung gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_leg_gruendung_min_personen).classes("mt-2")
 
         ui.separator().classes("my-6")
 

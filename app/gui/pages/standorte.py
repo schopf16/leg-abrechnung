@@ -2,13 +2,14 @@
 detail drill-down showing the site's Messpunkte.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
+from app.gui.safe_notify import safe_notify
 from app.gui.standort_form import open_standort_form
 from app.models import leg as leg_repo
 from app.models import messpunkt as messpunkt_repo
@@ -27,22 +28,26 @@ COLUMNS = [
 ]
 
 
-def _current_person_name(connection, messpunkt_id: int) -> str:
-    """Find the name of the Person currently assigned to a Messpunkt.
+def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
+    """Find the name of the Person (currently or soon) assigned to a Messpunkt.
 
     Args:
         connection: Open SQLite connection.
         messpunkt_id: Primary key of the metering point.
 
     Returns:
-        The current person's name, or "-" if unassigned today.
+        `(name, is_future)`, see `app.gui.pages.messpunkte._current_person_display`
+        (identical logic, duplicated here since this page needs its own
+        `ui.table`-row shape) -- `name` is "-" if there is no current or
+        upcoming Zuordnung at all.
     """
-    today = date.today()
-    for z in zuordnung_repo.list_for_messpunkt(connection, messpunkt_id):
-        if z.gueltig_von <= today and (z.gueltig_bis is None or z.gueltig_bis >= today):
-            person = person_repo.get(connection, z.person_id)
-            return person.anzeige_name if person else "?"
-    return "-"
+    zuordnung = zuordnung_repo.get_relevant_for_messpunkt(connection, messpunkt_id, datetime.now())
+    if zuordnung is None:
+        return "-", False
+    person = person_repo.get(connection, zuordnung.person_id)
+    name = person.anzeige_name if person else "?"
+    is_future = zuordnung.gueltig_von > date.today()
+    return name, is_future
 
 
 def _to_row(standort: Standort, trafokreise: dict) -> dict:
@@ -207,8 +212,12 @@ def standorte_page() -> None:
                         with connection_scope() as connection:
                             standort_repo.delete(connection, standort_id)
                         confirm.close()
+                        # notify before refresh() -- see app.gui.safe_notify's
+                        # module docstring for why a plain ui.notify() here
+                        # can raise "parent element ... has been deleted"
+                        # once the dialog it was called from is gone.
+                        safe_notify("Gelöscht.", type="warning")
                         refresh()
-                        ui.notify("Gelöscht.", type="warning")
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
@@ -240,7 +249,7 @@ def standort_detail_page(standort_id: int) -> None:
         )
         messpunkte = messpunkt_repo.list_for_standort(connection, standort_id) if standort else []
         legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
-        person_names = {mp.id: _current_person_name(connection, mp.id) for mp in messpunkte}
+        person_display = {mp.id: _current_person_display(connection, mp.id) for mp in messpunkte}
 
     with page_frame(
         "/standorte", "Standort" if standort is None else standort.adresse_vollstaendig
@@ -258,7 +267,7 @@ def standort_detail_page(standort_id: int) -> None:
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")
         if messpunkte:
-            ui.table(
+            messpunkte_table = ui.table(
                 columns=[
                     {"name": "messpunkt_bezeichnung", "label": "Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left"},
                     {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
@@ -271,11 +280,20 @@ def standort_detail_page(standort_id: int) -> None:
                         "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
                         "messrichtung": "Bezug" if mp.is_bezug else "Einspeisung",
                         "leg": legs[mp.leg_id].name if mp.leg_id in legs else "-",
-                        "person": person_names.get(mp.id, "-"),
+                        "person": person_display.get(mp.id, ("-", False))[0],
+                        "person_is_future": person_display.get(mp.id, ("-", False))[1],
                     }
                     for mp in messpunkte
                 ],
                 row_key="id",
             ).classes("w-full mt-2")
+            messpunkte_table.add_slot(
+                "body-cell-person",
+                r'''
+                <q-td :props="props" :class="props.row.person_is_future ? 'text-orange-8' : ''">
+                    {{ props.value }}<span v-if="props.row.person_is_future"> (bevorstehend)</span>
+                </q-td>
+                ''',
+            )
         else:
             ui.label("Keine Messpunkte an diesem Standort.")

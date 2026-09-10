@@ -451,13 +451,13 @@ def web_registrierungen_page() -> None:
                             token = get_leg_api_token()
                         except ConfigError as exc:
                             confirm.close()
-                            ui.notify(str(exc), type="negative", timeout=8000)
+                            safe_notify(str(exc), type="negative", timeout=8000)
                             return
                         try:
                             delete_submissions([reg.cloudflare_id], token)
                         except (CloudflareAuthError, CloudflareApiError) as exc:
                             confirm.close()
-                            ui.notify(str(exc), type="negative", timeout=8000)
+                            safe_notify(str(exc), type="negative", timeout=8000)
                             return
                         with connection_scope() as connection:
                             web_registration_repo.delete(connection, reg.id)

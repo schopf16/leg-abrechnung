@@ -241,14 +241,19 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
     """Flag Trafokreise that could now split off into their own, better-
     discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
 
+    Gated on `LegSettings.leg_gruendung_min_personen` -- a Trafokreis with
+    both a Prosumer and a Consumer but too few people overall is not
+    flagged, see that setting's docstring.
+
     Args:
         connection: Open SQLite connection.
 
     Returns:
         A `QualityWarning` per Trafokreis with newly-viable upgrade potential.
     """
+    min_personen = settings_repo.get_settings(connection).leg_gruendung_min_personen
     warnings: list[QualityWarning] = []
-    for candidate in participant_mix.find_upgrade_candidates(connection):
+    for candidate in participant_mix.find_upgrade_candidates(connection, min_personen=min_personen):
         leg_names = ", ".join(f"„{leg.name}“" for leg in candidate.mixed_legs)
         warnings.append(
             QualityWarning(

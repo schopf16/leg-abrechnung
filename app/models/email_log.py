@@ -29,6 +29,8 @@ class EmailBroadcastLog:
         recipient_emails: Email addresses of everyone the send actually
             succeeded for (not everyone it was attempted for) -- the
             honest record of who really got this message.
+        attachment_filename: Name of the file attached to this send, or
+            `None` if it was sent without an attachment.
     """
 
     id: Optional[int]
@@ -38,6 +40,7 @@ class EmailBroadcastLog:
     subject: str
     body: str
     recipient_emails: list[str] = field(default_factory=list)
+    attachment_filename: Optional[str] = None
 
     @property
     def recipient_count(self) -> int:
@@ -66,6 +69,7 @@ class EmailBroadcastLog:
             subject=row["subject"],
             body=row["body"],
             recipient_emails=json.loads(row["recipient_emails"]),
+            attachment_filename=row["attachment_filename"],
         )
 
 
@@ -77,6 +81,7 @@ def create(
     subject: str,
     body: str,
     recipient_emails: list[str],
+    attachment_filename: Optional[str] = None,
 ) -> int:
     """Record one completed broadcast/LEG email send.
 
@@ -87,6 +92,8 @@ def create(
         subject: The subject template used (with placeholders, unrendered).
         body: The body template used (with placeholders, unrendered).
         recipient_emails: Email addresses actually reached.
+        attachment_filename: Name of the file attached to this send, or
+            `None` if it was sent without one.
 
     Returns:
         The primary key of the new log entry.
@@ -94,8 +101,8 @@ def create(
     cursor = connection.execute(
         """
         INSERT INTO email_broadcast_log
-            (sent_at, scope, leg_id, subject, body, recipient_count, recipient_emails)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (sent_at, scope, leg_id, subject, body, recipient_count, recipient_emails, attachment_filename)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(),
@@ -105,6 +112,7 @@ def create(
             body,
             len(recipient_emails),
             json.dumps(recipient_emails),
+            attachment_filename,
         ),
     )
     connection.commit()

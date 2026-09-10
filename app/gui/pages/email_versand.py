@@ -8,8 +8,18 @@ else received the message. The recipient list resolved from "Alle
 Personen"/"eine LEG" is only a starting suggestion: the administrator can
 remove or add individual people before sending (step 2), which affects
 only this one send, never the underlying LEG membership.
+
+Step 3 ("E-Mail verfassen") also accepts one optional attachment -- the
+same file for every recipient of this send, up to `app.emailing.
+graph_client.MAX_INLINE_ATTACHMENT_BYTES`. It is kept in memory
+(`attachment_bytes`) until `do_send()` actually sends, at which point it
+is written to a temp file (the shape `graph_client.send_email` expects,
+matching how an invoice PDF is attached) and removed again immediately
+afterwards, success or failure -- never left lying around.
 """
 
+import tempfile
+from pathlib import Path
 from typing import Optional
 
 from nicegui import ui
@@ -110,6 +120,12 @@ def email_versand_page() -> None:
         signature_options = {None: "Keine Signatur", **{s.id: s.name for s in signatures_by_id.values()}}
 
         recipients: list[Person] = []
+        # The attachment is kept in memory, not written to a temp file
+        # until do_send() actually sends -- so navigating away without
+        # sending never leaves a stray file behind, see do_send()'s
+        # try/finally.
+        attachment_bytes: Optional[bytes] = None
+        attachment_filename: Optional[str] = None
 
         with ui.stepper().props("vertical").classes("w-full") as stepper:
             with ui.step("scope", title="Empfänger-Art wählen"):
@@ -243,6 +259,58 @@ def email_versand_page() -> None:
                     "verändern -- unter „Kommunikation → Signaturen“ verwaltet."
                 ).classes("text-caption text-grey-6")
 
+                attachment_label = ui.label("Kein Anhang.").classes("text-caption text-grey-6")
+
+                def handle_attachment_upload(event) -> None:
+                    """Store an uploaded file's content in memory as this send's attachment.
+
+                    Args:
+                        event: NiceGUI `UploadEventArguments` -- `.content`
+                            (readable) and `.name` (original filename).
+
+                    Returns:
+                        None.
+                    """
+                    nonlocal attachment_bytes, attachment_filename
+                    attachment_bytes = event.content.read()
+                    attachment_filename = event.name
+                    attachment_label.text = (
+                        f"Anhang: {attachment_filename} ({len(attachment_bytes) / 1024:.0f} KB)"
+                    )
+                    upload_widget.reset()
+
+                def remove_attachment() -> None:
+                    """Clear the currently chosen attachment, if any.
+
+                    Returns:
+                        None.
+                    """
+                    nonlocal attachment_bytes, attachment_filename
+                    attachment_bytes = None
+                    attachment_filename = None
+                    attachment_label.text = "Kein Anhang."
+
+                def handle_attachment_rejected() -> None:
+                    """Notify when the upload widget rejects a too-large file.
+
+                    Returns:
+                        None.
+                    """
+                    max_mb = graph_client.MAX_INLINE_ATTACHMENT_BYTES // 1024 // 1024
+                    safe_notify(f"Anhang zu gross -- maximal {max_mb} MB.", type="negative")
+
+                with ui.row().classes("w-full items-center gap-2"):
+                    upload_widget = ui.upload(
+                        label="Anhang (optional)",
+                        on_upload=handle_attachment_upload,
+                        on_rejected=handle_attachment_rejected,
+                        max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                        auto_upload=True,
+                    ).props("accept=* flat").classes("max-w-sm")
+                    ui.button(icon="close", on_click=remove_attachment).props("dense flat").tooltip(
+                        "Anhang entfernen"
+                    )
+
                 def go_to_validation() -> None:
                     """Validate the subject and advance to step 4.
 
@@ -298,6 +366,9 @@ def email_versand_page() -> None:
                     )
                     with validation_container:
                         ui.label(f"Empfänger: {len(recipients)}").classes("font-bold")
+                        ui.label(
+                            f"Anhang: {attachment_filename}" if attachment_filename else "Kein Anhang."
+                        ).classes("text-body2 text-grey-7")
                         if recipients:
                             values = person_placeholder_values(recipients[0])
                             ui.label(
@@ -374,6 +445,18 @@ def email_versand_page() -> None:
 
                     signature = signatures_by_id.get(signature_select.value)
                     final_body = _compose_body(body_textarea.value, signature.content if signature else "")
+
+                    # Written to disk only for the duration of this one
+                    # send -- graph_client.send_email expects a Path (the
+                    # same shape as an invoice PDF), and the temp file is
+                    # always removed again below, success or failure.
+                    attachment_temp_path: Optional[Path] = None
+                    if attachment_bytes is not None:
+                        suffix = Path(attachment_filename).suffix
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                            tmp_file.write(attachment_bytes)
+                            attachment_temp_path = Path(tmp_file.name)
+
                     try:
                         with connection_scope() as inner_connection:
                             result = await bulk_send.send_broadcast_email(
@@ -384,6 +467,8 @@ def email_versand_page() -> None:
                                 final_body,
                                 scope=scope_select.value,
                                 leg_id=leg_select.value if scope_select.value == "leg" else None,
+                                attachment_path=attachment_temp_path,
+                                attachment_filename=attachment_filename,
                                 on_progress=on_progress,
                             )
                     except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
@@ -391,6 +476,9 @@ def email_versand_page() -> None:
                         back_button.enable()
                         send_button.enable()
                         return
+                    finally:
+                        if attachment_temp_path is not None:
+                            attachment_temp_path.unlink(missing_ok=True)
 
                     back_button.enable()
                     with send_result_container:
@@ -437,6 +525,10 @@ def email_versand_page() -> None:
                         f"„{entry.subject}“ ({entry.recipient_count} Empfänger)"
                     )
                     with ui.expansion(title).classes("w-full"):
+                        if entry.attachment_filename:
+                            ui.label(f"Anhang: {entry.attachment_filename}").classes(
+                                "text-caption text-grey-7"
+                            )
                         ui.label(", ".join(entry.recipient_emails) or "-")
 
         refresh_history()

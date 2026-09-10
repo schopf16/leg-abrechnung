@@ -57,6 +57,19 @@ class Zuordnung:
     def covers(self, moment: datetime) -> bool:
         """Check whether this Zuordnung is active at a given point in time.
 
+        Strict: requires `gueltig_von` to have already passed. This is
+        what billing/distribution and historical reading-completeness
+        checks need -- attributing energy to someone before their
+        Zuordnung's exact start date would be a real correctness bug, see
+        `app.domain.distribution` and `app.domain.quality_checks.
+        check_reading_completeness`. For "does this person currently (or
+        soon) belong here" questions -- a recipient list, a participant
+        overview -- see `is_current_or_upcoming` instead: an
+        administrator commonly pre-enters a Zuordnung weeks or months
+        ahead of its actual start (e.g. preparing the next quarter's
+        move-ins in advance), and such a person should already count
+        there, unlike for billing.
+
         Args:
             moment: Timestamp to test (only its calendar date is compared).
 
@@ -70,6 +83,23 @@ class Zuordnung:
         if self.gueltig_bis is not None and moment_date > self.gueltig_bis:
             return False
         return True
+
+    def is_current_or_upcoming(self, moment: datetime) -> bool:
+        """Whether this Zuordnung has not ended yet, as of `moment`.
+
+        Unlike `covers`, does NOT require `gueltig_von` to have already
+        passed -- see that method's docstring for why the two need
+        different semantics and which callers need which.
+
+        Args:
+            moment: Timestamp to test (only its calendar date is compared).
+
+        Returns:
+            `True` if `gueltig_bis` is `None` (open-ended) or on/after
+            `moment`'s date, regardless of whether `gueltig_von` has
+            started yet.
+        """
+        return self.gueltig_bis is None or self.gueltig_bis >= moment.date()
 
 
 def list_for_messpunkt(
@@ -90,6 +120,37 @@ def list_for_messpunkt(
         (messpunkt_id,),
     ).fetchall()
     return [Zuordnung.from_row(row) for row in rows]
+
+
+def get_relevant_for_messpunkt(
+    connection: sqlite3.Connection, messpunkt_id: int, moment: datetime
+) -> Optional[Zuordnung]:
+    """The Zuordnung to show as "currently assigned" for one Messpunkt.
+
+    Prefers the Zuordnung that actually `covers` `moment` (already
+    started). If none has started yet, falls back to the soonest-starting
+    one that `is_current_or_upcoming` -- a not-yet-started assignment
+    should still show up here (see the caller in `app.gui.pages.
+    messpunkte`/`standorte`, which marks it visually as upcoming rather
+    than hiding it), instead of the Messpunkt looking unassigned just
+    because the administrator entered it ahead of time.
+
+    Args:
+        connection: Open SQLite connection.
+        messpunkt_id: Primary key of the metering point.
+        moment: Reference point in time.
+
+    Returns:
+        The relevant `Zuordnung`, or `None` if the Messpunkt has no
+        current-or-upcoming assignment at all.
+    """
+    candidates = [z for z in list_for_messpunkt(connection, messpunkt_id) if z.is_current_or_upcoming(moment)]
+    for zuordnung in candidates:
+        if zuordnung.covers(moment):
+            return zuordnung
+    if not candidates:
+        return None
+    return min(candidates, key=lambda z: z.gueltig_von)
 
 
 def list_for_person(connection: sqlite3.Connection, person_id: int) -> list[Zuordnung]:
