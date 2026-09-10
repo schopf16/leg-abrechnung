@@ -16,7 +16,7 @@ from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.site import Site
 
 COLUMNS = [
@@ -39,14 +39,14 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
         `(name, is_future)`, see `app.gui.pages.metering_points._current_person_display`
         (identical logic, duplicated here since this page needs its own
         `ui.table`-row shape) -- `name` is "-" if there is no current or
-        upcoming Zuordnung at all.
+        upcoming Assignment at all.
     """
-    zuordnung = zuordnung_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
-    if zuordnung is None:
+    assignment = assignment_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
+    if assignment is None:
         return "-", False
-    person = person_repo.get(connection, zuordnung.person_id)
+    person = person_repo.get(connection, assignment.person_id)
     name = person.anzeige_name if person else "?"
-    is_future = zuordnung.gueltig_von > date.today()
+    is_future = assignment.valid_from > date.today()
     return name, is_future
 
 

@@ -9,8 +9,8 @@ fields were deliberately chosen to mirror `Person` almost 1:1 (`firma`,
 each taken over as their own explicit step (see `app.gui.pages.
 web_registrierungen`) -- matching a reported meter (and its site)
 against a *new* record is a judgment call for the administrator, not a
-mechanical one. Zuordnung (linking a taken-over Person to a taken-over
-MeteringPoint) stays a manual step in `/zuordnungen`.
+mechanical one. Assignment (linking a taken-over Person to a taken-over
+MeteringPoint) stays a manual step in `/assignments`.
 """
 
 import sqlite3

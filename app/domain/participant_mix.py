@@ -23,8 +23,8 @@ model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
 StromVV -- turned out to need too much manual, hard-to-obtain data per
 site to be worth it):
 
-    Prosumer: a person with a current-or-upcoming Zuordnung (see
-        `app.models.zuordnung.Zuordnung.is_current_or_upcoming` -- counts
+    Prosumer: a person with a current-or-upcoming Assignment (see
+        `app.models.assignment.Assignment.is_current_or_upcoming` -- counts
         an assignment pre-entered ahead of its start date too, not just
         ones already running today; real customer data made this the
         permanent behaviour, not a toggle: an administrator who
@@ -33,7 +33,7 @@ site to be worth it):
         until that date actually arrived) to at least one
         Einspeisung-MeteringPoint in scope -- "kann Strom liefern". A person
         who both consumes and feeds in counts here too.
-    Consumer: a person with a current-or-upcoming Zuordnung to at least
+    Consumer: a person with a current-or-upcoming Assignment to at least
         one Bezug-MeteringPoint in scope -- "bezieht Strom". Same overlap
         applies.
 
@@ -45,8 +45,8 @@ disjoint camps.
 This is deliberately different from billing/distribution
 (`app.domain.distribution`) and the historical reading-completeness check
 (`app.domain.quality_checks.check_reading_completeness`), which both keep
-using the strict `Zuordnung.covers` unaffected by anything here --
-attributing energy to someone before their Zuordnung's exact start date
+using the strict `Assignment.covers` unaffected by anything here --
+attributing energy to someone before their Assignment's exact start date
 would be a real correctness bug there, unlike for this module's
 "does/will this arrangement work" question.
 """
@@ -61,14 +61,14 @@ from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.substation_area import SubstationArea
 
 
 def _moment(stichtag: Optional[date]) -> datetime:
-    """Turn an optional Stichtag into the midnight `datetime` `Zuordnung.covers` expects.
+    """Turn an optional Stichtag into the midnight `datetime` `Assignment.covers` expects.
 
     Args:
         stichtag: The reference date, or `None` for today.
@@ -163,7 +163,7 @@ def compute_participant_mix(
     Args:
         connection: Open SQLite connection.
         site_ids: sites to include.
-        stichtag: Reference date for which Zuordnungen count as relevant,
+        stichtag: Reference date for which assignments count as relevant,
             `None` for today.
 
     Returns:
@@ -177,13 +177,13 @@ def compute_participant_mix(
     for metering_point in metering_point_repo.list_all(connection):
         if metering_point.site_id not in site_ids_set:
             continue
-        for zuordnung in zuordnung_repo.list_for_metering_point(connection, metering_point.id):
-            if not zuordnung.is_current_or_upcoming(moment):
+        for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
+            if not assignment.is_current_or_upcoming(moment):
                 continue
             if metering_point.direction == DIRECTION_FEED_IN:
-                prosumer_ids.add(zuordnung.person_id)
+                prosumer_ids.add(assignment.person_id)
             elif metering_point.direction == DIRECTION_CONSUMPTION:
-                consumer_ids.add(zuordnung.person_id)
+                consumer_ids.add(assignment.person_id)
 
     return ParticipantMix(prosumer_count=len(prosumer_ids), consumer_count=len(consumer_ids))
 
@@ -278,7 +278,7 @@ class UpgradeCandidate:
             participants that span more than one substation area -- these are
             the ones a dedicated LEG would let them leave.
         person_count: Distinct persons (via a current-or-upcoming
-            Zuordnung) at this substation area whose MeteringPoint currently
+            Assignment) at this substation area whose MeteringPoint currently
             belongs to one of `mixed_legs`.
         mix: The hypothetical solo-substation area `ParticipantMix` that shows
             this is now viable.
@@ -348,9 +348,9 @@ def find_upgrade_candidates(
         for mp in metering_points:
             if mp.site_id not in site_ids or mp.leg_id not in mixed_leg_ids:
                 continue
-            for zuordnung in zuordnung_repo.list_for_metering_point(connection, mp.id):
-                if zuordnung.is_current_or_upcoming(moment):
-                    person_ids.add(zuordnung.person_id)
+            for assignment in assignment_repo.list_for_metering_point(connection, mp.id):
+                if assignment.is_current_or_upcoming(moment):
+                    person_ids.add(assignment.person_id)
 
         candidates.append(
             UpgradeCandidate(

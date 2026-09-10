@@ -1,10 +1,10 @@
-"""MeteringPoint-to-Person assignment history page (Zuordnungen).
+"""MeteringPoint-to-Person assignment history page (assignments).
 
-Rendered as one card per MeteringPoint (grouping its Zuordnungen together)
+Rendered as one card per MeteringPoint (grouping its assignments together)
 rather than a flat table: edit/delete buttons are bound directly to Python
 callbacks (not via a JS-emit round trip through a Quasar table slot),
 which is both more robust to click on and groups related entries more
-usefully than one row per Zuordnung in isolation.
+usefully than one row per Assignment in isolation.
 """
 
 from datetime import date, datetime
@@ -21,17 +21,17 @@ from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
-from app.models import zuordnung as zuordnung_repo
-from app.models.zuordnung import Zuordnung
+from app.models import assignment as assignment_repo
+from app.models.assignment import Assignment
 
 
-#: `(label, field)` pairs for the printed table -- one row per Zuordnung,
+#: `(label, field)` pairs for the printed table -- one row per Assignment,
 #: flattened out of the on-screen per-MeteringPoint card grouping.
 PRINT_COLUMNS = [
     ("Messpunkt", "metering_point"),
     ("Person", "person_name"),
-    ("Gültig von", "gueltig_von"),
-    ("Gültig bis", "gueltig_bis"),
+    ("Gültig von", "valid_from"),
+    ("Gültig bis", "valid_to"),
 ]
 
 
@@ -49,14 +49,14 @@ def _parse_date(value: str) -> Optional[date]:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-@ui.page("/zuordnungen")
-def zuordnungen_page() -> None:
-    """Render the Zuordnungen CRUD page, including consistency warnings.
+@ui.page("/assignments")
+def assignments_page() -> None:
+    """Render the assignments CRUD page, including consistency warnings.
 
     Returns:
         None.
     """
-    with page_frame("/zuordnungen", "Zuordnungen"):
+    with page_frame("/assignments", "Zuordnungen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Legt fest, welcher Person ein Messpunkt in welchem Zeitraum "
@@ -77,12 +77,12 @@ def zuordnungen_page() -> None:
         print_rows: list[dict] = []
 
         def render_group(metering_point_label: str, group: list[dict]) -> None:
-            """Render one MeteringPoint's card with all of its Zuordnungen.
+            """Render one MeteringPoint's card with all of its assignments.
 
             Args:
                 metering_point_label: Display label for the MeteringPoint heading.
                 group: Row dicts (see `refresh`) belonging to that MeteringPoint,
-                    already sorted by `gueltig_von`.
+                    already sorted by `valid_from`.
 
             Returns:
                 None.
@@ -92,19 +92,19 @@ def zuordnungen_page() -> None:
                 for row in group:
                     with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                         ui.label(row["person_name"]).classes("min-w-[180px]")
-                        ui.label(f"ab {row['gueltig_von']}").classes("min-w-[120px] text-grey-7")
-                        ui.label(f"bis {row['gueltig_bis']}").classes("min-w-[120px] text-grey-7")
+                        ui.label(f"ab {row['valid_from']}").classes("min-w-[120px] text-grey-7")
+                        ui.label(f"bis {row['valid_to']}").classes("min-w-[120px] text-grey-7")
                         with ui.row().classes("gap-1 ml-auto"):
                             ui.button(
-                                icon="edit", on_click=lambda z=row["zuordnung"]: on_edit(z)
+                                icon="edit", on_click=lambda z=row["assignment"]: on_edit(z)
                             ).props("dense flat")
                             ui.button(
                                 icon="delete",
-                                on_click=lambda z=row["zuordnung"]: on_remove(z),
+                                on_click=lambda z=row["assignment"]: on_remove(z),
                             ).props("dense flat color=negative")
 
         def refresh() -> None:
-            """Reload the Zuordnungen list (grouped by MeteringPoint) and
+            """Reload the assignments list (grouped by MeteringPoint) and
             recompute consistency warnings.
 
             Returns:
@@ -115,21 +115,21 @@ def zuordnungen_page() -> None:
                 metering_points = {mp.id: mp for mp in metering_point_repo.list_all(connection)}
                 sites = {s.id: s for s in site_repo.list_all(connection)}
                 persons = {p.id: p for p in person_repo.list_all(connection)}
-                zuordnungen = zuordnung_repo.list_all(connection)
+                assignments = assignment_repo.list_all(connection)
                 all_warnings = []
                 for metering_point_id in metering_points:
-                    all_warnings.extend(zuordnung_repo.find_warnings(connection, metering_point_id))
+                    all_warnings.extend(assignment_repo.find_warnings(connection, metering_point_id))
 
             groups: dict[int, list[dict]] = {}
-            for z in zuordnungen:
+            for z in assignments:
                 groups.setdefault(z.metering_point_id, []).append(
                     {
-                        "zuordnung": z,
+                        "assignment": z,
                         "person_name": persons[z.person_id].anzeige_name
                         if z.person_id in persons
                         else "?",
-                        "gueltig_von": z.gueltig_von.isoformat(),
-                        "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
+                        "valid_from": z.valid_from.isoformat(),
+                        "valid_to": z.valid_to.isoformat() if z.valid_to else "offen",
                     }
                 )
 
@@ -152,8 +152,8 @@ def zuordnungen_page() -> None:
                             {
                                 "metering_point": label,
                                 "person_name": row["person_name"],
-                                "gueltig_von": row["gueltig_von"],
-                                "gueltig_bis": row["gueltig_bis"],
+                                "valid_from": row["valid_from"],
+                                "valid_to": row["valid_to"],
                             }
                         )
 
@@ -164,11 +164,11 @@ def zuordnungen_page() -> None:
                         "text-negative text-body2"
                     )
 
-        def open_form(existing: Optional[Zuordnung]) -> None:
-            """Open the create/edit dialog for a Zuordnung.
+        def open_form(existing: Optional[Assignment]) -> None:
+            """Open the create/edit dialog for a Assignment.
 
             Args:
-                existing: Zuordnung to edit, or `None` to create a new one.
+                existing: Assignment to edit, or `None` to create a new one.
 
             Returns:
                 None.
@@ -196,8 +196,8 @@ def zuordnungen_page() -> None:
                     if site_id is None or mp.site_id == site_id
                 }
 
-            # Deactivated persons are hidden from selection for new Zuordnungen,
-            # but stay selectable when editing a Zuordnung that already points
+            # Deactivated persons are hidden from selection for new assignments,
+            # but stay selectable when editing a Assignment that already points
             # at one (see app.models.person.delete).
             selectable_persons = [
                 p for p in persons if p.aktiv or (existing and p.id == existing.person_id)
@@ -283,18 +283,18 @@ def zuordnungen_page() -> None:
                     label="Person",
                     value=existing.person_id if existing else None,
                 ).classes("w-full")
-                gueltig_von = ui.input(
+                valid_from = ui.input(
                     "Gültig von",
-                    value=existing.gueltig_von.isoformat() if existing else date.today().isoformat(),
+                    value=existing.valid_from.isoformat() if existing else date.today().isoformat(),
                 ).props("type=date").classes("w-full")
-                gueltig_bis = ui.input(
+                valid_to = ui.input(
                     "Gültig bis (leer = offen)",
-                    value=existing.gueltig_bis.isoformat() if existing and existing.gueltig_bis else "",
+                    value=existing.valid_to.isoformat() if existing and existing.valid_to else "",
                 ).props("type=date").classes("w-full")
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
-                    """Validate the form and persist the Zuordnung.
+                    """Validate the form and persist the Assignment.
 
                     Returns:
                         None.
@@ -303,8 +303,8 @@ def zuordnungen_page() -> None:
                         error_label.text = "Messpunkt und Person sind erforderlich."
                         return
                     try:
-                        from_date = _parse_date(gueltig_von.value)
-                        to_date = _parse_date(gueltig_bis.value)
+                        from_date = _parse_date(valid_from.value)
+                        to_date = _parse_date(valid_to.value)
                     except ValueError:
                         error_label.text = "Ungültiges Datum."
                         return
@@ -317,25 +317,25 @@ def zuordnungen_page() -> None:
 
                     with connection_scope() as connection:
                         if existing:
-                            updated = Zuordnung(
+                            updated = Assignment(
                                 id=existing.id,
                                 person_id=person_select.value,
                                 metering_point_id=metering_point_select.value,
-                                gueltig_von=from_date,
-                                gueltig_bis=to_date,
+                                valid_from=from_date,
+                                valid_to=to_date,
                                 created_at=existing.created_at,
                             )
-                            zuordnung_repo.update(connection, updated)
+                            assignment_repo.update(connection, updated)
                         else:
-                            new_zuordnung = Zuordnung(
+                            new_assignment = Assignment(
                                 id=None,
                                 person_id=person_select.value,
                                 metering_point_id=metering_point_select.value,
-                                gueltig_von=from_date,
-                                gueltig_bis=to_date,
+                                valid_from=from_date,
+                                valid_to=to_date,
                                 created_at="",
                             )
-                            zuordnung_repo.create(connection, new_zuordnung)
+                            assignment_repo.create(connection, new_assignment)
                     dialog.close()
                     # Notify before refresh() and via safe_notify(): the card
                     # whose button opened this dialog gets deleted by refresh()'s
@@ -349,22 +349,22 @@ def zuordnungen_page() -> None:
                     ui.button("Speichern", on_click=save)
             dialog.open()
 
-        def on_edit(zuordnung: Zuordnung) -> None:
-            """Card edit-button handler: open the edit dialog for this Zuordnung.
+        def on_edit(assignment: Assignment) -> None:
+            """Card edit-button handler: open the edit dialog for this Assignment.
 
             Args:
-                zuordnung: Zuordnung to edit.
+                assignment: Assignment to edit.
 
             Returns:
                 None.
             """
-            open_form(zuordnung)
+            open_form(assignment)
 
-        def on_remove(zuordnung: Zuordnung) -> None:
-            """Card delete-button handler: delete the Zuordnung after confirmation.
+        def on_remove(assignment: Assignment) -> None:
+            """Card delete-button handler: delete the Assignment after confirmation.
 
             Args:
-                zuordnung: Zuordnung to delete.
+                assignment: Assignment to delete.
 
             Returns:
                 None.
@@ -376,7 +376,7 @@ def zuordnungen_page() -> None:
 
                     def do_delete() -> None:
                         with connection_scope() as connection:
-                            zuordnung_repo.delete(connection, zuordnung.id)
+                            assignment_repo.delete(connection, assignment.id)
                         confirm.close()
                         # notify before refresh() -- see save() above for why
                         safe_notify("Gelöscht.", type="warning")

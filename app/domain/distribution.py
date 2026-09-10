@@ -25,10 +25,10 @@ For every 15-minute interval `t`, independently per LEG:
    `production_m(t) * S(t) / P(t)` (zero if `P(t) == 0`).
 
 Each MeteringPoint's interval share is then attributed to whichever Person was
-assigned to it at that exact moment (see `app.models.zuordnung`), so a
+assigned to it at that exact moment (see `app.models.assignment`), so a
 mid-quarter move splits a MeteringPoint's energy between two Personen
 automatically. Moving never changes the MeteringPoint, its site, or that
-MeteringPoint's LEG -- only which Person the Zuordnung points at.
+MeteringPoint's LEG -- only which Person the Assignment points at.
 """
 
 import sqlite3
@@ -37,7 +37,7 @@ from datetime import date, datetime
 
 from app.domain.period import months_in_quarter, quarter_bounds
 from app.models import metering_point as metering_point_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.metering_point import DIRECTION_CONSUMPTION
 from app.models.reading import list_readings_in_period
 
@@ -97,7 +97,7 @@ class DistributionResult:
         quarter: Quarter number, 1 to 4.
         person_results: Per-person totals, keyed by person id.
         unassigned_kwh: Locally shared energy that could not be attributed
-            to any person because no Zuordnung covered that MeteringPoint at
+            to any person because no Assignment covered that MeteringPoint at
             that moment (an assignment gap). Should be zero for clean data;
             surfaced to the plausibility checks (section 7) otherwise.
         interval_count: Number of distinct 15-minute intervals processed
@@ -129,26 +129,26 @@ class DistributionResult:
 
 
 def _person_at(
-    zuordnungen_by_metering_point: dict[int, list],
+    assignments_by_metering_point: dict[int, list],
     metering_point_id: int,
     moment: datetime,
     cache: dict[tuple[int, date], "int | None"],
 ) -> "int | None":
     """Resolve which Person a MeteringPoint belonged to at a given moment.
 
-    Results are cached per `(metering_point_id, date)` since Zuordnungen only
+    Results are cached per `(metering_point_id, date)` since assignments only
     ever change at day granularity, which turns what would be one lookup
     per 15-minute interval into one lookup per MeteringPoint per day.
 
     Args:
-        zuordnungen_by_metering_point: Pre-loaded assignments, keyed by
+        assignments_by_metering_point: Pre-loaded assignments, keyed by
             MeteringPoint id.
         metering_point_id: MeteringPoint to resolve.
         moment: Interval timestamp to resolve at.
         cache: Mutable memoization cache, shared across calls for one run.
 
     Returns:
-        The person id valid at that moment, or `None` if no Zuordnung
+        The person id valid at that moment, or `None` if no Assignment
         covers it (a gap in the assignment history).
     """
     key = (metering_point_id, moment.date())
@@ -156,9 +156,9 @@ def _person_at(
         return cache[key]
 
     person_id = None
-    for zuordnung in zuordnungen_by_metering_point.get(metering_point_id, []):
-        if zuordnung.covers(moment):
-            person_id = zuordnung.person_id
+    for assignment in assignments_by_metering_point.get(metering_point_id, []):
+        if assignment.covers(moment):
+            person_id = assignment.person_id
             break
 
     cache[key] = person_id
@@ -231,9 +231,9 @@ def compute_quarter_distribution(
 
     leg_rows = [row for row in rows if leg_id_by_metering_point[row["metering_point_id"]] == leg_id]
 
-    zuordnungen_by_metering_point: dict[int, list] = {}
+    assignments_by_metering_point: dict[int, list] = {}
     for metering_point_id in {row["metering_point_id"] for row in leg_rows}:
-        zuordnungen_by_metering_point[metering_point_id] = zuordnung_repo.list_for_metering_point(
+        assignments_by_metering_point[metering_point_id] = assignment_repo.list_for_metering_point(
             connection, metering_point_id
         )
 
@@ -264,7 +264,7 @@ def compute_quarter_distribution(
                 continue
 
             person_id = _person_at(
-                zuordnungen_by_metering_point, row["metering_point_id"], moment, person_cache
+                assignments_by_metering_point, row["metering_point_id"], moment, person_cache
             )
             if person_id is None:
                 result.unassigned_kwh += local_share

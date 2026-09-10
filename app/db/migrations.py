@@ -1251,4 +1251,16 @@ Freundliche Grüsse';
             ALTER TABLE leg_settings RENAME COLUMN messpunkt_identifikator TO metering_point_identifier;
         """,
     ),
+    Migration(
+        version=40,
+        description="Translate the Zuordnung entity to English: table "
+        "'zuordnung' becomes 'assignment', gueltig_von/gueltig_bis become "
+        "valid_from/valid_to. Fourth step of the English translation, see "
+        "migration 37. Pure renames, no data touched.",
+        sql="""
+            ALTER TABLE zuordnung RENAME TO assignment;
+            ALTER TABLE assignment RENAME COLUMN gueltig_von TO valid_from;
+            ALTER TABLE assignment RENAME COLUMN gueltig_bis TO valid_to;
+        """,
+    ),
 ]

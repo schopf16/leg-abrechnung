@@ -1,5 +1,5 @@
 """Personen management page: list, search, create, edit, delete, and a
-detail drill-down showing the Person → Zuordnung → MeteringPoint (→ LEG,
+detail drill-down showing the Person → Assignment → MeteringPoint (→ LEG,
 → site → substation area) join (project prompt section 7,
 "Personen-Detailansicht").
 
@@ -30,7 +30,7 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.person_offboarding import GRUND_OPTIONS
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.person import Person
@@ -91,8 +91,8 @@ DETAIL_COLUMNS = [
     {"name": "site_address", "label": "Standort-Adresse", "field": "site_address", "align": "left"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
-    {"name": "gueltig_von", "label": "Gültig von", "field": "gueltig_von", "align": "left"},
-    {"name": "gueltig_bis", "label": "Gültig bis", "field": "gueltig_bis", "align": "left"},
+    {"name": "valid_from", "label": "Gültig von", "field": "valid_from", "align": "left"},
+    {"name": "valid_to", "label": "Gültig bis", "field": "valid_to", "align": "left"},
 ]
 
 
@@ -124,7 +124,7 @@ def _search_text_for_person(connection, person: Person) -> str:
 
     Covers the person's own fields plus the designation and site
     address of every MeteringPoint ever assigned to them (project prompt
-    section 8: Personen search also reaches into their Zuordnungen).
+    section 8: Personen search also reaches into their assignments).
 
     Args:
         connection: Open SQLite connection.
@@ -150,7 +150,7 @@ def _search_text_for_person(connection, person: Person) -> str:
         str(person.kundennummer) if person.kundennummer is not None else "",
         str(person.bkw_kundennummer) if person.bkw_kundennummer is not None else "",
     ]
-    for z in zuordnung_repo.list_for_person(connection, person.id):
+    for z in assignment_repo.list_for_person(connection, person.id):
         mp = metering_point_repo.get(connection, z.metering_point_id)
         if mp is None:
             continue
@@ -323,7 +323,7 @@ def personen_page() -> None:
             If the person still has billing history, they are deactivated
             instead of deleted (see `person_repo.delete`) -- their
             Kundennummer and Abrechnungshistorie stay intact, but they are
-            hidden from selection for new Zuordnungen.
+            hidden from selection for new assignments.
 
             Args:
                 person: Person to delete.
@@ -381,7 +381,7 @@ def personen_page() -> None:
 
 @ui.page("/personen/{person_id}")
 def person_detail_page(person_id: int) -> None:
-    """Render one person's detail view: Stammdaten plus their Zuordnungshistorie.
+    """Render one person's detail view: Stammdaten plus their assignment history.
 
     Args:
         person_id: Database id of the person, from the URL path.
@@ -494,7 +494,7 @@ def person_detail_page(person_id: int) -> None:
         leg_warnings_column = ui.column().classes("w-full")
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         detail_table.add_slot(
-            "body-cell-gueltig_von",
+            "body-cell-valid_from",
             r'''
             <q-td :props="props" :class="props.row.is_future ? 'text-orange-8' : ''">
                 {{ props.value }}
@@ -503,15 +503,15 @@ def person_detail_page(person_id: int) -> None:
         )
 
         def refresh_detail() -> None:
-            """Reload the person's Zuordnung → MeteringPoint (→ LEG, → site
+            """Reload the person's Assignment → MeteringPoint (→ LEG, → site
             → substation area) join, and warn if any involved LEG mixes
             substation areas.
 
-            Filters to only current-or-upcoming Zuordnungen (not yet
-            ended, `gueltig_von` may lie in the future -- see
-            `app.models.zuordnung.Zuordnung.is_current_or_upcoming`)
+            Filters to only current-or-upcoming assignments (not yet
+            ended, `valid_from` may lie in the future -- see
+            `app.models.assignment.Assignment.is_current_or_upcoming`)
             unless `show_all_switch` is on, which also shows past,
-            already-ended ones ("Historie"). `gueltig_von`/`gueltig_bis`
+            already-ended ones ("Historie"). `valid_from`/`valid_to`
             are shown as explicit columns, so a not-yet-started row is
             still distinguishable without extra marking.
 
@@ -520,11 +520,11 @@ def person_detail_page(person_id: int) -> None:
             """
             today = date.today()
             with connection_scope() as inner_connection:
-                zuordnungen = zuordnung_repo.list_for_person(inner_connection, person_id)
+                assignments = assignment_repo.list_for_person(inner_connection, person_id)
                 rows = []
                 leg_ids_involved: set[int] = set()
-                for z in zuordnungen:
-                    is_relevant = z.gueltig_bis is None or z.gueltig_bis >= today
+                for z in assignments:
+                    is_relevant = z.valid_to is None or z.valid_to >= today
                     if not show_all_switch.value and not is_relevant:
                         continue
                     mp = metering_point_repo.get(inner_connection, z.metering_point_id)
@@ -551,9 +551,9 @@ def person_detail_page(person_id: int) -> None:
                             "site_address": site.full_address if site else "?",
                             "substation_area": substation_area.name if substation_area else "-",
                             "leg": leg.name if leg else "-",
-                            "gueltig_von": z.gueltig_von.isoformat(),
-                            "gueltig_bis": z.gueltig_bis.isoformat() if z.gueltig_bis else "offen",
-                            "is_future": z.gueltig_von > today,
+                            "valid_from": z.valid_from.isoformat(),
+                            "valid_to": z.valid_to.isoformat() if z.valid_to else "offen",
+                            "is_future": z.valid_from > today,
                         }
                     )
                 mixed_warnings = []

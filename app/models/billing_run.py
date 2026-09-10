@@ -101,7 +101,7 @@ class BillingRunItem:
             bulk_send.send_invoice_emails`) -- `resend_invoice_email`
             deliberately bypasses that check for an explicit resend.
         faellig_am: ISO date this item's payment term expires -- the same
-            date actually printed as "Zahlbar bis" on the PDF (see
+            date actually printed as "Zahlbar valid_to" on the PDF (see
             `app.pdf.person_bill_pdf.PAYMENT_TERM`), persisted at PDF
             generation time so `app.domain.mahnwesen` can later check
             overdue-ness against the exact date once shown to the person,

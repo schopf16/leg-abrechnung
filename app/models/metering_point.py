@@ -234,7 +234,7 @@ def update(connection: sqlite3.Connection, metering_point: MeteringPoint) -> Non
 
 
 def delete(connection: sqlite3.Connection, metering_point_id: int) -> None:
-    """Delete a MeteringPoint along with its Zuordnungen and readings (cascade).
+    """Delete a MeteringPoint along with its assignments and readings (cascade).
 
     Args:
         connection: Open SQLite connection.

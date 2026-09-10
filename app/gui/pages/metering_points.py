@@ -15,7 +15,7 @@ from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.metering_point import (
     DIRECTION_CONSUMPTION,
     DIRECTION_FEED_IN,
@@ -84,17 +84,17 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
 
     Returns:
         `(name, is_future)` -- `name` is "-" if there is no current or
-        upcoming Zuordnung at all (see `app.models.zuordnung.
+        upcoming Assignment at all (see `app.models.assignment.
         get_relevant_for_metering_point`); `is_future` is `True` if the
         assignment shown has not started yet, so the caller can mark it
         visually without spelling out the exact date.
     """
-    zuordnung = zuordnung_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
-    if zuordnung is None:
+    assignment = assignment_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
+    if assignment is None:
         return "-", False
-    person = person_repo.get(connection, zuordnung.person_id)
+    person = person_repo.get(connection, assignment.person_id)
     name = person.anzeige_name if person else "?"
-    is_future = zuordnung.gueltig_von > date.today()
+    is_future = assignment.valid_from > date.today()
     return name, is_future
 
 
@@ -172,7 +172,7 @@ def metering_points_page() -> None:
                             None,
                             [
                                 f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                "Nur ohne Zuordnung" if ohne_zuordnung_switch.value else None,
+                                "Nur ohne Zuordnung" if without_assignment_switch.value else None,
                             ],
                         )
                     )
@@ -184,7 +184,7 @@ def metering_points_page() -> None:
             search_input = ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)").classes(
                 "w-full max-w-md"
             ).props("debounce=300 clearable")
-            ohne_zuordnung_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
+            without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -233,11 +233,11 @@ def metering_points_page() -> None:
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value
-            and the "Nur ohne Zuordnung" switch.
+            and the "Nur ohne Assignment" switch.
 
-            A MeteringPoint counts as "ohne Zuordnung" here if it has no
-            current-or-upcoming Zuordnung at all (see `_current_person_display`/
-            `app.models.zuordnung.get_relevant_for_metering_point`) -- a
+            A MeteringPoint counts as "ohne Assignment" here if it has no
+            current-or-upcoming Assignment at all (see `_current_person_display`/
+            `app.models.assignment.get_relevant_for_metering_point`) -- a
             pre-entered future assignment still counts as assigned, so it
             is deliberately excluded from this filter too.
 
@@ -247,7 +247,7 @@ def metering_points_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
-            if ohne_zuordnung_switch.value:
+            if without_assignment_switch.value:
                 visible_rows = [r for r in visible_rows if r["person"] == "-"]
             list_container.clear()
             with list_container:
@@ -272,7 +272,7 @@ def metering_points_page() -> None:
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
-        ohne_zuordnung_switch.on_value_change(lambda _: apply_filter())
+        without_assignment_switch.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: MeteringPoint | None) -> None:
             """Open the create/edit dialog for a MeteringPoint.

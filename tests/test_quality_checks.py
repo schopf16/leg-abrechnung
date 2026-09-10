@@ -1,4 +1,4 @@
-"""Tests for plausibility/consistency checks: Zuordnung gaps, reading
+"""Tests for plausibility/consistency checks: Assignment gaps, reading
 completeness and metering points with no LEG assigned."""
 
 import uuid
@@ -21,14 +21,14 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
-from app.models.zuordnung import Zuordnung
+from app.models.assignment import Assignment
 
 YEAR, QUARTER = 2025, 1
 
@@ -81,37 +81,37 @@ def test_check_assignment_consistency_reports_gaps_across_all_metering_points(db
     person_id = _person(db)
     site_id = _site(db)
     metering_point_id = _metering_point(db, "CH-Q1", site_id)
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 1, 10), created_at="",
+            valid_from=date(2025, 1, 1), valid_to=date(2025, 1, 10), created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 20), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 1, 20), valid_to=None, created_at="",
         ),
     )
 
     warnings = check_assignment_consistency(db)
-    assert any(w.category == "zuordnung_luecke" for w in warnings)
+    assert any(w.category == "assignment_gap" for w in warnings)
     # Links straight to the affected MeteringPoint's detail page.
     assert all(w.link == f"/metering-points/{metering_point_id}" for w in warnings)
 
 
 def test_check_assignment_consistency_clean_history_has_no_warnings(db):
-    """A single open-ended Zuordnung produces no warnings."""
+    """A single open-ended Assignment produces no warnings."""
     person_id = _person(db)
     site_id = _site(db)
     metering_point_id = _metering_point(db, "CH-Q1", site_id)
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 1, 1), valid_to=None, created_at="",
         ),
     )
     assert check_assignment_consistency(db) == []
@@ -122,11 +122,11 @@ def test_check_reading_completeness_flags_days_with_missing_values(db):
     person_id = _person(db)
     site_id = _site(db)
     metering_point_id = _metering_point(db, "CH-Q1", site_id)
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(YEAR, 1, 1), gueltig_bis=None, created_at="",
+            valid_from=date(YEAR, 1, 1), valid_to=None, created_at="",
         ),
     )
 
@@ -148,7 +148,7 @@ def test_check_reading_completeness_ignores_days_without_assignment(db):
     """A MeteringPoint that was never assigned to anyone produces no completeness warnings."""
     site_id = _site(db)
     _metering_point(db, "CH-Q1", site_id)
-    # No Zuordnung created at all.
+    # No Assignment created at all.
     warnings = check_reading_completeness(db, YEAR, QUARTER)
     assert warnings == []
 
@@ -158,11 +158,11 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
     person_id = _person(db)
     site_id = _site(db)
     metering_point_id = _metering_point(db, "CH-Q1", site_id)
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(YEAR, 1, 15), gueltig_bis=date(YEAR, 1, 15), created_at="",
+            valid_from=date(YEAR, 1, 15), valid_to=date(YEAR, 1, 15), created_at="",
         ),
     )
     day = datetime(YEAR, 1, 15)
@@ -362,8 +362,8 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
-        zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        assignment_repo.create(
+            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )
 
     assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
@@ -394,8 +394,8 @@ def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
-        zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        assignment_repo.create(
+            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )
 
     settings = settings_repo.get_settings(db)
@@ -413,8 +413,8 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
     site_id = _site_in(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
-    zuordnung_repo.create(
-        db, Zuordnung(id=None, person_id=person_id, metering_point_id=einspeisung_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+    assignment_repo.create(
+        db, Assignment(id=None, person_id=person_id, metering_point_id=einspeisung_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
     )
 
     warnings = check_substation_area_one_sided(db)
@@ -439,8 +439,8 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point_direction(db, "CH2", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, einspeisung_id), (other_person_id, other_mp_id)):
-        zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        assignment_repo.create(
+            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
         )
 
     assert check_substation_area_one_sided(db) == []

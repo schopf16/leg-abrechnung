@@ -1,4 +1,4 @@
-"""Tests for Person/MeteringPoint/Zuordnung/Leg/substation area CRUD, consistency
+"""Tests for Person/MeteringPoint/Assignment/Leg/substation area CRUD, consistency
 warnings, and LEG/substation area composition."""
 
 import sqlite3
@@ -15,14 +15,14 @@ from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
 from app.models.person import Person
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
-from app.models.zuordnung import Zuordnung
+from app.models.assignment import Assignment
 
 
 def _make_person(name: str = "Test Person") -> Person:
@@ -285,37 +285,37 @@ def test_metering_point_direction_properties():
     assert einspeisung.is_einspeisung and not einspeisung.is_bezug
 
 
-def test_zuordnung_covers_respects_open_and_closed_ranges():
-    """`Zuordnung.covers` handles open-ended and bounded periods."""
-    open_ended = Zuordnung(
+def test_assignment_covers_respects_open_and_closed_ranges():
+    """`Assignment.covers` handles open-ended and bounded periods."""
+    open_ended = Assignment(
         id=1, person_id=1, metering_point_id=1,
-        gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
+        valid_from=date(2025, 1, 1), valid_to=None, created_at="",
     )
     assert open_ended.covers(_dt(2025, 6, 1))
     assert not open_ended.covers(_dt(2024, 12, 31))
 
-    bounded = Zuordnung(
+    bounded = Assignment(
         id=2, person_id=2, metering_point_id=1,
-        gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
+        valid_from=date(2025, 1, 1), valid_to=date(2025, 3, 31), created_at="",
     )
     assert bounded.covers(_dt(2025, 2, 1))
     assert not bounded.covers(_dt(2025, 4, 1))
 
 
-def test_zuordnung_is_current_or_upcoming_counts_a_not_yet_started_assignment():
-    """Unlike `covers`, a Zuordnung entered ahead of its start date (e.g.
+def test_assignment_is_current_or_upcoming_counts_a_not_yet_started_assignment():
+    """Unlike `covers`, a Assignment entered ahead of its start date (e.g.
     next quarter's move-ins prepared in advance) already counts -- only
-    one that has actually ended (`gueltig_bis` in the past) does not."""
-    future = Zuordnung(
+    one that has actually ended (`valid_to` in the past) does not."""
+    future = Assignment(
         id=1, person_id=1, metering_point_id=1,
-        gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+        valid_from=date(2026, 12, 1), valid_to=None, created_at="",
     )
     assert not future.covers(_dt(2026, 9, 10))
     assert future.is_current_or_upcoming(_dt(2026, 9, 10))
 
-    ended = Zuordnung(
+    ended = Assignment(
         id=2, person_id=2, metering_point_id=1,
-        gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
+        valid_from=date(2025, 1, 1), valid_to=date(2025, 3, 31), created_at="",
     )
     assert not ended.is_current_or_upcoming(_dt(2025, 4, 1))
 
@@ -336,174 +336,174 @@ def _dt(year: int, month: int, day: int):
     return datetime(year, month, day)
 
 
-def test_zuordnung_get_finds_by_id(db):
-    """`get` fetches a single Zuordnung by id, or `None` if unknown."""
+def test_assignment_get_finds_by_id(db):
+    """`get` fetches a single Assignment by id, or `None` if unknown."""
     site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
-    zuordnung_id = zuordnung_repo.create(
+    assignment_id = assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 1, 1), valid_to=None, created_at="",
         ),
     )
 
-    found = zuordnung_repo.get(db, zuordnung_id)
+    found = assignment_repo.get(db, assignment_id)
     assert found is not None
     assert found.person_id == person_id
 
-    assert zuordnung_repo.get(db, zuordnung_id + 999) is None
+    assert assignment_repo.get(db, assignment_id + 999) is None
 
 
 def test_get_relevant_for_metering_point_prefers_the_already_started_one(db):
-    """Both an already-started and a not-yet-started Zuordnung exist --
+    """Both an already-started and a not-yet-started Assignment exist --
     the already-started one is the "currently assigned" answer."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_a, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2026, 8, 31), created_at="",
+            valid_from=date(2025, 1, 1), valid_to=date(2026, 8, 31), created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_b, metering_point_id=metering_point_id,
-            gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2026, 12, 1), valid_to=None, created_at="",
         ),
     )
 
-    found = zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 6, 1))
+    found = assignment_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 6, 1))
     assert found is not None
     assert found.person_id == person_a
 
 
 def test_get_relevant_for_metering_point_falls_back_to_soonest_upcoming(db):
     """Nothing has started yet -- falls back to the soonest-starting
-    upcoming Zuordnung instead of reporting "unassigned"."""
+    upcoming Assignment instead of reporting "unassigned"."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_a, metering_point_id=metering_point_id,
-            gueltig_von=date(2027, 3, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2027, 3, 1), valid_to=None, created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_b, metering_point_id=metering_point_id,
-            gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2026, 12, 1), valid_to=None, created_at="",
         ),
     )
 
-    found = zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10))
+    found = assignment_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10))
     assert found is not None
     assert found.person_id == person_b
 
 
-def test_get_relevant_for_metering_point_ignores_ended_zuordnung(db):
-    """A Zuordnung that has already ended is not "upcoming" -- an empty
+def test_get_relevant_for_metering_point_ignores_ended_assignment(db):
+    """A Assignment that has already ended is not "upcoming" -- an empty
     history (or one with only past assignments) reports `None`."""
     site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=date(2020, 1, 1), gueltig_bis=date(2020, 12, 31), created_at="",
+            valid_from=date(2020, 1, 1), valid_to=date(2020, 12, 31), created_at="",
         ),
     )
 
-    assert zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10)) is None
+    assert assignment_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10)) is None
 
 
 def test_find_warnings_detects_gap(db):
-    """A gap between two Zuordnung periods is reported."""
+    """A gap between two Assignment periods is reported."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_a, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 1, 31), created_at="",
+            valid_from=date(2025, 1, 1), valid_to=date(2025, 1, 31), created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_b, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 2, 5), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 2, 5), valid_to=None, created_at="",
         ),
     )
 
-    warnings = zuordnung_repo.find_warnings(db, metering_point_id)
+    warnings = assignment_repo.find_warnings(db, metering_point_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "gap"
 
 
 def test_find_warnings_detects_overlap(db):
-    """Overlapping Zuordnung periods are reported."""
+    """Overlapping Assignment periods are reported."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_a, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 2, 15), created_at="",
+            valid_from=date(2025, 1, 1), valid_to=date(2025, 2, 15), created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_b, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 2, 1), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 2, 1), valid_to=None, created_at="",
         ),
     )
 
-    warnings = zuordnung_repo.find_warnings(db, metering_point_id)
+    warnings = assignment_repo.find_warnings(db, metering_point_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "overlap"
 
 
 def test_find_warnings_none_for_consecutive_periods(db):
-    """Back-to-back Zuordnungen with no gap or overlap raise no warnings."""
+    """Back-to-back assignments with no gap or overlap raise no warnings."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_a, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 8, 15), created_at="",
+            valid_from=date(2025, 1, 1), valid_to=date(2025, 8, 15), created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_b, metering_point_id=metering_point_id,
-            gueltig_von=date(2025, 8, 16), gueltig_bis=None, created_at="",
+            valid_from=date(2025, 8, 16), valid_to=None, created_at="",
         ),
     )
 
-    assert zuordnung_repo.find_warnings(db, metering_point_id) == []
+    assert assignment_repo.find_warnings(db, metering_point_id) == []
 
 
 def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:

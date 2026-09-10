@@ -16,13 +16,13 @@ from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
-from app.models.zuordnung import Zuordnung
+from app.models.assignment import Assignment
 
 YEAR, QUARTER = 2025, 1  # Jan-Mar 2025, used as a fast, controlled sandbox.
 
@@ -105,24 +105,24 @@ def _metering_point(
     )
 
 
-def _assign(db, metering_point_id: int, person_id: int, gueltig_von: date, gueltig_bis: date | None = None) -> None:
-    """Create a Zuordnung.
+def _assign(db, metering_point_id: int, person_id: int, valid_from: date, valid_to: date | None = None) -> None:
+    """Create a Assignment.
 
     Args:
         db: Database connection fixture.
         metering_point_id: MeteringPoint to assign.
         person_id: Person to assign it to.
-        gueltig_von: Start of validity.
-        gueltig_bis: End of validity, or `None` for open-ended.
+        valid_from: Start of validity.
+        valid_to: End of validity, or `None` for open-ended.
 
     Returns:
         None.
     """
-    zuordnung_repo.create(
+    assignment_repo.create(
         db,
-        Zuordnung(
+        Assignment(
             id=None, person_id=person_id, metering_point_id=metering_point_id,
-            gueltig_von=gueltig_von, gueltig_bis=gueltig_bis, created_at="",
+            valid_from=valid_from, valid_to=valid_to, created_at="",
         ),
     )
 
@@ -263,7 +263,7 @@ def test_mid_period_move_splits_metering_point_between_two_personen(db):
 
 
 def test_unassigned_metering_point_reading_is_tracked_not_dropped(db):
-    """A reading for a MeteringPoint with no covering Zuordnung is reported, not billed."""
+    """A reading for a MeteringPoint with no covering Assignment is reported, not billed."""
     leg_id = _leg(db)
     site = _site(db)
     producer = _person(db, "Producer")

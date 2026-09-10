@@ -10,8 +10,8 @@ actions rather than one "accept everything" button: matching a reported
 meter (and its site) against a *new* record still needs a human
 judgment call (which LEG, which direction, is this really the same
 site as an existing site), so each piece is confirmed on its own.
-Zuordnung (linking a taken-over Person to a taken-over MeteringPoint) stays a
-manual step in `/zuordnungen`, as it always was.
+Assignment (linking a taken-over Person to a taken-over MeteringPoint) stays a
+manual step in `/assignments`, as it always was.
 
 For each of the three, the card also shows whether a matching record
 already exists in the app *without* having been taken over here (e.g. an

@@ -51,8 +51,8 @@ class PersonOffboarding:
             or `None`.
         metering_point_exit_at: Date of step 2, "Austrittsdatum MeteringPoint
             festgelegt", or `None`. Setting this in the GUI offers to end
-            the person's currently open `Zuordnung`(en) with this date as
-            `gueltig_bis` -- never automatic, see `app.gui.pages.austritte`.
+            the person's currently open `Assignment`(en) with this date as
+            `valid_to` -- never automatic, see `app.gui.pages.austritte`.
         bkw_informiert_am: Date of step 3, "BKW informiert", or `None`.
         person_bestaetigt_am: Date of step 4, "Person schriftlich
             bestätigt", or `None`.

@@ -1,7 +1,7 @@
 """Toast notification that tolerates a rare NiceGUI element-lifecycle race.
 
 `ui.notify()` resolves its target client via the currently active UI
-"slot" context. On a card-based list (Personen, Zuordnungen, metering points),
+"slot" context. On a card-based list (Personen, assignments, metering points),
 a delete/save action's confirm dialog or edit dialog is opened from a
 button that lives inside a card the subsequent `refresh()` call clears and
 rebuilds. NiceGUI auto-deletes a dialog once the context it was created in

@@ -10,13 +10,13 @@ from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
-from app.models.zuordnung import Zuordnung
+from app.models.assignment import Assignment
 
 _designation_counter = itertools.count(1)
 
@@ -64,9 +64,9 @@ def _metering_point(db, site_id: int, leg_id: int | None, direction: str) -> int
     )
 
 
-def _zuordnung(db, person_id: int, metering_point_id: int, von: date, bis: date | None = None) -> int:
-    return zuordnung_repo.create(
-        db, Zuordnung(id=None, person_id=person_id, metering_point_id=metering_point_id, gueltig_von=von, gueltig_bis=bis, created_at="")
+def _assignment(db, person_id: int, metering_point_id: int, valid_from: date, valid_to: date | None = None) -> int:
+    return assignment_repo.create(
+        db, Assignment(id=None, person_id=person_id, metering_point_id=metering_point_id, valid_from=valid_from, valid_to=valid_to, created_at="")
     )
 
 
@@ -75,7 +75,7 @@ def test_consumer_counted_for_bezug_person(db):
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, None, DIRECTION_CONSUMPTION)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
@@ -89,7 +89,7 @@ def test_prosumer_counted_for_einspeisung_person(db):
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _metering_point(db, site_id, None, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
@@ -106,8 +106,8 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, None, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, None, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
@@ -118,12 +118,12 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     assert mix.gesamt_personen == 2  # a true prosumer is counted on both sides, see above
 
 
-def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
+def test_ended_assignment_before_stichtag_no_longer_counts(db):
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, None, DIRECTION_CONSUMPTION)
-    _zuordnung(db, person_id, bezug_id, date(2020, 1, 1), date(2020, 12, 31))
+    _assignment(db, person_id, bezug_id, date(2020, 1, 1), date(2020, 12, 31))
 
     mix = participant_mix.compute_participant_mix(db, [site_id], stichtag=date(2026, 1, 1))
 
@@ -131,18 +131,18 @@ def test_ended_zuordnung_before_stichtag_no_longer_counts(db):
     assert mix.prosumer_count == 0
 
 
-def test_not_yet_started_zuordnung_counts_as_prosumer_and_consumer(db):
+def test_not_yet_started_assignment_counts_as_prosumer_and_consumer(db):
     """Real customer data surfaced this: every LEG showed 0:0 because every
-    Zuordnung was pre-entered for the following quarter's move-ins. A
-    not-yet-started Zuordnung is now always relevant here (`Zuordnung.
+    Assignment was pre-entered for the following quarter's move-ins. A
+    not-yet-started Assignment is now always relevant here (`Assignment.
     is_current_or_upcoming`), not just once its start date arrives."""
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, None, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, None, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 12, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 12, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 12, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 12, 1))
 
     mix = participant_mix.compute_participant_mix(db, [site_id], stichtag=date(2026, 9, 10))
 
@@ -166,7 +166,7 @@ def test_hinweis_nur_lieferanten(db):
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     einspeisung_id = _metering_point(db, site_id, None, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
@@ -178,7 +178,7 @@ def test_hinweis_nur_bezueger(db):
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, None, DIRECTION_CONSUMPTION)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
@@ -195,11 +195,11 @@ def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
+    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
@@ -216,8 +216,8 @@ def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
@@ -238,11 +238,11 @@ def test_upgrade_candidate_hidden_below_min_personen(db):
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
+    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db, min_personen=3)
 
@@ -266,8 +266,8 @@ def test_no_upgrade_candidate_for_a_still_one_sided_substation_area(db):
     einspeisung_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
-    _zuordnung(db, other_person_id, other_mp_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
 
     candidates = participant_mix.find_upgrade_candidates(db)
 
@@ -291,7 +291,7 @@ def test_leg_should_split_when_every_substation_area_is_independently_green(db):
         (person_id, bezug_id), (person_id, einspeisung_id),
         (other_person_id, other_bezug_id), (other_person_id, other_einspeisung_id),
     ):
-        _zuordnung(db, pid, mp_id, date(2026, 1, 1))
+        _assignment(db, pid, mp_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, mixed_leg_id) is True
 
@@ -312,7 +312,7 @@ def test_leg_should_not_split_when_one_substation_area_would_be_one_sided_alone(
     other_person_id = _person(db, "Andere")
     other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
-        _zuordnung(db, pid, mp_id, date(2026, 1, 1))
+        _assignment(db, pid, mp_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, mixed_leg_id) is False
 
@@ -337,7 +337,7 @@ def test_leg_should_not_split_below_min_personen(db):
         (person_id, bezug_id), (person_id, einspeisung_id),
         (other_person_id, other_bezug_id), (other_person_id, other_einspeisung_id),
     ):
-        _zuordnung(db, pid, mp_id, date(2026, 1, 1))
+        _assignment(db, pid, mp_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=2) is True
     assert participant_mix.leg_should_split(db, mixed_leg_id, min_personen=3) is False
@@ -350,7 +350,7 @@ def test_leg_should_not_split_when_not_mixed(db):
     person_id = _person(db)
     bezug_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_CONSUMPTION)
     einspeisung_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_FEED_IN)
-    _zuordnung(db, person_id, bezug_id, date(2026, 1, 1))
-    _zuordnung(db, person_id, einspeisung_id, date(2026, 1, 1))
+    _assignment(db, person_id, bezug_id, date(2026, 1, 1))
+    _assignment(db, person_id, einspeisung_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, dedicated_leg_id) is False

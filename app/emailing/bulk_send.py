@@ -19,7 +19,7 @@ from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.person import Person
 
@@ -50,7 +50,7 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
         leg_id: LEG to resolve members for.
 
     Returns:
-        Persons with a current-or-upcoming Zuordnung (`Zuordnung.
+        Persons with a current-or-upcoming Assignment (`Assignment.
         is_current_or_upcoming` -- an assignment entered ahead of its
         start date, e.g. next quarter's move-ins prepared in advance,
         counts too) to a MeteringPoint in this LEG, deduplicated (a person can
@@ -62,9 +62,9 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     person_ids: dict[int, None] = {}  # insertion-ordered set
     for metering_point in metering_points:
-        for zuordnung in zuordnung_repo.list_for_metering_point(connection, metering_point.id):
-            if zuordnung.is_current_or_upcoming(now):
-                person_ids.setdefault(zuordnung.person_id, None)
+        for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
+            if assignment.is_current_or_upcoming(now):
+                person_ids.setdefault(assignment.person_id, None)
 
     recipients = []
     for person_id in person_ids:

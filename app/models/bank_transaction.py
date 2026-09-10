@@ -312,7 +312,7 @@ def list_open(connection: sqlite3.Connection) -> list[BankTransaction]:
 def list_recent(connection: sqlite3.Connection, limit: int = 20) -> list[BankTransaction]:
     """List the most recently created bank transactions, any status.
 
-    Used to offer "Zuordnung rückgängig machen" on a just-matched entry
+    Used to offer "Assignment rückgängig machen" on a just-matched entry
     without having to hunt through a whole import batch.
 
     Args:

@@ -1,7 +1,7 @@
 """Person: a natural person or company participating in the LEG.
 
-Connected to metering points exclusively through the dated `Zuordnung` (see
-`app.models.zuordnung`) -- never directly, and never via an address match.
+Connected to metering points exclusively through the dated `Assignment` (see
+`app.models.assignment`) -- never directly, and never via an address match.
 The `rechnungsadresse_*` fields are a pure contact/billing address and
 deliberately independent of any site's physical connection address (a
 person can be billed somewhere other than where their meter is installed).
@@ -66,7 +66,7 @@ class Person:
         aktiv: Whether this person is active. Set to `False` instead of
             deleting when billing history exists (see `delete`) -- an
             inactive person is kept for accounting/statistics but hidden
-            from selection for new Zuordnungen.
+            from selection for new assignments.
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -394,12 +394,12 @@ def delete(connection: sqlite3.Connection, person_id: int) -> bool:
     surface that as a dead end, a person who cannot be deleted is instead
     deactivated (`aktiv = 0`): their Kundennummer and history stay intact
     for accounting/statistics, but they no longer appear as a selectable
-    option for new Zuordnungen. A genuinely new person (even one with the
+    option for new assignments. A genuinely new person (even one with the
     "same" name) always gets a fresh, independent Kundennummer -- see
     `create`.
 
     metering points remain untouched when a person is actually deleted; any of
-    their Zuordnungen are removed via `ON DELETE CASCADE`.
+    their assignments are removed via `ON DELETE CASCADE`.
 
     Args:
         connection: Open SQLite connection.

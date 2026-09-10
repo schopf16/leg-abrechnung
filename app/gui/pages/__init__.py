@@ -22,5 +22,5 @@ from app.gui.pages import (  # noqa: F401
     statistik,
     substation_areas,
     web_registrierungen,
-    zuordnungen,
+    assignments,
 )

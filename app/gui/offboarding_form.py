@@ -5,9 +5,9 @@
 The one thing this dialog does that onboarding's never needs: setting the
 "Austrittsdatum MeteringPoint festgelegt" step offers, as an explicit,
 separately-confirmed action, to end the person's currently open-ended
-`Zuordnung`(en) with that date -- reusing the exact mechanism already used
-for an ordinary mid-quarter tenant change (`app.models.zuordnung`). Never
-automatic: saving the tracker's date alone does not touch any Zuordnung.
+`Assignment`(en) with that date -- reusing the exact mechanism already used
+for an ordinary mid-quarter tenant change (`app.models.assignment`). Never
+automatic: saving the tracker's date alone does not touch any Assignment.
 """
 
 from datetime import date, datetime
@@ -19,7 +19,7 @@ from app.db.connection import connection_scope
 from app.gui.safe_notify import safe_notify
 from app.models import metering_point as metering_point_repo
 from app.models import person_offboarding as person_offboarding_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.person import Person
 from app.models.person_offboarding import GRUND_OPTIONS, STEPS, PersonOffboarding
 
@@ -76,7 +76,7 @@ def open_offboarding_form(
                 if attr == "metering_point_exit_at":
                     ui.button(
                         "Zuordnung(en) beenden",
-                        on_click=lambda: open_end_zuordnung_dialog(
+                        on_click=lambda: open_end_assignment_dialog(
                             person, date_inputs["metering_point_exit_at"]
                         ),
                     ).props("dense outline")
@@ -111,14 +111,14 @@ def open_offboarding_form(
     dialog.open()
 
 
-def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
-    """Offer to end a person's currently open-ended Zuordnung(en).
+def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
+    """Offer to end a person's currently open-ended Assignment(en).
 
     A separate, explicitly-confirmed action -- never triggered just by
     saving the offboarding tracker's date fields.
 
     Args:
-        person: The person whose Zuordnungen to consider.
+        person: The person whose assignments to consider.
         date_input: The "Austrittsdatum MeteringPoint festgelegt" field --
             read at confirm time, so a date typed but not yet saved on
             the tracker can still be used here.
@@ -135,14 +135,14 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
         return
 
     with connection_scope() as connection:
-        open_zuordnungen = [
-            z for z in zuordnung_repo.list_for_person(connection, person.id) if z.gueltig_bis is None
+        open_assignments = [
+            z for z in assignment_repo.list_for_person(connection, person.id) if z.valid_to is None
         ]
         metering_point_names = {}
-        for z in open_zuordnungen:
+        for z in open_assignments:
             metering_point = metering_point_repo.get(connection, z.metering_point_id)
             metering_point_names[z.id] = metering_point.designation if metering_point else f"Messpunkt #{z.metering_point_id}"
-    if not open_zuordnungen:
+    if not open_assignments:
         safe_notify("Keine offene Zuordnung für diese Person gefunden.", type="warning")
         return
 
@@ -150,7 +150,7 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
         ui.label(f"Zuordnung(en) von {person.anzeige_name} per {exit_date.isoformat()} beenden?").classes(
             "font-bold"
         )
-        for z in open_zuordnungen:
+        for z in open_assignments:
             ui.label(f"- {metering_point_names[z.id]}")
         ui.label(
             "Die nächste Quartalsabrechnung rechnet den Zeitraum bis zu "
@@ -162,11 +162,11 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
 
             def do_end() -> None:
                 with connection_scope() as connection:
-                    for z in open_zuordnungen:
-                        z.gueltig_bis = exit_date
-                        zuordnung_repo.update(connection, z)
+                    for z in open_assignments:
+                        z.valid_to = exit_date
+                        assignment_repo.update(connection, z)
                 confirm.close()
-                safe_notify(f"{len(open_zuordnungen)} Zuordnung(en) beendet.", type="positive")
+                safe_notify(f"{len(open_assignments)} Zuordnung(en) beendet.", type="positive")
 
             ui.button("Beenden", on_click=do_end, color="negative")
     confirm.open()

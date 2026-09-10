@@ -11,7 +11,7 @@ data, and as the fixture basis for the distribution-engine unit tests (see
   min(P, C) = C`, testing the consumption-limited case) and sometimes falls
   short of it (testing the production-limited case).
 - A MeteringPoint that changes Person mid-quarter (tenant move), exercising
-  the time-sliced Zuordnung lookup, while its site/substation area and its
+  the time-sliced Assignment lookup, while its site/substation area and its
   LEG never change.
 """
 
@@ -27,14 +27,14 @@ from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
-from app.models.zuordnung import Zuordnung
+from app.models.assignment import Assignment
 
 #: Demo QR-IBAN (valid checksum, QR-IID range) so generated demo data can
 #: be used to produce QR-invoices end to end without manual configuration.
@@ -202,7 +202,7 @@ def _generate_readings_for_quarter(
 
 def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     """Create the full demo data set: LEG, sites, metering points,
-    Personen, Zuordnungen, readings.
+    Personen, assignments, readings.
 
     Idempotent guard: raises `DemoDataAlreadyExists` if the marker person
     is already present, so the button in the UI can be clicked safely
@@ -228,7 +228,7 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     sites = _create_demo_sites(connection, substation_area)
     metering_points = _create_demo_metering_points(connection, sites, leg)
     personen = _create_demo_personen(connection)
-    _create_demo_zuordnungen(connection, personen, metering_points)
+    _create_demo_assignments(connection, personen, metering_points)
     reading_count = _create_demo_readings(connection, metering_points)
     _set_demo_leg_settings(connection)
 
@@ -438,12 +438,12 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
     return created
 
 
-def _create_demo_zuordnungen(
+def _create_demo_assignments(
     connection: sqlite3.Connection,
     personen: dict[str, Person],
     metering_points: dict[str, MeteringPoint],
 ) -> None:
-    """Insert Zuordnungen, including the mid-quarter move example.
+    """Insert assignments, including the mid-quarter move example.
 
     The "bergstrasse4_bezug" MeteringPoint is assigned to Erika (previous
     tenant) until 2025-08-15 and to David from 2025-08-16 onward, so a
@@ -462,7 +462,7 @@ def _create_demo_zuordnungen(
     summer_start, _ = quarter_bounds(*SUMMER_QUARTER)
     move_date = date(2025, 8, 16)
 
-    static_zuordnungen = [
+    static_assignments = [
         ("anna_bezug", "anna"),
         ("anna_einspeisung", "anna"),
         ("beat_bezug", "beat"),
@@ -470,39 +470,39 @@ def _create_demo_zuordnungen(
         ("carla_bezug_1", "carla"),
         ("carla_bezug_2", "carla"),
     ]
-    for metering_point_handle, person_handle in static_zuordnungen:
-        zuordnung_repo.create(
+    for metering_point_handle, person_handle in static_assignments:
+        assignment_repo.create(
             connection,
-            Zuordnung(
+            Assignment(
                 id=None,
                 person_id=personen[person_handle].id,
                 metering_point_id=metering_points[metering_point_handle].id,
-                gueltig_von=summer_start.date(),
-                gueltig_bis=None,
+                valid_from=summer_start.date(),
+                valid_to=None,
                 created_at="",
             ),
         )
 
     # The move: Erika until the day before the move, David from the move on.
-    zuordnung_repo.create(
+    assignment_repo.create(
         connection,
-        Zuordnung(
+        Assignment(
             id=None,
             person_id=personen["erika"].id,
             metering_point_id=metering_points["bergstrasse4_bezug"].id,
-            gueltig_von=summer_start.date(),
-            gueltig_bis=move_date - timedelta(days=1),
+            valid_from=summer_start.date(),
+            valid_to=move_date - timedelta(days=1),
             created_at="",
         ),
     )
-    zuordnung_repo.create(
+    assignment_repo.create(
         connection,
-        Zuordnung(
+        Assignment(
             id=None,
             person_id=personen["david"].id,
             metering_point_id=metering_points["bergstrasse4_bezug"].id,
-            gueltig_von=move_date,
-            gueltig_bis=None,
+            valid_from=move_date,
+            valid_to=None,
             created_at="",
         ),
     )

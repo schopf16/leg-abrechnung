@@ -105,14 +105,14 @@ def test_demo_move_splits_metering_point_between_two_personen(db):
 
     rows = db.execute(
         """
-        SELECT person_id, gueltig_von, gueltig_bis FROM zuordnung
+        SELECT person_id, valid_from, valid_to FROM assignment
         WHERE metering_point_id = (
             SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000007'
         )
-        ORDER BY gueltig_von
+        ORDER BY valid_from
         """
     ).fetchall()
     assert len(rows) == 2
     assert rows[0]["person_id"] == erika.id
     assert rows[1]["person_id"] == david.id
-    assert rows[1]["gueltig_bis"] is None
+    assert rows[1]["valid_to"] is None

@@ -1,6 +1,6 @@
 """Plausibility and consistency checks (project brief, section 7).
 
-Covers gaps in the Zuordnung history, missing reading periods, the
+Covers gaps in the Assignment history, missing reading periods, the
 invoice/credit-note sum balance (lives in `app.domain.billing.
 verify_sum_balance`, re-exposed here for a single import point),
 metering points that have no LEG assigned yet, interested persons whose
@@ -24,7 +24,7 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models import zuordnung as zuordnung_repo
+from app.models import assignment as assignment_repo
 
 #: Expected number of 15-minute readings per MeteringPoint per full calendar day.
 _EXPECTED_READINGS_PER_DAY = 96
@@ -35,7 +35,7 @@ class QualityWarning:
     """One plausibility issue found in the data, for display in the UI.
 
     Attributes:
-        category: One of "zuordnung_ueberlappung", "zuordnung_luecke",
+        category: One of "assignment_overlap", "assignment_gap",
             "messdaten_luecke", "leg_nicht_zugeordnet",
             "aufnahme_ueberfaellig", "bank_buchung_ungeklaert",
             "trafokreis_wechsel_potential" or "trafokreis_einseitig".
@@ -53,7 +53,7 @@ class QualityWarning:
 
 
 def check_assignment_consistency(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Check every MeteringPoint's Zuordnung history for overlaps and gaps.
+    """Check every MeteringPoint's Assignment history for overlaps and gaps.
 
     Args:
         connection: Open SQLite connection.
@@ -64,16 +64,16 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
     """
     warnings = []
     for metering_point in metering_point_repo.list_all(connection):
-        for zuordnung_warning in zuordnung_repo.find_warnings(connection, metering_point.id):
+        for assignment_warning in assignment_repo.find_warnings(connection, metering_point.id):
             category = (
-                "zuordnung_ueberlappung"
-                if zuordnung_warning.kind == "overlap"
-                else "zuordnung_luecke"
+                "assignment_overlap"
+                if assignment_warning.kind == "overlap"
+                else "assignment_gap"
             )
             warnings.append(
                 QualityWarning(
                     category=category,
-                    message=zuordnung_warning.message,
+                    message=assignment_warning.message,
                     link=f"/metering-points/{metering_point.id}",
                 )
             )
@@ -102,8 +102,8 @@ def check_reading_completeness(
     warnings = []
 
     for metering_point in metering_point_repo.list_all(connection):
-        zuordnungen = zuordnung_repo.list_for_metering_point(connection, metering_point.id)
-        if not zuordnungen:
+        assignments = assignment_repo.list_for_metering_point(connection, metering_point.id)
+        if not assignments:
             continue
 
         rows = connection.execute(
@@ -119,7 +119,7 @@ def check_reading_completeness(
         end_date = end.date()
         while current_day < end_date:
             moment = datetime.combine(current_day, time())
-            if any(z.covers(moment) for z in zuordnungen):
+            if any(z.covers(moment) for z in assignments):
                 count = counts_by_day.get(current_day.isoformat(), 0)
                 if count != _EXPECTED_READINGS_PER_DAY:
                     warnings.append(
