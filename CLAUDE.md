@@ -108,10 +108,10 @@ Several rates/values are copied onto a row at the moment something happens
 (a billing run is created, a Mahnung is sent) specifically so a later
 change to `LegSettings` can never retroactively alter what was already
 communicated to a member. Existing examples on `BillingRunItem`:
-`price_rp_per_kwh`, `verwaltungsaufwand_bezug_rp_per_kwh`/
-`verwaltungsaufwand_einspeisung_rp_per_kwh`, `faellig_am` (due date, printed
-verbatim on re-export, never recomputed), `mahnung_frist_tage` (the
-deadline actually granted by a 1. Mahnung). When adding a new
+`price_rp_per_kwh`, `admin_fee_consumption_rp_per_kwh`/
+`admin_fee_feed_in_rp_per_kwh`, `due_date` (printed verbatim on re-export,
+never recomputed), `dunning_deadline_days` (the deadline actually granted
+by a 1. Mahnung). When adding a new
 settings-driven value that gets billed/communicated to a person, default to
 this pattern rather than reading the live setting at render time.
 
@@ -126,29 +126,80 @@ each an optional date field filled in as a real-world step completes,
 shape for any future multi-step, manually-confirmed real-world process
 instead of inventing a new tracker shape.
 
+### Language: English code, German UI
+
+Identifiers, file names, the database schema, docstrings and comments are
+English. Only user-facing text is German (labels, buttons, notifications,
+user-facing error messages, PDF/CSV output, and the `{vorname}`-style
+placeholders in the administrator's stored email templates). Three things
+deliberately keep German *string values*: the external leg-ittigen.ch
+form payload keys in `app/importers/cloudflare_client.py` (an API contract
+we don't control), the template placeholder keys in
+`app/emailing/templates.py`/`app/domain/dunning.py`, and persisted enum
+values that predate the translation (`direction` 'bezug'/'einspeisung',
+`person_offboarding.reason`, `account_entries.kind`, `billing_runs.status`,
+`email_broadcast_log.scope`) — translating those needs a table rebuild and
+is tracked as an open decision. Old migrations keep their original German
+SQL forever (replay history, see above).
+
+Glossary (German domain term → code name):
+
+| German | Code |
+|---|---|
+| Trafokreis | `SubstationArea`, `substation_area` |
+| Standort | `Site`, `site` |
+| Messpunkt / Messpunktbezeichnung | `MeteringPoint` / `designation` |
+| Messrichtung Bezug / Einspeisung | `direction` `DIRECTION_CONSUMPTION` / `DIRECTION_FEED_IN` |
+| Zuordnung (gültig von/bis) | `Assignment` (`valid_from`/`valid_to`) |
+| Kundennummer | `customer_number` |
+| Verwaltungsaufwand | `admin_fee_*` |
+| Mahnwesen / Mahnung / Mahnstufe | `dunning` / dunning notice / `dunning_level` |
+| Fällig am | `due_date` |
+| Saldo | `balance` |
+| Stichtag | `reference_date` |
+| Aufnahme / Austritt | onboarding / offboarding |
+| LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
+
 ### Domain model core
 
-`Trafokreis` (BKW transformer circuit, physical) → `Standort` (physical
-site) → `Messpunkt` (a meter, Bezug or Einspeisung direction) →
-`Zuordnung` (time-bounded link from a Messpunkt to a `Person`, so a
-mid-quarter move splits readings automatically). `Leg` is the billing
-group a Messpunkt is assigned to — normally one per Trafokreis, but can
-span several if their owners pool together (the app warns about this on
-several pages but doesn't compute the resulting BKW discount itself).
-`BillingRun`/`BillingRunItem` are produced per LEG per quarter from
-`app.domain.distribution.compute_quarter_distribution`.
+`SubstationArea` (BKW Trafokreis, physical) → `Site` (physical connection
+site with an address) → `MeteringPoint` (a meter, consumption or feed-in
+direction) → `Assignment` (time-bounded link from a metering point to a
+`Person`, so a mid-quarter move splits readings automatically). `Leg` is
+the billing group a metering point is assigned to — normally one per
+substation area, but can span several if their owners pool together (the
+app warns about this on several pages but doesn't compute the resulting
+BKW discount itself). `BillingRun`/`BillingRunItem` are produced per LEG
+per quarter from `app.domain.distribution.compute_quarter_distribution`.
 
-### Bank reconciliation / Mahnwesen / offboarding (Debitoren feature set)
+### Bank reconciliation / dunning / offboarding (receivables feature set)
 
 `app/pdf/qr_reference.py`'s `generate_qrr_reference`/`parse_qrr_reference`
-are pure functions encoding `(kundennummer, billing_run_id, item_id)` into
-a QRR reference number and back — nothing about a sent invoice's reference
-is stored in the DB; a bank statement match is decoded straight back to
-the exact `BillingRunItem`. `app/domain/bank_reconciliation.py` matches
-imported camt.053/camt.054 transactions to a person (auto via decoded QRR
-reference, or a ranked suggestion via IBAN/Kundennummer-in-text/name
-similarity) and books an `AccountEntry`. `app/domain/mahnwesen.py`
+are pure functions encoding `(customer_number, billing_run_id, item_id)`
+into a QRR reference number and back — nothing about a sent invoice's
+reference is stored in the DB; a bank statement match is decoded straight
+back to the exact `BillingRunItem`. `app/domain/bank_reconciliation.py`
+matches imported camt.053/camt.054 transactions to a person (auto via
+decoded QRR reference, or a ranked suggestion via IBAN/customer-number-in-
+text/name similarity) and books an `AccountEntry`. `app/domain/dunning.py`
 implements the LEG's own 2-stage Mahnung Reglement (not the generic
-3-stage/fee model) gated on the person's overall Saldo, not just one
+3-stage/fee model) gated on the person's overall balance, not just one
 item's own state — see its module docstring before changing escalation
 logic.
+
+### Tooling and CI
+
+`requirements-dev.txt` adds ruff, bandit and pip-audit on top of
+`requirements.txt`; `pyproject.toml` holds their configuration.
+`.github/workflows/ci.yml` runs on every push/PR: `ruff check`, the pytest
+suite, `bandit -ll` (medium severity and up) and `pip-audit`. Keep all four
+green locally before pushing:
+
+```
+.venv\Scripts\ruff.exe check app tests run.py
+.venv\Scripts\bandit.exe -q -r app -ll
+.venv\Scripts\pip-audit.exe -r requirements.txt
+```
+
+`ruff format` is intentionally not enforced yet (the codebase predates it;
+reformatting everything is a separate decision).

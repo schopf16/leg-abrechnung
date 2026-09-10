@@ -128,7 +128,8 @@ def _creation_dates(connection: sqlite3.Connection, table: str) -> list[date]:
     Returns:
         The `created_at` values, parsed to `date`.
     """
-    rows = connection.execute(f"SELECT created_at FROM {table}").fetchall()
+    # nosec B608 -- `table` is one of the fixed table names above, never user input
+    rows = connection.execute(f"SELECT created_at FROM {table}").fetchall()  # nosec B608
     return [datetime.fromisoformat(row["created_at"]).date() for row in rows if row["created_at"]]
 
 

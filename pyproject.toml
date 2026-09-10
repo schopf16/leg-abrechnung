@@ -1,0 +1,35 @@
+[project]
+name = "leg-abrechnung"
+version = "0.0.0"
+description = "Offline desktop app for administering a Swiss local electricity community (LEG): meter data import, 15-minute distribution, quarterly QR-bill invoicing."
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [".venv", "backups", "data", "logs", "output"]
+
+[tool.ruff.lint]
+# Pyflakes + pycodestyle errors: the PEP 8 baseline. Style-only rules
+# (import sorting, naming, formatting) are deliberately not enforced yet.
+select = ["E", "F", "W"]
+ignore = [
+    "E501", # line length is a judgement call in this codebase (long German UI strings)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Page modules are registered by importing them for their @ui.page side effect.
+"app/gui/pages/__init__.py" = ["F401"]
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests", "backups", "data", "logs", "output"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

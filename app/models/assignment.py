@@ -36,7 +36,7 @@ class Assignment:
     created_at: str
 
     @staticmethod
-    def from_row(row: sqlite3.Row) -> "Zuordnung":
+    def from_row(row: sqlite3.Row) -> "Assignment":
         """Build a `Assignment` from a `sqlite3.Row`.
 
         Args:

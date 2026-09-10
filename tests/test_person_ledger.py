@@ -1,6 +1,6 @@
 """Tests for app.domain.person_ledger (the receivables detail timeline)."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timezone
 
 from app.domain import person_ledger
 from app.models import account_entry as account_entry_repo
@@ -79,7 +79,10 @@ def test_invoice_entry_falls_back_to_created_at_without_due_date(db):
 
     entries = person_ledger.list_ledger_entries(db, person_id)
 
-    assert entries[0].entry_date == date.today().isoformat()
+    # `created_at` is stamped in UTC, and the ledger slices its date part
+    # verbatim -- so compare against the UTC date, not the local one, or
+    # this fails between local midnight and 02:00 in Switzerland.
+    assert entries[0].entry_date == datetime.now(timezone.utc).date().isoformat()
 
 
 def test_credit_item_is_labeled_credit_note(db):
@@ -88,7 +91,7 @@ def test_credit_item_is_labeled_credit_note(db):
 
     entries = person_ledger.list_ledger_entries(db, person_id)
 
-    assert entries[0].kind == "credit_note"
+    assert entries[0].kind == "gutschrift"
     assert "Gutschrift" in entries[0].description
     assert entries[0].amount_rappen == -5_000
 

@@ -370,11 +370,23 @@ sendet die Änderungen an GitHub.
 - **PDF/QR-Rechnung + CSV-Listen:** `app/pdf/` (Bibliotheken `qrbill` +
   `reportlab` + `svglib` für die PDFs; die Rechnungs-/Auszahlungslisten
   sind reines CSV, siehe `csv_export.py`).
-- **Persistenz:** `app/models/` — ein Modul pro Tabelle (`trafokreis.py`,
-  `leg.py`, `standort.py`, `messpunkt.py`, `person.py`, `zuordnung.py`,
-  `web_registration.py`), reine CRUD-Funktionen ohne Geschäftslogik.
+- **Persistenz:** `app/models/` — ein Modul pro Tabelle
+  (`substation_area.py` = Trafokreis, `leg.py`, `site.py` = Standort,
+  `metering_point.py` = Messpunkt, `person.py`, `assignment.py` =
+  Zuordnung, `web_registration.py`, ...), reine CRUD-Funktionen ohne
+  Geschäftslogik.
 - **Oberfläche:** `app/gui/pages/` — ein Modul pro Seite.
 - **Backup:** `app/backup/`.
+- **Sprache im Code:** Bezeichner, Dateinamen, Datenbankschema und
+  Kommentare sind Englisch (Glossar: Trafokreis = substation area,
+  Standort = site, Messpunkt = metering point, Zuordnung = assignment,
+  Mahnwesen = dunning). Nur die Oberflächentexte sind Deutsch. Eigennamen
+  wie LEG, BKW oder Rappen bleiben unübersetzt.
+- **Qualitätssicherung:** Bei jedem Push laufen in GitHub Actions
+  (`.github/workflows/ci.yml`) Ruff (Lint/PEP 8), die pytest-Suite,
+  Bandit (Sicherheitsmuster) und pip-audit (bekannte Schwachstellen der
+  Abhängigkeiten); Dependabot hält die Abhängigkeiten aktuell. Lokal:
+  `pip install -r requirements-dev.txt`, dann `ruff check app tests`.
 
 Modultrennung ist bewusst strikt: die Domänenlogik kennt weder SQL noch
 NiceGUI-Details, die GUI kennt keine SQL-Details, der Import kennt nichts

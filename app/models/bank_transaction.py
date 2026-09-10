@@ -298,14 +298,12 @@ def list_open(connection: sqlite3.Connection) -> list[BankTransaction]:
         import batch, most recent booking date first.
     """
     placeholders = ", ".join("?" for _ in OPEN_STATUSES)
-    rows = connection.execute(
-        f"""
-        SELECT * FROM bank_transactions
-        WHERE status IN ({placeholders})
-        ORDER BY booking_date DESC, id DESC
-        """,
-        OPEN_STATUSES,
-    ).fetchall()
+    # Only "?" placeholders are interpolated; the values themselves are bound.
+    query = (
+        f"SELECT * FROM bank_transactions WHERE status IN ({placeholders}) "  # nosec B608
+        "ORDER BY booking_date DESC, id DESC"
+    )
+    rows = connection.execute(query, OPEN_STATUSES).fetchall()
     return [BankTransaction.from_row(row) for row in rows]
 
 

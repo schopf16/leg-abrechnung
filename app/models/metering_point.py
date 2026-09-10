@@ -71,7 +71,7 @@ class MeteringPoint:
         return self.direction == DIRECTION_FEED_IN
 
     @staticmethod
-    def from_row(row: sqlite3.Row) -> "Messpunkt":
+    def from_row(row: sqlite3.Row) -> "MeteringPoint":
         """Build a `MeteringPoint` from a `sqlite3.Row`.
 
         Args:

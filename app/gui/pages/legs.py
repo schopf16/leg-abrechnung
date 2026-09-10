@@ -581,7 +581,7 @@ def leg_detail_page(leg_id: int) -> None:
                 # move, see the module docstring.
                 upgrade_candidates = [
                     c for c in find_upgrade_candidates(inner_connection, min_persons=min_persons)
-                    if any(l.id == leg_id for l in c.mixed_legs)
+                    if any(mixed.id == leg_id for mixed in c.mixed_legs)
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
                 table.rows = [
@@ -610,7 +610,7 @@ def leg_detail_page(leg_id: int) -> None:
                 None.
             """
             with connection_scope() as inner_connection:
-                leg_options = {l.id: l.name for l in leg_repo.list_all(inner_connection)}
+                leg_options = {leg.id: leg.name for leg in leg_repo.list_all(inner_connection)}
             _open_change_leg_dialog(event.args, leg_options, refresh_table)
 
         table.on("change_leg", on_change_leg)

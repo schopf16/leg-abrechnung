@@ -134,7 +134,7 @@ def test_payment_covering_the_balance_stops_escalation_even_if_item_itself_looks
     account (not necessarily linked to this exact item) must still stop
     the dunning notice, since overall nothing more is owed."""
     person = _person(db)
-    item = _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
+    _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     account_entry_repo.create(
         db, person_id=person.id, kind="zahlungseingang", amount_rappen=-10_000, booked_at=date.today().isoformat(),
     )

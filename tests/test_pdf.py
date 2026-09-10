@@ -15,7 +15,6 @@ from app.models import leg as leg_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
-from app.pdf.export_service import export_billing_run_documents
 from app.pdf.person_bill_pdf import generate_person_bill_pdf
 from app.pdf.qr_bill_render import build_qr_bill
 from app.pdf.qr_reference import generate_qrr_reference

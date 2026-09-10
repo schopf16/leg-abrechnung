@@ -25,7 +25,6 @@ import difflib
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Optional
 
 from app.domain.iban_validation import normalize_iban

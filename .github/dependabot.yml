@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # requirements.txt / requirements-dev.txt -- one weekly PR batch, so the
+  # exact pins stay current without a stream of single-package PRs.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+
+  # The actions used in .github/workflows/ci.yml.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

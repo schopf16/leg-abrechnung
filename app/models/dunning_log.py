@@ -31,7 +31,7 @@ class DunningLog:
     billing_run_item_ids: list[int]
 
     @staticmethod
-    def from_row(row: sqlite3.Row) -> "MahnungLog":
+    def from_row(row: sqlite3.Row) -> "DunningLog":
         """Build a `DunningLog` from a `sqlite3.Row`.
 
         Args:

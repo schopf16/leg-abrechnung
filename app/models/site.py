@@ -51,7 +51,7 @@ class Site:
         return ", ".join(p for p in (street, city) if p)
 
     @staticmethod
-    def from_row(row: sqlite3.Row) -> "Standort":
+    def from_row(row: sqlite3.Row) -> "Site":
         """Build a `site` from a `sqlite3.Row`.
 
         Args:

@@ -84,7 +84,7 @@ def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
         if item.is_owed_to_leg:
             kind, label = "rechnung", "Rechnung gestellt"
         elif item.is_owed_by_leg:
-            kind, label = "credit_note", "Gutschrift erstellt"
+            kind, label = "gutschrift", "Gutschrift erstellt"
         else:
             kind, label = "rechnung", "Abrechnung (kein Saldo)"
 

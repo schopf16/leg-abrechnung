@@ -20,7 +20,6 @@ from nicegui import events, ui
 
 from app.db.connection import connection_scope
 from app.domain import bank_reconciliation, dunning, person_ledger
-from app.domain.iban_validation import format_iban
 from app.gui.invoice_detail import open_invoice_detail
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
@@ -29,7 +28,6 @@ from app.importers.base import ImportValidationError
 from app.importers.camt_parser import ParsedBankTransaction, parse_camt_file
 from app.models import account_entry as account_entry_repo
 from app.models import bank_transaction as bank_transaction_repo
-from app.models import billing_run as billing_run_repo
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models.bank_transaction import BankTransaction

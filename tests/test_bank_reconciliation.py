@@ -109,7 +109,7 @@ def test_reversal_is_never_auto_matched_even_with_valid_reference(db):
 
 def test_iban_exact_match_ranks_above_name_similarity(db):
     exact = _person(db, name="Anna", iban="CH9300762011623852957")
-    similar_name = _person(db, name="Ana", email="ana@example.invalid")
+    _person(db, name="Ana", email="ana@example.invalid")
     tx = _tx(counterparty_name="Ana", counterparty_iban="CH9300762011623852957")
 
     result = bank_reconciliation.find_match(db, tx)
