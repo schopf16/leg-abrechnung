@@ -1,14 +1,14 @@
 """LEG (Lokale Elektrizitätsgemeinschaft): the administrative and billing
-group an individual Messpunkt opts into. Attached to the Messpunkt itself,
-never to a site or Person directly -- two Messpunkte at the very same
+group an individual MeteringPoint opts into. Attached to the MeteringPoint itself,
+never to a site or Person directly -- two metering points at the very same
 site (and thus the same substation area, see `app.models.substation_area`) can
-belong to different LEGs, and one LEG can combine Messpunkte spread across
+belong to different LEGs, and one LEG can combine metering points spread across
 several substation areas if their owners agree to bill jointly (at a
 correspondingly lower BKW discount for the cross-substation-area share, which
 this app never computes but can flag -- see `app.domain.leg_composition`).
 
 Billing runs (see `app.domain.billing`) are scoped to exactly one LEG at a
-time: local sharing only ever happens between Messpunkte belonging to the
+time: local sharing only ever happens between metering points belonging to the
 same LEG (see `app.domain.distribution`), and each LEG gets its own name on
 its invoices' letterhead -- everything else (address, QR-IBAN, energy
 price, admin fees) is shared across all LEGs, see `app.models.settings`.
@@ -22,7 +22,7 @@ from typing import Optional
 
 @dataclass
 class Leg:
-    """One LEG (billing entity), attached to individual Messpunkte.
+    """One LEG (billing entity), attached to individual metering points.
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
@@ -155,10 +155,10 @@ def update(connection: sqlite3.Connection, leg: Leg) -> None:
     connection.commit()
 
 
-def count_messpunkte(connection: sqlite3.Connection, leg_id: int) -> int:
-    """Count the Messpunkte currently assigned to a LEG.
+def count_metering_points(connection: sqlite3.Connection, leg_id: int) -> int:
+    """Count the metering points currently assigned to a LEG.
 
-    Used to guard deletion: a LEG with assigned Messpunkte must not be
+    Used to guard deletion: a LEG with assigned metering points must not be
     deleted (see `delete`).
 
     Args:
@@ -166,20 +166,20 @@ def count_messpunkte(connection: sqlite3.Connection, leg_id: int) -> int:
         leg_id: Primary key of the LEG.
 
     Returns:
-        The number of `messpunkt` rows referencing this LEG.
+        The number of `metering_point` rows referencing this LEG.
     """
     row = connection.execute(
-        "SELECT COUNT(*) AS n FROM messpunkt WHERE leg_id = ?", (leg_id,)
+        "SELECT COUNT(*) AS n FROM metering_point WHERE leg_id = ?", (leg_id,)
     ).fetchone()
     return row["n"]
 
 
 class LegInUseError(Exception):
-    """Raised when deleting a LEG that still has assigned Messpunkte."""
+    """Raised when deleting a LEG that still has assigned metering points."""
 
 
 def delete(connection: sqlite3.Connection, leg_id: int) -> None:
-    """Delete a LEG, but only if no Messpunkt is assigned to it.
+    """Delete a LEG, but only if no MeteringPoint is assigned to it.
 
     Args:
         connection: Open SQLite connection.
@@ -189,9 +189,9 @@ def delete(connection: sqlite3.Connection, leg_id: int) -> None:
         None.
 
     Raises:
-        LegInUseError: If one or more Messpunkte still reference this LEG.
+        LegInUseError: If one or more metering points still reference this LEG.
     """
-    if count_messpunkte(connection, leg_id) > 0:
+    if count_metering_points(connection, leg_id) > 0:
         raise LegInUseError(
             "LEG kann nicht gelöscht werden: es sind noch Messpunkte zugeordnet."
         )

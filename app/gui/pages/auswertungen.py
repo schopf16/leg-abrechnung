@@ -203,7 +203,7 @@ def auswertungen_page() -> None:
                         row_key="message",
                     ).classes("w-full")
                     # Plain <a>, not ui.link: jumps straight to the object
-                    # this row is about (Messpunkt/Person detail page), so
+                    # this row is about (MeteringPoint/Person detail page), so
                     # the administrator doesn't have to search for it by
                     # the name mentioned in the message text.
                     warnings_table.add_slot(

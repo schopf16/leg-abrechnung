@@ -1,9 +1,9 @@
-"""Time-bounded assignments of Messpunkte to Personen (Zuordnungs-Historie).
+"""Time-bounded assignments of metering points to Personen (Zuordnungs-Historie).
 
-A Messpunkt is physically fixed to a site, but the person billed for
+A MeteringPoint is physically fixed to a site, but the person billed for
 it can change over time (e.g. a tenant moving out mid-quarter). Each row
 in `zuordnung` represents one such period; `gueltig_bis = NULL` means
-"still valid / open-ended". Moving never changes the Messpunkt, its
+"still valid / open-ended". Moving never changes the MeteringPoint, its
 site, or that site's LEG -- only which Person the
 Zuordnung points at.
 """
@@ -16,12 +16,12 @@ from typing import Optional
 
 @dataclass
 class Zuordnung:
-    """One period during which a Messpunkt was billed to a given Person.
+    """One period during which a MeteringPoint was billed to a given Person.
 
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         person_id: Foreign key to the person.
-        messpunkt_id: Foreign key to the assigned metering point.
+        metering_point_id: Foreign key to the assigned metering point.
         gueltig_von: First calendar day (inclusive) this assignment applies.
         gueltig_bis: Last calendar day (inclusive) this assignment applies,
             or `None` if the assignment is open-ended (still current).
@@ -30,7 +30,7 @@ class Zuordnung:
 
     id: Optional[int]
     person_id: int
-    messpunkt_id: int
+    metering_point_id: int
     gueltig_von: date
     gueltig_bis: Optional[date]
     created_at: str
@@ -48,7 +48,7 @@ class Zuordnung:
         return Zuordnung(
             id=row["id"],
             person_id=row["person_id"],
-            messpunkt_id=row["messpunkt_id"],
+            metering_point_id=row["metering_point_id"],
             gueltig_von=date.fromisoformat(row["gueltig_von"]),
             gueltig_bis=date.fromisoformat(row["gueltig_bis"]) if row["gueltig_bis"] else None,
             created_at=row["created_at"],
@@ -102,49 +102,49 @@ class Zuordnung:
         return self.gueltig_bis is None or self.gueltig_bis >= moment.date()
 
 
-def list_for_messpunkt(
-    connection: sqlite3.Connection, messpunkt_id: int
+def list_for_metering_point(
+    connection: sqlite3.Connection, metering_point_id: int
 ) -> list[Zuordnung]:
-    """List all Zuordnungen of a Messpunkt, most recent `gueltig_von` first.
+    """List all Zuordnungen of a MeteringPoint, most recent `gueltig_von` first.
 
     Args:
         connection: Open SQLite connection.
-        messpunkt_id: Primary key of the metering point.
+        metering_point_id: Primary key of the metering point.
 
     Returns:
         All assignments for the metering point, ordered by `gueltig_von`
         descending.
     """
     rows = connection.execute(
-        "SELECT * FROM zuordnung WHERE messpunkt_id = ? ORDER BY gueltig_von DESC",
-        (messpunkt_id,),
+        "SELECT * FROM zuordnung WHERE metering_point_id = ? ORDER BY gueltig_von DESC",
+        (metering_point_id,),
     ).fetchall()
     return [Zuordnung.from_row(row) for row in rows]
 
 
-def get_relevant_for_messpunkt(
-    connection: sqlite3.Connection, messpunkt_id: int, moment: datetime
+def get_relevant_for_metering_point(
+    connection: sqlite3.Connection, metering_point_id: int, moment: datetime
 ) -> Optional[Zuordnung]:
-    """The Zuordnung to show as "currently assigned" for one Messpunkt.
+    """The Zuordnung to show as "currently assigned" for one MeteringPoint.
 
     Prefers the Zuordnung that actually `covers` `moment` (already
     started). If none has started yet, falls back to the soonest-starting
     one that `is_current_or_upcoming` -- a not-yet-started assignment
     should still show up here (see the caller in `app.gui.pages.
-    messpunkte`/`sites`, which marks it visually as upcoming rather
-    than hiding it), instead of the Messpunkt looking unassigned just
+    metering_points`/`sites`, which marks it visually as upcoming rather
+    than hiding it), instead of the MeteringPoint looking unassigned just
     because the administrator entered it ahead of time.
 
     Args:
         connection: Open SQLite connection.
-        messpunkt_id: Primary key of the metering point.
+        metering_point_id: Primary key of the metering point.
         moment: Reference point in time.
 
     Returns:
-        The relevant `Zuordnung`, or `None` if the Messpunkt has no
+        The relevant `Zuordnung`, or `None` if the MeteringPoint has no
         current-or-upcoming assignment at all.
     """
-    candidates = [z for z in list_for_messpunkt(connection, messpunkt_id) if z.is_current_or_upcoming(moment)]
+    candidates = [z for z in list_for_metering_point(connection, metering_point_id) if z.is_current_or_upcoming(moment)]
     for zuordnung in candidates:
         if zuordnung.covers(moment):
             return zuordnung
@@ -193,10 +193,10 @@ def list_all(connection: sqlite3.Connection) -> list[Zuordnung]:
         connection: Open SQLite connection.
 
     Returns:
-        All assignments, ordered by Messpunkt id and `gueltig_von`.
+        All assignments, ordered by MeteringPoint id and `gueltig_von`.
     """
     rows = connection.execute(
-        "SELECT * FROM zuordnung ORDER BY messpunkt_id, gueltig_von"
+        "SELECT * FROM zuordnung ORDER BY metering_point_id, gueltig_von"
     ).fetchall()
     return [Zuordnung.from_row(row) for row in rows]
 
@@ -214,12 +214,12 @@ def create(connection: sqlite3.Connection, zuordnung: Zuordnung) -> int:
     """
     cursor = connection.execute(
         """
-        INSERT INTO zuordnung (person_id, messpunkt_id, gueltig_von, gueltig_bis, created_at)
+        INSERT INTO zuordnung (person_id, metering_point_id, gueltig_von, gueltig_bis, created_at)
         VALUES (?, ?, ?, ?, ?)
         """,
         (
             zuordnung.person_id,
-            zuordnung.messpunkt_id,
+            zuordnung.metering_point_id,
             zuordnung.gueltig_von.isoformat(),
             zuordnung.gueltig_bis.isoformat() if zuordnung.gueltig_bis else None,
             datetime.now(timezone.utc).isoformat(),
@@ -247,12 +247,12 @@ def update(connection: sqlite3.Connection, zuordnung: Zuordnung) -> None:
     connection.execute(
         """
         UPDATE zuordnung SET
-            person_id = ?, messpunkt_id = ?, gueltig_von = ?, gueltig_bis = ?
+            person_id = ?, metering_point_id = ?, gueltig_von = ?, gueltig_bis = ?
         WHERE id = ?
         """,
         (
             zuordnung.person_id,
-            zuordnung.messpunkt_id,
+            zuordnung.metering_point_id,
             zuordnung.gueltig_von.isoformat(),
             zuordnung.gueltig_bis.isoformat() if zuordnung.gueltig_bis else None,
             zuordnung.id,
@@ -277,24 +277,24 @@ def delete(connection: sqlite3.Connection, zuordnung_id: int) -> None:
 
 @dataclass
 class ZuordnungWarning:
-    """A detected problem in a Messpunkt's assignment history.
+    """A detected problem in a MeteringPoint's assignment history.
 
     Attributes:
-        messpunkt_id: Metering point the warning refers to.
+        metering_point_id: Metering point the warning refers to.
         kind: Either "overlap" (two assignments cover the same day) or
             "gap" (a day between assignments belongs to nobody).
         message: Human-readable (German) description for display in the UI.
     """
 
-    messpunkt_id: int
+    metering_point_id: int
     kind: str
     message: str
 
 
 def find_warnings(
-    connection: sqlite3.Connection, messpunkt_id: int
+    connection: sqlite3.Connection, metering_point_id: int
 ) -> list[ZuordnungWarning]:
-    """Detect overlapping or gapped assignment periods for one Messpunkt.
+    """Detect overlapping or gapped assignment periods for one MeteringPoint.
 
     Assignments are checked pairwise after sorting by `gueltig_von`: any
     two consecutive periods that overlap, or that leave a day uncovered
@@ -305,13 +305,13 @@ def find_warnings(
 
     Args:
         connection: Open SQLite connection.
-        messpunkt_id: Primary key of the metering point to check.
+        metering_point_id: Primary key of the metering point to check.
 
     Returns:
         A list of `ZuordnungWarning`, empty if the history is consistent.
     """
     assignments = sorted(
-        list_for_messpunkt(connection, messpunkt_id), key=lambda a: a.gueltig_von
+        list_for_metering_point(connection, metering_point_id), key=lambda a: a.gueltig_von
     )
     warnings: list[ZuordnungWarning] = []
 
@@ -320,10 +320,10 @@ def find_warnings(
         if earlier_end is None or earlier_end >= later.gueltig_von:
             warnings.append(
                 ZuordnungWarning(
-                    messpunkt_id=messpunkt_id,
+                    metering_point_id=metering_point_id,
                     kind="overlap",
                     message=(
-                        f"Überlappende Zuordnungen bei Messpunkt {messpunkt_id}: "
+                        f"Überlappende Zuordnungen bei Messpunkt {metering_point_id}: "
                         f"{earlier.gueltig_von} - "
                         f"{earlier_end or 'offen'} und ab {later.gueltig_von}."
                     ),
@@ -335,10 +335,10 @@ def find_warnings(
             if earlier_end + timedelta(days=1) < later.gueltig_von:
                 warnings.append(
                     ZuordnungWarning(
-                        messpunkt_id=messpunkt_id,
+                        metering_point_id=metering_point_id,
                         kind="gap",
                         message=(
-                            f"Lücke in Zuordnungen bei Messpunkt {messpunkt_id}: "
+                            f"Lücke in Zuordnungen bei Messpunkt {metering_point_id}: "
                             f"{earlier_end + timedelta(days=1)} bis "
                             f"{later.gueltig_von - timedelta(days=1)} ist "
                             "niemandem zugeordnet."

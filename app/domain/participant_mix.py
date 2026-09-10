@@ -31,10 +31,10 @@ site to be worth it):
         pre-enters a whole future quarter's move-ins in advance had every
         substation area/LEG here show 0:0 under a strict "started today" rule,
         until that date actually arrived) to at least one
-        Einspeisung-Messpunkt in scope -- "kann Strom liefern". A person
+        Einspeisung-MeteringPoint in scope -- "kann Strom liefern". A person
         who both consumes and feeds in counts here too.
     Consumer: a person with a current-or-upcoming Zuordnung to at least
-        one Bezug-Messpunkt in scope -- "bezieht Strom". Same overlap
+        one Bezug-MeteringPoint in scope -- "bezieht Strom". Same overlap
         applies.
 
 A true prosumer (feeds in AND consumes) is deliberately counted on both
@@ -58,12 +58,12 @@ from typing import Optional
 
 from app.domain.leg_composition import compute_leg_composition
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.substation_area import SubstationArea
 
 
@@ -174,15 +174,15 @@ def compute_participant_mix(
 
     prosumer_ids: set[int] = set()
     consumer_ids: set[int] = set()
-    for messpunkt in messpunkt_repo.list_all(connection):
-        if messpunkt.site_id not in site_ids_set:
+    for metering_point in metering_point_repo.list_all(connection):
+        if metering_point.site_id not in site_ids_set:
             continue
-        for zuordnung in zuordnung_repo.list_for_messpunkt(connection, messpunkt.id):
+        for zuordnung in zuordnung_repo.list_for_metering_point(connection, metering_point.id):
             if not zuordnung.is_current_or_upcoming(moment):
                 continue
-            if messpunkt.messrichtung == MESSRICHTUNG_EINSPEISUNG:
+            if metering_point.direction == DIRECTION_FEED_IN:
                 prosumer_ids.add(zuordnung.person_id)
-            elif messpunkt.messrichtung == MESSRICHTUNG_BEZUG:
+            elif metering_point.direction == DIRECTION_CONSUMPTION:
                 consumer_ids.add(zuordnung.person_id)
 
     return ParticipantMix(prosumer_count=len(prosumer_ids), consumer_count=len(consumer_ids))
@@ -217,10 +217,10 @@ def compute_participant_mix_for_leg(
 
     Returns:
         The `ParticipantMix` for every site with at least one
-        Messpunkt assigned to this LEG.
+        MeteringPoint assigned to this LEG.
     """
     site_ids = sorted({
-        mp.site_id for mp in messpunkt_repo.list_all(connection) if mp.leg_id == leg_id
+        mp.site_id for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id
     })
     return compute_participant_mix(connection, site_ids, stichtag)
 
@@ -278,7 +278,7 @@ class UpgradeCandidate:
             participants that span more than one substation area -- these are
             the ones a dedicated LEG would let them leave.
         person_count: Distinct persons (via a current-or-upcoming
-            Zuordnung) at this substation area whose Messpunkt currently
+            Zuordnung) at this substation area whose MeteringPoint currently
             belongs to one of `mixed_legs`.
         mix: The hypothetical solo-substation area `ParticipantMix` that shows
             this is now viable.
@@ -317,7 +317,7 @@ def find_upgrade_candidates(
     """
     moment = _moment(stichtag)
     sites = site_repo.list_all(connection)
-    messpunkte = messpunkt_repo.list_all(connection)
+    metering_points = metering_point_repo.list_all(connection)
     legs_by_id = {leg.id: leg for leg in leg_repo.list_all(connection)}
 
     candidates: list[UpgradeCandidate] = []
@@ -331,7 +331,7 @@ def find_upgrade_candidates(
             continue
 
         leg_ids_here = {
-            mp.leg_id for mp in messpunkte if mp.site_id in site_ids and mp.leg_id is not None
+            mp.leg_id for mp in metering_points if mp.site_id in site_ids and mp.leg_id is not None
         }
         mixed_legs = sorted(
             (
@@ -345,10 +345,10 @@ def find_upgrade_candidates(
 
         mixed_leg_ids = {leg.id for leg in mixed_legs}
         person_ids: set[int] = set()
-        for mp in messpunkte:
+        for mp in metering_points:
             if mp.site_id not in site_ids or mp.leg_id not in mixed_leg_ids:
                 continue
-            for zuordnung in zuordnung_repo.list_for_messpunkt(connection, mp.id):
+            for zuordnung in zuordnung_repo.list_for_metering_point(connection, mp.id):
                 if zuordnung.is_current_or_upcoming(moment):
                     person_ids.add(zuordnung.person_id)
 

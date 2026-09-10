@@ -1,6 +1,6 @@
 """LEG-wide settings page: sender address, QR-IBAN, price, admin fees
 (shared across all LEGs -- see `app.models.leg` for the per-LEG name),
-Messpunkt Land/Identifikator defaults, and demo data generation.
+MeteringPoint Land/identifier defaults, and demo data generation.
 """
 
 from nicegui import ui
@@ -9,7 +9,7 @@ from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import normalize_iban, validate_qr_iban
-from app.domain.messpunkt_validation import validate_identifikator, validate_land
+from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
 from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.gui.navigation import page_frame
@@ -132,8 +132,8 @@ def einstellungen_page() -> None:
                     verwaltungsaufwand_einspeisung_rp_per_kwh=float(verwaltungsaufwand_einspeisung.value),
                     papierrechnung_rappen=round(float(papierrechnung_fee.value) * 100),
                     extra_backup_dir=current.extra_backup_dir,
-                    messpunkt_land=current.messpunkt_land,
-                    messpunkt_identifikator=current.messpunkt_identifikator,
+                    metering_point_country=current.metering_point_country,
+                    metering_point_identifier=current.metering_point_identifier,
                     web_registration_cursor=current.web_registration_cursor,
                     onboarding_ueberfaellig_tage=current.onboarding_ueberfaellig_tage,
                     leg_gruendung_min_personen=current.leg_gruendung_min_personen,
@@ -165,40 +165,40 @@ def einstellungen_page() -> None:
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
             with ui.row().classes("w-full gap-2"):
-                messpunkt_land = ui.input(
-                    "Land", value=current.messpunkt_land or "CH"
+                metering_point_country = ui.input(
+                    "Land", value=current.metering_point_country or "CH"
                 ).classes("w-24")
-                messpunkt_identifikator = ui.input(
+                metering_point_identifier = ui.input(
                     "VSE-Identifikator (11-stellig)",
-                    value=current.messpunkt_identifikator,
+                    value=current.metering_point_identifier,
                 ).classes("flex-grow")
-            messpunkt_defaults_error = ui.label("").classes("text-negative")
+            metering_point_defaults_error = ui.label("").classes("text-negative")
 
-            def save_messpunkt_defaults() -> None:
-                """Validate and persist the Messpunkt Land/Identifikator defaults.
+            def save_metering_point_defaults() -> None:
+                """Validate and persist the MeteringPoint Land/identifier defaults.
 
                 Returns:
                     None.
                 """
-                land_value = messpunkt_land.value.strip().upper()
-                identifikator_value = messpunkt_identifikator.value.strip().upper()
-                land_problem = validate_land(land_value)
-                if land_problem:
-                    messpunkt_defaults_error.text = land_problem
+                country_value = metering_point_country.value.strip().upper()
+                identifier_value = metering_point_identifier.value.strip().upper()
+                country_problem = validate_country(country_value)
+                if country_problem:
+                    metering_point_defaults_error.text = country_problem
                     return
-                identifikator_problem = validate_identifikator(identifikator_value)
-                if identifikator_problem:
-                    messpunkt_defaults_error.text = identifikator_problem
+                identifier_problem = validate_identifier(identifier_value)
+                if identifier_problem:
+                    metering_point_defaults_error.text = identifier_problem
                     return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
-                    settings.messpunkt_land = land_value or "CH"
-                    settings.messpunkt_identifikator = identifikator_value
+                    settings.metering_point_country = country_value or "CH"
+                    settings.metering_point_identifier = identifier_value
                     settings_repo.update_settings(connection, settings)
-                messpunkt_defaults_error.text = ""
+                metering_point_defaults_error.text = ""
                 ui.notify("Messpunkt-Vorgaben gespeichert.", type="positive")
 
-            ui.button("Speichern", on_click=save_messpunkt_defaults).classes("mt-2")
+            ui.button("Speichern", on_click=save_metering_point_defaults).classes("mt-2")
 
         ui.separator().classes("my-6")
 
@@ -443,7 +443,7 @@ def einstellungen_page() -> None:
                 return
             ui.notify(
                 f"Demo-Daten erzeugt: {len(summary.person_ids)} Personen, "
-                f"{len(summary.messpunkt_ids)} Messpunkte, {summary.reading_count} Messwerte.",
+                f"{len(summary.metering_point_ids)} Messpunkte, {summary.reading_count} Messwerte.",
                 type="positive",
             )
 

@@ -53,7 +53,7 @@ def _submission(
 
 def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 38
+    assert get_schema_version(db) == 39
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -73,17 +73,17 @@ def test_mark_site_created_is_idempotent(db):
     assert web_registration_repo.get(db, reg_id).site_created is True
 
 
-def test_mark_messpunkt_created_is_idempotent(db):
+def test_mark_metering_point_created_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
     meter = web_registration_repo.list_all(db)[0].meters[0]
-    assert meter.messpunkt_created is False
+    assert meter.metering_point_created is False
 
-    web_registration_repo.mark_messpunkt_created(db, meter.id)
-    web_registration_repo.mark_messpunkt_created(db, meter.id)
+    web_registration_repo.mark_metering_point_created(db, meter.id)
+    web_registration_repo.mark_metering_point_created(db, meter.id)
 
     reloaded = web_registration_repo.list_all(db)[0].meters[0]
-    assert reloaded.messpunkt_created is True
+    assert reloaded.metering_point_created is True
 
 
 def test_mark_person_created_is_idempotent(db):
@@ -98,7 +98,7 @@ def test_mark_person_created_is_idempotent(db):
     assert web_registration_repo.get(db, reg_id).person_created is True
 
 
-def test_mark_person_created_is_independent_of_site_and_messpunkt(db):
+def test_mark_person_created_is_independent_of_site_and_metering_point(db):
     """Each of the three take-over flags is set only by its own action."""
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
@@ -108,7 +108,7 @@ def test_mark_person_created_is_independent_of_site_and_messpunkt(db):
     reg = web_registration_repo.get(db, reg_id)
     assert reg.person_created is True
     assert reg.site_created is False
-    assert reg.meters[0].messpunkt_created is False
+    assert reg.meters[0].metering_point_created is False
     assert reg.is_fully_processed is False
 
 
@@ -125,10 +125,10 @@ def test_is_fully_processed_requires_person_site_and_every_meter(db):
 
     web_registration_repo.mark_person_created(db, reg_id)
     web_registration_repo.mark_site_created(db, reg_id)
-    web_registration_repo.mark_messpunkt_created(db, meter_ids[0])
+    web_registration_repo.mark_metering_point_created(db, meter_ids[0])
     assert web_registration_repo.get(db, reg_id).is_fully_processed is False  # meter_ids[1] still open
 
-    web_registration_repo.mark_messpunkt_created(db, meter_ids[1])
+    web_registration_repo.mark_metering_point_created(db, meter_ids[1])
     assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 
 
@@ -244,9 +244,9 @@ def test_sync_registrations_changed_field_updates_row_in_place(db):
     assert len(web_registration_repo.list_all(db)) == 1
 
 
-def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_messpunkt_created(db):
+def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_point_created(db):
     """Replacing a registration's meter set on a repeat submission must not
-    silently discard messpunkt_created for a meter that persists by
+    silently discard metering_point_created for a meter that persists by
     meter_number -- see `upsert_from_submission`'s docstring."""
     with patch(
         _SYNC_TARGET,
@@ -258,7 +258,7 @@ def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_messpunkt_
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "c@example.ch")
     keep_meter = next(m for m in reg.meters if m.meter_number == "CH-KEEP")
-    web_registration_repo.mark_messpunkt_created(db, keep_meter.id)
+    web_registration_repo.mark_metering_point_created(db, keep_meter.id)
 
     # CH-KEEP reappears (with a changed note), CH-DROP is gone, CH-NEW is added.
     with patch(
@@ -275,8 +275,8 @@ def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_messpunkt_
     by_number = {m.meter_number: m for m in updated.meters}
     assert set(by_number) == {"CH-KEEP", "CH-NEW"}
     assert by_number["CH-KEEP"].note == "PV"
-    assert by_number["CH-KEEP"].messpunkt_created is True
-    assert by_number["CH-NEW"].messpunkt_created is False
+    assert by_number["CH-KEEP"].metering_point_created is True
+    assert by_number["CH-NEW"].metering_point_created is False
 
 
 def test_sync_registrations_advances_cursor_for_noop_entries_too(db):

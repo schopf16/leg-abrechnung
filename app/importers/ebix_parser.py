@@ -130,10 +130,10 @@ def _extract_time_series(root: Element) -> ParseResult:
         )
 
     for series in series_elements:
-        messpunkt_bezeichnung = _find_text(series, "MeteringPointID")
+        designation = _find_text(series, "MeteringPointID")
         obis_code = _find_text(series, "ObisCode")
         period = _find_ns(series, "Period")
-        if messpunkt_bezeichnung is None or obis_code is None or period is None:
+        if designation is None or obis_code is None or period is None:
             result.warnings.append(
                 "Zeitreihe ohne Messpunkt-Bezeichnung, OBIS-Code oder Periode übersprungen."
             )
@@ -149,13 +149,13 @@ def _extract_time_series(root: Element) -> ParseResult:
         if resolution != _SUPPORTED_RESOLUTION:
             raise ImportValidationError(
                 f"Nicht unterstützte Auflösung {resolution!r} bei Messpunkt "
-                f"{messpunkt_bezeichnung}: nur {_SUPPORTED_RESOLUTION} wird unterstützt."
+                f"{designation}: nur {_SUPPORTED_RESOLUTION} wird unterstützt."
             )
 
         start_text = _find_text(period, "Start")
         if start_text is None:
             result.warnings.append(
-                f"Periode ohne Start-Zeitstempel bei Messpunkt {messpunkt_bezeichnung} übersprungen."
+                f"Periode ohne Start-Zeitstempel bei Messpunkt {designation} übersprungen."
             )
             continue
         start = datetime.fromisoformat(start_text)
@@ -167,7 +167,7 @@ def _extract_time_series(root: Element) -> ParseResult:
             position_text = value_element.get("position")
             if position_text is None or value_element.text is None:
                 result.warnings.append(
-                    f"Wert ohne Position oder Inhalt bei Messpunkt {messpunkt_bezeichnung} übersprungen."
+                    f"Wert ohne Position oder Inhalt bei Messpunkt {designation} übersprungen."
                 )
                 continue
             try:
@@ -176,19 +176,19 @@ def _extract_time_series(root: Element) -> ParseResult:
             except ValueError:
                 result.warnings.append(
                     f"Ungültiger Wert {value_element.text!r} (Position {position_text}) "
-                    f"bei Messpunkt {messpunkt_bezeichnung} übersprungen."
+                    f"bei Messpunkt {designation} übersprungen."
                 )
                 continue
             if kwh < 0:
                 result.warnings.append(
                     f"Negativer Wert {kwh} (Position {position}) bei Messpunkt "
-                    f"{messpunkt_bezeichnung} übersprungen."
+                    f"{designation} übersprungen."
                 )
                 continue
             timestamp = start + timedelta(minutes=15 * (position - 1))
             result.readings.append(
                 ParsedReading(
-                    messpunkt_bezeichnung=messpunkt_bezeichnung,
+                    designation=designation,
                     timestamp=timestamp,
                     direction=direction,
                     kwh=kwh,

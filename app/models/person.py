@@ -1,6 +1,6 @@
 """Person: a natural person or company participating in the LEG.
 
-Connected to Messpunkte exclusively through the dated `Zuordnung` (see
+Connected to metering points exclusively through the dated `Zuordnung` (see
 `app.models.zuordnung`) -- never directly, and never via an address match.
 The `rechnungsadresse_*` fields are a pure contact/billing address and
 deliberately independent of any site's physical connection address (a
@@ -398,7 +398,7 @@ def delete(connection: sqlite3.Connection, person_id: int) -> bool:
     "same" name) always gets a fresh, independent Kundennummer -- see
     `create`.
 
-    Messpunkte remain untouched when a person is actually deleted; any of
+    metering points remain untouched when a person is actually deleted; any of
     their Zuordnungen are removed via `ON DELETE CASCADE`.
 
     Args:

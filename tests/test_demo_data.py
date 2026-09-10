@@ -11,17 +11,17 @@ from app.domain.demo_data import (
 )
 from app.domain.period import quarter_bounds
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import substation_area as substation_area_repo
 
 
-def test_create_demo_data_creates_five_personen_and_seven_messpunkte(db):
-    """The generator creates 4 showcase Personen + 1 move fixture, and 7 Messpunkte."""
+def test_create_demo_data_creates_five_personen_and_seven_metering_points(db):
+    """The generator creates 4 showcase Personen + 1 move fixture, and 7 metering points."""
     summary = create_demo_data(db)
     assert len(summary.person_ids) == 5
-    assert len(summary.messpunkt_ids) == 7
+    assert len(summary.metering_point_ids) == 7
     assert summary.reading_count > 0
 
 
@@ -40,12 +40,12 @@ def test_create_demo_data_configures_valid_demo_qr_iban(db):
     assert legs[0].name
 
 
-def test_create_demo_data_assigns_leg_to_every_messpunkt(db):
-    """Every demo Messpunkt has a LEG assigned (the demo LEG matches the demo substation area 1:1)."""
+def test_create_demo_data_assigns_leg_to_every_metering_point(db):
+    """Every demo MeteringPoint has a LEG assigned (the demo LEG matches the demo substation area 1:1)."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
-    for messpunkt in messpunkt_repo.list_all(db):
-        assert messpunkt.leg_id == leg.id
+    for metering_point in metering_point_repo.list_all(db):
+        assert metering_point.leg_id == leg.id
 
 
 def test_create_demo_data_is_guarded_against_double_run(db):
@@ -63,8 +63,8 @@ def test_winter_quarter_has_zero_production(db):
     rows = db.execute(
         """
         SELECT r.kwh FROM readings r
-        JOIN messpunkt mp ON mp.id = r.messpunkt_id
-        WHERE mp.messrichtung = 'einspeisung' AND r.timestamp >= ? AND r.timestamp < ?
+        JOIN metering_point mp ON mp.id = r.metering_point_id
+        WHERE mp.direction = 'einspeisung' AND r.timestamp >= ? AND r.timestamp < ?
         """,
         (start.isoformat(), end.isoformat()),
     ).fetchall()
@@ -78,8 +78,8 @@ def test_summer_quarter_has_both_surplus_and_deficit_intervals(db):
     start, end = quarter_bounds(*SUMMER_QUARTER)
     rows = db.execute(
         """
-        SELECT r.timestamp, r.direction, r.kwh, mp.messrichtung
-        FROM readings r JOIN messpunkt mp ON mp.id = r.messpunkt_id
+        SELECT r.timestamp, r.direction, r.kwh, mp.direction
+        FROM readings r JOIN metering_point mp ON mp.id = r.metering_point_id
         WHERE r.timestamp >= ? AND r.timestamp < ?
         """,
         (start.isoformat(), end.isoformat()),
@@ -96,8 +96,8 @@ def test_summer_quarter_has_both_surplus_and_deficit_intervals(db):
     assert deficit_intervals > 0
 
 
-def test_demo_move_splits_messpunkt_between_two_personen(db):
-    """The Bergstrasse-4 Messpunkt is assigned to Erika, then to David, never both."""
+def test_demo_move_splits_metering_point_between_two_personen(db):
+    """The Bergstrasse-4 MeteringPoint is assigned to Erika, then to David, never both."""
     create_demo_data(db)
     personen = {p.anzeige_name: p for p in person_repo.list_all(db)}
     erika = personen["Erika Vorgängerin (Demo, Umzug-Beispiel)"]
@@ -106,8 +106,8 @@ def test_demo_move_splits_messpunkt_between_two_personen(db):
     rows = db.execute(
         """
         SELECT person_id, gueltig_von, gueltig_bis FROM zuordnung
-        WHERE messpunkt_id = (
-            SELECT id FROM messpunkt WHERE messpunkt_bezeichnung = 'CH1000000000000000000000007'
+        WHERE metering_point_id = (
+            SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000007'
         )
         ORDER BY gueltig_von
         """

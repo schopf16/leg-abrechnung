@@ -3,11 +3,11 @@
 Expected columns (semicolon- or comma-separated, header row required,
 column order does not matter, matching is case-insensitive):
 
-    Messpunkt;Zeitstempel;Richtung;Wert_kWh
+    MeteringPoint;Zeitstempel;Richtung;Wert_kWh
     CH1000000000000000000000001;2025-07-01T00:00:00;Bezug;0.123
     CH1000000000000000000000001;2025-07-01T00:15:00;Bezug;0.150
 
-- `Messpunkt`: metering point designation (business key, "messpunkt_bezeichnung").
+- `MeteringPoint`: metering point designation (business key, "designation").
 - `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
 - `Richtung`: "Bezug" or "Einspeisung" (German, case-insensitive; English
   synonyms are also accepted, see `app.importers.base.validate_direction`).
@@ -26,10 +26,10 @@ from app.importers.base import ImportValidationError, ParsedReading, ParseResult
 
 #: Maps accepted header spellings (lowercased) to the canonical field name.
 _COLUMN_ALIASES = {
-    "messpunkt": "messpunkt_bezeichnung",
-    "messpunkt_bezeichnung": "messpunkt_bezeichnung",
-    "zaehlpunkt": "messpunkt_bezeichnung",
-    "zählpunkt": "messpunkt_bezeichnung",
+    "metering_point": "designation",
+    "designation": "designation",
+    "zaehlpunkt": "designation",
+    "zählpunkt": "designation",
     "zeitstempel": "timestamp",
     "timestamp": "timestamp",
     "richtung": "direction",
@@ -40,7 +40,7 @@ _COLUMN_ALIASES = {
     "value": "kwh",
 }
 
-_REQUIRED_FIELDS = {"messpunkt_bezeichnung", "timestamp", "direction", "kwh"}
+_REQUIRED_FIELDS = {"designation", "timestamp", "direction", "kwh"}
 
 
 def _sniff_delimiter(sample: str) -> str:
@@ -119,7 +119,7 @@ def parse_csv_file(path: Path) -> ParseResult:
 
         result.readings.append(
             ParsedReading(
-                messpunkt_bezeichnung=values["messpunkt_bezeichnung"],
+                designation=values["designation"],
                 timestamp=timestamp,
                 direction=direction,
                 kwh=kwh,

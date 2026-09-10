@@ -26,7 +26,7 @@ _PREFILL_KEYS = (
     "house_number",
     "postal_code",
     "city",
-    "land",
+    "country",
     "email",
     "telefon",
     "iban",
@@ -117,8 +117,8 @@ def open_person_form(
             city = ui.input(
                 "Ort", value=_initial(existing, "rechnungsadresse_ort", prefill, "city")
             ).classes("flex-grow")
-            land = ui.input(
-                "Land", value=_initial(existing, "rechnungsadresse_land", prefill, "land", "CH")
+            country = ui.input(
+                "Land", value=_initial(existing, "rechnungsadresse_land", prefill, "country", "CH")
             ).classes("w-24")
 
         ui.separator().classes("my-2")
@@ -201,7 +201,7 @@ def open_person_form(
                         rechnungsadresse_hausnummer=house_number.value.strip(),
                         rechnungsadresse_plz=postal_code.value.strip(),
                         rechnungsadresse_ort=city.value.strip(),
-                        rechnungsadresse_land=land.value.strip() or "CH",
+                        rechnungsadresse_land=country.value.strip() or "CH",
                         iban=iban_normalized,
                         kundennummer=existing.kundennummer,
                         bkw_kundennummer=bkw_kundennummer_value,
@@ -223,7 +223,7 @@ def open_person_form(
                         rechnungsadresse_hausnummer=house_number.value.strip(),
                         rechnungsadresse_plz=postal_code.value.strip(),
                         rechnungsadresse_ort=city.value.strip(),
-                        rechnungsadresse_land=land.value.strip() or "CH",
+                        rechnungsadresse_land=country.value.strip() or "CH",
                         iban=iban_normalized,
                         kundennummer=None,
                         bkw_kundennummer=bkw_kundennummer_value,

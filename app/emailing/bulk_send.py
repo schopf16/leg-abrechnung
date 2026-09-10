@@ -17,7 +17,7 @@ from app.emailing.templates import person_placeholder_values, render_template
 from app.models import billing_run as billing_run_repo
 from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
@@ -43,7 +43,7 @@ def list_broadcast_recipients(connection) -> list[Person]:
 
 
 def list_leg_recipients(connection, leg_id: int) -> list[Person]:
-    """List the persons currently or soon assigned to any Messpunkt of one LEG.
+    """List the persons currently or soon assigned to any MeteringPoint of one LEG.
 
     Args:
         connection: Open SQLite connection.
@@ -53,16 +53,16 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
         Persons with a current-or-upcoming Zuordnung (`Zuordnung.
         is_current_or_upcoming` -- an assignment entered ahead of its
         start date, e.g. next quarter's move-ins prepared in advance,
-        counts too) to a Messpunkt in this LEG, deduplicated (a person can
-        hold more than one Messpunkt in the same LEG), with a non-empty
+        counts too) to a MeteringPoint in this LEG, deduplicated (a person can
+        hold more than one MeteringPoint in the same LEG), with a non-empty
         contact email. Purely a starting suggestion, same caveat as
         `list_broadcast_recipients`.
     """
     now = datetime.now()
-    messpunkte = [mp for mp in messpunkt_repo.list_all(connection) if mp.leg_id == leg_id]
+    metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     person_ids: dict[int, None] = {}  # insertion-ordered set
-    for messpunkt in messpunkte:
-        for zuordnung in zuordnung_repo.list_for_messpunkt(connection, messpunkt.id):
+    for metering_point in metering_points:
+        for zuordnung in zuordnung_repo.list_for_metering_point(connection, metering_point.id):
             if zuordnung.is_current_or_upcoming(now):
                 person_ids.setdefault(zuordnung.person_id, None)
 

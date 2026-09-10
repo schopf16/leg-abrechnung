@@ -3,7 +3,7 @@
 Covers gaps in the Zuordnung history, missing reading periods, the
 invoice/credit-note sum balance (lives in `app.domain.billing.
 verify_sum_balance`, re-exposed here for a single import point),
-Messpunkte that have no LEG assigned yet, interested persons whose
+metering points that have no LEG assigned yet, interested persons whose
 onboarding (`app.models.person_onboarding`) has been stuck on its current
 step for too long, and the one-sided-substation area / LEG-upgrade signals from
 `app.domain.participant_mix`.
@@ -18,7 +18,7 @@ from app.domain import participant_mix
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.period import quarter_bounds
 from app.models import bank_transaction as bank_transaction_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
@@ -26,7 +26,7 @@ from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 
-#: Expected number of 15-minute readings per Messpunkt per full calendar day.
+#: Expected number of 15-minute readings per MeteringPoint per full calendar day.
 _EXPECTED_READINGS_PER_DAY = 96
 
 
@@ -41,7 +41,7 @@ class QualityWarning:
             "trafokreis_wechsel_potential" or "trafokreis_einseitig".
         message: Human-readable (German) description.
         link: Route path to the specific object this warning is about
-            (e.g. `/messpunkte/12`), so the UI can jump straight there
+            (e.g. `/metering_points/12`), so the UI can jump straight there
             instead of just naming it in text -- `None` if no detail page
             exists for that kind of object, or the specific record could
             not be resolved.
@@ -53,18 +53,18 @@ class QualityWarning:
 
 
 def check_assignment_consistency(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Check every Messpunkt's Zuordnung history for overlaps and gaps.
+    """Check every MeteringPoint's Zuordnung history for overlaps and gaps.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
         A `QualityWarning` for each overlap or gap found, across all
-        Messpunkte.
+        metering points.
     """
     warnings = []
-    for messpunkt in messpunkt_repo.list_all(connection):
-        for zuordnung_warning in zuordnung_repo.find_warnings(connection, messpunkt.id):
+    for metering_point in metering_point_repo.list_all(connection):
+        for zuordnung_warning in zuordnung_repo.find_warnings(connection, metering_point.id):
             category = (
                 "zuordnung_ueberlappung"
                 if zuordnung_warning.kind == "overlap"
@@ -74,7 +74,7 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
                 QualityWarning(
                     category=category,
                     message=zuordnung_warning.message,
-                    link=f"/messpunkte/{messpunkt.id}",
+                    link=f"/metering-points/{metering_point.id}",
                 )
             )
     return warnings
@@ -83,10 +83,10 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
 def check_reading_completeness(
     connection: sqlite3.Connection, year: int, quarter: int
 ) -> list[QualityWarning]:
-    """Find days within a quarter where a Messpunkt has fewer than 96 readings.
+    """Find days within a quarter where a MeteringPoint has fewer than 96 readings.
 
-    Only checks days on which the Messpunkt was actually assigned to a
-    Person (an unassigned Messpunkt with no readings is not a data gap, it
+    Only checks days on which the MeteringPoint was actually assigned to a
+    Person (an unassigned MeteringPoint with no readings is not a data gap, it
     is simply out of service).
 
     Args:
@@ -95,20 +95,20 @@ def check_reading_completeness(
         quarter: Quarter number, 1 to 4.
 
     Returns:
-        A `QualityWarning` per Messpunkt/day combination with an
+        A `QualityWarning` per MeteringPoint/day combination with an
         unexpected reading count.
     """
     start, end = quarter_bounds(year, quarter)
     warnings = []
 
-    for messpunkt in messpunkt_repo.list_all(connection):
-        zuordnungen = zuordnung_repo.list_for_messpunkt(connection, messpunkt.id)
+    for metering_point in metering_point_repo.list_all(connection):
+        zuordnungen = zuordnung_repo.list_for_metering_point(connection, metering_point.id)
         if not zuordnungen:
             continue
 
         rows = connection.execute(
-            "SELECT timestamp FROM readings WHERE messpunkt_id = ? AND timestamp >= ? AND timestamp < ?",
-            (messpunkt.id, start.isoformat(), end.isoformat()),
+            "SELECT timestamp FROM readings WHERE metering_point_id = ? AND timestamp >= ? AND timestamp < ?",
+            (metering_point.id, start.isoformat(), end.isoformat()),
         ).fetchall()
         counts_by_day: dict[str, int] = {}
         for row in rows:
@@ -126,11 +126,11 @@ def check_reading_completeness(
                         QualityWarning(
                             category="messdaten_luecke",
                             message=(
-                                f"Messpunkt {messpunkt.messpunkt_bezeichnung}: "
+                                f"Messpunkt {metering_point.designation}: "
                                 f"{current_day.isoformat()} hat "
                                 f"{count}/{_EXPECTED_READINGS_PER_DAY} Messwerten."
                             ),
-                            link=f"/messpunkte/{messpunkt.id}",
+                            link=f"/metering-points/{metering_point.id}",
                         )
                     )
             current_day += timedelta(days=1)
@@ -139,11 +139,11 @@ def check_reading_completeness(
 
 
 def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag Messpunkte that have no LEG assigned yet.
+    """Flag metering points that have no LEG assigned yet.
 
     Multiple LEGs coexisting in one deployment is normal (see
     `app.models.leg`), so there is no "everyone should share one LEG"
-    check anymore -- only a plain data-hygiene check that every Messpunkt
+    check anymore -- only a plain data-hygiene check that every MeteringPoint
     actually has a LEG, since `compute_quarter_distribution` will
     otherwise refuse to bill it (see
     `app.domain.distribution.LegNotAssignedError`). Surfacing it here lets
@@ -154,18 +154,18 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
         connection: Open SQLite connection.
 
     Returns:
-        A `QualityWarning` per Messpunkt with no LEG assigned. Empty if
-        every Messpunkt has one.
+        A `QualityWarning` per MeteringPoint with no LEG assigned. Empty if
+        every MeteringPoint has one.
     """
     warnings: list[QualityWarning] = []
-    for messpunkt in messpunkt_repo.list_all(connection):
-        if messpunkt.leg_id is not None:
+    for metering_point in metering_point_repo.list_all(connection):
+        if metering_point.leg_id is not None:
             continue
         warnings.append(
             QualityWarning(
                 category="leg_nicht_zugeordnet",
-                message=f"Messpunkt „{messpunkt.messpunkt_bezeichnung}“ hat noch keine zugeordnete LEG.",
-                link=f"/messpunkte/{messpunkt.id}",
+                message=f"Messpunkt „{metering_point.designation}“ hat noch keine zugeordnete LEG.",
+                link=f"/metering-points/{metering_point.id}",
             )
         )
 
@@ -275,7 +275,7 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
     actually share locally), unless already resolved via a mixed LEG.
 
     See `app.domain.participant_mix.compute_participant_mix_for_substation_area`.
-    A substation area whose Messpunkte are *all* already in a mixed (multi-
+    A substation area whose metering points are *all* already in a mixed (multi-
     substation area) LEG is not flagged -- the recommended fix is already acted
     on. A substation area with no participants at all yet is not flagged either
     (nothing to warn about).
@@ -288,14 +288,14 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
     """
     warnings: list[QualityWarning] = []
     sites = site_repo.list_all(connection)
-    messpunkte = messpunkt_repo.list_all(connection)
+    metering_points = metering_point_repo.list_all(connection)
     for substation_area in substation_area_repo.list_all(connection):
         mix = participant_mix.compute_participant_mix_for_substation_area(connection, substation_area.id)
         if mix.hinweis is None:
             continue
         site_ids = {s.id for s in sites if s.substation_area_id == substation_area.id}
         leg_ids_here = {
-            mp.leg_id for mp in messpunkte if mp.site_id in site_ids and mp.leg_id is not None
+            mp.leg_id for mp in metering_points if mp.site_id in site_ids and mp.leg_id is not None
         }
         already_resolved = bool(leg_ids_here) and all(
             compute_leg_composition(connection, leg_id).is_mixed for leg_id in leg_ids_here

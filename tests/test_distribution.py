@@ -13,12 +13,12 @@ import pytest
 
 from app.domain.distribution import LegNotAssignedError, compute_quarter_distribution
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
@@ -76,41 +76,41 @@ def _site(db) -> int:
     )
 
 
-def _messpunkt(
-    db, messpunkt_bezeichnung: str, messrichtung: str, site_id: int, leg_id: "int | None | str" = "auto"
+def _metering_point(
+    db, designation: str, direction: str, site_id: int, leg_id: "int | None | str" = "auto"
 ) -> int:
-    """Create a Messpunkt and return its id.
+    """Create a MeteringPoint and return its id.
 
     Args:
         db: Database connection fixture.
-        messpunkt_bezeichnung: Business key.
-        messrichtung: Measurement direction.
-        site_id: Foreign key of the site the Messpunkt belongs to.
+        designation: Business key.
+        direction: Measurement direction.
+        site_id: Foreign key of the site the MeteringPoint belongs to.
         leg_id: LEG to assign. Defaults to a freshly created one (most
             tests just need *a* valid LEG, not to control which one);
             pass `None` explicitly to test the unassigned case.
 
     Returns:
-        The new Messpunkt's id.
+        The new MeteringPoint's id.
     """
     if leg_id == "auto":
         leg_id = _leg(db)
-    return messpunkt_repo.create(
+    return metering_point_repo.create(
         db,
-        Messpunkt(
-            id=None, messpunkt_bezeichnung=messpunkt_bezeichnung,
-            messrichtung=messrichtung, site_id=site_id, leg_id=leg_id,
-            pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        MeteringPoint(
+            id=None, designation=designation,
+            direction=direction, site_id=site_id, leg_id=leg_id,
+            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
     )
 
 
-def _assign(db, messpunkt_id: int, person_id: int, gueltig_von: date, gueltig_bis: date | None = None) -> None:
+def _assign(db, metering_point_id: int, person_id: int, gueltig_von: date, gueltig_bis: date | None = None) -> None:
     """Create a Zuordnung.
 
     Args:
         db: Database connection fixture.
-        messpunkt_id: Messpunkt to assign.
+        metering_point_id: MeteringPoint to assign.
         person_id: Person to assign it to.
         gueltig_von: Start of validity.
         gueltig_bis: End of validity, or `None` for open-ended.
@@ -121,18 +121,18 @@ def _assign(db, messpunkt_id: int, person_id: int, gueltig_von: date, gueltig_bi
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=gueltig_von, gueltig_bis=gueltig_bis, created_at="",
         ),
     )
 
 
-def _reading(db, messpunkt_id: int, moment: datetime, direction: str, kwh: float) -> None:
+def _reading(db, metering_point_id: int, moment: datetime, direction: str, kwh: float) -> None:
     """Insert a single reading.
 
     Args:
         db: Database connection fixture.
-        messpunkt_id: Messpunkt the reading belongs to.
+        metering_point_id: MeteringPoint the reading belongs to.
         moment: Interval start.
         direction: "bezug" or "einspeisung".
         kwh: Energy for the interval.
@@ -142,7 +142,7 @@ def _reading(db, messpunkt_id: int, moment: datetime, direction: str, kwh: float
     """
     upsert_readings(
         db,
-        [Reading(messpunkt_id=messpunkt_id, timestamp=moment.isoformat(), direction=direction, kwh=kwh, source="test")],
+        [Reading(metering_point_id=metering_point_id, timestamp=moment.isoformat(), direction=direction, kwh=kwh, source="test")],
     )
 
 
@@ -152,8 +152,8 @@ def test_zero_production_yields_zero_sharing(db):
     site = _site(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -172,7 +172,7 @@ def test_zero_consumption_yields_zero_sharing(db):
     leg_id = _leg(db)
     site = _site(db)
     producer = _person(db, "Producer")
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
@@ -190,8 +190,8 @@ def test_production_surplus_limits_sharing_to_consumption(db):
     site = _site(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -212,9 +212,9 @@ def test_production_deficit_splits_proportionally_across_consumers(db):
     consumer_a = _person(db, "Consumer A")
     consumer_b = _person(db, "Consumer B")
     producer = _person(db, "Producer")
-    mp_a = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    mp_b = _messpunkt(db, "M-C2", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    mp_a = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    mp_b = _metering_point(db, "M-C2", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, mp_a, consumer_a, date(YEAR, 1, 1))
     _assign(db, mp_b, consumer_b, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
@@ -233,15 +233,15 @@ def test_production_deficit_splits_proportionally_across_consumers(db):
     assert result.total_consumed_local_kwh() == pytest.approx(result.total_produced_local_kwh())
 
 
-def test_mid_period_move_splits_messpunkt_between_two_personen(db):
-    """A Messpunkt reassigned mid-quarter attributes readings to the correct person."""
+def test_mid_period_move_splits_metering_point_between_two_personen(db):
+    """A MeteringPoint reassigned mid-quarter attributes readings to the correct person."""
     leg_id = _leg(db)
     site = _site(db)
     tenant_before = _person(db, "Vormieter")
     tenant_after = _person(db, "Nachmieter")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
 
     move_day = date(YEAR, 2, 1)
     _assign(db, consumption_mp, tenant_before, date(YEAR, 1, 1), move_day - timedelta(days=1))
@@ -262,13 +262,13 @@ def test_mid_period_move_splits_messpunkt_between_two_personen(db):
     assert result.unassigned_kwh == 0.0
 
 
-def test_unassigned_messpunkt_reading_is_tracked_not_dropped(db):
-    """A reading for a Messpunkt with no covering Zuordnung is reported, not billed."""
+def test_unassigned_metering_point_reading_is_tracked_not_dropped(db):
+    """A reading for a MeteringPoint with no covering Zuordnung is reported, not billed."""
     leg_id = _leg(db)
     site = _site(db)
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     # consumption_mp is intentionally never assigned to anyone.
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -279,7 +279,7 @@ def test_unassigned_messpunkt_reading_is_tracked_not_dropped(db):
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
     # The production side is correctly attributed to the producer; only the
-    # consumption side (unassigned Messpunkt) is reported as unassigned.
+    # consumption side (unassigned MeteringPoint) is reported as unassigned.
     assert result.person_results[producer].produced_local_kwh == pytest.approx(4.0)
     assert result.person_results[producer].consumed_local_kwh == 0.0
     assert result.unassigned_kwh == pytest.approx(4.0)
@@ -291,8 +291,8 @@ def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
     site = _site(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -320,12 +320,12 @@ def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
     )
 
 
-def test_messpunkt_without_leg_raises_error(db):
-    """A Messpunkt with readings but no LEG assigned blocks the whole run."""
+def test_metering_point_without_leg_raises_error(db):
+    """A MeteringPoint with readings but no LEG assigned blocks the whole run."""
     unrelated_leg_id = _leg(db)
     site = _site(db)
     producer = _person(db, "Producer")
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id=None)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id=None)
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
     _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "einspeisung", 5.0)
 
@@ -333,16 +333,16 @@ def test_messpunkt_without_leg_raises_error(db):
         compute_quarter_distribution(db, unrelated_leg_id, YEAR, QUARTER)
 
 
-def test_messpunkt_without_readings_does_not_block_run(db):
-    """A Messpunkt with no LEG but also no readings this quarter is not an obstacle."""
+def test_metering_point_without_readings_does_not_block_run(db):
+    """A MeteringPoint with no LEG but also no readings this quarter is not an obstacle."""
     unused_site = _site(db)
-    _messpunkt(db, "M-UNUSED", MESSRICHTUNG_BEZUG, unused_site, leg_id=None)  # no readings on it
+    _metering_point(db, "M-UNUSED", DIRECTION_CONSUMPTION, unused_site, leg_id=None)  # no readings on it
     leg_id = _leg(db)
     site = _site(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site, leg_id)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site, leg_id)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site, leg_id)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
     _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "bezug", 4.0)
@@ -352,7 +352,7 @@ def test_messpunkt_without_readings_does_not_block_run(db):
     assert result.person_results[consumer].consumed_local_kwh == pytest.approx(4.0)
 
 
-def test_distribution_scoped_to_one_leg_excludes_other_legs_messpunkte(db):
+def test_distribution_scoped_to_one_leg_excludes_other_legs_metering_points(db):
     """Two Personen on different LEGs never share, even with matching P(t)/C(t)."""
     leg_a = _leg(db)
     leg_b = _leg(db)
@@ -360,8 +360,8 @@ def test_distribution_scoped_to_one_leg_excludes_other_legs_messpunkte(db):
     site_b = _site(db)
     consumer = _person(db, "Consumer")
     producer = _person(db, "Producer")
-    consumption_mp = _messpunkt(db, "M-C1", MESSRICHTUNG_BEZUG, site_a, leg_a)
-    production_mp = _messpunkt(db, "M-P1", MESSRICHTUNG_EINSPEISUNG, site_b, leg_b)
+    consumption_mp = _metering_point(db, "M-C1", DIRECTION_CONSUMPTION, site_a, leg_a)
+    production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site_b, leg_b)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
@@ -369,14 +369,14 @@ def test_distribution_scoped_to_one_leg_excludes_other_legs_messpunkte(db):
     _reading(db, consumption_mp, t, "bezug", 4.0)
     _reading(db, production_mp, t, "einspeisung", 4.0)
 
-    # Computed for leg_a: only the consumer's Messpunkt is in scope, the
-    # producer's Messpunkt (on leg_b) never even enters the computation.
+    # Computed for leg_a: only the consumer's MeteringPoint is in scope, the
+    # producer's MeteringPoint (on leg_b) never even enters the computation.
     result_a = compute_quarter_distribution(db, leg_a, YEAR, QUARTER)
     assert consumer not in result_a.person_results or result_a.person_results[consumer].consumed_local_kwh == 0.0
     assert producer not in result_a.person_results
     assert result_a.total_consumed_local_kwh() == 0.0
 
-    # Computed for leg_b: symmetric -- only the producer's Messpunkt is in scope.
+    # Computed for leg_b: symmetric -- only the producer's MeteringPoint is in scope.
     result_b = compute_quarter_distribution(db, leg_b, YEAR, QUARTER)
     assert producer not in result_b.person_results or result_b.person_results[producer].produced_local_kwh == 0.0
     assert consumer not in result_b.person_results
@@ -393,10 +393,10 @@ def test_two_legs_each_share_correctly_within_themselves(db):
     producer_a = _person(db, "Producer A")
     consumer_b = _person(db, "Consumer B")
     producer_b = _person(db, "Producer B")
-    consumption_mp_a = _messpunkt(db, "A-C1", MESSRICHTUNG_BEZUG, site_a, leg_a)
-    production_mp_a = _messpunkt(db, "A-P1", MESSRICHTUNG_EINSPEISUNG, site_a, leg_a)
-    consumption_mp_b = _messpunkt(db, "B-C1", MESSRICHTUNG_BEZUG, site_b, leg_b)
-    production_mp_b = _messpunkt(db, "B-P1", MESSRICHTUNG_EINSPEISUNG, site_b, leg_b)
+    consumption_mp_a = _metering_point(db, "A-C1", DIRECTION_CONSUMPTION, site_a, leg_a)
+    production_mp_a = _metering_point(db, "A-P1", DIRECTION_FEED_IN, site_a, leg_a)
+    consumption_mp_b = _metering_point(db, "B-C1", DIRECTION_CONSUMPTION, site_b, leg_b)
+    production_mp_b = _metering_point(db, "B-P1", DIRECTION_FEED_IN, site_b, leg_b)
     _assign(db, consumption_mp_a, consumer_a, date(YEAR, 1, 1))
     _assign(db, production_mp_a, producer_a, date(YEAR, 1, 1))
     _assign(db, consumption_mp_b, consumer_b, date(YEAR, 1, 1))

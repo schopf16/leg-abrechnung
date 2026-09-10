@@ -1,5 +1,5 @@
 """sites management page: list, search, create, edit, delete, and a
-detail drill-down showing the site's Messpunkte.
+detail drill-down showing the site's metering points.
 """
 
 from datetime import date, datetime
@@ -12,7 +12,7 @@ from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
@@ -28,20 +28,20 @@ COLUMNS = [
 ]
 
 
-def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
-    """Find the name of the Person (currently or soon) assigned to a Messpunkt.
+def _current_person_display(connection, metering_point_id: int) -> tuple[str, bool]:
+    """Find the name of the Person (currently or soon) assigned to a MeteringPoint.
 
     Args:
         connection: Open SQLite connection.
-        messpunkt_id: Primary key of the metering point.
+        metering_point_id: Primary key of the metering point.
 
     Returns:
-        `(name, is_future)`, see `app.gui.pages.messpunkte._current_person_display`
+        `(name, is_future)`, see `app.gui.pages.metering_points._current_person_display`
         (identical logic, duplicated here since this page needs its own
         `ui.table`-row shape) -- `name` is "-" if there is no current or
         upcoming Zuordnung at all.
     """
-    zuordnung = zuordnung_repo.get_relevant_for_messpunkt(connection, messpunkt_id, datetime.now())
+    zuordnung = zuordnung_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
     if zuordnung is None:
         return "-", False
     person = person_repo.get(connection, zuordnung.person_id)
@@ -232,7 +232,7 @@ def sites_page() -> None:
 @ui.page("/sites/{site_id}")
 def site_detail_page(site_id: int) -> None:
     """Render one site's detail view: address, Lage, substation area, and its
-    Messpunkte (each with its own LEG, see `app.models.leg`).
+    metering points (each with its own LEG, see `app.models.leg`).
 
     Args:
         site_id: Database id of the site, from the URL path.
@@ -247,9 +247,9 @@ def site_detail_page(site_id: int) -> None:
             if site and site.substation_area_id
             else None
         )
-        messpunkte = messpunkt_repo.list_for_site(connection, site_id) if site else []
+        metering_points = metering_point_repo.list_for_site(connection, site_id) if site else []
         legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
-        person_display = {mp.id: _current_person_display(connection, mp.id) for mp in messpunkte}
+        person_display = {mp.id: _current_person_display(connection, mp.id) for mp in metering_points}
 
     with page_frame(
         "/sites", "Standort" if site is None else site.full_address
@@ -266,28 +266,28 @@ def site_detail_page(site_id: int) -> None:
             ui.label(f"Trafokreis: {substation_area.name if substation_area else '-'}")
 
         ui.label("Messpunkte an diesem Standort").classes("text-lg font-bold mt-6")
-        if messpunkte:
-            messpunkte_table = ui.table(
+        if metering_points:
+            metering_points_table = ui.table(
                 columns=[
-                    {"name": "messpunkt_bezeichnung", "label": "Bezeichnung", "field": "messpunkt_bezeichnung", "align": "left"},
-                    {"name": "messrichtung", "label": "Messrichtung", "field": "messrichtung", "align": "left"},
+                    {"name": "designation", "label": "Bezeichnung", "field": "designation", "align": "left"},
+                    {"name": "direction", "label": "Messrichtung", "field": "direction", "align": "left"},
                     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
                     {"name": "person", "label": "Aktuell zugeordnet", "field": "person", "align": "left"},
                 ],
                 rows=[
                     {
                         "id": mp.id,
-                        "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
-                        "messrichtung": "Bezug" if mp.is_bezug else "Einspeisung",
+                        "designation": mp.designation,
+                        "direction": "Bezug" if mp.is_bezug else "Einspeisung",
                         "leg": legs[mp.leg_id].name if mp.leg_id in legs else "-",
                         "person": person_display.get(mp.id, ("-", False))[0],
                         "person_is_future": person_display.get(mp.id, ("-", False))[1],
                     }
-                    for mp in messpunkte
+                    for mp in metering_points
                 ],
                 row_key="id",
             ).classes("w-full mt-2")
-            messpunkte_table.add_slot(
+            metering_points_table.add_slot(
                 "body-cell-person",
                 r'''
                 <q-td :props="props" :class="props.row.person_is_future ? 'text-orange-8' : ''">

@@ -1,8 +1,8 @@
-"""Orchestrates importing a reading file: parse, match Messpunkte, store.
+"""Orchestrates importing a reading file: parse, match metering points, store.
 
 This is the only module the GUI talks to for imports. It dispatches to the
 EBIX or CSV parser based on file extension, resolves each parsed reading's
-`messpunkt_bezeichnung` against the local Messpunkt registry (reporting
+`designation` against the local MeteringPoint registry (reporting
 unknown designations clearly instead of silently dropping them), and
 stores everything through the idempotent `upsert_readings` repository
 function.
@@ -15,7 +15,7 @@ from pathlib import Path
 from app.importers.base import ImportValidationError, ParsedReading
 from app.importers.csv_parser import parse_csv_file
 from app.importers.ebix_parser import parse_ebix_file
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models.reading import ImportBatch, Reading, create_import_batch, now_iso, upsert_readings
 
 #: File extensions dispatched to each parser.
@@ -31,8 +31,8 @@ class ImportOutcome:
         filename: Name of the imported file.
         format: "ebix" or "csv".
         rows_stored: Number of readings inserted or updated.
-        unknown_messpunkt_bezeichnungen: Metering point designations
-            present in the file but not configured as a Messpunkt in the app.
+        unknown_metering_point_designations: Metering point designations
+            present in the file but not configured as a MeteringPoint in the app.
         warnings: Parser-level warnings (skipped rows, etc.).
         period_from: Earliest interval timestamp seen (ISO string), if any.
         period_to: Latest interval timestamp seen (ISO string), if any.
@@ -41,7 +41,7 @@ class ImportOutcome:
     filename: str
     format: str
     rows_stored: int = 0
-    unknown_messpunkt_bezeichnungen: set[str] = field(default_factory=set)
+    unknown_metering_point_designations: set[str] = field(default_factory=set)
     warnings: list[str] = field(default_factory=list)
     period_from: str | None = None
     period_to: str | None = None
@@ -52,7 +52,7 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
 
     Idempotent: re-importing a file covering an already-imported period
     updates existing rows in place rather than duplicating them, relying
-    on the `UNIQUE (messpunkt_id, timestamp, direction)` database constraint.
+    on the `UNIQUE (metering_point_id, timestamp, direction)` database constraint.
 
     Args:
         connection: Open SQLite connection.
@@ -84,14 +84,14 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
     if not parse_result.readings:
         return outcome
 
-    messpunkt_id_by_bezeichnung = _load_messpunkt_lookup(connection)
+    metering_point_id_by_designation = _load_metering_point_lookup(connection)
     readings_to_store: list[Reading] = []
     for parsed in parse_result.readings:
-        messpunkt_id = messpunkt_id_by_bezeichnung.get(parsed.messpunkt_bezeichnung)
-        if messpunkt_id is None:
-            outcome.unknown_messpunkt_bezeichnungen.add(parsed.messpunkt_bezeichnung)
+        metering_point_id = metering_point_id_by_designation.get(parsed.designation)
+        if metering_point_id is None:
+            outcome.unknown_metering_point_designations.add(parsed.designation)
             continue
-        readings_to_store.append(_to_reading(parsed, messpunkt_id, file_format))
+        readings_to_store.append(_to_reading(parsed, metering_point_id, file_format))
 
     timestamps = sorted(r.timestamp for r in parse_result.readings)
     outcome.period_from = timestamps[0].isoformat()
@@ -114,43 +114,43 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
 
     outcome.rows_stored = upsert_readings(connection, readings_to_store)
 
-    if outcome.unknown_messpunkt_bezeichnungen:
+    if outcome.unknown_metering_point_designations:
         outcome.warnings.append(
             "Unbekannte Messpunkt-Bezeichnungen (nicht importiert, zuerst "
             "als Messpunkt anlegen): "
-            + ", ".join(sorted(outcome.unknown_messpunkt_bezeichnungen))
+            + ", ".join(sorted(outcome.unknown_metering_point_designations))
         )
 
     return outcome
 
 
-def _load_messpunkt_lookup(connection: sqlite3.Connection) -> dict[str, int]:
-    """Build a messpunkt_bezeichnung-to-messpunkt-id lookup for the whole registry.
+def _load_metering_point_lookup(connection: sqlite3.Connection) -> dict[str, int]:
+    """Build a designation-to-metering_point-id lookup for the whole registry.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        A dict mapping `messpunkt_bezeichnung` to the Messpunkt's database id.
+        A dict mapping `designation` to the MeteringPoint's database id.
     """
     return {
-        mp.messpunkt_bezeichnung: mp.id for mp in messpunkt_repo.list_all(connection)
+        mp.designation: mp.id for mp in metering_point_repo.list_all(connection)
     }
 
 
-def _to_reading(parsed: ParsedReading, messpunkt_id: int, file_format: str) -> Reading:
+def _to_reading(parsed: ParsedReading, metering_point_id: int, file_format: str) -> Reading:
     """Convert a `ParsedReading` into a persistence-layer `Reading`.
 
     Args:
         parsed: Reading parsed from the source file.
-        messpunkt_id: Resolved local Messpunkt id.
+        metering_point_id: Resolved local MeteringPoint id.
         file_format: "ebix" or "csv", stored as the reading's `source`.
 
     Returns:
         A `Reading` ready to be passed to `upsert_readings`.
     """
     return Reading(
-        messpunkt_id=messpunkt_id,
+        metering_point_id=metering_point_id,
         timestamp=parsed.timestamp.isoformat(),
         direction=parsed.direction,
         kwh=parsed.kwh,

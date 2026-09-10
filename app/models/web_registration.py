@@ -5,12 +5,12 @@ One row per Cloudflare submission (not per reported meter): the form
 fields were deliberately chosen to mirror `Person` almost 1:1 (`firma`,
 `anrede`, `vorname`, `nachname`, address, contact, `bkw_kundennummer`,
 `iban`), but a registration can report zero, one or several meters
-(`WebRegistrationMeter`). Person, site and each meter's Messpunkt are
+(`WebRegistrationMeter`). Person, site and each meter's MeteringPoint are
 each taken over as their own explicit step (see `app.gui.pages.
 web_registrierungen`) -- matching a reported meter (and its site)
 against a *new* record is a judgment call for the administrator, not a
 mechanical one. Zuordnung (linking a taken-over Person to a taken-over
-Messpunkt) stays a manual step in `/zuordnungen`.
+MeteringPoint) stays a manual step in `/zuordnungen`.
 """
 
 import sqlite3
@@ -28,15 +28,15 @@ class WebRegistrationMeter:
         web_registration_id: Foreign key to the owning `WebRegistration`,
             `None` until persisted.
         meter_number: The reported Zählernummer, free text as submitted
-            (not validated against `app.domain.messpunkt_validation` here
+            (not validated against `app.domain.metering_point_validation` here
             -- the submitter may not know the full formal designation).
         note: Optional free-text purpose label from the submitter (e.g.
-            "PV", "Wohnhaus", "Wärmepumpe") -- not a `Messpunkt` field,
+            "PV", "Wohnhaus", "Wärmepumpe") -- not a `MeteringPoint` field,
             purely a hint for the administrator.
-        messpunkt_created: Whether a `Messpunkt` was actually created for
-            this reported meter via "Messpunkt übernehmen" (see
+        metering_point_created: Whether a `MeteringPoint` was actually created for
+            this reported meter via "MeteringPoint übernehmen" (see
             `app.gui.pages.web_registrierungen`). Only
-            `mark_messpunkt_created` sets it; `upsert_from_submission`
+            `mark_metering_point_created` sets it; `upsert_from_submission`
             carries it forward by `meter_number` across a repeat
             submission, since that call otherwise replaces all of a
             registration's meter rows wholesale.
@@ -46,7 +46,7 @@ class WebRegistrationMeter:
     web_registration_id: Optional[int]
     meter_number: str
     note: str
-    messpunkt_created: bool = False
+    metering_point_created: bool = False
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "WebRegistrationMeter":
@@ -63,7 +63,7 @@ class WebRegistrationMeter:
             web_registration_id=row["web_registration_id"],
             meter_number=row["meter_number"],
             note=row["note"],
-            messpunkt_created=bool(row["messpunkt_created"]),
+            metering_point_created=bool(row["metering_point_created"]),
         )
 
 
@@ -109,7 +109,7 @@ class WebRegistration:
             this registration's reported address via "site
             übernehmen". Only `mark_site_created` sets it.
         meters: Zählernummern reported with this registration, zero, one
-            or several -- each with its own `messpunkt_created` flag.
+            or several -- each with its own `metering_point_created` flag.
     """
 
     id: Optional[int]
@@ -151,7 +151,7 @@ class WebRegistration:
     def is_fully_processed(self) -> bool:
         """Whether there is nothing left to take over from this registration.
 
-        `True` once Person, site and every reported Messpunkt have
+        `True` once Person, site and every reported MeteringPoint have
         all been created via their respective "... übernehmen" action --
         the only remaining action at that point is deleting the entry.
 
@@ -161,7 +161,7 @@ class WebRegistration:
         return (
             self.person_created
             and self.site_created
-            and all(m.messpunkt_created for m in self.meters)
+            and all(m.metering_point_created for m in self.meters)
         )
 
     @staticmethod
@@ -279,7 +279,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
     then reinsert) rather than diffing them individually -- the number of
     meters per registration is small, and this avoids having to decide
     which meter row "is the same" across a content change -- except for
-    `messpunkt_created`, which is explicitly carried forward by
+    `metering_point_created`, which is explicitly carried forward by
     `meter_number` (see the loop below): unlike a brand new meter row,
     that flag records real administrator work that a same-content resync
     must not silently discard.
@@ -295,7 +295,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
     """
     existing = get_by_email(connection, registration.email)
     previously_created_by_meter = (
-        {m.meter_number: m.messpunkt_created for m in existing.meters} if existing else {}
+        {m.meter_number: m.metering_point_created for m in existing.meters} if existing else {}
     )
     now = datetime.now(timezone.utc).isoformat()
 
@@ -366,7 +366,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
 
     for meter in registration.meters:
         connection.execute(
-            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note, messpunkt_created) "
+            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note, metering_point_created) "
             "VALUES (?, ?, ?, ?)",
             (
                 web_registration_id,
@@ -418,10 +418,10 @@ def mark_site_created(connection: sqlite3.Connection, web_registration_id: int) 
     connection.commit()
 
 
-def mark_messpunkt_created(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
-    """Record that a `Messpunkt` was actually created for one reported meter.
+def mark_metering_point_created(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
+    """Record that a `MeteringPoint` was actually created for one reported meter.
 
-    Idempotent. The only way a meter's `messpunkt_created` is set.
+    Idempotent. The only way a meter's `metering_point_created` is set.
 
     Args:
         connection: Open SQLite connection.
@@ -431,7 +431,7 @@ def mark_messpunkt_created(connection: sqlite3.Connection, web_registration_mete
         None.
     """
     connection.execute(
-        "UPDATE web_registration_meter SET messpunkt_created = 1 WHERE id = ?",
+        "UPDATE web_registration_meter SET metering_point_created = 1 WHERE id = ?",
         (web_registration_meter_id,),
     )
     connection.commit()

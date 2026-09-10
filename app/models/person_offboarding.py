@@ -26,7 +26,7 @@ from typing import Optional
 #: `app.models.person_onboarding.STEPS`.
 STEPS: list[tuple[str, str]] = [
     ("beschlossen_am", "Austritt/Ausschluss beschlossen"),
-    ("messpunkt_austritt_am", "Austrittsdatum Messpunkt festgelegt"),
+    ("metering_point_exit_at", "Austrittsdatum Messpunkt festgelegt"),
     ("bkw_informiert_am", "BKW informiert"),
     ("person_bestaetigt_am", "Person schriftlich bestätigt"),
 ]
@@ -49,7 +49,7 @@ class PersonOffboarding:
         grund: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"`.
         beschlossen_am: Date of step 1, "Austritt/Ausschluss beschlossen",
             or `None`.
-        messpunkt_austritt_am: Date of step 2, "Austrittsdatum Messpunkt
+        metering_point_exit_at: Date of step 2, "Austrittsdatum MeteringPoint
             festgelegt", or `None`. Setting this in the GUI offers to end
             the person's currently open `Zuordnung`(en) with this date as
             `gueltig_bis` -- never automatic, see `app.gui.pages.austritte`.
@@ -63,7 +63,7 @@ class PersonOffboarding:
     person_id: int
     grund: str
     beschlossen_am: Optional[date]
-    messpunkt_austritt_am: Optional[date]
+    metering_point_exit_at: Optional[date]
     bkw_informiert_am: Optional[date]
     person_bestaetigt_am: Optional[date]
     created_at: str
@@ -143,7 +143,7 @@ class PersonOffboarding:
             person_id=row["person_id"],
             grund=row["grund"],
             beschlossen_am=_date(row["beschlossen_am"]),
-            messpunkt_austritt_am=_date(row["messpunkt_austritt_am"]),
+            metering_point_exit_at=_date(row["metering_point_exit_at"]),
             bkw_informiert_am=_date(row["bkw_informiert_am"]),
             person_bestaetigt_am=_date(row["person_bestaetigt_am"]),
             created_at=row["created_at"],
@@ -272,14 +272,14 @@ def update(connection: sqlite3.Connection, offboarding: PersonOffboarding) -> No
     connection.execute(
         """
         UPDATE person_offboarding SET
-            grund = ?, beschlossen_am = ?, messpunkt_austritt_am = ?,
+            grund = ?, beschlossen_am = ?, metering_point_exit_at = ?,
             bkw_informiert_am = ?, person_bestaetigt_am = ?
         WHERE id = ?
         """,
         (
             offboarding.grund,
             offboarding.beschlossen_am.isoformat() if offboarding.beschlossen_am else None,
-            offboarding.messpunkt_austritt_am.isoformat() if offboarding.messpunkt_austritt_am else None,
+            offboarding.metering_point_exit_at.isoformat() if offboarding.metering_point_exit_at else None,
             offboarding.bkw_informiert_am.isoformat() if offboarding.bkw_informiert_am else None,
             offboarding.person_bestaetigt_am.isoformat() if offboarding.person_bestaetigt_am else None,
             offboarding.id,

@@ -1,19 +1,19 @@
-"""Swiss metering point designation (Messpunktbezeichnung) validation.
+"""Swiss metering point designation (metering point designation) validation.
 
 Per the VSE guideline, the 33-character code has a fixed structure:
 
     Stellen  1–2   Land (immer "CH" für die Schweiz)
-    Stellen  3–13  Identifikator des Netzbetreibers (11-stellig)
-    Stellen 14–33  Messpunktnummer (20-stellig, alphanumerisch, mit
+    Stellen  3–13  identifier des Netzbetreibers (11-stellig)
+    Stellen 14–33  metering point number (20-stellig, alphanumerisch, mit
                    führenden Nullen aufgefüllt)
 
 Unlike an IBAN, this designation has **no built-in check digit** -- the
 guideline defines the structure but no checksum, so there is nothing to
 compute a MOD-97-style validation against. The practical mitigation used
 here: since a single LEG deployment always sits in one grid operator's
-territory, Land and Identifikator are entered once (see
-`LegSettings.messpunkt_land`/`messpunkt_identifikator`) and only the
-20-character Messpunktnummer varies per Messpunkt -- structural validation
+territory, Land and identifier are entered once (see
+`LegSettings.metering_point_country`/`metering_point_identifier`) and only the
+20-character metering point number varies per MeteringPoint -- structural validation
 (length, allowed characters) is the strongest plausibility check available.
 """
 
@@ -22,42 +22,42 @@ from typing import Optional
 
 #: Land: exactly 2 uppercase letters.
 _LAND_RE = re.compile(r"^[A-Z]{2}$")
-#: Identifikator: exactly 11 uppercase alphanumeric characters.
+#: identifier: exactly 11 uppercase alphanumeric characters.
 _IDENTIFIKATOR_RE = re.compile(r"^[0-9A-Z]{11}$")
-#: Full 33-character designation: Land + Identifikator + Messpunktnummer.
+#: Full 33-character designation: Land + identifier + metering point number.
 _FULL_RE = re.compile(r"^[A-Z]{2}[0-9A-Z]{11}[0-9A-Z]{20}$")
 
-#: Total length of a valid Messpunktbezeichnung.
-MESSPUNKTBEZEICHNUNG_LENGTH = 33
-#: Length of the Messpunktnummer part alone (zero-padded on the left).
-MESSPUNKTNUMMER_LENGTH = 20
+#: Total length of a valid metering point designation.
+DESIGNATION_LENGTH = 33
+#: Length of the metering point number part alone (zero-padded on the left).
+METERING_POINT_NUMBER_LENGTH = 20
 
 
-def assemble_messpunkt_bezeichnung(land: str, identifikator: str, messpunktnummer: str) -> str:
+def assemble_metering_point_designation(country: str, identifier: str, metering_point_number: str) -> str:
     """Combine the three entry fields into the full 33-character designation.
 
-    The Messpunktnummer is left-padded with zeros to fill all 20
+    The metering point number is left-padded with zeros to fill all 20
     characters, per the guideline ("Leere Stellen müssen mit einer Null
     belegt werden").
 
     Args:
         land: 2-letter country code.
-        identifikator: 11-character grid-operator identifier.
-        messpunktnummer: The meter-specific tail, any length up to 20.
+        identifier: 11-character grid-operator identifier.
+        metering_point_number: The meter-specific tail, any length up to 20.
 
     Returns:
         The assembled, uppercased designation (not necessarily valid --
-        call `validate_messpunkt_bezeichnung` to check it).
+        call `validate_metering_point_designation` to check it).
     """
     return (
-        land.strip().upper()
-        + identifikator.strip().upper()
-        + messpunktnummer.strip().upper().zfill(MESSPUNKTNUMMER_LENGTH)
+        country.strip().upper()
+        + identifier.strip().upper()
+        + metering_point_number.strip().upper().zfill(METERING_POINT_NUMBER_LENGTH)
     )
 
 
-def validate_messpunkt_bezeichnung(value: str) -> Optional[str]:
-    """Check a Messpunktbezeichnung's structural plausibility.
+def validate_metering_point_designation(value: str) -> Optional[str]:
+    """Check a metering point designation's structural plausibility.
 
     Args:
         value: The (assembled) 33-character designation.
@@ -69,10 +69,10 @@ def validate_messpunkt_bezeichnung(value: str) -> Optional[str]:
     candidate = value.strip().upper()
     if not candidate:
         return "Messpunkt-Bezeichnung darf nicht leer sein."
-    if len(candidate) != MESSPUNKTBEZEICHNUNG_LENGTH:
+    if len(candidate) != DESIGNATION_LENGTH:
         return (
             "Messpunkt-Bezeichnung muss genau "
-            f"{MESSPUNKTBEZEICHNUNG_LENGTH} Zeichen lang sein (aktuell {len(candidate)})."
+            f"{DESIGNATION_LENGTH} Zeichen lang sein (aktuell {len(candidate)})."
         )
     if not _FULL_RE.match(candidate):
         return (
@@ -83,7 +83,7 @@ def validate_messpunkt_bezeichnung(value: str) -> Optional[str]:
     return None
 
 
-def validate_land(value: str) -> Optional[str]:
+def validate_country(value: str) -> Optional[str]:
     """Check that a Land value is exactly 2 uppercase letters, if given.
 
     Args:
@@ -100,8 +100,8 @@ def validate_land(value: str) -> Optional[str]:
     return None
 
 
-def validate_identifikator(value: str) -> Optional[str]:
-    """Check that an Identifikator value is exactly 11 alphanumeric characters, if given.
+def validate_identifier(value: str) -> Optional[str]:
+    """Check that an identifier value is exactly 11 alphanumeric characters, if given.
 
     Args:
         value: Raw user input.

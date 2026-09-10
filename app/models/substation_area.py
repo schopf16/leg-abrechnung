@@ -1,11 +1,11 @@
 """substation area (transformer circuit): the physical grid-topology grouping a
 site belongs to. Purely a property of the site -- never of a
-Person or Messpunkt directly.
+Person or MeteringPoint directly.
 
 A substation area is distinct from a LEG (see `app.models.leg`): the substation area
 is what the grid operator (BKW) actually groups sites by, while a LEG
-is the administrative/billing group an individual Messpunkt opts into. By
-default a LEG matches one substation area, but two Messpunkte on different
+is the administrative/billing group an individual MeteringPoint opts into. By
+default a LEG matches one substation area, but two metering points on different
 substation areas can deliberately share one LEG -- at a correspondingly lower
 BKW discount for the cross-substation-area share, which this app never computes
 but can flag (see `app.domain.leg_composition`).

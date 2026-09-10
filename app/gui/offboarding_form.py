@@ -3,7 +3,7 @@
 `app.models.person_offboarding`).
 
 The one thing this dialog does that onboarding's never needs: setting the
-"Austrittsdatum Messpunkt festgelegt" step offers, as an explicit,
+"Austrittsdatum MeteringPoint festgelegt" step offers, as an explicit,
 separately-confirmed action, to end the person's currently open-ended
 `Zuordnung`(en) with that date -- reusing the exact mechanism already used
 for an ordinary mid-quarter tenant change (`app.models.zuordnung`). Never
@@ -17,7 +17,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.safe_notify import safe_notify
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.person import Person
@@ -73,11 +73,11 @@ def open_offboarding_form(
                 date_inputs[attr] = ui.input(
                     label, value=value.isoformat() if value else ""
                 ).props("type=date").classes("flex-grow")
-                if attr == "messpunkt_austritt_am":
+                if attr == "metering_point_exit_at":
                     ui.button(
                         "Zuordnung(en) beenden",
                         on_click=lambda: open_end_zuordnung_dialog(
-                            person, date_inputs["messpunkt_austritt_am"]
+                            person, date_inputs["metering_point_exit_at"]
                         ),
                     ).props("dense outline")
 
@@ -119,7 +119,7 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
 
     Args:
         person: The person whose Zuordnungen to consider.
-        date_input: The "Austrittsdatum Messpunkt festgelegt" field --
+        date_input: The "Austrittsdatum MeteringPoint festgelegt" field --
             read at confirm time, so a date typed but not yet saved on
             the tracker can still be used here.
 
@@ -138,10 +138,10 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
         open_zuordnungen = [
             z for z in zuordnung_repo.list_for_person(connection, person.id) if z.gueltig_bis is None
         ]
-        messpunkt_names = {}
+        metering_point_names = {}
         for z in open_zuordnungen:
-            messpunkt = messpunkt_repo.get(connection, z.messpunkt_id)
-            messpunkt_names[z.id] = messpunkt.messpunkt_bezeichnung if messpunkt else f"Messpunkt #{z.messpunkt_id}"
+            metering_point = metering_point_repo.get(connection, z.metering_point_id)
+            metering_point_names[z.id] = metering_point.designation if metering_point else f"Messpunkt #{z.metering_point_id}"
     if not open_zuordnungen:
         safe_notify("Keine offene Zuordnung für diese Person gefunden.", type="warning")
         return
@@ -151,7 +151,7 @@ def open_end_zuordnung_dialog(person: Person, date_input: ui.input) -> None:
             "font-bold"
         )
         for z in open_zuordnungen:
-            ui.label(f"- {messpunkt_names[z.id]}")
+            ui.label(f"- {metering_point_names[z.id]}")
         ui.label(
             "Die nächste Quartalsabrechnung rechnet den Zeitraum bis zu "
             "diesem Datum automatisch anteilig ab."

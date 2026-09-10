@@ -5,10 +5,10 @@ from datetime import date
 from app.domain.period import trailing_months
 from app.domain.statistics import monthly_energy_totals, monthly_growth_counts
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import site as site_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
 
@@ -36,13 +36,13 @@ def _make_site(db) -> int:
     )
 
 
-def _make_messpunkt(db, bezeichnung: str, messrichtung: str, site_id: int, leg_id=None) -> int:
-    return messpunkt_repo.create(
+def _make_metering_point(db, designation: str, direction: str, site_id: int, leg_id=None) -> int:
+    return metering_point_repo.create(
         db,
-        Messpunkt(
-            id=None, messpunkt_bezeichnung=bezeichnung, messrichtung=messrichtung,
-            site_id=site_id, leg_id=leg_id, pv_leistung_kwp=None,
-            batteriespeicher_kwh=None, created_at="",
+        MeteringPoint(
+            id=None, designation=designation, direction=direction,
+            site_id=site_id, leg_id=leg_id, pv_capacity_kwp=None,
+            battery_capacity_kwh=None, created_at="",
         ),
     )
 
@@ -56,16 +56,16 @@ def _set_created_at(db, table: str, entity_id: int, when: date) -> None:
 def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
     """Bezug and Einspeisung readings are summed per calendar month."""
     site_id = _make_site(db)
-    bezug_mp = _make_messpunkt(db, "CH-B1", MESSRICHTUNG_BEZUG, site_id)
-    einspeisung_mp = _make_messpunkt(db, "CH-E1", MESSRICHTUNG_EINSPEISUNG, site_id)
+    bezug_mp = _make_metering_point(db, "CH-B1", DIRECTION_CONSUMPTION, site_id)
+    einspeisung_mp = _make_metering_point(db, "CH-E1", DIRECTION_FEED_IN, site_id)
 
     upsert_readings(
         db,
         [
-            Reading(messpunkt_id=bezug_mp, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=10.0, source="test"),
-            Reading(messpunkt_id=bezug_mp, timestamp="2025-06-01T00:15:00", direction="bezug", kwh=5.0, source="test"),
-            Reading(messpunkt_id=einspeisung_mp, timestamp="2025-06-01T00:00:00", direction="einspeisung", kwh=3.0, source="test"),
-            Reading(messpunkt_id=bezug_mp, timestamp="2025-05-01T00:00:00", direction="bezug", kwh=2.0, source="test"),
+            Reading(metering_point_id=bezug_mp, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=10.0, source="test"),
+            Reading(metering_point_id=bezug_mp, timestamp="2025-06-01T00:15:00", direction="bezug", kwh=5.0, source="test"),
+            Reading(metering_point_id=einspeisung_mp, timestamp="2025-06-01T00:00:00", direction="einspeisung", kwh=3.0, source="test"),
+            Reading(metering_point_id=bezug_mp, timestamp="2025-05-01T00:00:00", direction="bezug", kwh=2.0, source="test"),
         ],
     )
 
@@ -81,18 +81,18 @@ def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
 
 
 def test_monthly_energy_totals_filters_by_leg(db):
-    """Passing a leg_id only counts readings from that LEG's Messpunkte."""
+    """Passing a leg_id only counts readings from that LEG's metering points."""
     site_id = _make_site(db)
     leg_a = leg_repo.create(db, Leg(id=None, name="LEG A", note="", created_at=""))
     leg_b = leg_repo.create(db, Leg(id=None, name="LEG B", note="", created_at=""))
-    mp_a = _make_messpunkt(db, "CH-A", MESSRICHTUNG_BEZUG, site_id, leg_id=leg_a)
-    mp_b = _make_messpunkt(db, "CH-B", MESSRICHTUNG_BEZUG, site_id, leg_id=leg_b)
+    mp_a = _make_metering_point(db, "CH-A", DIRECTION_CONSUMPTION, site_id, leg_id=leg_a)
+    mp_b = _make_metering_point(db, "CH-B", DIRECTION_CONSUMPTION, site_id, leg_id=leg_b)
 
     upsert_readings(
         db,
         [
-            Reading(messpunkt_id=mp_a, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=7.0, source="test"),
-            Reading(messpunkt_id=mp_b, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=4.0, source="test"),
+            Reading(metering_point_id=mp_a, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=7.0, source="test"),
+            Reading(metering_point_id=mp_b, timestamp="2025-06-01T00:00:00", direction="bezug", kwh=4.0, source="test"),
         ],
     )
 

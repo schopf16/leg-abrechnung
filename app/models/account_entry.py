@@ -241,7 +241,7 @@ def get_all_saldi(connection: sqlite3.Connection) -> dict[int, int]:
     """Compute every person's current running Saldo in one grouped query.
 
     Avoids an N+1 query pattern on the Debitoren list page -- see
-    `_load_messpunkt_lookup` in `app.importers.import_service` for the
+    `_load_metering_point_lookup` in `app.importers.import_service` for the
     same rationale applied elsewhere in this codebase.
 
     Args:

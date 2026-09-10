@@ -15,7 +15,7 @@ from app.gui.pages import (  # noqa: F401
     import_page,
     legs,
     mahnwesen,
-    messpunkte,
+    metering_points,
     personen,
     signaturen,
     sites,

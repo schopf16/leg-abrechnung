@@ -1,4 +1,4 @@
-"""15-minute Messpunkt readings and the import batches that brought them in."""
+"""15-minute MeteringPoint readings and the import batches that brought them in."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -8,15 +8,15 @@ from typing import Optional
 
 @dataclass
 class Reading:
-    """A single 15-minute interval value for one Messpunkt.
+    """A single 15-minute interval value for one MeteringPoint.
 
     Attributes:
-        messpunkt_id: Foreign key to the Messpunkt this reading belongs to.
+        metering_point_id: Foreign key to the MeteringPoint this reading belongs to.
         timestamp: Interval start, as an ISO-8601 local datetime string
             (e.g. "2026-04-01T00:00:00").
         direction: Either "bezug" (consumption) or "einspeisung" (feed-in)
             as delivered by the source file; independent from the
-            Messpunkt's configured `messrichtung` so mismatches can be
+            MeteringPoint's configured `direction` so mismatches can be
             detected.
         kwh: Energy for this interval, in kWh, non-negative.
         source: Origin of the value, e.g. "ebix" or "csv".
@@ -24,7 +24,7 @@ class Reading:
             created this reading, if imported (vs. demo data).
     """
 
-    messpunkt_id: int
+    metering_point_id: int
     timestamp: str
     direction: str
     kwh: float
@@ -87,9 +87,9 @@ def create_import_batch(connection: sqlite3.Connection, batch: ImportBatch) -> i
 def upsert_readings(connection: sqlite3.Connection, readings: list[Reading]) -> int:
     """Insert readings, idempotently skipping ones that already exist.
 
-    Idempotency relies on the `UNIQUE (messpunkt_id, timestamp, direction)`
+    Idempotency relies on the `UNIQUE (metering_point_id, timestamp, direction)`
     constraint: re-importing the same period is safe and never creates
-    duplicates. If a value for an existing (messpunkt, timestamp,
+    duplicates. If a value for an existing (metering_point, timestamp,
     direction) changes between imports, the newer value overwrites the old
     one.
 
@@ -102,16 +102,16 @@ def upsert_readings(connection: sqlite3.Connection, readings: list[Reading]) -> 
     """
     connection.executemany(
         """
-        INSERT INTO readings (messpunkt_id, timestamp, direction, kwh, source, import_batch_id)
-        VALUES (:messpunkt_id, :timestamp, :direction, :kwh, :source, :import_batch_id)
-        ON CONFLICT (messpunkt_id, timestamp, direction) DO UPDATE SET
+        INSERT INTO readings (metering_point_id, timestamp, direction, kwh, source, import_batch_id)
+        VALUES (:metering_point_id, :timestamp, :direction, :kwh, :source, :import_batch_id)
+        ON CONFLICT (metering_point_id, timestamp, direction) DO UPDATE SET
             kwh = excluded.kwh,
             source = excluded.source,
             import_batch_id = excluded.import_batch_id
         """,
         [
             {
-                "messpunkt_id": r.messpunkt_id,
+                "metering_point_id": r.metering_point_id,
                 "timestamp": r.timestamp,
                 "direction": r.direction,
                 "kwh": r.kwh,
@@ -128,7 +128,7 @@ def upsert_readings(connection: sqlite3.Connection, readings: list[Reading]) -> 
 def list_readings_in_period(
     connection: sqlite3.Connection, start: str, end_exclusive: str
 ) -> list[sqlite3.Row]:
-    """Fetch all readings for the given half-open time range, across Messpunkte.
+    """Fetch all readings for the given half-open time range, across metering points.
 
     Args:
         connection: Open SQLite connection.
@@ -136,14 +136,14 @@ def list_readings_in_period(
         end_exclusive: ISO-8601 timestamp, exclusive upper bound.
 
     Returns:
-        Rows with columns `messpunkt_id`, `timestamp`, `direction`, `kwh`,
-        joined with the Messpunkt's `messrichtung`, ordered by timestamp.
+        Rows with columns `metering_point_id`, `timestamp`, `direction`, `kwh`,
+        joined with the MeteringPoint's `direction`, ordered by timestamp.
     """
     return connection.execute(
         """
-        SELECT r.messpunkt_id, r.timestamp, r.direction, r.kwh, mp.messrichtung
+        SELECT r.metering_point_id, r.timestamp, r.direction, r.kwh, mp.direction
         FROM readings r
-        JOIN messpunkt mp ON mp.id = r.messpunkt_id
+        JOIN metering_point mp ON mp.id = r.metering_point_id
         WHERE r.timestamp >= ? AND r.timestamp < ?
         ORDER BY r.timestamp
         """,

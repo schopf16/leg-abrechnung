@@ -1,5 +1,5 @@
 """Generates demo/test data: one substation area, one LEG, four sites,
-seven Messpunkte, five Personen (including a mid-quarter move), and
+seven metering points, five Personen (including a mid-quarter move), and
 synthetic 15-minute readings for one winter and one summer quarter.
 
 Used both to let the administrator click through the app with realistic
@@ -10,7 +10,7 @@ data, and as the fixture basis for the distribution-engine unit tests (see
 - Summer quarter: Einspeisung sometimes exceeds Bezug (`S(t) =
   min(P, C) = C`, testing the consumption-limited case) and sometimes falls
   short of it (testing the production-limited case).
-- A Messpunkt that changes Person mid-quarter (tenant move), exercising
+- A MeteringPoint that changes Person mid-quarter (tenant move), exercising
   the time-sliced Zuordnung lookup, while its site/substation area and its
   LEG never change.
 """
@@ -22,14 +22,14 @@ from datetime import date, datetime, timedelta
 
 from app.domain.period import INTERVAL_MINUTES, quarter_bounds
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
@@ -84,12 +84,12 @@ class DemoDataSummary:
 
     Attributes:
         person_ids: Database ids of the created Personen.
-        messpunkt_ids: Database ids of the created Messpunkte.
+        metering_point_ids: Database ids of the created metering points.
         reading_count: Total number of reading rows inserted.
     """
 
     person_ids: list[int]
-    messpunkt_ids: list[int]
+    metering_point_ids: list[int]
     reading_count: int
 
 
@@ -118,7 +118,7 @@ def _consumption_kwh(moment: datetime, scale: float) -> float:
 
     Args:
         moment: Interval start.
-        scale: Per-Messpunkt scale factor (relative household size).
+        scale: Per-MeteringPoint scale factor (relative household size).
 
     Returns:
         Energy for the interval in kWh, always positive.
@@ -136,7 +136,7 @@ def _production_kwh(moment: datetime, scale: float, day_index: int) -> float:
 
     Args:
         moment: Interval start.
-        scale: Per-Messpunkt scale factor (relative installation size).
+        scale: Per-MeteringPoint scale factor (relative installation size).
         day_index: Zero-based day offset since the start of the quarter,
             used to pick the day's weather scale.
 
@@ -153,8 +153,8 @@ def _production_kwh(moment: datetime, scale: float, day_index: int) -> float:
 
 
 def _generate_readings_for_quarter(
-    messpunkt_id: int,
-    messrichtung: str,
+    metering_point_id: int,
+    direction: str,
     scale: float,
     year: int,
     quarter: int,
@@ -163,20 +163,20 @@ def _generate_readings_for_quarter(
     """Generate one quarter's worth of 15-minute synthetic readings.
 
     Args:
-        messpunkt_id: Database id of the Messpunkt to generate readings for.
-        messrichtung: The Messpunkt's `messrichtung`, determining Bezug vs.
+        metering_point_id: Database id of the MeteringPoint to generate readings for.
+        direction: The MeteringPoint's `direction`, determining Bezug vs.
             Einspeisung shape.
-        scale: Per-Messpunkt scale factor.
+        scale: Per-MeteringPoint scale factor.
         year: Calendar year of the quarter.
         quarter: Quarter number, 1 to 4.
-        einspeisung_disabled: If `True`, Einspeisung-Messpunkte yield
+        einspeisung_disabled: If `True`, Einspeisung-metering points yield
             all-zero readings (used for the winter fixture).
 
     Returns:
         One `Reading` per 15-minute interval in the quarter.
     """
     start, end = quarter_bounds(year, quarter)
-    is_einspeisung = messrichtung == MESSRICHTUNG_EINSPEISUNG
+    is_einspeisung = direction == DIRECTION_FEED_IN
 
     readings: list[Reading] = []
     moment = start
@@ -188,9 +188,9 @@ def _generate_readings_for_quarter(
             kwh = _consumption_kwh(moment, scale)
         readings.append(
             Reading(
-                messpunkt_id=messpunkt_id,
+                metering_point_id=metering_point_id,
                 timestamp=moment.isoformat(),
-                direction=messrichtung,
+                direction=direction,
                 kwh=kwh,
                 source="demo",
                 import_batch_id=None,
@@ -201,7 +201,7 @@ def _generate_readings_for_quarter(
 
 
 def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
-    """Create the full demo data set: LEG, sites, Messpunkte,
+    """Create the full demo data set: LEG, sites, metering points,
     Personen, Zuordnungen, readings.
 
     Idempotent guard: raises `DemoDataAlreadyExists` if the marker person
@@ -226,15 +226,15 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
     substation_area = _create_demo_substation_area(connection)
     leg = _create_demo_leg(connection)
     sites = _create_demo_sites(connection, substation_area)
-    messpunkte = _create_demo_messpunkte(connection, sites, leg)
+    metering_points = _create_demo_metering_points(connection, sites, leg)
     personen = _create_demo_personen(connection)
-    _create_demo_zuordnungen(connection, personen, messpunkte)
-    reading_count = _create_demo_readings(connection, messpunkte)
+    _create_demo_zuordnungen(connection, personen, metering_points)
+    reading_count = _create_demo_readings(connection, metering_points)
     _set_demo_leg_settings(connection)
 
     return DemoDataSummary(
         person_ids=[p.id for p in personen.values()],
-        messpunkt_ids=[mp.id for mp in messpunkte.values()],
+        metering_point_ids=[mp.id for mp in metering_points.values()],
         reading_count=reading_count,
     )
 
@@ -260,7 +260,7 @@ def _create_demo_substation_area(connection: sqlite3.Connection) -> SubstationAr
 
 
 def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
-    """Insert the single demo LEG all demo Messpunkte share.
+    """Insert the single demo LEG all demo metering points share.
 
     By default matches the demo substation area 1:1 -- same name, since no
     cross-substation-area grouping is demonstrated in the showcase data.
@@ -319,10 +319,10 @@ def _create_demo_sites(
     return created
 
 
-def _create_demo_messpunkte(
+def _create_demo_metering_points(
     connection: sqlite3.Connection, sites: dict[str, Site], leg: Leg
-) -> dict[str, Messpunkt]:
-    """Insert the demo Messpunkte for the showcase sites, all on the demo LEG.
+) -> dict[str, MeteringPoint]:
+    """Insert the demo metering points for the showcase sites, all on the demo LEG.
 
     Args:
         connection: Open SQLite connection.
@@ -332,50 +332,50 @@ def _create_demo_messpunkte(
     Returns:
         A dict keyed by short handle ("anna_bezug", "anna_einspeisung",
         "beat_bezug", "beat_einspeisung", "carla_bezug_1", "carla_bezug_2",
-        "bergstrasse4_bezug") mapping to the persisted `Messpunkt` (with
+        "bergstrasse4_bezug") mapping to the persisted `MeteringPoint` (with
         `id` set).
     """
     definitions = {
-        "anna_bezug": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000001",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=sites["anna"].id,
-            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        "anna_bezug": MeteringPoint(
+            id=None, designation="CH1000000000000000000000001",
+            direction=DIRECTION_CONSUMPTION, site_id=sites["anna"].id,
+            leg_id=leg.id, pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
-        "anna_einspeisung": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000002",
-            messrichtung=MESSRICHTUNG_EINSPEISUNG, site_id=sites["anna"].id,
-            leg_id=leg.id, pv_leistung_kwp=6.4, batteriespeicher_kwh=None, created_at="",
+        "anna_einspeisung": MeteringPoint(
+            id=None, designation="CH1000000000000000000000002",
+            direction=DIRECTION_FEED_IN, site_id=sites["anna"].id,
+            leg_id=leg.id, pv_capacity_kwp=6.4, battery_capacity_kwh=None, created_at="",
         ),
-        "beat_bezug": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000003",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=sites["beat"].id,
-            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        "beat_bezug": MeteringPoint(
+            id=None, designation="CH1000000000000000000000003",
+            direction=DIRECTION_CONSUMPTION, site_id=sites["beat"].id,
+            leg_id=leg.id, pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
-        "beat_einspeisung": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000004",
-            messrichtung=MESSRICHTUNG_EINSPEISUNG, site_id=sites["beat"].id,
-            leg_id=leg.id, pv_leistung_kwp=9.9, batteriespeicher_kwh=10.0, created_at="",
+        "beat_einspeisung": MeteringPoint(
+            id=None, designation="CH1000000000000000000000004",
+            direction=DIRECTION_FEED_IN, site_id=sites["beat"].id,
+            leg_id=leg.id, pv_capacity_kwp=9.9, battery_capacity_kwh=10.0, created_at="",
         ),
-        "carla_bezug_1": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000005",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=sites["carla"].id,
-            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        "carla_bezug_1": MeteringPoint(
+            id=None, designation="CH1000000000000000000000005",
+            direction=DIRECTION_CONSUMPTION, site_id=sites["carla"].id,
+            leg_id=leg.id, pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
-        "carla_bezug_2": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000006",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=sites["carla"].id,
-            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        "carla_bezug_2": MeteringPoint(
+            id=None, designation="CH1000000000000000000000006",
+            direction=DIRECTION_CONSUMPTION, site_id=sites["carla"].id,
+            leg_id=leg.id, pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
-        "bergstrasse4_bezug": Messpunkt(
-            id=None, messpunkt_bezeichnung="CH1000000000000000000000007",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=sites["bergstrasse4"].id,
-            leg_id=leg.id, pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        "bergstrasse4_bezug": MeteringPoint(
+            id=None, designation="CH1000000000000000000000007",
+            direction=DIRECTION_CONSUMPTION, site_id=sites["bergstrasse4"].id,
+            leg_id=leg.id, pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
     }
     created = {}
-    for handle, messpunkt in definitions.items():
-        messpunkt.id = messpunkt_repo.create(connection, messpunkt)
-        created[handle] = messpunkt
+    for handle, metering_point in definitions.items():
+        metering_point.id = metering_point_repo.create(connection, metering_point)
+        created[handle] = metering_point
     return created
 
 
@@ -441,20 +441,20 @@ def _create_demo_personen(connection: sqlite3.Connection) -> dict[str, Person]:
 def _create_demo_zuordnungen(
     connection: sqlite3.Connection,
     personen: dict[str, Person],
-    messpunkte: dict[str, Messpunkt],
+    metering_points: dict[str, MeteringPoint],
 ) -> None:
     """Insert Zuordnungen, including the mid-quarter move example.
 
-    The "bergstrasse4_bezug" Messpunkt is assigned to Erika (previous
+    The "bergstrasse4_bezug" MeteringPoint is assigned to Erika (previous
     tenant) until 2025-08-15 and to David from 2025-08-16 onward, so a
-    single Messpunkt's readings are split between two Personen within the
+    single MeteringPoint's readings are split between two Personen within the
     summer demo quarter -- while its site (Bergstrasse 4) and its own
     LEG never change.
 
     Args:
         connection: Open SQLite connection.
         personen: Personen created by `_create_demo_personen`.
-        messpunkte: Messpunkte created by `_create_demo_messpunkte`.
+        metering_points: metering points created by `_create_demo_metering_points`.
 
     Returns:
         None.
@@ -470,13 +470,13 @@ def _create_demo_zuordnungen(
         ("carla_bezug_1", "carla"),
         ("carla_bezug_2", "carla"),
     ]
-    for messpunkt_handle, person_handle in static_zuordnungen:
+    for metering_point_handle, person_handle in static_zuordnungen:
         zuordnung_repo.create(
             connection,
             Zuordnung(
                 id=None,
                 person_id=personen[person_handle].id,
-                messpunkt_id=messpunkte[messpunkt_handle].id,
+                metering_point_id=metering_points[metering_point_handle].id,
                 gueltig_von=summer_start.date(),
                 gueltig_bis=None,
                 created_at="",
@@ -489,7 +489,7 @@ def _create_demo_zuordnungen(
         Zuordnung(
             id=None,
             person_id=personen["erika"].id,
-            messpunkt_id=messpunkte["bergstrasse4_bezug"].id,
+            metering_point_id=metering_points["bergstrasse4_bezug"].id,
             gueltig_von=summer_start.date(),
             gueltig_bis=move_date - timedelta(days=1),
             created_at="",
@@ -500,7 +500,7 @@ def _create_demo_zuordnungen(
         Zuordnung(
             id=None,
             person_id=personen["david"].id,
-            messpunkt_id=messpunkte["bergstrasse4_bezug"].id,
+            metering_point_id=metering_points["bergstrasse4_bezug"].id,
             gueltig_von=move_date,
             gueltig_bis=None,
             created_at="",
@@ -508,8 +508,8 @@ def _create_demo_zuordnungen(
     )
 
 
-#: Per-Messpunkt scale factors used for both Bezug and Einspeisung shape.
-_MESSPUNKT_SCALES = {
+#: Per-MeteringPoint scale factors used for both Bezug and Einspeisung shape.
+_METERING_POINT_SCALES = {
     "anna_bezug": 1.0,
     "anna_einspeisung": 4.0,
     "beat_bezug": 1.3,
@@ -521,32 +521,32 @@ _MESSPUNKT_SCALES = {
 
 
 def _create_demo_readings(
-    connection: sqlite3.Connection, messpunkte: dict[str, Messpunkt]
+    connection: sqlite3.Connection, metering_points: dict[str, MeteringPoint]
 ) -> int:
     """Generate and store synthetic readings for the winter and summer quarters.
 
     Args:
         connection: Open SQLite connection.
-        messpunkte: Messpunkte created by `_create_demo_messpunkte`.
+        metering_points: metering points created by `_create_demo_metering_points`.
 
     Returns:
         The total number of reading rows inserted.
     """
     total = 0
-    for handle, messpunkt in messpunkte.items():
-        scale = _MESSPUNKT_SCALES[handle]
+    for handle, metering_point in metering_points.items():
+        scale = _METERING_POINT_SCALES[handle]
 
         winter_readings = _generate_readings_for_quarter(
-            messpunkt_id=messpunkt.id,
-            messrichtung=messpunkt.messrichtung,
+            metering_point_id=metering_point.id,
+            direction=metering_point.direction,
             scale=scale,
             year=WINTER_QUARTER[0],
             quarter=WINTER_QUARTER[1],
             einspeisung_disabled=True,
         )
         summer_readings = _generate_readings_for_quarter(
-            messpunkt_id=messpunkt.id,
-            messrichtung=messpunkt.messrichtung,
+            metering_point_id=metering_point.id,
+            direction=metering_point.direction,
             scale=scale,
             year=SUMMER_QUARTER[0],
             quarter=SUMMER_QUARTER[1],

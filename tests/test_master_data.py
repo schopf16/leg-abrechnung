@@ -1,4 +1,4 @@
-"""Tests for Person/Messpunkt/Zuordnung/Leg/substation area CRUD, consistency
+"""Tests for Person/MeteringPoint/Zuordnung/Leg/substation area CRUD, consistency
 warnings, and LEG/substation area composition."""
 
 import sqlite3
@@ -11,14 +11,14 @@ from app.db.migrations import MIGRATIONS
 from app.domain.leg_composition import compute_leg_composition
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
+from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
 from app.models.person import Person
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
@@ -58,31 +58,31 @@ def _make_person(name: str = "Test Person") -> Person:
     )
 
 
-def _make_messpunkt(
-    messpunkt_bezeichnung: str = "CH1234567890123456789012345",
-    messrichtung: str = MESSRICHTUNG_BEZUG,
+def _make_metering_point(
+    designation: str = "CH1234567890123456789012345",
+    direction: str = DIRECTION_CONSUMPTION,
     site_id: int = 1,
     leg_id: int | None = None,
-) -> Messpunkt:
-    """Build an unpersisted `Messpunkt` for use in tests.
+) -> MeteringPoint:
+    """Build an unpersisted `MeteringPoint` for use in tests.
 
     Args:
-        messpunkt_bezeichnung: Business key to assign.
-        messrichtung: Measurement direction.
-        site_id: Foreign key of the site the Messpunkt belongs to.
+        designation: Business key to assign.
+        direction: Measurement direction.
+        site_id: Foreign key of the site the MeteringPoint belongs to.
         leg_id: Foreign key of the assigned LEG, or `None`.
 
     Returns:
-        A `Messpunkt` with `id=None`.
+        A `MeteringPoint` with `id=None`.
     """
-    return Messpunkt(
+    return MeteringPoint(
         id=None,
-        messpunkt_bezeichnung=messpunkt_bezeichnung,
-        messrichtung=messrichtung,
+        designation=designation,
+        direction=direction,
         site_id=site_id,
         leg_id=leg_id,
-        pv_leistung_kwp=None,
-        batteriespeicher_kwh=None,
+        pv_capacity_kwp=None,
+        battery_capacity_kwh=None,
         created_at="",
     )
 
@@ -260,27 +260,27 @@ def test_migration_21_reassigns_existing_8_digit_kundennummer_to_6_digits(monkey
     assert migrated.kundennummer != 80083138
 
 
-def test_messpunkt_rejects_unknown_messrichtung(db):
-    """Creating a Messpunkt with an invalid messrichtung raises ValueError."""
+def test_metering_point_rejects_unknown_direction(db):
+    """Creating a MeteringPoint with an invalid direction raises ValueError."""
     site_id = _make_site(db)
     with pytest.raises(ValueError):
-        messpunkt_repo.create(db, _make_messpunkt(messrichtung="unbekannt", site_id=site_id))
+        metering_point_repo.create(db, _make_metering_point(direction="unbekannt", site_id=site_id))
 
 
-def test_messpunkt_bezeichnung_is_unique(db):
-    """Two Messpunkte cannot share the same messpunkt_bezeichnung."""
+def test_metering_point_designation_is_unique(db):
+    """Two metering points cannot share the same designation."""
     site_id = _make_site(db)
-    messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", site_id=site_id))
+    metering_point_repo.create(db, _make_metering_point(designation="CH1", site_id=site_id))
     with pytest.raises(Exception):
-        messpunkt_repo.create(db, _make_messpunkt(messpunkt_bezeichnung="CH1", site_id=site_id))
+        metering_point_repo.create(db, _make_metering_point(designation="CH1", site_id=site_id))
 
 
-def test_messpunkt_direction_properties():
-    """`is_bezug`/`is_einspeisung` reflect the Messpunkt's messrichtung."""
-    from app.models.messpunkt import MESSRICHTUNG_EINSPEISUNG
+def test_metering_point_direction_properties():
+    """`is_bezug`/`is_einspeisung` reflect the MeteringPoint's direction."""
+    from app.models.metering_point import DIRECTION_FEED_IN
 
-    bezug = _make_messpunkt(messrichtung=MESSRICHTUNG_BEZUG)
-    einspeisung = _make_messpunkt(messrichtung=MESSRICHTUNG_EINSPEISUNG)
+    bezug = _make_metering_point(direction=DIRECTION_CONSUMPTION)
+    einspeisung = _make_metering_point(direction=DIRECTION_FEED_IN)
     assert bezug.is_bezug and not bezug.is_einspeisung
     assert einspeisung.is_einspeisung and not einspeisung.is_bezug
 
@@ -288,14 +288,14 @@ def test_messpunkt_direction_properties():
 def test_zuordnung_covers_respects_open_and_closed_ranges():
     """`Zuordnung.covers` handles open-ended and bounded periods."""
     open_ended = Zuordnung(
-        id=1, person_id=1, messpunkt_id=1,
+        id=1, person_id=1, metering_point_id=1,
         gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
     )
     assert open_ended.covers(_dt(2025, 6, 1))
     assert not open_ended.covers(_dt(2024, 12, 31))
 
     bounded = Zuordnung(
-        id=2, person_id=2, messpunkt_id=1,
+        id=2, person_id=2, metering_point_id=1,
         gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
     )
     assert bounded.covers(_dt(2025, 2, 1))
@@ -307,14 +307,14 @@ def test_zuordnung_is_current_or_upcoming_counts_a_not_yet_started_assignment():
     next quarter's move-ins prepared in advance) already counts -- only
     one that has actually ended (`gueltig_bis` in the past) does not."""
     future = Zuordnung(
-        id=1, person_id=1, messpunkt_id=1,
+        id=1, person_id=1, metering_point_id=1,
         gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
     )
     assert not future.covers(_dt(2026, 9, 10))
     assert future.is_current_or_upcoming(_dt(2026, 9, 10))
 
     ended = Zuordnung(
-        id=2, person_id=2, messpunkt_id=1,
+        id=2, person_id=2, metering_point_id=1,
         gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 3, 31), created_at="",
     )
     assert not ended.is_current_or_upcoming(_dt(2025, 4, 1))
@@ -340,11 +340,11 @@ def test_zuordnung_get_finds_by_id(db):
     """`get` fetches a single Zuordnung by id, or `None` if unknown."""
     site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
     zuordnung_id = zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
         ),
     )
@@ -356,75 +356,75 @@ def test_zuordnung_get_finds_by_id(db):
     assert zuordnung_repo.get(db, zuordnung_id + 999) is None
 
 
-def test_get_relevant_for_messpunkt_prefers_the_already_started_one(db):
+def test_get_relevant_for_metering_point_prefers_the_already_started_one(db):
     """Both an already-started and a not-yet-started Zuordnung exist --
     the already-started one is the "currently assigned" answer."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_a, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=date(2026, 8, 31), created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_b, metering_point_id=metering_point_id,
             gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
         ),
     )
 
-    found = zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 6, 1))
+    found = zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 6, 1))
     assert found is not None
     assert found.person_id == person_a
 
 
-def test_get_relevant_for_messpunkt_falls_back_to_soonest_upcoming(db):
+def test_get_relevant_for_metering_point_falls_back_to_soonest_upcoming(db):
     """Nothing has started yet -- falls back to the soonest-starting
     upcoming Zuordnung instead of reporting "unassigned"."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_a, metering_point_id=metering_point_id,
             gueltig_von=date(2027, 3, 1), gueltig_bis=None, created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_b, metering_point_id=metering_point_id,
             gueltig_von=date(2026, 12, 1), gueltig_bis=None, created_at="",
         ),
     )
 
-    found = zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 9, 10))
+    found = zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10))
     assert found is not None
     assert found.person_id == person_b
 
 
-def test_get_relevant_for_messpunkt_ignores_ended_zuordnung(db):
+def test_get_relevant_for_metering_point_ignores_ended_zuordnung(db):
     """A Zuordnung that has already ended is not "upcoming" -- an empty
     history (or one with only past assignments) reports `None`."""
     site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(2020, 1, 1), gueltig_bis=date(2020, 12, 31), created_at="",
         ),
     )
 
-    assert zuordnung_repo.get_relevant_for_messpunkt(db, messpunkt_id, _dt(2026, 9, 10)) is None
+    assert zuordnung_repo.get_relevant_for_metering_point(db, metering_point_id, _dt(2026, 9, 10)) is None
 
 
 def test_find_warnings_detects_gap(db):
@@ -432,24 +432,24 @@ def test_find_warnings_detects_gap(db):
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_a, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 1, 31), created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_b, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 2, 5), gueltig_bis=None, created_at="",
         ),
     )
 
-    warnings = zuordnung_repo.find_warnings(db, messpunkt_id)
+    warnings = zuordnung_repo.find_warnings(db, metering_point_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "gap"
 
@@ -459,24 +459,24 @@ def test_find_warnings_detects_overlap(db):
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_a, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 2, 15), created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_b, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 2, 1), gueltig_bis=None, created_at="",
         ),
     )
 
-    warnings = zuordnung_repo.find_warnings(db, messpunkt_id)
+    warnings = zuordnung_repo.find_warnings(db, metering_point_id)
     assert len(warnings) == 1
     assert warnings[0].kind == "overlap"
 
@@ -486,24 +486,24 @@ def test_find_warnings_none_for_consecutive_periods(db):
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("A"))
     person_b = person_repo.create(db, _make_person("B"))
-    messpunkt_id = messpunkt_repo.create(db, _make_messpunkt(site_id=site_id))
+    metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
 
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_a, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_a, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 8, 15), created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_b, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_b, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 8, 16), gueltig_bis=None, created_at="",
         ),
     )
 
-    assert zuordnung_repo.find_warnings(db, messpunkt_id) == []
+    assert zuordnung_repo.find_warnings(db, metering_point_id) == []
 
 
 def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:
@@ -566,45 +566,45 @@ def test_substation_area_name_is_unique(db):
         )
 
 
-def test_leg_composition_is_not_mixed_when_all_messpunkte_share_one_substation_area(db):
-    """A LEG whose Messpunkte are all on one substation area is not flagged as mixed."""
+def test_leg_composition_is_not_mixed_when_all_metering_points_share_one_substation_area(db):
+    """A LEG whose metering points are all on one substation area is not flagged as mixed."""
     substation_area_id = _make_substation_area(db, "Bern_TRA00001")
     site_a = _make_site(db, substation_area_id)
     site_b = _make_site(db, substation_area_id)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH1", site_id=site_a, leg_id=leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH2", site_id=site_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
     assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001"]
 
 
-def test_leg_composition_is_mixed_when_messpunkte_span_two_substation_areas(db):
-    """A LEG whose Messpunkte span two substation areas is flagged as mixed."""
+def test_leg_composition_is_mixed_when_metering_points_span_two_substation_areas(db):
+    """A LEG whose metering points span two substation areas is flagged as mixed."""
     substation_area_a = _make_substation_area(db, "Bern_TRA00001")
     substation_area_b = _make_substation_area(db, "Bern_TRA00002")
     site_a = _make_site(db, substation_area_a)
     site_b = _make_site(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Gemeinsame_LEG"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH1", site_id=site_a, leg_id=leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH2", site_id=site_b, leg_id=leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert composition.is_mixed
     assert [t.name for t in composition.substation_areas] == ["Bern_TRA00001", "Bern_TRA00002"]
 
 
-def test_leg_composition_ignores_other_legs_messpunkte(db):
-    """Messpunkte belonging to a different LEG don't count toward this LEG's composition."""
+def test_leg_composition_ignores_other_legs_metering_points(db):
+    """metering points belonging to a different LEG don't count toward this LEG's composition."""
     substation_area_a = _make_substation_area(db, "Bern_TRA00001")
     substation_area_b = _make_substation_area(db, "Bern_TRA00002")
     site_a = _make_site(db, substation_area_a)
     site_b = _make_site(db, substation_area_b)
     leg_id = leg_repo.create(db, _make_leg("Bern_TRA00001"))
     other_leg_id = leg_repo.create(db, _make_leg("Bern_TRA00002"))
-    messpunkt_repo.create(db, _make_messpunkt("CH1", site_id=site_a, leg_id=leg_id))
-    messpunkt_repo.create(db, _make_messpunkt("CH2", site_id=site_b, leg_id=other_leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH1", site_id=site_a, leg_id=leg_id))
+    metering_point_repo.create(db, _make_metering_point("CH2", site_id=site_b, leg_id=other_leg_id))
 
     composition = compute_leg_composition(db, leg_id)
     assert not composition.is_mixed
@@ -637,25 +637,25 @@ def test_site_list_all_sorts_house_number_numerically(db):
     assert house_numbers == ["1", "2", "10"]
 
 
-def test_messpunkt_pv_and_batterie_fields_roundtrip(db):
+def test_metering_point_pv_and_batterie_fields_roundtrip(db):
     """PV-Leistung and Batteriespeicher survive create/update, and default to `None`."""
     site_id = _make_site(db)
-    messpunkt = _make_messpunkt("CH-PV", site_id=site_id)
-    messpunkt.pv_leistung_kwp = 6.4
-    messpunkt.batteriespeicher_kwh = 10.0
-    messpunkt_id = messpunkt_repo.create(db, messpunkt)
+    metering_point = _make_metering_point("CH-PV", site_id=site_id)
+    metering_point.pv_capacity_kwp = 6.4
+    metering_point.battery_capacity_kwh = 10.0
+    metering_point_id = metering_point_repo.create(db, metering_point)
 
-    fetched = messpunkt_repo.get(db, messpunkt_id)
-    assert fetched.pv_leistung_kwp == pytest.approx(6.4)
-    assert fetched.batteriespeicher_kwh == pytest.approx(10.0)
+    fetched = metering_point_repo.get(db, metering_point_id)
+    assert fetched.pv_capacity_kwp == pytest.approx(6.4)
+    assert fetched.battery_capacity_kwh == pytest.approx(10.0)
 
-    fetched.pv_leistung_kwp = 9.9
-    fetched.batteriespeicher_kwh = None
-    messpunkt_repo.update(db, fetched)
+    fetched.pv_capacity_kwp = 9.9
+    fetched.battery_capacity_kwh = None
+    metering_point_repo.update(db, fetched)
 
-    updated = messpunkt_repo.get(db, messpunkt_id)
-    assert updated.pv_leistung_kwp == pytest.approx(9.9)
-    assert updated.batteriespeicher_kwh is None
+    updated = metering_point_repo.get(db, metering_point_id)
+    assert updated.pv_capacity_kwp == pytest.approx(9.9)
+    assert updated.battery_capacity_kwh is None
 
 
 def test_person_delete_deactivates_when_billing_history_exists(db):

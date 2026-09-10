@@ -1,5 +1,5 @@
 """Tests for plausibility/consistency checks: Zuordnung gaps, reading
-completeness and Messpunkte with no LEG assigned."""
+completeness and metering points with no LEG assigned."""
 
 import uuid
 from datetime import date, datetime, timedelta
@@ -15,7 +15,7 @@ from app.domain.quality_checks import (
 )
 from app.models import bank_transaction as bank_transaction_repo
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
@@ -23,7 +23,7 @@ from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import zuordnung as zuordnung_repo
 from app.models.leg import Leg
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG, Messpunkt
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN, MeteringPoint
 from app.models.person import Person
 from app.models.reading import Reading, upsert_readings
 from app.models.site import Site
@@ -64,53 +64,53 @@ def _leg(db) -> int:
     return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
-def _messpunkt(db, messpunkt_bezeichnung: str, site_id: int, leg_id: int | None = None) -> int:
-    """Create a "bezug" Messpunkt and return its id."""
-    return messpunkt_repo.create(
+def _metering_point(db, designation: str, site_id: int, leg_id: int | None = None) -> int:
+    """Create a "bezug" MeteringPoint and return its id."""
+    return metering_point_repo.create(
         db,
-        Messpunkt(
-            id=None, messpunkt_bezeichnung=messpunkt_bezeichnung,
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=site_id, leg_id=leg_id,
-            pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        MeteringPoint(
+            id=None, designation=designation,
+            direction=DIRECTION_CONSUMPTION, site_id=site_id, leg_id=leg_id,
+            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
     )
 
 
-def test_check_assignment_consistency_reports_gaps_across_all_messpunkte(db):
-    """A gap in one Messpunkt's assignment history is surfaced by the aggregate check."""
+def test_check_assignment_consistency_reports_gaps_across_all_metering_points(db):
+    """A gap in one MeteringPoint's assignment history is surfaced by the aggregate check."""
     person_id = _person(db)
     site_id = _site(db)
-    messpunkt_id = _messpunkt(db, "CH-Q1", site_id)
+    metering_point_id = _metering_point(db, "CH-Q1", site_id)
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=date(2025, 1, 10), created_at="",
         ),
     )
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 20), gueltig_bis=None, created_at="",
         ),
     )
 
     warnings = check_assignment_consistency(db)
     assert any(w.category == "zuordnung_luecke" for w in warnings)
-    # Links straight to the affected Messpunkt's detail page.
-    assert all(w.link == f"/messpunkte/{messpunkt_id}" for w in warnings)
+    # Links straight to the affected MeteringPoint's detail page.
+    assert all(w.link == f"/metering-points/{metering_point_id}" for w in warnings)
 
 
 def test_check_assignment_consistency_clean_history_has_no_warnings(db):
     """A single open-ended Zuordnung produces no warnings."""
     person_id = _person(db)
     site_id = _site(db)
-    messpunkt_id = _messpunkt(db, "CH-Q1", site_id)
+    metering_point_id = _metering_point(db, "CH-Q1", site_id)
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(2025, 1, 1), gueltig_bis=None, created_at="",
         ),
     )
@@ -118,14 +118,14 @@ def test_check_assignment_consistency_clean_history_has_no_warnings(db):
 
 
 def test_check_reading_completeness_flags_days_with_missing_values(db):
-    """A day with fewer than 96 readings, while the Messpunkt is assigned, is flagged."""
+    """A day with fewer than 96 readings, while the MeteringPoint is assigned, is flagged."""
     person_id = _person(db)
     site_id = _site(db)
-    messpunkt_id = _messpunkt(db, "CH-Q1", site_id)
+    metering_point_id = _metering_point(db, "CH-Q1", site_id)
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(YEAR, 1, 1), gueltig_bis=None, created_at="",
         ),
     )
@@ -133,21 +133,21 @@ def test_check_reading_completeness_flags_days_with_missing_values(db):
     # Only 4 of the expected 96 readings for Jan 15th.
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(messpunkt_id=messpunkt_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
+        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
         for i in range(4)
     ]
     upsert_readings(db, readings)
 
     warnings = check_reading_completeness(db, YEAR, QUARTER)
     assert any("2025-01-15" in w.message for w in warnings)
-    # Links straight to the affected Messpunkt's detail page.
-    assert all(w.link == f"/messpunkte/{messpunkt_id}" for w in warnings)
+    # Links straight to the affected MeteringPoint's detail page.
+    assert all(w.link == f"/metering-points/{metering_point_id}" for w in warnings)
 
 
 def test_check_reading_completeness_ignores_days_without_assignment(db):
-    """A Messpunkt that was never assigned to anyone produces no completeness warnings."""
+    """A MeteringPoint that was never assigned to anyone produces no completeness warnings."""
     site_id = _site(db)
-    _messpunkt(db, "CH-Q1", site_id)
+    _metering_point(db, "CH-Q1", site_id)
     # No Zuordnung created at all.
     warnings = check_reading_completeness(db, YEAR, QUARTER)
     assert warnings == []
@@ -157,17 +157,17 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
     """A day with exactly 96 readings is not flagged."""
     person_id = _person(db)
     site_id = _site(db)
-    messpunkt_id = _messpunkt(db, "CH-Q1", site_id)
+    metering_point_id = _metering_point(db, "CH-Q1", site_id)
     zuordnung_repo.create(
         db,
         Zuordnung(
-            id=None, person_id=person_id, messpunkt_id=messpunkt_id,
+            id=None, person_id=person_id, metering_point_id=metering_point_id,
             gueltig_von=date(YEAR, 1, 15), gueltig_bis=date(YEAR, 1, 15), created_at="",
         ),
     )
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(messpunkt_id=messpunkt_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
+        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
         for i in range(96)
     ]
     upsert_readings(db, readings)
@@ -177,37 +177,37 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
 
 
 def test_check_leg_assignment_no_warnings_when_all_assigned(db):
-    """Messpunkte that all have a LEG assigned produce no warnings."""
+    """metering points that all have a LEG assigned produce no warnings."""
     leg_a = _leg(db)
     leg_b = _leg(db)
     site = _site(db)
-    _messpunkt(db, "CH-A", site, leg_id=leg_a)
-    _messpunkt(db, "CH-B", site, leg_id=leg_b)
+    _metering_point(db, "CH-A", site, leg_id=leg_a)
+    _metering_point(db, "CH-B", site, leg_id=leg_b)
 
     # Multiple different LEGs in use at once is normal, not a warning.
     assert check_leg_assignment(db) == []
 
 
-def test_check_leg_assignment_flags_unresolved_messpunkt(db):
-    """A Messpunkt with no LEG assigned is flagged."""
+def test_check_leg_assignment_flags_unresolved_metering_point(db):
+    """A MeteringPoint with no LEG assigned is flagged."""
     leg_id = _leg(db)
     site = _site(db)
-    _messpunkt(db, "CH-A", site, leg_id=leg_id)
-    _messpunkt(db, "CH-C", site, leg_id=None)
+    _metering_point(db, "CH-A", site, leg_id=leg_id)
+    _metering_point(db, "CH-C", site, leg_id=None)
 
     warnings = check_leg_assignment(db)
     assert any(w.category == "leg_nicht_zugeordnet" for w in warnings)
     assert len(warnings) == 1
-    # Links straight to the unresolved Messpunkt's detail page.
-    unresolved_id = messpunkt_repo.get_by_bezeichnung(db, "CH-C").id
-    assert warnings[0].link == f"/messpunkte/{unresolved_id}"
+    # Links straight to the unresolved MeteringPoint's detail page.
+    unresolved_id = metering_point_repo.get_by_designation(db, "CH-C").id
+    assert warnings[0].link == f"/metering-points/{unresolved_id}"
 
 
-def test_check_leg_assignment_ignores_other_messpunkte_with_leg(db):
-    """Messpunkte that already have a LEG don't influence the check."""
+def test_check_leg_assignment_ignores_other_metering_points_with_leg(db):
+    """metering points that already have a LEG don't influence the check."""
     leg_id = _leg(db)
     site = _site(db)
-    _messpunkt(db, "CH-A", site, leg_id=leg_id)
+    _metering_point(db, "CH-A", site, leg_id=leg_id)
 
     assert check_leg_assignment(db) == []
 
@@ -332,16 +332,16 @@ def _site_in(db, substation_area_id: int, *, street: str = "Weg") -> int:
     )
 
 
-def _messpunkt_richtung(
-    db, messpunkt_bezeichnung: str, site_id: int, messrichtung: str, *, leg_id: int | None = None,
+def _metering_point_direction(
+    db, designation: str, site_id: int, direction: str, *, leg_id: int | None = None,
 ) -> int:
-    """Create a Messpunkt with an explicit Messrichtung and return its id."""
-    return messpunkt_repo.create(
+    """Create a MeteringPoint with an explicit direction and return its id."""
+    return metering_point_repo.create(
         db,
-        Messpunkt(
-            id=None, messpunkt_bezeichnung=messpunkt_bezeichnung, messrichtung=messrichtung,
-            site_id=site_id, leg_id=leg_id, pv_leistung_kwp=None,
-            batteriespeicher_kwh=None, created_at="",
+        MeteringPoint(
+            id=None, designation=designation, direction=direction,
+            site_id=site_id, leg_id=leg_id, pv_capacity_kwp=None,
+            battery_capacity_kwh=None, created_at="",
         ),
     )
 
@@ -357,13 +357,13 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    bezug_id = _messpunkt_richtung(db, "CH1", site_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
-    einspeisung_id = _messpunkt_richtung(db, "CH2", site_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    bezug_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    einspeisung_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt_richtung(db, "CH3", other_site_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
         zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
         )
 
     assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
@@ -389,13 +389,13 @@ def test_check_leg_upgrade_potential_respects_configurable_min_personen(db):
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    bezug_id = _messpunkt_richtung(db, "CH1", site_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
-    einspeisung_id = _messpunkt_richtung(db, "CH2", site_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    bezug_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    einspeisung_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt_richtung(db, "CH3", other_site_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, bezug_id), (person_id, einspeisung_id), (other_person_id, other_mp_id)):
         zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
         )
 
     settings = settings_repo.get_settings(db)
@@ -412,9 +412,9 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site_in(db, substation_area_id)
     person_id = _person(db)
-    einspeisung_id = _messpunkt_richtung(db, "CH1", site_id, MESSRICHTUNG_EINSPEISUNG)
+    einspeisung_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
     zuordnung_repo.create(
-        db, Zuordnung(id=None, person_id=person_id, messpunkt_id=einspeisung_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+        db, Zuordnung(id=None, person_id=person_id, metering_point_id=einspeisung_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
     )
 
     warnings = check_substation_area_one_sided(db)
@@ -425,7 +425,7 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
 
 
 def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(db):
-    """The substation area is still producer-only, but its one Messpunkt already
+    """The substation area is still producer-only, but its one MeteringPoint already
     sits in a mixed (multi-substation-area) LEG -- the recommended fix is
     already acted on, so no warning."""
     substation_area_id = _substation_area(db, "TK1")
@@ -435,12 +435,12 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
     mixed_leg_id = _leg(db)
 
     person_id = _person(db)
-    einspeisung_id = _messpunkt_richtung(db, "CH1", site_id, MESSRICHTUNG_EINSPEISUNG, leg_id=mixed_leg_id)
+    einspeisung_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _messpunkt_richtung(db, "CH2", other_site_id, MESSRICHTUNG_BEZUG, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(db, "CH2", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     for pid, mp_id in ((person_id, einspeisung_id), (other_person_id, other_mp_id)):
         zuordnung_repo.create(
-            db, Zuordnung(id=None, person_id=pid, messpunkt_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
+            db, Zuordnung(id=None, person_id=pid, metering_point_id=mp_id, gueltig_von=date(2026, 1, 1), gueltig_bis=None, created_at="")
         )
 
     assert check_substation_area_one_sided(db) == []

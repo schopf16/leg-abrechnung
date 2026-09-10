@@ -9,24 +9,24 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 #: Recognized reading directions, matching the `readings.direction` column
-#: and `Messpunkt.messrichtung`.
+#: and `MeteringPoint.direction`.
 VALID_DIRECTIONS = frozenset({"bezug", "einspeisung"})
 
 
 @dataclass
 class ParsedReading:
     """One 15-minute interval value read from an import file, not yet
-    matched against the local Messpunkt registry.
+    matched against the local MeteringPoint registry.
 
     Attributes:
-        messpunkt_bezeichnung: Business key (grid operator's metering
+        designation: Business key (grid operator's metering
             point id) as it appears in the source file.
         timestamp: Interval start (naive local datetime).
         direction: Either "bezug" or "einspeisung".
         kwh: Energy for the interval in kWh, non-negative.
     """
 
-    messpunkt_bezeichnung: str
+    designation: str
     timestamp: datetime
     direction: str
     kwh: float

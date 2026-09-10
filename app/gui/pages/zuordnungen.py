@@ -1,6 +1,6 @@
-"""Messpunkt-to-Person assignment history page (Zuordnungen).
+"""MeteringPoint-to-Person assignment history page (Zuordnungen).
 
-Rendered as one card per Messpunkt (grouping its Zuordnungen together)
+Rendered as one card per MeteringPoint (grouping its Zuordnungen together)
 rather than a flat table: edit/delete buttons are bound directly to Python
 callbacks (not via a JS-emit round trip through a Quasar table slot),
 which is both more robust to click on and groups related entries more
@@ -18,7 +18,7 @@ from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
@@ -26,9 +26,9 @@ from app.models.zuordnung import Zuordnung
 
 
 #: `(label, field)` pairs for the printed table -- one row per Zuordnung,
-#: flattened out of the on-screen per-Messpunkt card grouping.
+#: flattened out of the on-screen per-MeteringPoint card grouping.
 PRINT_COLUMNS = [
-    ("Messpunkt", "messpunkt"),
+    ("Messpunkt", "metering_point"),
     ("Person", "person_name"),
     ("Gültig von", "gueltig_von"),
     ("Gültig bis", "gueltig_bis"),
@@ -76,19 +76,19 @@ def zuordnungen_page() -> None:
 
         print_rows: list[dict] = []
 
-        def render_group(messpunkt_label: str, group: list[dict]) -> None:
-            """Render one Messpunkt's card with all of its Zuordnungen.
+        def render_group(metering_point_label: str, group: list[dict]) -> None:
+            """Render one MeteringPoint's card with all of its Zuordnungen.
 
             Args:
-                messpunkt_label: Display label for the Messpunkt heading.
-                group: Row dicts (see `refresh`) belonging to that Messpunkt,
+                metering_point_label: Display label for the MeteringPoint heading.
+                group: Row dicts (see `refresh`) belonging to that MeteringPoint,
                     already sorted by `gueltig_von`.
 
             Returns:
                 None.
             """
             with ui.card().classes("w-full"):
-                ui.label(messpunkt_label).classes("font-bold")
+                ui.label(metering_point_label).classes("font-bold")
                 for row in group:
                     with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                         ui.label(row["person_name"]).classes("min-w-[180px]")
@@ -104,7 +104,7 @@ def zuordnungen_page() -> None:
                             ).props("dense flat color=negative")
 
         def refresh() -> None:
-            """Reload the Zuordnungen list (grouped by Messpunkt) and
+            """Reload the Zuordnungen list (grouped by MeteringPoint) and
             recompute consistency warnings.
 
             Returns:
@@ -112,17 +112,17 @@ def zuordnungen_page() -> None:
             """
             nonlocal print_rows
             with connection_scope() as connection:
-                messpunkte = {mp.id: mp for mp in messpunkt_repo.list_all(connection)}
+                metering_points = {mp.id: mp for mp in metering_point_repo.list_all(connection)}
                 sites = {s.id: s for s in site_repo.list_all(connection)}
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 zuordnungen = zuordnung_repo.list_all(connection)
                 all_warnings = []
-                for messpunkt_id in messpunkte:
-                    all_warnings.extend(zuordnung_repo.find_warnings(connection, messpunkt_id))
+                for metering_point_id in metering_points:
+                    all_warnings.extend(zuordnung_repo.find_warnings(connection, metering_point_id))
 
             groups: dict[int, list[dict]] = {}
             for z in zuordnungen:
-                groups.setdefault(z.messpunkt_id, []).append(
+                groups.setdefault(z.metering_point_id, []).append(
                     {
                         "zuordnung": z,
                         "person_name": persons[z.person_id].anzeige_name
@@ -138,19 +138,19 @@ def zuordnungen_page() -> None:
             with list_container:
                 if not groups:
                     ui.label("Noch keine Zuordnungen erfasst.")
-                for messpunkt_id, group in groups.items():
-                    mp = messpunkte.get(messpunkt_id)
+                for metering_point_id, group in groups.items():
+                    mp = metering_points.get(metering_point_id)
                     if mp is None:
-                        label = f"Messpunkt #{messpunkt_id}"
+                        label = f"Messpunkt #{metering_point_id}"
                     else:
                         site = sites.get(mp.site_id)
                         site_text = site.full_address if site else "?"
-                        label = f"{mp.messpunkt_bezeichnung} — {site_text}"
+                        label = f"{mp.designation} — {site_text}"
                     render_group(label, group)
                     for row in group:
                         print_rows.append(
                             {
-                                "messpunkt": label,
+                                "metering_point": label,
                                 "person_name": row["person_name"],
                                 "gueltig_von": row["gueltig_von"],
                                 "gueltig_bis": row["gueltig_bis"],
@@ -174,25 +174,25 @@ def zuordnungen_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                messpunkte = messpunkt_repo.list_all(connection)
+                metering_points = metering_point_repo.list_all(connection)
                 sites = site_repo.list_all(connection)
                 persons = person_repo.list_all(connection)
-            messpunkte_by_id = {mp.id: mp for mp in messpunkte}
+            metering_points_by_id = {mp.id: mp for mp in metering_points}
             site_options = {s.id: s.full_address for s in sites}
 
-            def messpunkt_options_for(site_id: Optional[int]) -> dict:
-                """Build the Messpunkt dropdown options, optionally filtered by site.
+            def metering_point_options_for(site_id: Optional[int]) -> dict:
+                """Build the MeteringPoint dropdown options, optionally filtered by site.
 
                 Args:
-                    site_id: If set, only Messpunkte at that site
+                    site_id: If set, only metering points at that site
                         are included; `None` includes all of them.
 
                 Returns:
-                    A `{messpunkt_id: label}` dict for `ui.select`.
+                    A `{metering_point_id: label}` dict for `ui.select`.
                 """
                 return {
-                    mp.id: f"{mp.messpunkt_bezeichnung} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
-                    for mp in messpunkte
+                    mp.id: f"{mp.designation} ({'Bezug' if mp.is_bezug else 'Einspeisung'})"
+                    for mp in metering_points
                     if site_id is None or mp.site_id == site_id
                 }
 
@@ -207,8 +207,8 @@ def zuordnungen_page() -> None:
             }
 
             initial_site_id = (
-                messpunkte_by_id[existing.messpunkt_id].site_id
-                if existing and existing.messpunkt_id in messpunkte_by_id
+                metering_points_by_id[existing.metering_point_id].site_id
+                if existing and existing.metering_point_id in metering_points_by_id
                 else None
             )
 
@@ -222,34 +222,34 @@ def zuordnungen_page() -> None:
                     value=initial_site_id,
                     with_input=True,
                 ).classes("w-full")
-                messpunkt_select = ui.select(
-                    messpunkt_options_for(initial_site_id),
+                metering_point_select = ui.select(
+                    metering_point_options_for(initial_site_id),
                     label="Messpunkt",
-                    value=existing.messpunkt_id if existing else None,
+                    value=existing.metering_point_id if existing else None,
                     with_input=True,
                 ).classes("w-full")
                 leg_warning = ui.label("").classes("text-warning text-body2")
 
                 def on_site_change() -> None:
-                    """Re-filter the Messpunkt options to the selected site.
+                    """Re-filter the MeteringPoint options to the selected site.
 
                     Returns:
                         None.
                     """
-                    options = messpunkt_options_for(site_select.value)
-                    messpunkt_select.options = options
-                    if messpunkt_select.value not in options:
-                        # Never guess a Messpunkt from the newly filtered
+                    options = metering_point_options_for(site_select.value)
+                    metering_point_select.options = options
+                    if metering_point_select.value not in options:
+                        # Never guess a MeteringPoint from the newly filtered
                         # list -- clear the selection and let the
                         # administrator pick explicitly.
-                        messpunkt_select.value = None
-                    messpunkt_select.update()
+                        metering_point_select.value = None
+                    metering_point_select.update()
                     update_leg_warning()
 
                 site_select.on_value_change(lambda _: on_site_change())
 
                 def update_leg_warning() -> None:
-                    """Show a warning if the selected Messpunkt's LEG mixes substation areas.
+                    """Show a warning if the selected MeteringPoint's LEG mixes substation areas.
 
                     Lets the administrator immediately see, while assigning
                     a Person, whether the resulting LEG membership implies
@@ -258,7 +258,7 @@ def zuordnungen_page() -> None:
                     Returns:
                         None.
                     """
-                    mp = messpunkte_by_id.get(messpunkt_select.value)
+                    mp = metering_points_by_id.get(metering_point_select.value)
                     if mp is None or mp.leg_id is None:
                         leg_warning.text = ""
                         return
@@ -276,7 +276,7 @@ def zuordnungen_page() -> None:
                     else:
                         leg_warning.text = ""
 
-                messpunkt_select.on_value_change(lambda _: update_leg_warning())
+                metering_point_select.on_value_change(lambda _: update_leg_warning())
                 update_leg_warning()
                 person_select = ui.select(
                     person_options,
@@ -299,7 +299,7 @@ def zuordnungen_page() -> None:
                     Returns:
                         None.
                     """
-                    if messpunkt_select.value is None or person_select.value is None:
+                    if metering_point_select.value is None or person_select.value is None:
                         error_label.text = "Messpunkt und Person sind erforderlich."
                         return
                     try:
@@ -320,7 +320,7 @@ def zuordnungen_page() -> None:
                             updated = Zuordnung(
                                 id=existing.id,
                                 person_id=person_select.value,
-                                messpunkt_id=messpunkt_select.value,
+                                metering_point_id=metering_point_select.value,
                                 gueltig_von=from_date,
                                 gueltig_bis=to_date,
                                 created_at=existing.created_at,
@@ -330,7 +330,7 @@ def zuordnungen_page() -> None:
                             new_zuordnung = Zuordnung(
                                 id=None,
                                 person_id=person_select.value,
-                                messpunkt_id=messpunkt_select.value,
+                                metering_point_id=metering_point_select.value,
                                 gueltig_von=from_date,
                                 gueltig_bis=to_date,
                                 created_at="",

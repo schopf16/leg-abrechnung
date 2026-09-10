@@ -1219,4 +1219,36 @@ Freundliche Grüsse';
             ALTER TABLE web_registration RENAME COLUMN standort_created TO site_created;
         """,
     ),
+    Migration(
+        version=39,
+        description="Translate the Messpunkt entity to English: table "
+        "'messpunkt' becomes 'metering_point' (the ENTSO-E term; "
+        "'designation' is the 33-character Messpunktbezeichnung), "
+        "messrichtung -> direction, pv_leistung_kwp -> pv_capacity_kwp, "
+        "batteriespeicher_kwh -> battery_capacity_kwh; the referencing "
+        "columns readings/zuordnung.messpunkt_id -> metering_point_id, "
+        "web_registration_meter.messpunkt_created -> "
+        "metering_point_created, person_offboarding.messpunkt_austritt_am "
+        "-> metering_point_exit_at and leg_settings.messpunkt_land/"
+        "messpunkt_identifikator -> metering_point_country/"
+        "metering_point_identifier move along (shared Python field names). "
+        "Deliberately NOT touched: the stored direction values 'bezug'/"
+        "'einspeisung' and their CHECK constraints on metering_point and "
+        "readings -- translating persisted enum values needs a table "
+        "rebuild and is a separate, explicit decision. Third step of the "
+        "English translation, see migration 37.",
+        sql="""
+            ALTER TABLE messpunkt RENAME TO metering_point;
+            ALTER TABLE metering_point RENAME COLUMN messpunkt_bezeichnung TO designation;
+            ALTER TABLE metering_point RENAME COLUMN messrichtung TO direction;
+            ALTER TABLE metering_point RENAME COLUMN pv_leistung_kwp TO pv_capacity_kwp;
+            ALTER TABLE metering_point RENAME COLUMN batteriespeicher_kwh TO battery_capacity_kwh;
+            ALTER TABLE readings RENAME COLUMN messpunkt_id TO metering_point_id;
+            ALTER TABLE zuordnung RENAME COLUMN messpunkt_id TO metering_point_id;
+            ALTER TABLE web_registration_meter RENAME COLUMN messpunkt_created TO metering_point_created;
+            ALTER TABLE person_offboarding RENAME COLUMN messpunkt_austritt_am TO metering_point_exit_at;
+            ALTER TABLE leg_settings RENAME COLUMN messpunkt_land TO metering_point_country;
+            ALTER TABLE leg_settings RENAME COLUMN messpunkt_identifikator TO metering_point_identifier;
+        """,
+    ),
 ]

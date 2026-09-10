@@ -1,10 +1,10 @@
 """site (connection site): the physical grid connection point a
-substation area is attached to, and that groups one or more Messpunkte.
+substation area is attached to, and that groups one or more metering points.
 
 substation area membership is deliberately a property of the site, never of
-a Person or Messpunkt -- see the module docstring of
+a Person or MeteringPoint -- see the module docstring of
 `app.models.substation_area`. LEG membership, by contrast, is a property of the
-individual Messpunkt (see `app.models.leg`), not of the site.
+individual MeteringPoint (see `app.models.leg`), not of the site.
 """
 
 import sqlite3
@@ -100,8 +100,8 @@ def find_by_address(
     address entered twice by mistake. `lage` is deliberately not part of
     the match: it is a descriptive detail (e.g. floor/unit) within one
     site, not a way to distinguish several sites at one address (a
-    multi-family building is one site with several Messpunkte, see
-    `app.models.messpunkt`).
+    multi-family building is one site with several metering points, see
+    `app.models.metering_point`).
 
     Args:
         connection: Open SQLite connection.
@@ -205,7 +205,7 @@ def update(connection: sqlite3.Connection, site: Site) -> None:
 
 
 def delete(connection: sqlite3.Connection, site_id: int) -> None:
-    """Delete a site along with its Messpunkte (cascade).
+    """Delete a site along with its metering points (cascade).
 
     Args:
         connection: Open SQLite connection.

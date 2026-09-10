@@ -8,14 +8,14 @@ note and the substation area(e) summary each wrap onto their own
 full-width line instead, so one entry takes the 2-3 lines it actually
 needs and no more (same rationale as `app.gui.pages.personen`).
 
-A LEG cannot be deleted while Messpunkte still reference it (see
+A LEG cannot be deleted while metering points still reference it (see
 `app.models.leg.LegInUseError`). Its `name` must be unique -- by default
-it matches the physical substation area its Messpunkte are on, but a LEG can
-combine Messpunkte from several substation areas if their owners agree to bill
+it matches the physical substation area its metering points are on, but a LEG can
+combine metering points from several substation areas if their owners agree to bill
 jointly. The name is also what appears on this LEG's invoices, checked
 live as the administrator types.
 
-A LEG whose Messpunkte span more than one substation area is shown as "Nicht
+A LEG whose metering points span more than one substation area is shown as "Nicht
 Preisoptimiert" here (see `app.domain.leg_composition`), its substation areas
 listed one per line -- the grid operator (BKW) only grants the full
 same-substation-area discount within one substation area. No separate warning
@@ -25,7 +25,7 @@ every one of those substation areas would also work fine as its own LEG (see
 instead as "🌟 Aufteilen empfehlenswert". A more targeted hint -- which
 specific substation area has newly become viable, and how many people could
 move -- is shown above the list (see `app.domain.participant_mix.
-find_upgrade_candidates`) and, per affected Messpunkt, as a coloured star
+find_upgrade_candidates`) and, per affected MeteringPoint, as a coloured star
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
 """
 
@@ -42,23 +42,23 @@ from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.leg import Leg, LegInUseError
-from app.models.messpunkt import MESSRICHTUNG_BEZUG, MESSRICHTUNG_EINSPEISUNG
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
-MESSRICHTUNG_LABELS = {
-    MESSRICHTUNG_BEZUG: "Bezug",
-    MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
+DIRECTION_LABELS = {
+    DIRECTION_CONSUMPTION: "Bezug",
+    DIRECTION_FEED_IN: "Einspeisung",
 }
 
 #: `(label, field)` pairs for the printed table -- independent of the
 #: on-screen card layout, see `app.gui.print_list`.
 PRINT_COLUMNS = [
     ("Name", "name"),
-    ("Messpunkte", "messpunkte_count"),
+    ("Messpunkte", "metering_points_count"),
     ("Trafokreis(e)", "substation_areas"),
     ("Prosumer : Consumer", "prosumer_consumer"),
     ("Bemerkung", "note"),
@@ -112,7 +112,7 @@ def _to_row(connection, leg: Leg, *, min_personen: int) -> dict:
     return {
         "id": leg.id,
         "name": leg.name,
-        "messpunkte_count": leg_repo.count_messpunkte(connection, leg.id),
+        "metering_points_count": leg_repo.count_metering_points(connection, leg.id),
         # Flattened for the printout/CSV export (a single-cell text), see
         # app.gui.print_list -- the on-screen card uses trafokreise_status/
         # trafokreise_liste instead, to list the substation areas one per line.
@@ -122,7 +122,7 @@ def _to_row(connection, leg: Leg, *, min_personen: int) -> dict:
         "substation_areas_status": substation_areas_status,
         # Only listed on-screen for a single substation area -- a LEG can span
         # a dozen or more, and the point of this card is a fast overview,
-        # not an exhaustive list (the full list of Messpunkte with their
+        # not an exhaustive list (the full list of metering points with their
         # substation area is one click away on this LEG's own detail page).
         "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
         "prosumer_consumer": _mix_badge(mix),
@@ -181,7 +181,7 @@ def legs_page() -> None:
             with ui.card().classes("w-full"):
                 with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                     ui.label(row["name"]).classes("font-bold")
-                    ui.label(f"{row['messpunkte_count']} Messpunkt(e)").classes("text-body2")
+                    ui.label(f"{row['metering_points_count']} Messpunkt(e)").classes("text-body2")
                     ui.label(row["prosumer_consumer"]).classes("text-body2")
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(
@@ -401,19 +401,19 @@ def legs_page() -> None:
         refresh()
 
 
-def _messpunkt_row_for_leg(
+def _metering_point_row_for_leg(
     mp, sites: dict, substation_areas: dict, upgrade_substation_area_ids: set[int]
 ) -> dict:
-    """Convert one Messpunkt of a LEG into a row dict for the detail table.
+    """Convert one MeteringPoint of a LEG into a row dict for the detail table.
 
     Args:
-        mp: Messpunkt to convert.
+        mp: MeteringPoint to convert.
         sites: Preloaded `{site_id: site}` lookup.
         substation areas: Preloaded `{substation_area_id: substation area}` lookup.
         upgrade_substation_area_ids: substation area ids that are upgrade candidates
             for this specific LEG (see `app.domain.participant_mix.
             find_upgrade_candidates` -- filtered by the caller to
-            candidates whose `mixed_legs` includes this LEG). A Messpunkt
+            candidates whose `mixed_legs` includes this LEG). A MeteringPoint
             on one of these substation areas is marked with a star: it is one
             of the ones an administrator should move into a new, dedicated
             LEG for that substation area.
@@ -427,8 +427,8 @@ def _messpunkt_row_for_leg(
     )
     return {
         "id": mp.id,
-        "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
-        "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
+        "designation": mp.designation,
+        "direction": DIRECTION_LABELS.get(mp.direction, mp.direction),
         "site_address": site.full_address if site else "?",
         "substation_area": substation_area.name if substation_area else "-",
         "is_upgrade_candidate": substation_area is not None and substation_area.id in upgrade_substation_area_ids,
@@ -437,18 +437,18 @@ def _messpunkt_row_for_leg(
 
 
 def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) -> None:
-    """Open a minimal dialog to reassign one Messpunkt's LEG.
+    """Open a minimal dialog to reassign one MeteringPoint's LEG.
 
     Deliberately just the LEG field -- not the full `app.gui.
-    messpunkt_form`, which also edits Bezeichnung/site/PV data not
+    metering_point_form`, which also edits designation/site/PV data not
     relevant here. This is the fast path for splitting a few people out
     of a LEG that spans several substation areas, right from that LEG's own
-    detail view, instead of looking each Messpunkt up individually on the
-    Messpunkte page.
+    detail view, instead of looking each MeteringPoint up individually on the
+    metering points page.
 
     Args:
-        row: Row dict from `_messpunkt_row_for_leg` (needs `id`,
-            `messpunkt_bezeichnung`, `leg_id`).
+        row: Row dict from `_metering_point_row_for_leg` (needs `id`,
+            `designation`, `leg_id`).
         leg_options: `{leg_id: name}` for every LEG, for the select.
         on_saved: Called (no arguments) after a successful save, dialog
             already closed -- typically the caller's own table refresh.
@@ -457,23 +457,23 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
         None.
     """
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-sm"):
-        ui.label(f'LEG ändern für „{row["messpunkt_bezeichnung"]}“').classes("text-lg font-bold")
+        ui.label(f'LEG ändern für „{row["designation"]}“').classes("text-lg font-bold")
         leg_select = ui.select(
             leg_options, label="LEG", value=row["leg_id"], with_input=True
         ).classes("w-full")
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
-            """Persist the new LEG assignment for this one Messpunkt.
+            """Persist the new LEG assignment for this one MeteringPoint.
 
             Returns:
                 None.
             """
             try:
                 with connection_scope() as connection:
-                    mp = messpunkt_repo.get(connection, row["id"])
+                    mp = metering_point_repo.get(connection, row["id"])
                     mp.leg_id = leg_select.value
-                    messpunkt_repo.update(connection, mp)
+                    metering_point_repo.update(connection, mp)
             except Exception as exc:  # unique constraint race, etc.
                 error_label.text = f"Fehler beim Speichern: {exc}"
                 return
@@ -492,7 +492,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
 
 @ui.page("/legs/{leg_id}")
 def leg_detail_page(leg_id: int) -> None:
-    """Render one LEG's detail view: its Messpunkte, each with the
+    """Render one LEG's detail view: its metering points, each with the
     substation area assigned via its site (see `app.models.site`),
     sortable by clicking a column header, plus a quick "LEG ändern"
     action per row.
@@ -523,12 +523,12 @@ def leg_detail_page(leg_id: int) -> None:
         table = ui.table(
             columns=[
                 {
-                    "name": "messpunkt_bezeichnung", "label": "Messpunkt",
-                    "field": "messpunkt_bezeichnung", "align": "left", "sortable": True,
+                    "name": "designation", "label": "Messpunkt",
+                    "field": "designation", "align": "left", "sortable": True,
                 },
                 {
-                    "name": "messrichtung", "label": "Messrichtung",
-                    "field": "messrichtung", "align": "left", "sortable": True,
+                    "name": "direction", "label": "Messrichtung",
+                    "field": "direction", "align": "left", "sortable": True,
                 },
                 {
                     "name": "site_address", "label": "Adresse",
@@ -562,7 +562,7 @@ def leg_detail_page(leg_id: int) -> None:
         )
 
         def refresh_table() -> None:
-            """Reload this LEG's Messpunkte (a row disappears once its LEG
+            """Reload this LEG's metering points (a row disappears once its LEG
             is changed away from this one) and the upgrade-candidate hint.
 
             Returns:
@@ -572,12 +572,12 @@ def leg_detail_page(leg_id: int) -> None:
                 min_personen = settings_repo.get_settings(inner_connection).leg_gruendung_min_personen
                 sites = {s.id: s for s in site_repo.list_all(inner_connection)}
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
-                messpunkte = [
-                    mp for mp in messpunkt_repo.list_all(inner_connection) if mp.leg_id == leg_id
+                metering_points = [
+                    mp for mp in metering_point_repo.list_all(inner_connection) if mp.leg_id == leg_id
                 ]
                 # Which substation area(e), among the ones this LEG spans, could
                 # now be split off into their own -- named explicitly
-                # rather than just hinting that "some" Messpunkte should
+                # rather than just hinting that "some" metering points should
                 # move, see the module docstring.
                 upgrade_candidates = [
                     c for c in find_upgrade_candidates(inner_connection, min_personen=min_personen)
@@ -585,8 +585,8 @@ def leg_detail_page(leg_id: int) -> None:
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
                 table.rows = [
-                    _messpunkt_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
-                    for mp in messpunkte
+                    _metering_point_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
+                    for mp in metering_points
                 ]
             table.update()
             count_label.text = f"{len(table.rows)} Messpunkt(e)"

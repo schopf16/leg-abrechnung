@@ -23,7 +23,7 @@ def _person(db, name: str = "Test") -> int:
 
 
 def test_migration_27_creates_person_offboarding_table(db):
-    assert get_schema_version(db) == 38
+    assert get_schema_version(db) == 39
     assert person_offboarding_repo.list_all(db) == []
 
 
@@ -39,7 +39,7 @@ def test_start_for_person_creates_tracker_with_grund_and_step_1_date(db):
     assert offboarding.person_id == person_id
     assert offboarding.grund == "freiwillig"
     assert offboarding.beschlossen_am == started
-    assert offboarding.messpunkt_austritt_am is None
+    assert offboarding.metering_point_exit_at is None
     assert offboarding.is_complete is False
 
 
@@ -89,12 +89,12 @@ def test_update_persists_all_steps(db):
         db, person_id, grund="zahlungsverzug", beschlossen_am=date.today()
     )
 
-    offboarding.messpunkt_austritt_am = date.today()
+    offboarding.metering_point_exit_at = date.today()
     offboarding.bkw_informiert_am = date.today()
     person_offboarding_repo.update(db, offboarding)
 
     reloaded = person_offboarding_repo.get(db, offboarding.id)
-    assert reloaded.messpunkt_austritt_am == date.today()
+    assert reloaded.metering_point_exit_at == date.today()
     assert reloaded.bkw_informiert_am == date.today()
     assert reloaded.current_step == ("person_bestaetigt_am", "Person schriftlich bestätigt")
 
@@ -104,7 +104,7 @@ def test_is_complete_once_all_four_steps_set(db):
     offboarding = person_offboarding_repo.start_for_person(
         db, person_id, grund="freiwillig", beschlossen_am=date.today()
     )
-    offboarding.messpunkt_austritt_am = date.today()
+    offboarding.metering_point_exit_at = date.today()
     offboarding.bkw_informiert_am = date.today()
     offboarding.person_bestaetigt_am = date.today()
     person_offboarding_repo.update(db, offboarding)
@@ -130,7 +130,7 @@ def test_list_in_progress_excludes_completed_trackers(db):
 
     done_id = _person(db, "Done")
     done = person_offboarding_repo.start_for_person(db, done_id, grund="freiwillig", beschlossen_am=date.today())
-    done.messpunkt_austritt_am = date.today()
+    done.metering_point_exit_at = date.today()
     done.bkw_informiert_am = date.today()
     done.person_bestaetigt_am = date.today()
     person_offboarding_repo.update(db, done)

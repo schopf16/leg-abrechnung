@@ -1,4 +1,4 @@
-"""Messpunkte management page: list, search, create, edit, delete, and a
+"""metering points management page: list, search, create, edit, delete, and a
 detail drill-down showing the site, LEG and currently assigned Person.
 """
 
@@ -7,89 +7,89 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.gui.messpunkt_form import open_messpunkt_form
+from app.gui.metering_point_form import open_metering_point_form
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import zuordnung as zuordnung_repo
-from app.models.messpunkt import (
-    MESSRICHTUNG_BEZUG,
-    MESSRICHTUNG_EINSPEISUNG,
-    Messpunkt,
+from app.models.metering_point import (
+    DIRECTION_CONSUMPTION,
+    DIRECTION_FEED_IN,
+    MeteringPoint,
 )
 
-MESSRICHTUNG_LABELS = {
-    MESSRICHTUNG_BEZUG: "Bezug",
-    MESSRICHTUNG_EINSPEISUNG: "Einspeisung",
+DIRECTION_LABELS = {
+    DIRECTION_CONSUMPTION: "Bezug",
+    DIRECTION_FEED_IN: "Einspeisung",
 }
 
 
 #: `(label, field)` pairs for the printed table -- `field` matches the
 #: keys `_to_row` puts into each row dict.
 PRINT_COLUMNS = [
-    ("Messpunkt", "messpunkt_bezeichnung"),
-    ("Messrichtung", "messrichtung"),
+    ("Messpunkt", "designation"),
+    ("Messrichtung", "direction"),
     ("Standort-Adresse", "site_address"),
     ("LEG", "leg"),
     ("Zugeordnet", "person"),
-    ("PV-Leistung (kWp)", "pv_leistung_kwp"),
-    ("Batteriespeicher (kWh)", "batteriespeicher_kwh"),
+    ("PV-Leistung (kWp)", "pv_capacity_kwp"),
+    ("Batteriespeicher (kWh)", "battery_capacity_kwh"),
 ]
 
 
-def _copy_messpunkt_bezeichnung(messpunkt_bezeichnung: str) -> None:
-    """Copy a Messpunkt's Bezeichnung to the clipboard and confirm.
+def _copy_metering_point_designation(designation: str) -> None:
+    """Copy a MeteringPoint's designation to the clipboard and confirm.
 
     Args:
-        messpunkt_bezeichnung: The Messpunktbezeichnung to copy.
+        designation: The metering point designation to copy.
 
     Returns:
         None.
     """
-    ui.clipboard.write(messpunkt_bezeichnung)
+    ui.clipboard.write(designation)
     safe_notify("Messpunktbezeichnung kopiert.")
 
 
-def _messpunkt_bezeichnung_row(
-    messpunkt_bezeichnung: str, *, classes: str = "font-bold"
+def _metering_point_designation_row(
+    designation: str, *, classes: str = "font-bold"
 ) -> None:
-    """Render the Messpunktbezeichnung with an inline copy-to-clipboard
+    """Render the metering point designation with an inline copy-to-clipboard
     button (same pattern as `app.gui.pages.personen._kundennummer_row`).
 
     Args:
-        messpunkt_bezeichnung: The Messpunktbezeichnung to show.
+        designation: The metering point designation to show.
         classes: CSS classes applied to the label itself.
 
     Returns:
         None.
     """
     with ui.row().classes("items-center gap-1"):
-        ui.label(messpunkt_bezeichnung).classes(classes)
+        ui.label(designation).classes(classes)
         ui.button(
             icon="content_copy",
-            on_click=lambda: _copy_messpunkt_bezeichnung(messpunkt_bezeichnung),
+            on_click=lambda: _copy_metering_point_designation(designation),
         ).props("dense flat size=sm").tooltip("Messpunktbezeichnung kopieren")
 
 
-def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
-    """Find the name of the Person (currently or soon) assigned to a Messpunkt.
+def _current_person_display(connection, metering_point_id: int) -> tuple[str, bool]:
+    """Find the name of the Person (currently or soon) assigned to a MeteringPoint.
 
     Args:
         connection: Open SQLite connection.
-        messpunkt_id: Primary key of the metering point.
+        metering_point_id: Primary key of the metering point.
 
     Returns:
         `(name, is_future)` -- `name` is "-" if there is no current or
         upcoming Zuordnung at all (see `app.models.zuordnung.
-        get_relevant_for_messpunkt`); `is_future` is `True` if the
+        get_relevant_for_metering_point`); `is_future` is `True` if the
         assignment shown has not started yet, so the caller can mark it
         visually without spelling out the exact date.
     """
-    zuordnung = zuordnung_repo.get_relevant_for_messpunkt(connection, messpunkt_id, datetime.now())
+    zuordnung = zuordnung_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
     if zuordnung is None:
         return "-", False
     person = person_repo.get(connection, zuordnung.person_id)
@@ -98,12 +98,12 @@ def _current_person_display(connection, messpunkt_id: int) -> tuple[str, bool]:
     return name, is_future
 
 
-def _to_row(connection, mp: Messpunkt, sites: dict, legs: dict) -> dict:
-    """Convert a `Messpunkt` into a row dict for the card-based list.
+def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
+    """Convert a `MeteringPoint` into a row dict for the card-based list.
 
     Args:
         connection: Open SQLite connection.
-        mp: Messpunkt to convert.
+        mp: MeteringPoint to convert.
         sites: Preloaded `{site_id: site}` lookup.
         legs: Preloaded `{leg_id: Leg}` lookup.
 
@@ -122,8 +122,8 @@ def _to_row(connection, mp: Messpunkt, sites: dict, legs: dict) -> dict:
     person_name, person_is_future = _current_person_display(connection, mp.id)
     search_text = " ".join(
         [
-            mp.messpunkt_bezeichnung,
-            MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
+            mp.designation,
+            DIRECTION_LABELS.get(mp.direction, mp.direction),
             site_address,
             leg_name,
             person_name,
@@ -131,8 +131,8 @@ def _to_row(connection, mp: Messpunkt, sites: dict, legs: dict) -> dict:
     ).lower()
     return {
         "id": mp.id,
-        "messpunkt_bezeichnung": mp.messpunkt_bezeichnung,
-        "messrichtung": MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung),
+        "designation": mp.designation,
+        "direction": DIRECTION_LABELS.get(mp.direction, mp.direction),
         "site_id": mp.site_id,
         "site_address": site_address,
         "site_street": site_street,
@@ -140,20 +140,20 @@ def _to_row(connection, mp: Messpunkt, sites: dict, legs: dict) -> dict:
         "leg": leg_name,
         "person": person_name,
         "person_is_future": person_is_future,
-        "pv_leistung_kwp": mp.pv_leistung_kwp,
-        "batteriespeicher_kwh": mp.batteriespeicher_kwh,
+        "pv_capacity_kwp": mp.pv_capacity_kwp,
+        "battery_capacity_kwh": mp.battery_capacity_kwh,
         "_search": search_text,
     }
 
 
-@ui.page("/messpunkte")
-def messpunkte_page() -> None:
-    """Render the Messpunkte CRUD page with search.
+@ui.page("/metering-points")
+def metering_points_page() -> None:
+    """Render the metering points CRUD page with search.
 
     Returns:
         None.
     """
-    with page_frame("/messpunkte", "Messpunkte"):
+    with page_frame("/metering-points", "Messpunkte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
                 "Messpunkte sind fix an einen Standort gebunden. Die LEG wird "
@@ -192,7 +192,7 @@ def messpunkte_page() -> None:
         visible_rows: list[dict] = []
 
         def render_card(row: dict) -> None:
-            """Render one Messpunkt as a card with wrapping field groups.
+            """Render one MeteringPoint as a card with wrapping field groups.
 
             Args:
                 row: Row dict built by `_to_row`.
@@ -203,8 +203,8 @@ def messpunkte_page() -> None:
             with ui.card().classes("w-full"):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
-                        _messpunkt_bezeichnung_row(row["messpunkt_bezeichnung"])
-                        ui.label(row["messrichtung"]).classes("text-caption text-grey-6")
+                        _metering_point_designation_row(row["designation"])
+                        ui.label(row["direction"]).classes("text-caption text-grey-6")
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         ui.label(row["site_street"])
                         ui.label(row["site_city"])
@@ -215,16 +215,16 @@ def messpunkte_page() -> None:
                             person_label.classes("text-orange-8")
                             ui.label("(bevorstehend)").classes("text-caption text-orange-8")
                         extras = []
-                        if row["pv_leistung_kwp"] is not None:
-                            extras.append(f"PV {row['pv_leistung_kwp']:g} kWp")
-                        if row["batteriespeicher_kwh"] is not None:
-                            extras.append(f"Speicher {row['batteriespeicher_kwh']:g} kWh")
+                        if row["pv_capacity_kwp"] is not None:
+                            extras.append(f"PV {row['pv_capacity_kwp']:g} kWp")
+                        if row["battery_capacity_kwh"] is not None:
+                            extras.append(f"Speicher {row['battery_capacity_kwh']:g} kWh")
                         if extras:
                             ui.label(", ".join(extras)).classes("text-grey-7 text-caption")
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(
                             icon="visibility",
-                            on_click=lambda r=row: ui.navigate.to(f"/messpunkte/{r['id']}"),
+                            on_click=lambda r=row: ui.navigate.to(f"/metering-points/{r['id']}"),
                         ).props("dense flat")
                         ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
                         ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
@@ -235,9 +235,9 @@ def messpunkte_page() -> None:
             """Filter the currently loaded rows by the search input's value
             and the "Nur ohne Zuordnung" switch.
 
-            A Messpunkt counts as "ohne Zuordnung" here if it has no
+            A MeteringPoint counts as "ohne Zuordnung" here if it has no
             current-or-upcoming Zuordnung at all (see `_current_person_display`/
-            `app.models.zuordnung.get_relevant_for_messpunkt`) -- a
+            `app.models.zuordnung.get_relevant_for_metering_point`) -- a
             pre-entered future assignment still counts as assigned, so it
             is deliberately excluded from this filter too.
 
@@ -257,7 +257,7 @@ def messpunkte_page() -> None:
                     render_card(row)
 
         def refresh() -> None:
-            """Reload all Messpunkte from the database and re-apply the filter.
+            """Reload all metering points from the database and re-apply the filter.
 
             Returns:
                 None.
@@ -267,26 +267,26 @@ def messpunkte_page() -> None:
                 sites = {s.id: s for s in site_repo.list_all(connection)}
                 legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
                 all_rows = [
-                    _to_row(connection, mp, sites, legs) for mp in messpunkt_repo.list_all(connection)
+                    _to_row(connection, mp, sites, legs) for mp in metering_point_repo.list_all(connection)
                 ]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
         ohne_zuordnung_switch.on_value_change(lambda _: apply_filter())
 
-        def open_form(existing: Messpunkt | None) -> None:
-            """Open the create/edit dialog for a Messpunkt.
+        def open_form(existing: MeteringPoint | None) -> None:
+            """Open the create/edit dialog for a MeteringPoint.
 
             Args:
-                existing: Messpunkt to edit, or `None` to create a new one.
+                existing: MeteringPoint to edit, or `None` to create a new one.
 
             Returns:
                 None.
             """
-            open_messpunkt_form(existing=existing, on_saved=lambda _: refresh())
+            open_metering_point_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_edit(row: dict) -> None:
-            """Card edit-button handler: open the edit dialog for this Messpunkt.
+            """Card edit-button handler: open the edit dialog for this MeteringPoint.
 
             Args:
                 row: Row dict built by `_to_row`.
@@ -295,11 +295,11 @@ def messpunkte_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                existing = messpunkt_repo.get(connection, row["id"])
+                existing = metering_point_repo.get(connection, row["id"])
             open_form(existing)
 
         def on_remove(row: dict) -> None:
-            """Card delete-button handler: delete the Messpunkt after confirmation.
+            """Card delete-button handler: delete the MeteringPoint after confirmation.
 
             Args:
                 row: Row dict built by `_to_row`.
@@ -307,12 +307,12 @@ def messpunkte_page() -> None:
             Returns:
                 None.
             """
-            messpunkt_id = row["id"]
-            bezeichnung_text = row["messpunkt_bezeichnung"]
+            metering_point_id = row["id"]
+            designation_text = row["designation"]
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(
-                    f'Messpunkt "{bezeichnung_text}" wirklich löschen? '
+                    f'Messpunkt "{designation_text}" wirklich löschen? '
                     "Zugehörige Zuordnungen und Messwerte werden mitgelöscht."
                 )
                 with ui.row().classes("w-full justify-end gap-2"):
@@ -320,7 +320,7 @@ def messpunkte_page() -> None:
 
                     def do_delete() -> None:
                         with connection_scope() as connection:
-                            messpunkt_repo.delete(connection, messpunkt_id)
+                            metering_point_repo.delete(connection, metering_point_id)
                         confirm.close()
                         # notify before refresh() -- see save() above for why
                         safe_notify("Gelöscht.", type="warning")
@@ -332,37 +332,37 @@ def messpunkte_page() -> None:
         refresh()
 
 
-@ui.page("/messpunkte/{messpunkt_id}")
-def messpunkt_detail_page(messpunkt_id: int) -> None:
-    """Render one Messpunkt's detail view: Bezeichnung, Messrichtung,
+@ui.page("/metering-points/{metering_point_id}")
+def metering_point_detail_page(metering_point_id: int) -> None:
+    """Render one MeteringPoint's detail view: designation, direction,
     site, LEG and currently assigned Person.
 
     Args:
-        messpunkt_id: Database id of the Messpunkt, from the URL path.
+        metering_point_id: Database id of the MeteringPoint, from the URL path.
 
     Returns:
         None.
     """
     with connection_scope() as connection:
-        mp = messpunkt_repo.get(connection, messpunkt_id)
+        mp = metering_point_repo.get(connection, metering_point_id)
         site = site_repo.get(connection, mp.site_id) if mp else None
         leg = leg_repo.get(connection, mp.leg_id) if mp and mp.leg_id else None
         person_name, person_is_future = (
-            _current_person_display(connection, messpunkt_id) if mp else ("-", False)
+            _current_person_display(connection, metering_point_id) if mp else ("-", False)
         )
 
     with page_frame(
-        "/messpunkte", "Messpunkt" if mp is None else mp.messpunkt_bezeichnung
+        "/metering-points", "Messpunkt" if mp is None else mp.designation
     ):
         if mp is None:
             ui.label("Messpunkt nicht gefunden.").classes("text-negative")
-            ui.link("← Zurück zu Messpunkten", "/messpunkte")
+            ui.link("← Zurück zu Messpunkten", "/metering-points")
             return
 
-        ui.link("← Zurück zu Messpunkten", "/messpunkte")
-        _messpunkt_bezeichnung_row(mp.messpunkt_bezeichnung, classes="text-xl font-bold mt-2")
+        ui.link("← Zurück zu Messpunkten", "/metering-points")
+        _metering_point_designation_row(mp.designation, classes="text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
-            ui.label(f"Messrichtung: {MESSRICHTUNG_LABELS.get(mp.messrichtung, mp.messrichtung)}")
+            ui.label(f"Messrichtung: {DIRECTION_LABELS.get(mp.direction, mp.direction)}")
             if site:
                 ui.label(
                     f"Standort: {' '.join(p for p in (site.street, site.house_number) if p)}"
@@ -377,7 +377,7 @@ def messpunkt_detail_page(messpunkt_id: int) -> None:
             if person_is_future:
                 person_detail_label.classes("text-orange-8")
                 ui.label("(bevorstehend -- noch nicht gestartet)").classes("text-caption text-orange-8")
-            if mp.pv_leistung_kwp is not None:
-                ui.label(f"PV-Leistung: {mp.pv_leistung_kwp:g} kWp")
-            if mp.batteriespeicher_kwh is not None:
-                ui.label(f"Batteriespeicher: {mp.batteriespeicher_kwh:g} kWh")
+            if mp.pv_capacity_kwp is not None:
+                ui.label(f"PV-Leistung: {mp.pv_capacity_kwp:g} kWp")
+            if mp.battery_capacity_kwh is not None:
+                ui.label(f"Batteriespeicher: {mp.battery_capacity_kwh:g} kWh")

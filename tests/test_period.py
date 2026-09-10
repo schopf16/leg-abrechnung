@@ -12,12 +12,12 @@ from app.domain.period import (
 from app.models.reading import Reading, upsert_readings
 
 
-def _insert_reading(db, messpunkt_id: int, timestamp: str) -> None:
-    """Insert a single reading for an existing Messpunkt.
+def _insert_reading(db, metering_point_id: int, timestamp: str) -> None:
+    """Insert a single reading for an existing MeteringPoint.
 
     Args:
         db: Database connection fixture.
-        messpunkt_id: Messpunkt id to attach the reading to.
+        metering_point_id: MeteringPoint id to attach the reading to.
         timestamp: ISO-8601 timestamp for the reading.
 
     Returns:
@@ -25,15 +25,15 @@ def _insert_reading(db, messpunkt_id: int, timestamp: str) -> None:
     """
     upsert_readings(
         db,
-        [Reading(messpunkt_id=messpunkt_id, timestamp=timestamp, direction="bezug", kwh=1.0, source="test")],
+        [Reading(metering_point_id=metering_point_id, timestamp=timestamp, direction="bezug", kwh=1.0, source="test")],
     )
 
 
-def _make_messpunkt(db) -> int:
-    """Create a minimal site and Messpunkt and return the Messpunkt's id."""
-    from app.models import messpunkt as messpunkt_repo
+def _make_metering_point(db) -> int:
+    """Create a minimal site and MeteringPoint and return the MeteringPoint's id."""
+    from app.models import metering_point as metering_point_repo
     from app.models import site as site_repo
-    from app.models.messpunkt import MESSRICHTUNG_BEZUG, Messpunkt
+    from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
     from app.models.site import Site
 
     site_id = site_repo.create(
@@ -43,12 +43,12 @@ def _make_messpunkt(db) -> int:
             substation_area_id=None, created_at="",
         ),
     )
-    return messpunkt_repo.create(
+    return metering_point_repo.create(
         db,
-        Messpunkt(
-            id=None, messpunkt_bezeichnung="CH-period-test",
-            messrichtung=MESSRICHTUNG_BEZUG, site_id=site_id, leg_id=None,
-            pv_leistung_kwp=None, batteriespeicher_kwh=None, created_at="",
+        MeteringPoint(
+            id=None, designation="CH-period-test",
+            direction=DIRECTION_CONSUMPTION, site_id=site_id, leg_id=None,
+            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
         ),
     )
 
@@ -60,11 +60,11 @@ def test_list_available_periods_empty_when_no_readings(db):
 
 def test_list_available_periods_groups_months_into_quarters(db):
     """Readings in different months of the same quarter collapse to one entry."""
-    messpunkt_id = _make_messpunkt(db)
-    _insert_reading(db, messpunkt_id, "2025-01-15T12:00:00")  # Q1
-    _insert_reading(db, messpunkt_id, "2025-03-20T12:00:00")  # Q1
-    _insert_reading(db, messpunkt_id, "2025-07-01T00:00:00")  # Q3
-    _insert_reading(db, messpunkt_id, "2024-12-31T23:45:00")  # Q4 2024
+    metering_point_id = _make_metering_point(db)
+    _insert_reading(db, metering_point_id, "2025-01-15T12:00:00")  # Q1
+    _insert_reading(db, metering_point_id, "2025-03-20T12:00:00")  # Q1
+    _insert_reading(db, metering_point_id, "2025-07-01T00:00:00")  # Q3
+    _insert_reading(db, metering_point_id, "2024-12-31T23:45:00")  # Q4 2024
 
     available = list_available_periods(db)
 
@@ -73,10 +73,10 @@ def test_list_available_periods_groups_months_into_quarters(db):
 
 def test_latest_available_period_picks_highest_year_and_quarter(db):
     """The latest period is the highest year, then highest quarter within it."""
-    messpunkt_id = _make_messpunkt(db)
-    _insert_reading(db, messpunkt_id, "2024-05-01T00:00:00")  # 2024 Q2
-    _insert_reading(db, messpunkt_id, "2025-01-01T00:00:00")  # 2025 Q1
-    _insert_reading(db, messpunkt_id, "2025-11-01T00:00:00")  # 2025 Q4
+    metering_point_id = _make_metering_point(db)
+    _insert_reading(db, metering_point_id, "2024-05-01T00:00:00")  # 2024 Q2
+    _insert_reading(db, metering_point_id, "2025-01-01T00:00:00")  # 2025 Q1
+    _insert_reading(db, metering_point_id, "2025-11-01T00:00:00")  # 2025 Q4
 
     available = list_available_periods(db)
     assert latest_available_period(available) == (2025, 4)

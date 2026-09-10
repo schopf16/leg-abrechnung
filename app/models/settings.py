@@ -41,15 +41,15 @@ class LegSettings:
             runs (e.g. while travelling), that copy is simply skipped
             with a warning, the primary backup in `backups/` is
             unaffected.
-        messpunkt_land: Default 2-letter country code for new Messpunkte's
-            Messpunktbezeichnung (see `app.domain.messpunkt_validation`)
+        metering_point_country: Default 2-letter country code for new metering points's
+            metering point designation (see `app.domain.metering_point_validation`)
             -- always the same grid operator's country for a single LEG
             deployment, e.g. `"CH"`.
-        messpunkt_identifikator: Default 11-character VSE grid-operator
-            identifier for new Messpunkte -- also always the same across
+        metering_point_identifier: Default 11-character VSE grid-operator
+            identifier for new metering points -- also always the same across
             a single LEG deployment (one grid operator), so storing it
-            here saves re-entering it for every Messpunkt. Editable per
-            Messpunkt regardless.
+            here saves re-entering it for every MeteringPoint. Editable per
+            MeteringPoint regardless.
         web_registration_cursor: The highest Cloudflare submission id
             already fetched from the leg-ittigen.ch registration API --
             see `app.importers.registration_sync`. Managed exclusively by
@@ -102,8 +102,8 @@ class LegSettings:
     verwaltungsaufwand_einspeisung_rp_per_kwh: float
     papierrechnung_rappen: int
     extra_backup_dir: str
-    messpunkt_land: str
-    messpunkt_identifikator: str
+    metering_point_country: str
+    metering_point_identifier: str
     web_registration_cursor: int
     onboarding_ueberfaellig_tage: int
     leg_gruendung_min_personen: int
@@ -138,8 +138,8 @@ class LegSettings:
             verwaltungsaufwand_einspeisung_rp_per_kwh=row["verwaltungsaufwand_einspeisung_rp_per_kwh"],
             papierrechnung_rappen=row["papierrechnung_rappen"],
             extra_backup_dir=row["extra_backup_dir"],
-            messpunkt_land=row["messpunkt_land"],
-            messpunkt_identifikator=row["messpunkt_identifikator"],
+            metering_point_country=row["metering_point_country"],
+            metering_point_identifier=row["metering_point_identifier"],
             web_registration_cursor=row["web_registration_cursor"],
             onboarding_ueberfaellig_tage=row["onboarding_ueberfaellig_tage"],
             leg_gruendung_min_personen=row["leg_gruendung_min_personen"],
@@ -194,7 +194,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             verwaltungsaufwand_bezug_rp_per_kwh = ?, verwaltungsaufwand_einspeisung_rp_per_kwh = ?,
             papierrechnung_rappen = ?,
-            extra_backup_dir = ?, messpunkt_land = ?, messpunkt_identifikator = ?,
+            extra_backup_dir = ?, metering_point_country = ?, metering_point_identifier = ?,
             web_registration_cursor = ?, onboarding_ueberfaellig_tage = ?,
             leg_gruendung_min_personen = ?,
             rechnung_email_betreff = ?, rechnung_email_text = ?,
@@ -214,8 +214,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.verwaltungsaufwand_einspeisung_rp_per_kwh,
             settings.papierrechnung_rappen,
             settings.extra_backup_dir,
-            settings.messpunkt_land,
-            settings.messpunkt_identifikator,
+            settings.metering_point_country,
+            settings.metering_point_identifier,
             settings.web_registration_cursor,
             settings.onboarding_ueberfaellig_tage,
             settings.leg_gruendung_min_personen,

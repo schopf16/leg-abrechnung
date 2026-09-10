@@ -50,7 +50,7 @@ class MonthlyGrowth:
         year: Calendar year.
         month: Calendar month, 1 to 12.
         personen: Number of Personen created on or before this month.
-        messpunkte: Number of Messpunkte created on or before this month.
+        metering_points: Number of metering points created on or before this month.
         sites: Number of sites created on or before this month.
         substation areas: Number of substation areas created on or before this month.
         legs: Number of LEGs created on or before this month.
@@ -59,7 +59,7 @@ class MonthlyGrowth:
     year: int
     month: int
     personen: int
-    messpunkte: int
+    metering_points: int
     sites: int
     substation_areas: int
     legs: int
@@ -75,7 +75,7 @@ def monthly_energy_totals(
 
     Args:
         connection: Open SQLite connection.
-        leg_id: If given, only readings from Messpunkte currently assigned
+        leg_id: If given, only readings from metering points currently assigned
             to this LEG are counted; `None` aggregates across all LEGs.
         reference_date: Last month of the window; defaults to today.
         months: Number of trailing months to cover.
@@ -92,7 +92,7 @@ def monthly_energy_totals(
     query = """
         SELECT substr(r.timestamp, 1, 7) AS ym, r.direction, SUM(r.kwh) AS total
         FROM readings r
-        JOIN messpunkt mp ON mp.id = r.messpunkt_id
+        JOIN metering_point mp ON mp.id = r.metering_point_id
         WHERE r.timestamp >= ? AND r.timestamp < ?
     """
     params: list = [start, end]
@@ -150,7 +150,7 @@ def monthly_growth_counts(
     window = trailing_months(reference_date or date.today(), months)
 
     personen = _creation_dates(connection, "person")
-    messpunkte = _creation_dates(connection, "messpunkt")
+    metering_points = _creation_dates(connection, "metering_point")
     sites = _creation_dates(connection, "site")
     substation_areas = _creation_dates(connection, "substation_area")
     legs = _creation_dates(connection, "leg")
@@ -163,7 +163,7 @@ def monthly_growth_counts(
                 year=year,
                 month=month,
                 personen=sum(1 for d in personen if d <= last_day),
-                messpunkte=sum(1 for d in messpunkte if d <= last_day),
+                metering_points=sum(1 for d in metering_points if d <= last_day),
                 sites=sum(1 for d in sites if d <= last_day),
                 substation_areas=sum(1 for d in substation_areas if d <= last_day),
                 legs=sum(1 for d in legs if d <= last_day),

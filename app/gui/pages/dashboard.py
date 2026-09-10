@@ -26,7 +26,7 @@ from app.domain.quality_checks import (
 from app.gui.navigation import page_frame
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
-from app.models import messpunkt as messpunkt_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
@@ -53,7 +53,7 @@ def _load_overview(connection) -> dict:
     substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
     sites = site_repo.list_all(connection)
-    messpunkte = messpunkt_repo.list_all(connection)
+    metering_points = metering_point_repo.list_all(connection)
     persons = person_repo.list_all(connection)
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
@@ -106,7 +106,7 @@ def _load_overview(connection) -> dict:
         leg_rows.append(
             {
                 "name": leg.name,
-                "messpunkte": leg_repo.count_messpunkte(connection, leg.id),
+                "metering_points": leg_repo.count_metering_points(connection, leg.id),
                 "letzte_abrechnung": (
                     f"Q{latest_run.period_quarter} {latest_run.period_year}"
                     if latest_run
@@ -120,7 +120,7 @@ def _load_overview(connection) -> dict:
             "substation_areas": len(substation_areas),
             "sites": len(sites),
             "legs": len(legs),
-            "messpunkte": len(messpunkte),
+            "metering_points": len(metering_points),
             "personen": len(persons),
             "runs": len(runs),
         },
@@ -178,7 +178,7 @@ def dashboard_page() -> None:
                 ("Trafokreise", "substation_areas"),
                 ("Standorte", "sites"),
                 ("LEGs", "legs"),
-                ("Messpunkte", "messpunkte"),
+                ("Messpunkte", "metering_points"),
                 ("Personen", "personen"),
                 ("Abrechnungsläufe", "runs"),
             ):
@@ -192,7 +192,7 @@ def dashboard_page() -> None:
             ui.table(
                 columns=[
                     {"name": "name", "label": "LEG", "field": "name", "align": "left"},
-                    {"name": "messpunkte", "label": "Messpunkte", "field": "messpunkte", "align": "right"},
+                    {"name": "metering_points", "label": "Messpunkte", "field": "metering_points", "align": "right"},
                     {"name": "letzte_abrechnung", "label": "Letzte Abrechnung", "field": "letzte_abrechnung", "align": "left"},
                 ],
                 rows=overview["legs"],

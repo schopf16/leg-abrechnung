@@ -12,7 +12,7 @@ class BillingRun:
 
     Local sharing only ever happens within one LEG (see
     `app.domain.distribution`), so a billing run covers one LEG's
-    Personen for one quarter -- a Person with Messpunkte in more than one
+    Personen for one quarter -- a Person with metering points in more than one
     LEG gets one item (and one PDF) per LEG they participate in, from that
     LEG's separate run.
 
