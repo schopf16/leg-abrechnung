@@ -31,11 +31,15 @@ def import_page() -> None:
             "derselben Periode dupliziert keine Werte."
         ).classes("text-body2 text-grey-8")
 
-        upload_widget = ui.upload(
-            label="1. Dateien auswählen (Mehrfachauswahl möglich)",
-            multiple=True,
-            auto_upload=False,
-        ).props('accept=".xml,.csv" hide-upload-btn').classes("w-full")
+        upload_widget = (
+            ui.upload(
+                label="1. Dateien auswählen (Mehrfachauswahl möglich)",
+                multiple=True,
+                auto_upload=False,
+            )
+            .props('accept=".xml,.csv" hide-upload-btn')
+            .classes("w-full")
+        )
 
         start_button = ui.button("2. Import starten", icon="play_arrow").classes("mt-2")
 

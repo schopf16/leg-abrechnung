@@ -199,9 +199,10 @@ green locally before pushing:
 
 ```
 .venv\Scripts\ruff.exe check app tests run.py
+.venv\Scripts\ruff.exe format --check app tests run.py
 .venv\Scripts\bandit.exe -q -r app -ll
 .venv\Scripts\pip-audit.exe -r requirements.txt
 ```
 
-`ruff format` is intentionally not enforced yet (the codebase predates it;
-reformatting everything is a separate decision).
+Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
+enforced in CI; run `ruff format app tests run.py` before committing.

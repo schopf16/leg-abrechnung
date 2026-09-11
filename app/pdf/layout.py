@@ -192,9 +192,7 @@ def draw_monthly_table(
     return y - 12 * mm
 
 
-def draw_net_settlement(
-    canvas: Canvas, top_y: float, label: str, value: str, note: str
-) -> float:
+def draw_net_settlement(canvas: Canvas, top_y: float, label: str, value: str, note: str) -> float:
     """Draw the final, rounded net settlement line and an explanatory note.
 
     This is the only place a rounded monetary figure appears on the page

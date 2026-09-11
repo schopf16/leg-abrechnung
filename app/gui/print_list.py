@@ -164,9 +164,7 @@ def render_print_button(
         if rows:
             body_html = "".join(
                 "<tr>"
-                + "".join(
-                    f"<td>{html.escape(str(row.get(field, '') or ''))}</td>" for _, field in columns
-                )
+                + "".join(f"<td>{html.escape(str(row.get(field, '') or ''))}</td>" for _, field in columns)
                 + "</tr>"
                 for row in rows
             )

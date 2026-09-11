@@ -124,8 +124,14 @@ def _make_site(
     return site_repo.create(
         db,
         Site(
-            id=None, street=street, house_number=house_number, postal_code=postal_code, municipality="Bern", address_detail="",
-            substation_area_id=substation_area_id, created_at="",
+            id=None,
+            street=street,
+            house_number=house_number,
+            postal_code=postal_code,
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=substation_area_id,
+            created_at="",
         ),
     )
 
@@ -298,15 +304,23 @@ def test_metering_point_direction_properties():
 def test_assignment_covers_respects_open_and_closed_ranges():
     """`Assignment.covers` handles open-ended and bounded periods."""
     open_ended = Assignment(
-        id=1, person_id=1, metering_point_id=1,
-        valid_from=date(2025, 1, 1), valid_to=None, created_at="",
+        id=1,
+        person_id=1,
+        metering_point_id=1,
+        valid_from=date(2025, 1, 1),
+        valid_to=None,
+        created_at="",
     )
     assert open_ended.covers(_dt(2025, 6, 1))
     assert not open_ended.covers(_dt(2024, 12, 31))
 
     bounded = Assignment(
-        id=2, person_id=2, metering_point_id=1,
-        valid_from=date(2025, 1, 1), valid_to=date(2025, 3, 31), created_at="",
+        id=2,
+        person_id=2,
+        metering_point_id=1,
+        valid_from=date(2025, 1, 1),
+        valid_to=date(2025, 3, 31),
+        created_at="",
     )
     assert bounded.covers(_dt(2025, 2, 1))
     assert not bounded.covers(_dt(2025, 4, 1))
@@ -317,15 +331,23 @@ def test_assignment_is_current_or_upcoming_counts_a_not_yet_started_assignment()
     next quarter's move-ins prepared in advance) already counts -- only
     one that has actually ended (`valid_to` in the past) does not."""
     future = Assignment(
-        id=1, person_id=1, metering_point_id=1,
-        valid_from=date(2026, 12, 1), valid_to=None, created_at="",
+        id=1,
+        person_id=1,
+        metering_point_id=1,
+        valid_from=date(2026, 12, 1),
+        valid_to=None,
+        created_at="",
     )
     assert not future.covers(_dt(2026, 9, 10))
     assert future.is_current_or_upcoming(_dt(2026, 9, 10))
 
     ended = Assignment(
-        id=2, person_id=2, metering_point_id=1,
-        valid_from=date(2025, 1, 1), valid_to=date(2025, 3, 31), created_at="",
+        id=2,
+        person_id=2,
+        metering_point_id=1,
+        valid_from=date(2025, 1, 1),
+        valid_to=date(2025, 3, 31),
+        created_at="",
     )
     assert not ended.is_current_or_upcoming(_dt(2025, 4, 1))
 
@@ -354,8 +376,12 @@ def test_assignment_get_finds_by_id(db):
     assignment_id = assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -376,15 +402,23 @@ def test_get_relevant_for_metering_point_prefers_the_already_started_one(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_a, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=date(2026, 8, 31), created_at="",
+            id=None,
+            person_id=person_a,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2026, 8, 31),
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_b, metering_point_id=metering_point_id,
-            valid_from=date(2026, 12, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_b,
+            metering_point_id=metering_point_id,
+            valid_from=date(2026, 12, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -403,15 +437,23 @@ def test_get_relevant_for_metering_point_falls_back_to_soonest_upcoming(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_a, metering_point_id=metering_point_id,
-            valid_from=date(2027, 3, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_a,
+            metering_point_id=metering_point_id,
+            valid_from=date(2027, 3, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_b, metering_point_id=metering_point_id,
-            valid_from=date(2026, 12, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_b,
+            metering_point_id=metering_point_id,
+            valid_from=date(2026, 12, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -429,8 +471,12 @@ def test_get_relevant_for_metering_point_ignores_ended_assignment(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(2020, 1, 1), valid_to=date(2020, 12, 31), created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2020, 1, 1),
+            valid_to=date(2020, 12, 31),
+            created_at="",
         ),
     )
 
@@ -447,15 +493,23 @@ def test_find_warnings_detects_gap(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_a, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 1, 31), created_at="",
+            id=None,
+            person_id=person_a,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2025, 1, 31),
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_b, metering_point_id=metering_point_id,
-            valid_from=date(2025, 2, 5), valid_to=None, created_at="",
+            id=None,
+            person_id=person_b,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 2, 5),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -474,15 +528,23 @@ def test_find_warnings_detects_overlap(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_a, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 2, 15), created_at="",
+            id=None,
+            person_id=person_a,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2025, 2, 15),
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_b, metering_point_id=metering_point_id,
-            valid_from=date(2025, 2, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_b,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 2, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -501,15 +563,23 @@ def test_find_warnings_none_for_consecutive_periods(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_a, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 8, 15), created_at="",
+            id=None,
+            person_id=person_a,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2025, 8, 15),
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_b, metering_point_id=metering_point_id,
-            valid_from=date(2025, 8, 16), valid_to=None, created_at="",
+            id=None,
+            person_id=person_b,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 8, 16),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -675,18 +745,31 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
     run_id = billing_run_repo.create_run(
         db,
         BillingRun(
-            id=None, leg_id=leg_id, period_year=2025, period_quarter=1,
-            created_at="", price_rp_per_kwh=12.0, status="created", notes="",
+            id=None,
+            leg_id=leg_id,
+            period_year=2025,
+            period_quarter=1,
+            created_at="",
+            price_rp_per_kwh=12.0,
+            status="created",
+            notes="",
         ),
     )
     billing_run_repo.add_items(
         db,
         [
             BillingRunItem(
-                id=None, billing_run_id=run_id, person_id=person_id,
-                consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=12.0,
-                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
-                net_amount_rappen=120, pdf_path=None, created_at="",
+                id=None,
+                billing_run_id=run_id,
+                person_id=person_id,
+                consumed_kwh=10.0,
+                produced_kwh=0.0,
+                price_rp_per_kwh=12.0,
+                admin_fee_consumption_rappen=0,
+                paper_invoice_rappen=0,
+                net_amount_rappen=120,
+                pdf_path=None,
+                created_at="",
             ),
         ],
     )

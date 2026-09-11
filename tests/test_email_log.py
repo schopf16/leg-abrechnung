@@ -57,7 +57,12 @@ def test_attachment_filename_defaults_to_none(db):
 
 def test_attachment_filename_round_trip(db):
     email_log_repo.create(
-        db, scope="all", leg_id=None, subject="s", body="b", recipient_emails=[],
+        db,
+        scope="all",
+        leg_id=None,
+        subject="s",
+        body="b",
+        recipient_emails=[],
         attachment_filename="Einladung.pdf",
     )
     assert email_log_repo.list_all(db)[0].attachment_filename == "Einladung.pdf"

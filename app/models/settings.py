@@ -170,9 +170,7 @@ def get_settings(connection: sqlite3.Connection) -> LegSettings:
     """
     row = connection.execute("SELECT * FROM leg_settings WHERE id = 1").fetchone()
     if row is None:
-        raise RuntimeError(
-            "LEG settings row missing; call initialize_database() first."
-        )
+        raise RuntimeError("LEG settings row missing; call initialize_database() first.")
     return LegSettings.from_row(row)
 
 

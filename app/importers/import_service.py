@@ -73,13 +73,9 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
         file_format = "csv"
         parse_result = parse_csv_file(path)
     else:
-        raise ImportValidationError(
-            f"Nicht unterstützter Dateityp {suffix!r}. Erlaubt: .xml (EBIX), .csv."
-        )
+        raise ImportValidationError(f"Nicht unterstützter Dateityp {suffix!r}. Erlaubt: .xml (EBIX), .csv.")
 
-    outcome = ImportOutcome(
-        filename=path.name, format=file_format, warnings=list(parse_result.warnings)
-    )
+    outcome = ImportOutcome(filename=path.name, format=file_format, warnings=list(parse_result.warnings))
 
     if not parse_result.readings:
         return outcome
@@ -117,8 +113,7 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
     if outcome.unknown_metering_point_designations:
         outcome.warnings.append(
             "Unbekannte Messpunkt-Bezeichnungen (nicht importiert, zuerst "
-            "als Messpunkt anlegen): "
-            + ", ".join(sorted(outcome.unknown_metering_point_designations))
+            "als Messpunkt anlegen): " + ", ".join(sorted(outcome.unknown_metering_point_designations))
         )
 
     return outcome
@@ -133,9 +128,7 @@ def _load_metering_point_lookup(connection: sqlite3.Connection) -> dict[str, int
     Returns:
         A dict mapping `designation` to the MeteringPoint's database id.
     """
-    return {
-        mp.designation: mp.id for mp in metering_point_repo.list_all(connection)
-    }
+    return {mp.designation: mp.id for mp in metering_point_repo.list_all(connection)}
 
 
 def _to_reading(parsed: ParsedReading, metering_point_id: int, file_format: str) -> Reading:

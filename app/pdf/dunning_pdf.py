@@ -95,9 +95,7 @@ def generate_dunning_pdf(
             canvas.showPage()
 
         reference = generate_qrr_reference(person.customer_number, run.id, item.id)
-        bill = build_qr_bill(
-            settings, leg, person, Decimal(remaining_rappen) / 100, reference
-        )
+        bill = build_qr_bill(settings, leg, person, Decimal(remaining_rappen) / 100, reference)
         draw_qr_bill(canvas, bill)
         canvas.showPage()
 

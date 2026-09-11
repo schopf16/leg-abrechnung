@@ -41,7 +41,9 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
         `ui.table`-row shape) -- `name` is "-" if there is no current or
         upcoming Assignment at all.
     """
-    assignment = assignment_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
+    assignment = assignment_repo.get_relevant_for_metering_point(
+        connection, metering_point_id, datetime.now()
+    )
     if assignment is None:
         return "-", False
     person = person_repo.get(connection, assignment.person_id)
@@ -111,20 +113,22 @@ def sites_page() -> None:
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
-        search_input = ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)").classes(
-            "w-full max-w-md"
-        ).props("debounce=300 clearable")
+        search_input = (
+            ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)")
+            .classes("w-full max-w-md")
+            .props("debounce=300 clearable")
+        )
 
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(
             "body-cell-actions",
-            r'''
+            r"""
             <q-td :props="props">
                 <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
                 <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
                 <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
             </q-td>
-            ''',
+            """,
         )
 
         all_rows: list[dict] = []
@@ -202,8 +206,7 @@ def sites_page() -> None:
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(
-                    f'Standort "{address_text}" wirklich löschen? '
-                    "Zugehörige Messpunkte werden mitgelöscht."
+                    f'Standort "{address_text}" wirklich löschen? Zugehörige Messpunkte werden mitgelöscht.'
                 )
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
@@ -251,9 +254,7 @@ def site_detail_page(site_id: int) -> None:
         legs = {leg.id: leg for leg in leg_repo.list_all(connection)}
         person_display = {mp.id: _current_person_display(connection, mp.id) for mp in metering_points}
 
-    with page_frame(
-        "/sites", "Standort" if site is None else site.full_address
-    ):
+    with page_frame("/sites", "Standort" if site is None else site.full_address):
         if site is None:
             ui.label("Standort nicht gefunden.").classes("text-negative")
             ui.link("← Zurück zu Standorten", "/sites")
@@ -289,11 +290,11 @@ def site_detail_page(site_id: int) -> None:
             ).classes("w-full mt-2")
             metering_points_table.add_slot(
                 "body-cell-person",
-                r'''
+                r"""
                 <q-td :props="props" :class="props.row.person_is_future ? 'text-orange-8' : ''">
                     {{ props.value }}<span v-if="props.row.person_is_future"> (bevorstehend)</span>
                 </q-td>
-                ''',
+                """,
             )
         else:
             ui.label("Keine Messpunkte an diesem Standort.")

@@ -70,9 +70,9 @@ def _compose_body(body: str, signature_content: str) -> str:
     return f"{body}{_SIGNATURE_DELIMITER}{signature_content}"
 
 
-def _validation_warnings(subject: str, body: str, recipients: list[Person]) -> tuple[
-    set[str], list[Person], list[tuple[Person, list[str]]]
-]:
+def _validation_warnings(
+    subject: str, body: str, recipients: list[Person]
+) -> tuple[set[str], list[Person], list[tuple[Person, list[str]]]]:
     """Compute every warning the "Validierung" step should show.
 
     Args:
@@ -131,11 +131,10 @@ def email_dispatch_page() -> None:
             with ui.step("scope", title="Empfänger-Art wählen"):
                 scope_select = ui.select(
                     {"all": "Alle Personen", "leg": "Personen einer LEG"},
-                    label="Empfänger-Art", value=None,
+                    label="Empfänger-Art",
+                    value=None,
                 ).classes("w-full max-w-sm")
-                leg_select = ui.select(leg_options, label="LEG", value=None).classes(
-                    "w-full max-w-sm"
-                )
+                leg_select = ui.select(leg_options, label="LEG", value=None).classes("w-full max-w-sm")
                 leg_select.bind_visibility_from(scope_select, "value", value="leg")
 
                 def go_to_recipients() -> None:
@@ -155,9 +154,7 @@ def email_dispatch_page() -> None:
                         if scope_select.value == "all":
                             recipients = bulk_send.list_broadcast_recipients(inner_connection)
                         else:
-                            recipients = bulk_send.list_leg_recipients(
-                                inner_connection, leg_select.value
-                            )
+                            recipients = bulk_send.list_leg_recipients(inner_connection, leg_select.value)
                     refresh_recipients_step()
                     stepper.next()
 
@@ -219,16 +216,16 @@ def email_dispatch_page() -> None:
                                 ui.label(f"{person.display_name} ({person.contact_email})").classes(
                                     "flex-grow"
                                 )
-                                ui.button(
-                                    icon="close", on_click=lambda p=person: remove_recipient(p)
-                                ).props("dense flat size=sm")
+                                ui.button(icon="close", on_click=lambda p=person: remove_recipient(p)).props(
+                                    "dense flat size=sm"
+                                )
                         with ui.row().classes("w-full items-center gap-2 mt-2"):
                             add_select = ui.select(
                                 add_options, label="Person hinzufügen", with_input=True
                             ).classes("flex-grow")
-                            ui.button(
-                                "Hinzufügen", on_click=lambda: add_recipient(add_select.value)
-                            ).props("dense flat")
+                            ui.button("Hinzufügen", on_click=lambda: add_recipient(add_select.value)).props(
+                                "dense flat"
+                            )
 
                 def go_to_compose() -> None:
                     """Validate the recipient list and advance to step 3.
@@ -246,14 +243,12 @@ def email_dispatch_page() -> None:
                     ui.button("Weiter", on_click=go_to_compose)
 
             with ui.step("compose", title="E-Mail verfassen"):
-                ui.label(f"Verfügbare Platzhalter: {PLACEHOLDER_HINT}").classes(
-                    "text-caption text-grey-6"
-                )
+                ui.label(f"Verfügbare Platzhalter: {PLACEHOLDER_HINT}").classes("text-caption text-grey-6")
                 subject_input = ui.input("Betreff").classes("w-full")
                 body_textarea = ui.textarea("Nachricht").classes("w-full").props("rows=8")
-                signature_select = ui.select(
-                    signature_options, label="Signatur", value=None
-                ).classes("w-full max-w-sm")
+                signature_select = ui.select(signature_options, label="Signatur", value=None).classes(
+                    "w-full max-w-sm"
+                )
                 ui.label(
                     "Wird nach der Nachricht angehängt, ohne den Text oben zu "
                     "verändern -- unter „Kommunikation → Signaturen“ verwaltet."
@@ -300,13 +295,17 @@ def email_dispatch_page() -> None:
                     safe_notify(f"Anhang zu gross -- maximal {max_mb} MB.", type="negative")
 
                 with ui.row().classes("w-full items-center gap-2"):
-                    upload_widget = ui.upload(
-                        label="Anhang (optional)",
-                        on_upload=handle_attachment_upload,
-                        on_rejected=handle_attachment_rejected,
-                        max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
-                        auto_upload=True,
-                    ).props("accept=* flat").classes("max-w-sm")
+                    upload_widget = (
+                        ui.upload(
+                            label="Anhang (optional)",
+                            on_upload=handle_attachment_upload,
+                            on_rejected=handle_attachment_rejected,
+                            max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                            auto_upload=True,
+                        )
+                        .props("accept=* flat")
+                        .classes("max-w-sm")
+                    )
                     ui.button(icon="close", on_click=remove_attachment).props("dense flat").tooltip(
                         "Anhang entfernen"
                     )
@@ -361,9 +360,7 @@ def email_dispatch_page() -> None:
                     subject = subject_input.value
                     signature = signatures_by_id.get(signature_select.value)
                     body = _compose_body(body_textarea.value, signature.content if signature else "")
-                    unknown, invalid_emails, missing = _validation_warnings(
-                        subject, body, recipients
-                    )
+                    unknown, invalid_emails, missing = _validation_warnings(subject, body, recipients)
                     with validation_container:
                         ui.label(f"Empfänger: {len(recipients)}").classes("font-bold")
                         ui.label(
@@ -371,37 +368,32 @@ def email_dispatch_page() -> None:
                         ).classes("text-body2 text-grey-7")
                         if recipients:
                             values = person_placeholder_values(recipients[0])
-                            ui.label(
-                                "Vorschau (für die erste Person in der Liste):"
-                            ).classes("text-caption text-grey-6 mt-2")
+                            ui.label("Vorschau (für die erste Person in der Liste):").classes(
+                                "text-caption text-grey-6 mt-2"
+                            )
                             with ui.card().classes("w-full bg-grey-1"):
                                 ui.label(render_template(subject, values)).classes("font-bold")
-                                ui.label(render_template(body, values)).style(
-                                    "white-space: pre-wrap"
-                                )
+                                ui.label(render_template(body, values)).style("white-space: pre-wrap")
                         if unknown:
                             placeholder_list = ", ".join(f"{{{name}}}" for name in unknown)
-                            ui.label(f"⚠ Unbekannte Platzhalter: {placeholder_list}").classes(
-                                "text-negative"
-                            )
+                            ui.label(f"⚠ Unbekannte Platzhalter: {placeholder_list}").classes("text-negative")
                         for person in invalid_emails:
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(
                                     f"⚠ {person.display_name}: E-Mail-Adresse "
                                     f"ungültig ({person.contact_email or '-'})"
                                 ).classes("text-negative text-body2")
-                                ui.button(
-                                    "Bearbeiten", on_click=lambda p=person: fix_person(p)
-                                ).props("dense flat")
+                                ui.button("Bearbeiten", on_click=lambda p=person: fix_person(p)).props(
+                                    "dense flat"
+                                )
                         for person, fields in missing:
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(
-                                    f"⚠ {person.display_name}: fehlende Angabe "
-                                    f"für {', '.join(fields)}"
+                                    f"⚠ {person.display_name}: fehlende Angabe für {', '.join(fields)}"
                                 ).classes("text-negative text-body2")
-                                ui.button(
-                                    "Bearbeiten", on_click=lambda p=person: fix_person(p)
-                                ).props("dense flat")
+                                ui.button("Bearbeiten", on_click=lambda p=person: fix_person(p)).props(
+                                    "dense flat"
+                                )
 
                 with ui.stepper_navigation():
                     ui.button("Zurück", on_click=stepper.previous).props("flat")
@@ -483,9 +475,9 @@ def email_dispatch_page() -> None:
                     back_button.enable()
                     with send_result_container:
                         with ui.card().classes("w-full"):
-                            ui.label(
-                                f"{len(result.sent)} E-Mail(s) an Microsoft übergeben."
-                            ).classes("font-bold")
+                            ui.label(f"{len(result.sent)} E-Mail(s) an Microsoft übergeben.").classes(
+                                "font-bold"
+                            )
                             ui.label(
                                 "„Übergeben“ heisst: von Microsoft zur Zustellung "
                                 "angenommen -- ob eine Adresse tatsächlich existiert, "

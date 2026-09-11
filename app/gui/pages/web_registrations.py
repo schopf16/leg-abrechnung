@@ -195,9 +195,7 @@ def web_registrations_page() -> None:
 
         visible_regs: list[WebRegistration] = []
 
-        def _take_over_row(
-            label: str, *, done: bool, exists: bool, on_click: Callable[[], None]
-        ) -> None:
+        def _take_over_row(label: str, *, done: bool, exists: bool, on_click: Callable[[], None]) -> None:
             """Render one "... übernehmen" button with its status badge.
 
             Args:
@@ -235,9 +233,7 @@ def web_registrations_page() -> None:
                             ui.label(reg.display_name or "-").classes("font-bold")
                             if reg.is_fully_processed:
                                 ui.badge("Vollständig übernommen", color="grey")
-                        ui.label(f"Eingegangen: {reg.submitted_at}").classes(
-                            "text-caption text-grey-6"
-                        )
+                        ui.label(f"Eingegangen: {reg.submitted_at}").classes("text-caption text-grey-6")
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(reg.email or "-")
                         ui.label(reg.phone or "-").classes("text-grey-7")
@@ -250,9 +246,9 @@ def web_registrations_page() -> None:
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(reg.message or "-").classes("text-grey-7")
                     with ui.row().classes("gap-1"):
-                        ui.button(
-                            "Löschen", on_click=lambda r=reg: on_delete(r)
-                        ).props("dense flat color=negative")
+                        ui.button("Löschen", on_click=lambda r=reg: on_delete(r)).props(
+                            "dense flat color=negative"
+                        )
 
                 ui.separator().classes("my-2")
                 ui.label("Übernahme").classes("text-caption text-grey-6")
@@ -272,9 +268,7 @@ def web_registrations_page() -> None:
                     if reg.meters:
                         for meter in reg.meters:
                             with ui.row().classes("items-center gap-2"):
-                                meter_label = meter.meter_number + (
-                                    f" ({meter.note})" if meter.note else ""
-                                )
+                                meter_label = meter.meter_number + (f" ({meter.note})" if meter.note else "")
                                 ui.label(meter_label).classes("font-mono text-caption min-w-[160px]")
                                 _take_over_row(
                                     "Messpunkt übernehmen",
@@ -301,13 +295,9 @@ def web_registrations_page() -> None:
                     (s.street.strip().lower(), s.house_number.strip().lower(), s.postal_code.strip().lower())
                     for s in site_repo.list_all(connection)
                 }
-                known_metering_points = {
-                    mp.designation for mp in metering_point_repo.list_all(connection)
-                }
+                known_metering_points = {mp.designation for mp in metering_point_repo.list_all(connection)}
             regs = (
-                all_regs
-                if show_complete_switch.value
-                else [r for r in all_regs if not r.is_fully_processed]
+                all_regs if show_complete_switch.value else [r for r in all_regs if not r.is_fully_processed]
             )
             visible_regs = regs
             list_container.clear()
@@ -432,9 +422,7 @@ def web_registrations_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'"{reg.display_name or reg.email}" wirklich löschen?').classes(
-                    "font-bold"
-                )
+                ui.label(f'"{reg.display_name or reg.email}" wirklich löschen?').classes("font-bold")
                 if not reg.is_fully_processed:
                     ui.label(
                         "⚠ Person, Standort und/oder Messpunkt(e) dieser "
@@ -487,8 +475,7 @@ def web_registrations_page() -> None:
                 ui.notify(str(exc), type="negative", timeout=8000)
                 return
             ui.notify(
-                f"{result.created} neu, {result.updated} aktualisiert, "
-                f"{result.unchanged} unverändert.",
+                f"{result.created} neu, {result.updated} aktualisiert, {result.unchanged} unverändert.",
                 type="positive",
             )
             for warning in result.warnings:

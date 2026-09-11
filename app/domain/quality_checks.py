@@ -66,11 +66,7 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
     warnings = []
     for metering_point in metering_point_repo.list_all(connection):
         for assignment_warning in assignment_repo.find_warnings(connection, metering_point.id):
-            category = (
-                "assignment_overlap"
-                if assignment_warning.kind == "overlap"
-                else "assignment_gap"
-            )
+            category = "assignment_overlap" if assignment_warning.kind == "overlap" else "assignment_gap"
             warnings.append(
                 QualityWarning(
                     category=category,

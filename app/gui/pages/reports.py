@@ -65,15 +65,13 @@ def reports_page() -> None:
 
         if not available_periods:
             ui.label(
-                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der "
-                "Seite „Import“ Daten einlesen."
+                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der Seite „Import“ Daten einlesen."
             ).classes("text-negative mt-2")
             return
 
         if not legs:
             ui.label(
-                "⚠ Noch keine LEG angelegt. Bitte zuerst unter „LEGs“ "
-                "mindestens eine LEG erfassen."
+                "⚠ Noch keine LEG angelegt. Bitte zuerst unter „LEGs“ mindestens eine LEG erfassen."
             ).classes("text-negative mt-2")
             return
 
@@ -127,24 +125,20 @@ def reports_page() -> None:
                             paper_invoice_by_person,
                         )
                         control_check = verify_sum_balance(items)
-                        person_names = {
-                            p.id: p.display_name for p in person_repo.list_all(connection)
-                        }
+                        person_names = {p.id: p.display_name for p in person_repo.list_all(connection)}
                 except LegNotAssignedError as exc:
                     ui.label(f"⚠ {exc}").classes("text-negative")
                 else:
                     with ui.card().classes("w-full"):
-                        ui.label(f"{leg_options[leg_id]} -- Q{quarter} {year}").classes(
-                            "text-lg font-bold"
-                        )
+                        ui.label(f"{leg_options[leg_id]} -- Q{quarter} {year}").classes("text-lg font-bold")
                         ui.label(
                             f"{distribution.interval_count} Intervalle, "
                             f"{len(distribution.person_results)} Personen mit lokalem Anteil."
                         )
                         if distribution.unassigned_kwh:
-                            ui.label(
-                                f"⚠ {distribution.unassigned_kwh} kWh ohne zugeordnete Person."
-                            ).classes("text-negative")
+                            ui.label(f"⚠ {distribution.unassigned_kwh} kWh ohne zugeordnete Person.").classes(
+                                "text-negative"
+                            )
                         balance_class = "text-positive" if control_check.balanced else "text-negative"
                         balance_symbol = "✓" if control_check.balanced else "⚠"
                         ui.label(
@@ -158,9 +152,24 @@ def reports_page() -> None:
                             columns=[
                                 {"name": "person", "label": "Person", "field": "person", "align": "left"},
                                 {"name": "typ", "label": "Typ", "field": "typ", "align": "left"},
-                                {"name": "consumed", "label": "Bezug (kWh)", "field": "consumed", "align": "right"},
-                                {"name": "produced", "label": "Vergütung (kWh)", "field": "produced", "align": "right"},
-                                {"name": "amount", "label": "Netto-Betrag (CHF)", "field": "amount", "align": "right"},
+                                {
+                                    "name": "consumed",
+                                    "label": "Bezug (kWh)",
+                                    "field": "consumed",
+                                    "align": "right",
+                                },
+                                {
+                                    "name": "produced",
+                                    "label": "Vergütung (kWh)",
+                                    "field": "produced",
+                                    "align": "right",
+                                },
+                                {
+                                    "name": "amount",
+                                    "label": "Netto-Betrag (CHF)",
+                                    "field": "amount",
+                                    "align": "right",
+                                },
                             ],
                             rows=[
                                 {
@@ -208,11 +217,11 @@ def reports_page() -> None:
                     # the name mentioned in the message text.
                     warnings_table.add_slot(
                         "body-cell-link",
-                        r'''
+                        r"""
                         <q-td :props="props">
                             <a v-if="props.row.link" :href="props.row.link">Ansehen →</a>
                         </q-td>
-                        ''',
+                        """,
                     )
 
         check_button.on_click(run_checks)

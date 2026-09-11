@@ -95,9 +95,9 @@ def assignments_page() -> None:
                         ui.label(f"ab {row['valid_from']}").classes("min-w-[120px] text-grey-7")
                         ui.label(f"bis {row['valid_to']}").classes("min-w-[120px] text-grey-7")
                         with ui.row().classes("gap-1 ml-auto"):
-                            ui.button(
-                                icon="edit", on_click=lambda z=row["assignment"]: on_edit(z)
-                            ).props("dense flat")
+                            ui.button(icon="edit", on_click=lambda z=row["assignment"]: on_edit(z)).props(
+                                "dense flat"
+                            )
                             ui.button(
                                 icon="delete",
                                 on_click=lambda z=row["assignment"]: on_remove(z),
@@ -125,9 +125,7 @@ def assignments_page() -> None:
                 groups.setdefault(z.metering_point_id, []).append(
                     {
                         "assignment": z,
-                        "person_name": persons[z.person_id].display_name
-                        if z.person_id in persons
-                        else "?",
+                        "person_name": persons[z.person_id].display_name if z.person_id in persons else "?",
                         "valid_from": z.valid_from.isoformat(),
                         "valid_to": z.valid_to.isoformat() if z.valid_to else "offen",
                     }
@@ -160,9 +158,7 @@ def assignments_page() -> None:
             warnings_column.clear()
             with warnings_column:
                 for warning in all_warnings:
-                    ui.label(f"⚠ {warning.message}").classes(
-                        "text-negative text-body2"
-                    )
+                    ui.label(f"⚠ {warning.message}").classes("text-negative text-body2")
 
         def open_form(existing: Optional[Assignment]) -> None:
             """Open the create/edit dialog for a Assignment.
@@ -199,9 +195,7 @@ def assignments_page() -> None:
             # Deactivated persons are hidden from selection for new assignments,
             # but stay selectable when editing a Assignment that already points
             # at one (see app.models.person.delete).
-            selectable_persons = [
-                p for p in persons if p.active or (existing and p.id == existing.person_id)
-            ]
+            selectable_persons = [p for p in persons if p.active or (existing and p.id == existing.person_id)]
             person_options = {
                 p.id: p.display_name + ("" if p.active else " (inaktiv)") for p in selectable_persons
             }
@@ -213,9 +207,9 @@ def assignments_page() -> None:
             )
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label(
-                    "Zuordnung bearbeiten" if existing else "Neue Zuordnung"
-                ).classes("text-lg font-bold")
+                ui.label("Zuordnung bearbeiten" if existing else "Neue Zuordnung").classes(
+                    "text-lg font-bold"
+                )
                 site_select = ui.select(
                     {None: "Alle Standorte", **site_options},
                     label="Standort (Filter für Messpunkt)",
@@ -283,14 +277,22 @@ def assignments_page() -> None:
                     label="Person",
                     value=existing.person_id if existing else None,
                 ).classes("w-full")
-                valid_from = ui.input(
-                    "Gültig von",
-                    value=existing.valid_from.isoformat() if existing else date.today().isoformat(),
-                ).props("type=date").classes("w-full")
-                valid_to = ui.input(
-                    "Gültig bis (leer = offen)",
-                    value=existing.valid_to.isoformat() if existing and existing.valid_to else "",
-                ).props("type=date").classes("w-full")
+                valid_from = (
+                    ui.input(
+                        "Gültig von",
+                        value=existing.valid_from.isoformat() if existing else date.today().isoformat(),
+                    )
+                    .props("type=date")
+                    .classes("w-full")
+                )
+                valid_to = (
+                    ui.input(
+                        "Gültig bis (leer = offen)",
+                        value=existing.valid_to.isoformat() if existing and existing.valid_to else "",
+                    )
+                    .props("type=date")
+                    .classes("w-full")
+                )
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:

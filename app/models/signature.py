@@ -74,9 +74,7 @@ def get(connection: sqlite3.Connection, signature_id: int) -> Optional[Signature
     Returns:
         The matching `Signature`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM signatures WHERE id = ?", (signature_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM signatures WHERE id = ?", (signature_id,)).fetchone()
     return Signature.from_row(row) if row else None
 
 
@@ -90,9 +88,7 @@ def get_by_name(connection: sqlite3.Connection, name: str) -> Optional[Signature
     Returns:
         The matching `Signature`, or `None` if no such name exists.
     """
-    row = connection.execute(
-        "SELECT * FROM signatures WHERE name = ?", (name,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM signatures WHERE name = ?", (name,)).fetchone()
     return Signature.from_row(row) if row else None
 
 

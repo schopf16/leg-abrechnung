@@ -37,9 +37,7 @@ def list_broadcast_recipients(connection) -> list[Person]:
         recipients before actually sending, see `app.gui.pages.
         email_dispatch`.
     """
-    return [
-        p for p in person_repo.list_all(connection) if p.active and p.contact_email.strip()
-    ]
+    return [p for p in person_repo.list_all(connection) if p.active and p.contact_email.strip()]
 
 
 def list_leg_recipients(connection, leg_id: int) -> list[Person]:
@@ -290,9 +288,7 @@ async def resend_invoice_email(
 
     leg = leg_repo.get(connection, run.leg_id)
     access_token = await graph_client.get_access_token(config)
-    await _send_one_invoice_email(
-        connection, config, access_token, run, item, person, leg, subject, body
-    )
+    await _send_one_invoice_email(connection, config, access_token, run, item, person, leg, subject, body)
 
 
 #: Invoice-email-only placeholders, not derived from `Person` -- see
@@ -377,6 +373,4 @@ async def _send_one_invoice_email(
         attachment_path=Path(item.pdf_path),
         attachment_filename=Path(item.pdf_path).name,
     )
-    billing_run_repo.set_item_email_sent_at(
-        connection, item.id, datetime.now(timezone.utc).isoformat()
-    )
+    billing_run_repo.set_item_email_sent_at(connection, item.id, datetime.now(timezone.utc).isoformat())

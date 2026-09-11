@@ -96,9 +96,7 @@ def list_all(connection: sqlite3.Connection) -> list[DunningLog]:
     Returns:
         All log entries, ordered by `sent_at` descending.
     """
-    rows = connection.execute(
-        "SELECT * FROM dunning_log ORDER BY sent_at DESC, id DESC"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM dunning_log ORDER BY sent_at DESC, id DESC").fetchall()
     return [DunningLog.from_row(row) for row in rows]
 
 

@@ -90,9 +90,7 @@ def parse_csv_file(path: Path) -> ParseResult:
 
     missing = _REQUIRED_FIELDS - set(field_by_index.values())
     if missing:
-        raise ImportValidationError(
-            f"CSV-Datei: fehlende Spalten {sorted(missing)}. Gefunden: {header}"
-        )
+        raise ImportValidationError(f"CSV-Datei: fehlende Spalten {sorted(missing)}. Gefunden: {header}")
 
     result = ParseResult()
     for line_number, row in enumerate(reader, start=2):
@@ -113,9 +111,7 @@ def parse_csv_file(path: Path) -> ParseResult:
             continue
 
         if kwh < 0:
-            result.warnings.append(
-                f"Zeile {line_number} übersprungen: negativer Wert {kwh}."
-            )
+            result.warnings.append(f"Zeile {line_number} übersprungen: negativer Wert {kwh}.")
             continue
 
         result.readings.append(

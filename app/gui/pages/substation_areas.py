@@ -52,7 +52,10 @@ def _mix_badge(mix) -> str:
 
 
 def _to_row(
-    connection, substation_area: SubstationArea, site_ids: set[int], upgrade_substation_area_ids: set[int],
+    connection,
+    substation_area: SubstationArea,
+    site_ids: set[int],
+    upgrade_substation_area_ids: set[int],
 ) -> dict:
     """Convert a `substation area` into a row dict backing both the card and the printout.
 
@@ -116,9 +119,11 @@ def substation_areas_page() -> None:
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
-        search_input = ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)").classes(
-            "w-full max-w-md"
-        ).props("debounce=300 clearable")
+        search_input = (
+            ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)")
+            .classes("w-full max-w-md")
+            .props("debounce=300 clearable")
+        )
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -179,12 +184,12 @@ def substation_areas_page() -> None:
                 min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
                 sites = site_repo.list_all(connection)
                 upgrade_substation_area_ids = {
-                    c.substation_area.id
-                    for c in find_upgrade_candidates(connection, min_persons=min_persons)
+                    c.substation_area.id for c in find_upgrade_candidates(connection, min_persons=min_persons)
                 }
                 all_rows = [
                     _to_row(
-                        connection, substation_area,
+                        connection,
+                        substation_area,
                         {s.id for s in sites if s.substation_area_id == substation_area.id},
                         upgrade_substation_area_ids,
                     )
@@ -207,19 +212,27 @@ def substation_areas_page() -> None:
                 ui.label("Trafokreis bearbeiten" if existing else "Neuer Trafokreis").classes(
                     "text-lg font-bold"
                 )
-                name = ui.input(
-                    "Name (frei wählbar, z. B. Pseudo-Name)",
-                    value=existing.name if existing else "",
-                ).classes("w-full").props("debounce=300")
+                name = (
+                    ui.input(
+                        "Name (frei wählbar, z. B. Pseudo-Name)",
+                        value=existing.name if existing else "",
+                    )
+                    .classes("w-full")
+                    .props("debounce=300")
+                )
                 duplicate_warning = ui.label("").classes("text-warning")
                 bkw_designation = ui.input(
                     "BKW-Bezeichnung (optional, z. B. TRA21359)",
                     value=existing.bkw_designation if existing else "",
                 ).classes("w-full")
-                note = ui.textarea(
-                    "Bemerkung (optional)",
-                    value=existing.note if existing else "",
-                ).classes("w-full").props("rows=3")
+                note = (
+                    ui.textarea(
+                        "Bemerkung (optional)",
+                        value=existing.note if existing else "",
+                    )
+                    .classes("w-full")
+                    .props("rows=3")
+                )
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
@@ -237,9 +250,7 @@ def substation_areas_page() -> None:
                     with connection_scope() as connection:
                         found = substation_area_repo.get_by_name(connection, typed)
                     is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = (
-                        "Dieser Name wird bereits verwendet." if is_duplicate else ""
-                    )
+                    duplicate_warning.text = "Dieser Name wird bereits verwendet." if is_duplicate else ""
                     return is_duplicate
 
                 name.on_value_change(lambda _: check_duplicate())

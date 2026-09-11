@@ -101,9 +101,7 @@ def list_all(connection: sqlite3.Connection) -> list[MeteringPoint]:
     Returns:
         All metering points, sorted by `designation`.
     """
-    rows = connection.execute(
-        "SELECT * FROM metering_point ORDER BY designation"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM metering_point ORDER BY designation").fetchall()
     return [MeteringPoint.from_row(row) for row in rows]
 
 
@@ -134,15 +132,11 @@ def get(connection: sqlite3.Connection, metering_point_id: int) -> Optional[Mete
     Returns:
         The matching `MeteringPoint`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM metering_point WHERE id = ?", (metering_point_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM metering_point WHERE id = ?", (metering_point_id,)).fetchone()
     return MeteringPoint.from_row(row) if row else None
 
 
-def get_by_designation(
-    connection: sqlite3.Connection, designation: str
-) -> Optional[MeteringPoint]:
+def get_by_designation(connection: sqlite3.Connection, designation: str) -> Optional[MeteringPoint]:
     """Fetch a single MeteringPoint by its business key.
 
     Args:
@@ -153,9 +147,7 @@ def get_by_designation(
     Returns:
         The matching `MeteringPoint`, or `None` if unknown.
     """
-    row = connection.execute(
-        "SELECT * FROM metering_point WHERE designation = ?", (designation,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM metering_point WHERE designation = ?", (designation,)).fetchone()
     return MeteringPoint.from_row(row) if row else None
 
 

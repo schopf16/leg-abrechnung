@@ -75,9 +75,7 @@ def open_metering_point_form(
         default_metering_point_number = prefill.get("metering_point_number", "")
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-        ui.label("Messpunkt bearbeiten" if existing else "Neuer Messpunkt").classes(
-            "text-lg font-bold"
-        )
+        ui.label("Messpunkt bearbeiten" if existing else "Neuer Messpunkt").classes("text-lg font-bold")
         ui.label(
             "Messpunkt-Bezeichnung: Land + Identifikator sind bei "
             "allen Messpunkten dieser LEG gleich (Vorgabe aus den "
@@ -86,12 +84,11 @@ def open_metering_point_form(
         ).classes("text-caption text-grey-6")
         with ui.row().classes("w-full gap-2"):
             country_input = ui.input("Land", value=default_country).classes("w-20")
-            identifier_input = ui.input(
-                "Identifikator (11-stellig)", value=default_identifier
-            ).classes("flex-grow")
+            identifier_input = ui.input("Identifikator (11-stellig)", value=default_identifier).classes(
+                "flex-grow"
+            )
         metering_point_number_input = ui.input(
-            "Messpunktnummer (wird rechtsbündig auf 20 Stellen mit "
-            "führenden Nullen aufgefüllt)",
+            "Messpunktnummer (wird rechtsbündig auf 20 Stellen mit führenden Nullen aufgefüllt)",
             value=default_metering_point_number,
         ).classes("w-full")
         designation_preview = ui.label("").classes("font-mono text-caption text-grey-8")

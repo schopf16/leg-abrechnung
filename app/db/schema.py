@@ -49,9 +49,7 @@ def get_schema_version(connection: sqlite3.Connection) -> int:
         The stored schema version, or ``0`` for a brand-new, empty database.
     """
     _ensure_meta_table(connection)
-    row = connection.execute(
-        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-    ).fetchone()
+    row = connection.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
     return int(row["value"]) if row else 0
 
 
@@ -89,9 +87,7 @@ def migrate_to_latest(connection: sqlite3.Connection) -> int:
     pending.sort(key=lambda m: m.version)
 
     for migration in pending:
-        logger.info(
-            "Applying migration %s: %s", migration.version, migration.description
-        )
+        logger.info("Applying migration %s: %s", migration.version, migration.description)
         connection.executescript(migration.sql)
         _set_schema_version(connection, migration.version)
         connection.commit()
@@ -135,8 +131,7 @@ def _seed_default_settings(connection: sqlite3.Connection) -> None:
     exists = connection.execute("SELECT 1 FROM leg_settings WHERE id = 1").fetchone()
     if not exists:
         connection.execute(
-            "INSERT INTO leg_settings (id, price_rp_per_kwh, updated_at) "
-            "VALUES (1, 12.0, ?)",
+            "INSERT INTO leg_settings (id, price_rp_per_kwh, updated_at) VALUES (1, 12.0, ?)",
             (datetime.now(timezone.utc).isoformat(),),
         )
         connection.commit()

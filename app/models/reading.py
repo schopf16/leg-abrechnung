@@ -160,9 +160,7 @@ def list_import_batches(connection: sqlite3.Connection) -> list[ImportBatch]:
     Returns:
         All import batches ordered by `imported_at` descending.
     """
-    rows = connection.execute(
-        "SELECT * FROM import_batches ORDER BY imported_at DESC"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM import_batches ORDER BY imported_at DESC").fetchall()
     return [
         ImportBatch(
             id=row["id"],

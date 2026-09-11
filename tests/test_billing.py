@@ -27,10 +27,17 @@ def _item(person_id: int, net_amount_rappen: int) -> BillingRunItem:
         A `BillingRunItem` with placeholder kWh/price fields and no admin fees.
     """
     return BillingRunItem(
-        id=None, billing_run_id=0, person_id=person_id,
-        consumed_kwh=0, produced_kwh=0, price_rp_per_kwh=12,
-        admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
-        net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
+        id=None,
+        billing_run_id=0,
+        person_id=person_id,
+        consumed_kwh=0,
+        produced_kwh=0,
+        price_rp_per_kwh=12,
+        admin_fee_consumption_rappen=0,
+        paper_invoice_rappen=0,
+        net_amount_rappen=net_amount_rappen,
+        pdf_path=None,
+        created_at="",
     )
 
 
@@ -43,7 +50,9 @@ def test_prosumer_gets_a_single_netted_item_not_two():
     """A prosumer (consumption and production both nonzero) gets exactly one
     item -- consumption and production are netted, never billed separately."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=10.0, produced_local_kwh=4.0),
         },
@@ -61,7 +70,9 @@ def test_prosumer_gets_a_single_netted_item_not_two():
 def test_pure_consumer_gets_positive_net_owed_to_leg():
     """A person with only consumption gets a positive net (an invoice)."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=5.0, produced_local_kwh=0.0),
         },
@@ -75,7 +86,9 @@ def test_pure_consumer_gets_positive_net_owed_to_leg():
 def test_pure_producer_gets_negative_net_owed_by_leg():
     """A person with only production gets a negative net (a credit)."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=0.0, produced_local_kwh=5.0),
         },
@@ -97,7 +110,9 @@ def test_rounding_uses_half_up_and_happens_only_once():
     """0.5 Rappen rounds up; only the final net amount is rounded, per
     app.domain.billing's "round only once, at the end" design."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=0.125, produced_local_kwh=0.0),
         },
@@ -111,7 +126,9 @@ def test_admin_fee_consumption_is_charged_on_consumption_only():
     """The consumption admin surcharge applies to consumed_local_kwh only, even
     when an feed-in rate of zero means production is untouched."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=100.0, produced_local_kwh=50.0),
         },
@@ -130,7 +147,9 @@ def test_admin_fee_feed_in_is_independent_of_consumption():
     with its own independent rate -- charging one direction must not
     imply anything about the other."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=100.0, produced_local_kwh=50.0),
         },
@@ -150,7 +169,9 @@ def test_admin_fee_rates_are_frozen_onto_the_item():
     Einstellungen leave already-billed items' displayed rate untouched
     (see app.domain.billing's module docstring)."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=10.0, produced_local_kwh=10.0),
         },
@@ -163,7 +184,9 @@ def test_admin_fee_rates_are_frozen_onto_the_item():
 def test_paper_invoice_applied_only_when_person_opted_in():
     """The flat paper-invoice fee only applies to persons flagged for it."""
     distribution = DistributionResult(
-        leg_id=1, year=2025, quarter=1,
+        leg_id=1,
+        year=2025,
+        quarter=1,
         person_results={
             1: PersonQuarterResult(person_id=1, consumed_local_kwh=10.0, produced_local_kwh=0.0),
             2: PersonQuarterResult(person_id=2, consumed_local_kwh=10.0, produced_local_kwh=0.0),
@@ -205,14 +228,30 @@ def test_verify_sum_balance_flags_large_mismatch():
 def test_verify_sum_balance_ignores_admin_fees():
     """Admin fees added on top of a balanced energy net don't break the balance check."""
     balanced_energy_item_to_leg = BillingRunItem(
-        id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, admin_fee_consumption_rappen=50, paper_invoice_rappen=200,
-        net_amount_rappen=120 + 50 + 200, pdf_path=None, created_at="",
+        id=None,
+        billing_run_id=0,
+        person_id=1,
+        consumed_kwh=0,
+        produced_kwh=0,
+        price_rp_per_kwh=12,
+        admin_fee_consumption_rappen=50,
+        paper_invoice_rappen=200,
+        net_amount_rappen=120 + 50 + 200,
+        pdf_path=None,
+        created_at="",
     )
     balanced_energy_item_by_leg = BillingRunItem(
-        id=None, billing_run_id=0, person_id=2, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
-        net_amount_rappen=-120, pdf_path=None, created_at="",
+        id=None,
+        billing_run_id=0,
+        person_id=2,
+        consumed_kwh=0,
+        produced_kwh=0,
+        price_rp_per_kwh=12,
+        admin_fee_consumption_rappen=0,
+        paper_invoice_rappen=0,
+        net_amount_rappen=-120,
+        pdf_path=None,
+        created_at="",
     )
     check = verify_sum_balance([balanced_energy_item_to_leg, balanced_energy_item_by_leg])
     assert check.balanced
@@ -225,10 +264,18 @@ def test_verify_sum_balance_ignores_admin_fee_feed_in_too():
     check exactly like the consumption one -- both are pure LEG revenue with no
     producer-side counterpart."""
     item = BillingRunItem(
-        id=None, billing_run_id=0, person_id=1, consumed_kwh=0, produced_kwh=0,
-        price_rp_per_kwh=12, admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
+        id=None,
+        billing_run_id=0,
+        person_id=1,
+        consumed_kwh=0,
+        produced_kwh=0,
+        price_rp_per_kwh=12,
+        admin_fee_consumption_rappen=0,
+        paper_invoice_rappen=0,
         admin_fee_feed_in_rappen=30,
-        net_amount_rappen=-120 + 30, pdf_path=None, created_at="",
+        net_amount_rappen=-120 + 30,
+        pdf_path=None,
+        created_at="",
     )
     check = verify_sum_balance([item, _item(2, 120)])
     assert check.balanced
@@ -281,7 +328,8 @@ def test_rerunning_billing_replaces_previous_run(db):
 
     all_runs = billing_run_repo.list_runs(db)
     matching = [
-        r for r in all_runs
+        r
+        for r in all_runs
         if r.leg_id == leg_id and r.period_year == SUMMER_QUARTER[0] and r.period_quarter == SUMMER_QUARTER[1]
     ]
     assert len(matching) == 1

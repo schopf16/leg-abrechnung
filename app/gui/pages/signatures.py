@@ -70,19 +70,19 @@ def signatures_page() -> None:
                 )
                 ui.button("+ Neue Signatur", on_click=lambda: open_form(None))
 
-        search_input = ui.input("Suche (Name, Inhalt)").classes("w-full max-w-md").props(
-            "debounce=300 clearable"
+        search_input = (
+            ui.input("Suche (Name, Inhalt)").classes("w-full max-w-md").props("debounce=300 clearable")
         )
 
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(
             "body-cell-actions",
-            r'''
+            r"""
             <q-td :props="props">
                 <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
                 <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
             </q-td>
-            ''',
+            """,
         )
 
         all_rows: list[dict] = []
@@ -121,17 +121,21 @@ def signatures_page() -> None:
                 None.
             """
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
-                ui.label("Signatur bearbeiten" if existing else "Neue Signatur").classes(
-                    "text-lg font-bold"
+                ui.label("Signatur bearbeiten" if existing else "Neue Signatur").classes("text-lg font-bold")
+                name = (
+                    ui.input(
+                        "Name (zur Auswahl beim Versenden)",
+                        value=existing.name if existing else "",
+                    )
+                    .classes("w-full")
+                    .props("debounce=300")
                 )
-                name = ui.input(
-                    "Name (zur Auswahl beim Versenden)",
-                    value=existing.name if existing else "",
-                ).classes("w-full").props("debounce=300")
                 duplicate_warning = ui.label("").classes("text-warning")
-                content = ui.textarea(
-                    "Inhalt", value=existing.content if existing else ""
-                ).classes("w-full").props("rows=8")
+                content = (
+                    ui.textarea("Inhalt", value=existing.content if existing else "")
+                    .classes("w-full")
+                    .props("rows=8")
+                )
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
@@ -149,9 +153,7 @@ def signatures_page() -> None:
                     with connection_scope() as connection:
                         found = signature_repo.get_by_name(connection, typed)
                     is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = (
-                        "Dieser Name wird bereits verwendet." if is_duplicate else ""
-                    )
+                    duplicate_warning.text = "Dieser Name wird bereits verwendet." if is_duplicate else ""
                     return is_duplicate
 
                 name.on_value_change(lambda _: check_duplicate())
@@ -175,14 +177,18 @@ def signatures_page() -> None:
                         with connection_scope() as connection:
                             if existing:
                                 updated = Signature(
-                                    id=existing.id, name=name.value.strip(),
-                                    content=content.value, created_at=existing.created_at,
+                                    id=existing.id,
+                                    name=name.value.strip(),
+                                    content=content.value,
+                                    created_at=existing.created_at,
                                 )
                                 signature_repo.update(connection, updated)
                             else:
                                 new_signature = Signature(
-                                    id=None, name=name.value.strip(),
-                                    content=content.value, created_at="",
+                                    id=None,
+                                    name=name.value.strip(),
+                                    content=content.value,
+                                    created_at="",
                                 )
                                 signature_repo.create(connection, new_signature)
                     except Exception as exc:  # unique constraint race, etc.
@@ -228,9 +234,9 @@ def signatures_page() -> None:
 
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Signatur "{name}" wirklich löschen?')
-                ui.label(
-                    "Bereits versendete E-Mails sind davon nicht betroffen."
-                ).classes("text-caption text-grey-7")
+                ui.label("Bereits versendete E-Mails sind davon nicht betroffen.").classes(
+                    "text-caption text-grey-7"
+                )
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 

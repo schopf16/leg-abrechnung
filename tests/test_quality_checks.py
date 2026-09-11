@@ -38,11 +38,24 @@ def _person(db, name: str = "P") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="", company="", first_name=name, last_name="",
-            contact_email="", contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="",
+            company="",
+            first_name=name,
+            last_name="",
+            contact_email="",
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
@@ -52,8 +65,14 @@ def _site(db) -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Musterstrasse",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
 
@@ -69,9 +88,14 @@ def _metering_point(db, designation: str, site_id: int, leg_id: int | None = Non
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=designation,
-            direction=DIRECTION_CONSUMPTION, site_id=site_id, leg_id=leg_id,
-            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=designation,
+            direction=DIRECTION_CONSUMPTION,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
@@ -84,15 +108,23 @@ def test_check_assignment_consistency_reports_gaps_across_all_metering_points(db
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=date(2025, 1, 10), created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2025, 1, 10),
+            created_at="",
         ),
     )
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 20), valid_to=None, created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 20),
+            valid_to=None,
+            created_at="",
         ),
     )
 
@@ -110,8 +142,12 @@ def test_check_assignment_consistency_clean_history_has_no_warnings(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(2025, 1, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
     assert check_assignment_consistency(db) == []
@@ -125,15 +161,25 @@ def test_check_reading_completeness_flags_days_with_missing_values(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(YEAR, 1, 1), valid_to=None, created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(YEAR, 1, 1),
+            valid_to=None,
+            created_at="",
         ),
     )
 
     # Only 4 of the expected 96 readings for Jan 15th.
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="consumption", kwh=0.1, source="test")
+        Reading(
+            metering_point_id=metering_point_id,
+            timestamp=(day + timedelta(minutes=15 * i)).isoformat(),
+            direction="consumption",
+            kwh=0.1,
+            source="test",
+        )
         for i in range(4)
     ]
     upsert_readings(db, readings)
@@ -161,13 +207,23 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=date(YEAR, 1, 15), valid_to=date(YEAR, 1, 15), created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(YEAR, 1, 15),
+            valid_to=date(YEAR, 1, 15),
+            created_at="",
         ),
     )
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="consumption", kwh=0.1, source="test")
+        Reading(
+            metering_point_id=metering_point_id,
+            timestamp=(day + timedelta(minutes=15 * i)).isoformat(),
+            direction="consumption",
+            kwh=0.1,
+            source="test",
+        )
         for i in range(96)
     ]
     upsert_readings(db, readings)
@@ -215,9 +271,7 @@ def test_check_leg_assignment_ignores_other_metering_points_with_leg(db):
 def test_check_onboarding_progress_flags_overdue_step(db):
     """An onboarding stuck for longer than the (default 30-day) threshold is flagged."""
     person_id = _person(db, "Overdue")
-    person_onboarding_repo.start_for_person(
-        db, person_id, registered_at=date.today() - timedelta(days=40)
-    )
+    person_onboarding_repo.start_for_person(db, person_id, registered_at=date.today() - timedelta(days=40))
 
     warnings = check_onboarding_progress(db)
     assert any(w.category == "onboarding_overdue" for w in warnings)
@@ -229,9 +283,7 @@ def test_check_onboarding_progress_flags_overdue_step(db):
 def test_check_onboarding_progress_ignores_step_within_threshold(db):
     """An onboarding well within the threshold produces no warning."""
     person_id = _person(db, "OnTrack")
-    person_onboarding_repo.start_for_person(
-        db, person_id, registered_at=date.today() - timedelta(days=5)
-    )
+    person_onboarding_repo.start_for_person(db, person_id, registered_at=date.today() - timedelta(days=5))
 
     assert check_onboarding_progress(db) == []
 
@@ -254,9 +306,7 @@ def test_check_onboarding_progress_ignores_completed_onboarding(db):
 def test_check_onboarding_progress_respects_configurable_threshold(db):
     """A lowered threshold flags an onboarding that the default would not."""
     person_id = _person(db, "Custom")
-    person_onboarding_repo.start_for_person(
-        db, person_id, registered_at=date.today() - timedelta(days=10)
-    )
+    person_onboarding_repo.start_for_person(db, person_id, registered_at=date.today() - timedelta(days=10))
     assert check_onboarding_progress(db) == []  # still fine at the default 30 days
 
     settings = settings_repo.get_settings(db)
@@ -282,16 +332,34 @@ def test_check_unresolved_bank_transactions_aggregates_into_one_warning(db):
         db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=2
     )
     bank_transaction_repo.insert_transaction(
-        db, bank_import_batch_id=batch_id, bank_reference="R1", booking_date="2026-01-01",
-        amount_rappen=1000, currency="CHF", credit_debit_indicator="CRDT",
-        counterparty_name="A", counterparty_iban="", structured_reference="", remittance_text="",
-        source_format="camt053", is_reversal=False,
+        db,
+        bank_import_batch_id=batch_id,
+        bank_reference="R1",
+        booking_date="2026-01-01",
+        amount_rappen=1000,
+        currency="CHF",
+        credit_debit_indicator="CRDT",
+        counterparty_name="A",
+        counterparty_iban="",
+        structured_reference="",
+        remittance_text="",
+        source_format="camt053",
+        is_reversal=False,
     )
     bank_transaction_repo.insert_transaction(
-        db, bank_import_batch_id=batch_id, bank_reference="R2", booking_date="2026-01-02",
-        amount_rappen=2000, currency="CHF", credit_debit_indicator="CRDT",
-        counterparty_name="B", counterparty_iban="", structured_reference="", remittance_text="",
-        source_format="camt053", is_reversal=False,
+        db,
+        bank_import_batch_id=batch_id,
+        bank_reference="R2",
+        booking_date="2026-01-02",
+        amount_rappen=2000,
+        currency="CHF",
+        credit_debit_indicator="CRDT",
+        counterparty_name="B",
+        counterparty_iban="",
+        structured_reference="",
+        remittance_text="",
+        source_format="camt053",
+        is_reversal=False,
     )
 
     warnings = check_unresolved_bank_transactions(db)
@@ -306,10 +374,19 @@ def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
         db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=1
     )
     tx_id = bank_transaction_repo.insert_transaction(
-        db, bank_import_batch_id=batch_id, bank_reference="R1", booking_date="2026-01-01",
-        amount_rappen=1000, currency="CHF", credit_debit_indicator="CRDT",
-        counterparty_name="A", counterparty_iban="", structured_reference="", remittance_text="",
-        source_format="camt053", is_reversal=False,
+        db,
+        bank_import_batch_id=batch_id,
+        bank_reference="R1",
+        booking_date="2026-01-01",
+        amount_rappen=1000,
+        currency="CHF",
+        credit_debit_indicator="CRDT",
+        counterparty_name="A",
+        counterparty_iban="",
+        structured_reference="",
+        remittance_text="",
+        source_format="camt053",
+        is_reversal=False,
     )
     bank_transaction_repo.set_status(db, tx_id, "ignored")
 
@@ -318,7 +395,9 @@ def test_check_unresolved_bank_transactions_ignores_ignored_entries(db):
 
 def _substation_area(db, name: str) -> int:
     """Create a substation area and return its id."""
-    return substation_area_repo.create(db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at=""))
+    return substation_area_repo.create(
+        db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at="")
+    )
 
 
 def _site_in(db, substation_area_id: int, *, street: str = "Weg") -> int:
@@ -326,22 +405,38 @@ def _site_in(db, substation_area_id: int, *, street: str = "Weg") -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street=street, house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=substation_area_id, created_at="",
+            id=None,
+            street=street,
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=substation_area_id,
+            created_at="",
         ),
     )
 
 
 def _metering_point_direction(
-    db, designation: str, site_id: int, direction: str, *, leg_id: int | None = None,
+    db,
+    designation: str,
+    site_id: int,
+    direction: str,
+    *,
+    leg_id: int | None = None,
 ) -> int:
     """Create a MeteringPoint with an explicit direction and return its id."""
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=designation, direction=direction,
-            site_id=site_id, leg_id=leg_id, pv_capacity_kwp=None,
-            battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=designation,
+            direction=direction,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
@@ -360,10 +455,20 @@ def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substatio
     consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(
+        db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id
+    )
     for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
-            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
+            db,
+            Assignment(
+                id=None,
+                person_id=pid,
+                metering_point_id=mp_id,
+                valid_from=date(2026, 1, 1),
+                valid_to=None,
+                created_at="",
+            ),
         )
 
     assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
@@ -392,10 +497,20 @@ def test_check_leg_upgrade_potential_respects_configurable_min_persons(db):
     consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
     feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point_direction(db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(
+        db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id
+    )
     for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
-            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
+            db,
+            Assignment(
+                id=None,
+                person_id=pid,
+                metering_point_id=mp_id,
+                valid_from=date(2026, 1, 1),
+                valid_to=None,
+                created_at="",
+            ),
         )
 
     settings = settings_repo.get_settings(db)
@@ -414,7 +529,15 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
     person_id = _person(db)
     feed_in_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
     assignment_repo.create(
-        db, Assignment(id=None, person_id=person_id, metering_point_id=feed_in_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=feed_in_id,
+            valid_from=date(2026, 1, 1),
+            valid_to=None,
+            created_at="",
+        ),
     )
 
     warnings = check_substation_area_one_sided(db)
@@ -437,10 +560,20 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
     person_id = _person(db)
     feed_in_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
     other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point_direction(db, "CH2", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
+    other_mp_id = _metering_point_direction(
+        db, "CH2", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id
+    )
     for pid, mp_id in ((person_id, feed_in_id), (other_person_id, other_mp_id)):
         assignment_repo.create(
-            db, Assignment(id=None, person_id=pid, metering_point_id=mp_id, valid_from=date(2026, 1, 1), valid_to=None, created_at="")
+            db,
+            Assignment(
+                id=None,
+                person_id=pid,
+                metering_point_id=mp_id,
+                valid_from=date(2026, 1, 1),
+                valid_to=None,
+                created_at="",
+            ),
         )
 
     assert check_substation_area_one_sided(db) == []

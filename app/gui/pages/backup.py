@@ -91,12 +91,12 @@ def backup_page() -> None:
         ).classes("w-full mt-4")
         backups_table.add_slot(
             "body-cell-actions",
-            r'''
+            r"""
             <q-td :props="props">
                 <q-btn dense flat label="Wiederherstellen" color="warning"
                        @click="() => $parent.$emit('restore', props.row)" />
             </q-td>
-            ''',
+            """,
         )
 
         def refresh_backups_table() -> None:
@@ -149,9 +149,7 @@ def backup_page() -> None:
             path = event.args["path"]
 
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'Backup "{filename}" wirklich wiederherstellen?').classes(
-                    "font-bold"
-                )
+                ui.label(f'Backup "{filename}" wirklich wiederherstellen?').classes("font-bold")
                 ui.label(
                     "Die aktuelle Datenbank wird vollständig durch dieses Backup "
                     "ersetzt. Vor dem Ersetzen wird automatisch ein "

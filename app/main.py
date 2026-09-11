@@ -86,7 +86,10 @@ def main() -> None:
     logger.info("=" * 80)
     logger.info(
         "LEG-Abrechnung START -- Version %s, PID %s, Python %s, %s",
-        APP_VERSION, os.getpid(), platform.python_version(), platform.platform(),
+        APP_VERSION,
+        os.getpid(),
+        platform.python_version(),
+        platform.platform(),
     )
     bootstrap()
     # Importing the pages package registers every @ui.page route with NiceGUI.

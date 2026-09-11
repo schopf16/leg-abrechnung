@@ -28,8 +28,14 @@ def _make_site(db) -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Musterstrasse",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
 
@@ -94,8 +100,12 @@ def test_parse_csv_file_extracts_readings_with_comma_decimal():
 def test_import_file_stores_readings_for_known_metering_points(db):
     """Importing a file with all metering points registered stores every reading."""
     site_id = _make_site(db)
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id))
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id))
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id)
+    )
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id)
+    )
 
     outcome = import_file(db, FIXTURES_DIR / "sample_ebix.xml")
 
@@ -108,7 +118,9 @@ def test_import_file_stores_readings_for_known_metering_points(db):
 def test_import_file_reports_unknown_metering_points(db):
     """Readings for metering points without a matching registry entry are skipped and reported."""
     site_id = _make_site(db)
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id))
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id)
+    )
     # CH...0002 is intentionally not registered.
 
     outcome = import_file(db, FIXTURES_DIR / "sample_ebix.xml")
@@ -121,8 +133,12 @@ def test_import_file_reports_unknown_metering_points(db):
 def test_import_file_is_idempotent(db):
     """Importing the same file twice does not duplicate readings."""
     site_id = _make_site(db)
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id))
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id))
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id)
+    )
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id)
+    )
 
     import_file(db, FIXTURES_DIR / "sample_ebix.xml")
     import_file(db, FIXTURES_DIR / "sample_ebix.xml")
@@ -134,8 +150,12 @@ def test_import_file_is_idempotent(db):
 def test_import_file_csv_matches_ebix_readings(db):
     """The CSV fallback produces the same stored readings as the EBIX file."""
     site_id = _make_site(db)
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id))
-    metering_point_repo.create(db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id))
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000001", DIRECTION_CONSUMPTION, site_id)
+    )
+    metering_point_repo.create(
+        db, _make_metering_point("CH1000000000000000000000002", DIRECTION_FEED_IN, site_id)
+    )
 
     outcome = import_file(db, FIXTURES_DIR / "sample_readings.csv")
 

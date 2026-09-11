@@ -70,9 +70,11 @@ def open_offboarding_form(
         for attr, label in STEPS:
             value = getattr(offboarding, attr)
             with ui.row().classes("w-full items-center gap-2"):
-                date_inputs[attr] = ui.input(
-                    label, value=value.isoformat() if value else ""
-                ).props("type=date").classes("flex-grow")
+                date_inputs[attr] = (
+                    ui.input(label, value=value.isoformat() if value else "")
+                    .props("type=date")
+                    .classes("flex-grow")
+                )
                 if attr == "metering_point_exit_at":
                     ui.button(
                         "Zuordnung(en) beenden",
@@ -141,7 +143,9 @@ def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
         metering_point_names = {}
         for z in open_assignments:
             metering_point = metering_point_repo.get(connection, z.metering_point_id)
-            metering_point_names[z.id] = metering_point.designation if metering_point else f"Messpunkt #{z.metering_point_id}"
+            metering_point_names[z.id] = (
+                metering_point.designation if metering_point else f"Messpunkt #{z.metering_point_id}"
+            )
     if not open_assignments:
         safe_notify("Keine offene Zuordnung für diese Person gefunden.", type="warning")
         return
@@ -153,8 +157,7 @@ def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
         for z in open_assignments:
             ui.label(f"- {metering_point_names[z.id]}")
         ui.label(
-            "Die nächste Quartalsabrechnung rechnet den Zeitraum bis zu "
-            "diesem Datum automatisch anteilig ab."
+            "Die nächste Quartalsabrechnung rechnet den Zeitraum bis zu diesem Datum automatisch anteilig ab."
         ).classes("text-caption text-grey-7")
 
         with ui.row().classes("w-full justify-end gap-2 mt-2"):

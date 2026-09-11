@@ -160,9 +160,7 @@ def get(connection: sqlite3.Connection, offboarding_id: int) -> Optional[PersonO
     Returns:
         The matching `PersonOffboarding`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM person_offboarding WHERE id = ?", (offboarding_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person_offboarding WHERE id = ?", (offboarding_id,)).fetchone()
     return PersonOffboarding.from_row(row) if row else None
 
 
@@ -177,9 +175,7 @@ def get_by_person(connection: sqlite3.Connection, person_id: int) -> Optional[Pe
         The matching `PersonOffboarding`, or `None` if this Person has no
         tracker.
     """
-    row = connection.execute(
-        "SELECT * FROM person_offboarding WHERE person_id = ?", (person_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person_offboarding WHERE person_id = ?", (person_id,)).fetchone()
     return PersonOffboarding.from_row(row) if row else None
 
 
@@ -192,9 +188,7 @@ def list_all(connection: sqlite3.Connection) -> list[PersonOffboarding]:
     Returns:
         All trackers, ordered by `created_at`.
     """
-    rows = connection.execute(
-        "SELECT * FROM person_offboarding ORDER BY created_at"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM person_offboarding ORDER BY created_at").fetchall()
     return [PersonOffboarding.from_row(row) for row in rows]
 
 

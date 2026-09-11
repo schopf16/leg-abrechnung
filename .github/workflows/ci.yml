@@ -20,6 +20,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-dev.txt
       - run: ruff check app tests run.py
+      - run: ruff format --check app tests run.py
 
   test:
     name: pytest (Python ${{ matrix.python-version }})

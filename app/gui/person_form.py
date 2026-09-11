@@ -114,9 +114,9 @@ def open_person_form(
             postal_code = ui.input(
                 "PLZ", value=_initial(existing, "billing_postal_code", prefill, "postal_code")
             ).classes("w-24")
-            city = ui.input(
-                "Ort", value=_initial(existing, "billing_city", prefill, "city")
-            ).classes("flex-grow")
+            city = ui.input("Ort", value=_initial(existing, "billing_city", prefill, "city")).classes(
+                "flex-grow"
+            )
             country = ui.input(
                 "Land", value=_initial(existing, "billing_country", prefill, "country", "CH")
             ).classes("w-24")
@@ -124,9 +124,9 @@ def open_person_form(
         ui.separator().classes("my-2")
         ui.label("Weitere Angaben").classes("text-body1 font-bold")
         with ui.row().classes("w-full gap-2"):
-            email = ui.input(
-                "E-Mail", value=_initial(existing, "contact_email", prefill, "email")
-            ).classes("flex-grow")
+            email = ui.input("E-Mail", value=_initial(existing, "contact_email", prefill, "email")).classes(
+                "flex-grow"
+            )
             phone = ui.input(
                 "Telefon (optional)", value=_initial(existing, "contact_phone", prefill, "phone")
             ).classes("flex-grow")
@@ -157,8 +157,7 @@ def open_person_form(
         )
         if existing:
             ui.label(
-                f"Kunden-Nr.: {existing.formatted_customer_number} "
-                "(automatisch vergeben, nicht änderbar)"
+                f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
             ).classes("text-caption text-grey-6")
         else:
             ui.label(

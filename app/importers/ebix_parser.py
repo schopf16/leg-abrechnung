@@ -60,8 +60,7 @@ def _obis_to_direction(obis_code: str) -> str:
     if prefix == "2.8":
         return "feed_in"
     raise ImportValidationError(
-        f"Unbekannter OBIS-Code {obis_code!r}: erwartet 1.8.x (Bezug) "
-        "oder 2.8.x (Einspeisung)."
+        f"Unbekannter OBIS-Code {obis_code!r}: erwartet 1.8.x (Bezug) oder 2.8.x (Einspeisung)."
     )
 
 
@@ -180,8 +179,7 @@ def _extract_time_series(root: Element) -> ParseResult:
                 continue
             if kwh < 0:
                 result.warnings.append(
-                    f"Negativer Wert {kwh} (Position {position}) bei Messpunkt "
-                    f"{designation} übersprungen."
+                    f"Negativer Wert {kwh} (Position {position}) bei Messpunkt {designation} übersprungen."
                 )
                 continue
             timestamp = start + timedelta(minutes=15 * (position - 1))
@@ -225,9 +223,7 @@ def _find_all_ns(element: Element, tag: str) -> list[Element]:
         All matching direct children, in document order.
     """
     return [
-        child
-        for child in element
-        if isinstance(child.tag, str) and etree.QName(child.tag).localname == tag
+        child for child in element if isinstance(child.tag, str) and etree.QName(child.tag).localname == tag
     ]
 
 

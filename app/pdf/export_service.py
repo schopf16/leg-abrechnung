@@ -62,9 +62,7 @@ def _sanitize_filename_part(text: str) -> str:
     return cleaned[:60] or "Person"
 
 
-def export_billing_run_documents(
-    connection: sqlite3.Connection, run: BillingRun
-) -> ExportResult:
+def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun) -> ExportResult:
     """Generate every person's billing document and the payment list.
 
     Args:
@@ -82,15 +80,9 @@ def export_billing_run_documents(
     # Monthly consumption/Vergütung breakdowns are not persisted (only the final
     # netted amount is); recomputed here from the same live readings the
     # run itself was built from.
-    distribution = compute_quarter_distribution(
-        connection, run.leg_id, run.period_year, run.period_quarter
-    )
+    distribution = compute_quarter_distribution(connection, run.leg_id, run.period_year, run.period_quarter)
 
-    output_dir = (
-        OUTPUT_DIR
-        / f"{run.period_year}_Q{run.period_quarter}"
-        / _sanitize_filename_part(leg.name)
-    )
+    output_dir = OUTPUT_DIR / f"{run.period_year}_Q{run.period_quarter}" / _sanitize_filename_part(leg.name)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     result = ExportResult(output_dir=output_dir)
@@ -99,9 +91,7 @@ def export_billing_run_documents(
         person = persons.get(item.person_id)
         person_result = distribution.person_results.get(item.person_id)
         if person is None or person_result is None:
-            result.errors.append(
-                f"Person #{item.person_id} nicht gefunden (Beleg #{item.id} übersprungen)."
-            )
+            result.errors.append(f"Person #{item.person_id} nicht gefunden (Beleg #{item.id} übersprungen).")
             continue
 
         filename = f"Abrechnung_{_sanitize_filename_part(person.display_name)}_{item.id}.pdf"
@@ -118,9 +108,7 @@ def export_billing_run_documents(
             billing_run_repo.set_item_due_date(connection, item.id, item.due_date)
 
         try:
-            generate_person_bill_pdf(
-                run, item, person_result, person, leg, settings, path
-            )
+            generate_person_bill_pdf(run, item, person_result, person, leg, settings, path)
         except QrBillConfigurationError as exc:
             result.errors.append(f"{person.display_name}: {exc}")
             continue

@@ -27,7 +27,10 @@ from app.models.person import Person
 
 
 PRINT_COLUMNS = [
-    ("Person", "person"), ("Kunden-Nr.", "customer_number"), ("Stufe", "level"), ("Betrag (CHF)", "betrag"),
+    ("Person", "person"),
+    ("Kunden-Nr.", "customer_number"),
+    ("Stufe", "level"),
+    ("Betrag (CHF)", "betrag"),
 ]
 
 
@@ -80,11 +83,13 @@ def dunning_page() -> None:
                             f"{len(candidate.items)} offene Position(en), Kunden-Nr. "
                             f"{candidate.person.formatted_customer_number}"
                         ).classes("text-caption text-grey-6")
-                    ui.badge(f"Stufe {candidate.level}", color="warning" if candidate.level == 1 else "negative")
+                    ui.badge(
+                        f"Stufe {candidate.level}", color="warning" if candidate.level == 1 else "negative"
+                    )
                     ui.label(f"{candidate.total_open_rappen / 100:.2f} CHF").classes("font-bold ml-auto")
-                    ui.button(
-                        "Vorschau & Senden", on_click=lambda c=candidate: open_send_dialog(c)
-                    ).props("dense")
+                    ui.button("Vorschau & Senden", on_click=lambda c=candidate: open_send_dialog(c)).props(
+                        "dense"
+                    )
 
         def refresh_candidates() -> None:
             nonlocal current_candidates
@@ -125,18 +130,24 @@ def dunning_page() -> None:
                     "gestartet werden (beendet die Mitgliedschaft, nie die offene "
                     "Forderung -- siehe „Debitoren“)."
                 ).classes("text-body2")
-                start_date = ui.input(
-                    "Beschlossen am", value=date.today().isoformat()
-                ).props("type=date").classes("w-full")
+                start_date = (
+                    ui.input("Beschlossen am", value=date.today().isoformat())
+                    .props("type=date")
+                    .classes("w-full")
+                )
 
                 def start() -> None:
                     with connection_scope() as connection:
                         person_offboarding_repo.start_for_person(
-                            connection, person.id, reason="payment_default",
+                            connection,
+                            person.id,
+                            reason="payment_default",
                             decided_at=date.fromisoformat(start_date.value),
                         )
                     dialog.close()
-                    safe_notify("Ausschluss-Prozess gestartet -- weitere Schritte unter „Austritte“.", type="positive")
+                    safe_notify(
+                        "Ausschluss-Prozess gestartet -- weitere Schritte unter „Austritte“.", type="positive"
+                    )
 
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Nicht jetzt", on_click=dialog.close).props("flat")
@@ -186,7 +197,10 @@ def dunning_page() -> None:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
                         return
-                    safe_notify(f"{candidate.level}. Mahnung an {candidate.person.display_name} versendet.", type="positive")
+                    safe_notify(
+                        f"{candidate.level}. Mahnung an {candidate.person.display_name} versendet.",
+                        type="positive",
+                    )
                     dialog.close()
                     refresh_candidates()
                     refresh_history()

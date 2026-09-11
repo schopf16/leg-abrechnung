@@ -54,9 +54,7 @@ def _copy_metering_point_designation(designation: str) -> None:
     safe_notify("Messpunktbezeichnung kopiert.")
 
 
-def _metering_point_designation_row(
-    designation: str, *, classes: str = "font-bold"
-) -> None:
+def _metering_point_designation_row(designation: str, *, classes: str = "font-bold") -> None:
     """Render the metering point designation with an inline copy-to-clipboard
     button (same pattern as `app.gui.pages.persons._customer_number_row`).
 
@@ -89,7 +87,9 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
         assignment shown has not started yet, so the caller can mark it
         visually without spelling out the exact date.
     """
-    assignment = assignment_repo.get_relevant_for_metering_point(connection, metering_point_id, datetime.now())
+    assignment = assignment_repo.get_relevant_for_metering_point(
+        connection, metering_point_id, datetime.now()
+    )
     if assignment is None:
         return "-", False
     person = person_repo.get(connection, assignment.person_id)
@@ -113,9 +113,7 @@ def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
     """
     site = sites.get(mp.site_id)
     site_address = site.full_address if site else "?"
-    site_street = (
-        " ".join(p for p in (site.street, site.house_number) if p) if site else "?"
-    )
+    site_street = " ".join(p for p in (site.street, site.house_number) if p) if site else "?"
     site_city = " ".join(p for p in (site.postal_code, site.municipality) if p) if site else ""
     leg = legs.get(mp.leg_id)
     leg_name = leg.name if leg else "-"
@@ -167,23 +165,27 @@ def metering_points_page() -> None:
                     heading="Messpunkte",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: " / ".join(
-                        filter(
-                            None,
-                            [
-                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                "Nur ohne Zuordnung" if without_assignment_switch.value else None,
-                            ],
+                    get_filter_description=lambda: (
+                        " / ".join(
+                            filter(
+                                None,
+                                [
+                                    f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                    "Nur ohne Zuordnung" if without_assignment_switch.value else None,
+                                ],
+                            )
                         )
-                    )
-                    or None,
+                        or None
+                    ),
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
         with ui.row().classes("w-full items-center gap-4"):
-            search_input = ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)").classes(
-                "w-full max-w-md"
-            ).props("debounce=300 clearable")
+            search_input = (
+                ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
             without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -351,9 +353,7 @@ def metering_point_detail_page(metering_point_id: int) -> None:
             _current_person_display(connection, metering_point_id) if mp else ("-", False)
         )
 
-    with page_frame(
-        "/metering-points", "Messpunkt" if mp is None else mp.designation
-    ):
+    with page_frame("/metering-points", "Messpunkt" if mp is None else mp.designation):
         if mp is None:
             ui.label("Messpunkt nicht gefunden.").classes("text-negative")
             ui.link("← Zurück zu Messpunkten", "/metering-points")
@@ -364,9 +364,7 @@ def metering_point_detail_page(metering_point_id: int) -> None:
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Messrichtung: {DIRECTION_LABELS.get(mp.direction, mp.direction)}")
             if site:
-                ui.label(
-                    f"Standort: {' '.join(p for p in (site.street, site.house_number) if p)}"
-                )
+                ui.label(f"Standort: {' '.join(p for p in (site.street, site.house_number) if p)}")
                 ui.label(" ".join(p for p in (site.postal_code, site.municipality) if p))
             else:
                 ui.label("Standort: ?")

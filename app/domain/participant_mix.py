@@ -219,15 +219,16 @@ def compute_participant_mix_for_leg(
         The `ParticipantMix` for every site with at least one
         MeteringPoint assigned to this LEG.
     """
-    site_ids = sorted({
-        mp.site_id for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id
-    })
+    site_ids = sorted({mp.site_id for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id})
     return compute_participant_mix(connection, site_ids, reference_date)
 
 
 def leg_should_split(
-    connection: sqlite3.Connection, leg_id: int, reference_date: Optional[date] = None,
-    *, min_persons: int = 0,
+    connection: sqlite3.Connection,
+    leg_id: int,
+    reference_date: Optional[date] = None,
+    *,
+    min_persons: int = 0,
 ) -> bool:
     """Whether a mixed LEG's substation areas would each work fine standalone.
 
@@ -335,7 +336,8 @@ def find_upgrade_candidates(
         }
         mixed_legs = sorted(
             (
-                legs_by_id[leg_id] for leg_id in leg_ids_here
+                legs_by_id[leg_id]
+                for leg_id in leg_ids_here
                 if leg_id in legs_by_id and compute_leg_composition(connection, leg_id).is_mixed
             ),
             key=lambda leg: leg.name,
@@ -354,8 +356,10 @@ def find_upgrade_candidates(
 
         candidates.append(
             UpgradeCandidate(
-                substation_area=substation_area, mixed_legs=mixed_legs,
-                person_count=len(person_ids), mix=mix,
+                substation_area=substation_area,
+                mixed_legs=mixed_legs,
+                person_count=len(person_ids),
+                mix=mix,
             )
         )
 

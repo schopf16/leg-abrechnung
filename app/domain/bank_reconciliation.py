@@ -168,13 +168,22 @@ def _find_candidates(
         confidence = None
         name_similarity = None
 
-        if counterparty_iban and candidate_person.iban and normalize_iban(candidate_person.iban) == counterparty_iban:
+        if (
+            counterparty_iban
+            and candidate_person.iban
+            and normalize_iban(candidate_person.iban) == counterparty_iban
+        ):
             confidence = "iban_exact"
-        elif candidate_person.customer_number is not None and str(candidate_person.customer_number) in remittance_numbers:
+        elif (
+            candidate_person.customer_number is not None
+            and str(candidate_person.customer_number) in remittance_numbers
+        ):
             confidence = "customer_number_text"
         else:
             ratio = difflib.SequenceMatcher(
-                None, transaction.counterparty_name.strip().lower(), candidate_person.display_name.strip().lower()
+                None,
+                transaction.counterparty_name.strip().lower(),
+                candidate_person.display_name.strip().lower(),
             ).ratio()
             if ratio >= _NAME_SIMILARITY_THRESHOLD:
                 confidence = "name_amount"
@@ -332,7 +341,11 @@ def book_transaction(
         commit=commit,
     )
     bank_transaction_repo.set_match(
-        connection, transaction_id, status=status, matched_person_id=person_id, account_entry_id=entry_id,
+        connection,
+        transaction_id,
+        status=status,
+        matched_person_id=person_id,
+        account_entry_id=entry_id,
         commit=commit,
     )
     return transaction_id
@@ -428,8 +441,11 @@ def resolve_open_transaction(
         bank_transaction_id=bank_transaction_id,
     )
     bank_transaction_repo.set_match(
-        connection, bank_transaction_id, status="manually_matched",
-        matched_person_id=person_id, account_entry_id=entry_id,
+        connection,
+        bank_transaction_id,
+        status="manually_matched",
+        matched_person_id=person_id,
+        account_entry_id=entry_id,
     )
 
 

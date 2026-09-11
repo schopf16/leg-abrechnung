@@ -117,7 +117,9 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         # app.gui.print_list -- the on-screen card uses substation_areas_status/
         # substation_areas_list instead, to list the substation areas one per line.
         "substation_areas": (
-            f"{substation_areas_status}: {substation_area_names}" if composition.substation_areas else substation_areas_status
+            f"{substation_areas_status}: {substation_area_names}"
+            if composition.substation_areas
+            else substation_areas_status
         ),
         "substation_areas_status": substation_areas_status,
         # Only listed on-screen for a single substation area -- a LEG can span
@@ -158,9 +160,11 @@ def legs_page() -> None:
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
-        search_input = ui.input("Suche (Name, Bemerkung, Trafokreis...)").classes(
-            "w-full max-w-md"
-        ).props("debounce=300 clearable")
+        search_input = (
+            ui.input("Suche (Name, Bemerkung, Trafokreis...)")
+            .classes("w-full max-w-md")
+            .props("debounce=300 clearable")
+        )
 
         warnings_column = ui.column().classes("w-full")
 
@@ -270,18 +274,24 @@ def legs_page() -> None:
                 None.
             """
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label("LEG bearbeiten" if existing else "Neue LEG").classes(
-                    "text-lg font-bold"
+                ui.label("LEG bearbeiten" if existing else "Neue LEG").classes("text-lg font-bold")
+                name = (
+                    ui.input(
+                        "Name (Trafokreis-Bezeichnung oder eigener LEG-Name)",
+                        value=existing.name if existing else "",
+                    )
+                    .classes("w-full")
+                    .props("debounce=300")
                 )
-                name = ui.input(
-                    "Name (Trafokreis-Bezeichnung oder eigener LEG-Name)",
-                    value=existing.name if existing else "",
-                ).classes("w-full").props("debounce=300")
                 duplicate_warning = ui.label("").classes("text-warning")
-                note = ui.textarea(
-                    "Bemerkung (optional)",
-                    value=existing.note if existing else "",
-                ).classes("w-full").props("rows=3")
+                note = (
+                    ui.textarea(
+                        "Bemerkung (optional)",
+                        value=existing.note if existing else "",
+                    )
+                    .classes("w-full")
+                    .props("rows=3")
+                )
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
@@ -299,9 +309,7 @@ def legs_page() -> None:
                     with connection_scope() as connection:
                         found = leg_repo.get_by_name(connection, typed)
                     is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = (
-                        "Dieser Name wird bereits verwendet." if is_duplicate else ""
-                    )
+                    duplicate_warning.text = "Dieser Name wird bereits verwendet." if is_duplicate else ""
                     return is_duplicate
 
                 name.on_value_change(lambda _: check_duplicate())
@@ -431,7 +439,8 @@ def _metering_point_row_for_leg(
         "direction": DIRECTION_LABELS.get(mp.direction, mp.direction),
         "site_address": site.full_address if site else "?",
         "substation_area": substation_area.name if substation_area else "-",
-        "is_upgrade_candidate": substation_area is not None and substation_area.id in upgrade_substation_area_ids,
+        "is_upgrade_candidate": substation_area is not None
+        and substation_area.id in upgrade_substation_area_ids,
         "leg_id": mp.leg_id,
     }
 
@@ -457,10 +466,10 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
         None.
     """
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-sm"):
-        ui.label(f'LEG ändern für „{row["designation"]}“').classes("text-lg font-bold")
-        leg_select = ui.select(
-            leg_options, label="LEG", value=row["leg_id"], with_input=True
-        ).classes("w-full")
+        ui.label(f"LEG ändern für „{row['designation']}“").classes("text-lg font-bold")
+        leg_select = ui.select(leg_options, label="LEG", value=row["leg_id"], with_input=True).classes(
+            "w-full"
+        )
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
@@ -523,20 +532,32 @@ def leg_detail_page(leg_id: int) -> None:
         table = ui.table(
             columns=[
                 {
-                    "name": "designation", "label": "Messpunkt",
-                    "field": "designation", "align": "left", "sortable": True,
+                    "name": "designation",
+                    "label": "Messpunkt",
+                    "field": "designation",
+                    "align": "left",
+                    "sortable": True,
                 },
                 {
-                    "name": "direction", "label": "Messrichtung",
-                    "field": "direction", "align": "left", "sortable": True,
+                    "name": "direction",
+                    "label": "Messrichtung",
+                    "field": "direction",
+                    "align": "left",
+                    "sortable": True,
                 },
                 {
-                    "name": "site_address", "label": "Adresse",
-                    "field": "site_address", "align": "left", "sortable": True,
+                    "name": "site_address",
+                    "label": "Adresse",
+                    "field": "site_address",
+                    "align": "left",
+                    "sortable": True,
                 },
                 {
-                    "name": "substation_area", "label": "Trafokreis",
-                    "field": "substation_area", "align": "left", "sortable": True,
+                    "name": "substation_area",
+                    "label": "Trafokreis",
+                    "field": "substation_area",
+                    "align": "left",
+                    "sortable": True,
                 },
                 {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ],
@@ -545,20 +566,20 @@ def leg_detail_page(leg_id: int) -> None:
         ).classes("w-full mt-2")
         table.add_slot(
             "body-cell-substation_area",
-            r'''
+            r"""
             <q-td :props="props" :class="props.row.is_upgrade_candidate ? 'text-amber-9' : ''">
                 <span v-if="props.row.is_upgrade_candidate">⭐ </span>{{ props.value }}
             </q-td>
-            ''',
+            """,
         )
         table.add_slot(
             "body-cell-actions",
-            r'''
+            r"""
             <q-td :props="props">
                 <q-btn dense flat icon="swap_horiz"
                     @click="() => $parent.$emit('change_leg', props.row)" />
             </q-td>
-            ''',
+            """,
         )
 
         def refresh_table() -> None:
@@ -580,7 +601,8 @@ def leg_detail_page(leg_id: int) -> None:
                 # rather than just hinting that "some" metering points should
                 # move, see the module docstring.
                 upgrade_candidates = [
-                    c for c in find_upgrade_candidates(inner_connection, min_persons=min_persons)
+                    c
+                    for c in find_upgrade_candidates(inner_connection, min_persons=min_persons)
                     if any(mixed.id == leg_id for mixed in c.mixed_legs)
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}

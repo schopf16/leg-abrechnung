@@ -64,9 +64,7 @@ class RestoreResult:
     restored_schema_version: int
 
 
-def create_backup(
-    db_path: Path = DATABASE_PATH, backups_dir: Path = BACKUPS_DIR
-) -> Path:
+def create_backup(db_path: Path = DATABASE_PATH, backups_dir: Path = BACKUPS_DIR) -> Path:
     """Write a consistent snapshot of the live database to `backups/`.
 
     Uses SQLite's online backup API (rather than a plain file copy) so the
@@ -181,18 +179,11 @@ def _validate_backup_file(path: Path) -> None:
         try:
             integrity = connection.execute("PRAGMA integrity_check").fetchone()
         except sqlite3.DatabaseError as exc:
-            raise BackupValidationError(
-                f"Datei ist keine gültige SQLite-Datenbank: {exc}"
-            ) from exc
+            raise BackupValidationError(f"Datei ist keine gültige SQLite-Datenbank: {exc}") from exc
         if integrity is None or integrity[0] != "ok":
             raise BackupValidationError(f"Backup-Datei ist beschädigt: {integrity}")
 
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        }
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         missing = _REQUIRED_TABLES - tables
         if missing:
             raise BackupValidationError(
@@ -272,6 +263,4 @@ def restore_backup(
     with connection_scope(db_path) as connection:
         restored_version = initialize_database(connection)
 
-    return RestoreResult(
-        safety_backup_path=safety_backup_path, restored_schema_version=restored_version
-    )
+    return RestoreResult(safety_backup_path=safety_backup_path, restored_schema_version=restored_version)

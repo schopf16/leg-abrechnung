@@ -213,9 +213,7 @@ def get(connection: sqlite3.Connection, person_id: int) -> Optional[Person]:
     Returns:
         The matching `Person`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM person WHERE id = ?", (person_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person WHERE id = ?", (person_id,)).fetchone()
     return Person.from_row(row) if row else None
 
 
@@ -229,9 +227,7 @@ def get_by_customer_number(connection: sqlite3.Connection, customer_number: int)
     Returns:
         The matching `Person`, or `None` if no such customer number exists.
     """
-    row = connection.execute(
-        "SELECT * FROM person WHERE customer_number = ?", (customer_number,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person WHERE customer_number = ?", (customer_number,)).fetchone()
     return Person.from_row(row) if row else None
 
 
@@ -251,9 +247,7 @@ def get_by_email(connection: sqlite3.Connection, email: str) -> Optional[Person]
     Returns:
         A matching `Person`, or `None` if no Person has this email.
     """
-    row = connection.execute(
-        "SELECT * FROM person WHERE contact_email = ? LIMIT 1", (email,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person WHERE contact_email = ? LIMIT 1", (email,)).fetchone()
     return Person.from_row(row) if row else None
 
 

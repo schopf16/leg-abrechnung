@@ -192,8 +192,6 @@ def delete(connection: sqlite3.Connection, leg_id: int) -> None:
         LegInUseError: If one or more metering points still reference this LEG.
     """
     if count_metering_points(connection, leg_id) > 0:
-        raise LegInUseError(
-            "LEG kann nicht gelöscht werden: es sind noch Messpunkte zugeordnet."
-        )
+        raise LegInUseError("LEG kann nicht gelöscht werden: es sind noch Messpunkte zugeordnet.")
     connection.execute("DELETE FROM leg WHERE id = ?", (leg_id,))
     connection.commit()

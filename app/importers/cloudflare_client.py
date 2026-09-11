@@ -111,21 +111,17 @@ def fetch_new_registrations(since: int, token: str) -> list[RegistrationSubmissi
 
     if response.status_code == 401:
         raise CloudflareAuthError(
-            "Registrierungs-API hat den Zugriff verweigert (401) -- "
-            "API-Token in config.local.json prüfen."
+            "Registrierungs-API hat den Zugriff verweigert (401) -- API-Token in config.local.json prüfen."
         )
     if response.status_code != 200:
         raise CloudflareApiError(
-            f"Registrierungs-API antwortete mit Status {response.status_code}: "
-            f"{response.text[:200]}"
+            f"Registrierungs-API antwortete mit Status {response.status_code}: {response.text[:200]}"
         )
 
     try:
         payload = response.json()
     except ValueError as exc:
-        raise CloudflareApiError(
-            f"Registrierungs-API lieferte kein gültiges JSON: {exc}"
-        ) from exc
+        raise CloudflareApiError(f"Registrierungs-API lieferte kein gültiges JSON: {exc}") from exc
 
     return [
         _to_submission(entry)
@@ -171,13 +167,11 @@ def delete_submissions(ids: list[int], token: str) -> int:
 
     if response.status_code == 401:
         raise CloudflareAuthError(
-            "Registrierungs-API hat den Zugriff verweigert (401) -- "
-            "API-Token in config.local.json prüfen."
+            "Registrierungs-API hat den Zugriff verweigert (401) -- API-Token in config.local.json prüfen."
         )
     if response.status_code != 200:
         raise CloudflareApiError(
-            f"Registrierungs-API antwortete mit Status {response.status_code}: "
-            f"{response.text[:200]}"
+            f"Registrierungs-API antwortete mit Status {response.status_code}: {response.text[:200]}"
         )
 
     try:

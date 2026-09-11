@@ -248,12 +248,8 @@ def compute_quarter_distribution(
 
     for timestamp_text, interval_rows in intervals.items():
         moment = datetime.fromisoformat(timestamp_text)
-        production_total = sum(
-            r["kwh"] for r in interval_rows if r["direction"] != DIRECTION_CONSUMPTION
-        )
-        consumption_total = sum(
-            r["kwh"] for r in interval_rows if r["direction"] == DIRECTION_CONSUMPTION
-        )
+        production_total = sum(r["kwh"] for r in interval_rows if r["direction"] != DIRECTION_CONSUMPTION)
+        consumption_total = sum(r["kwh"] for r in interval_rows if r["direction"] == DIRECTION_CONSUMPTION)
         shared = min(production_total, consumption_total)
 
         for row in interval_rows:
@@ -293,12 +289,8 @@ def compute_quarter_distribution(
             person_result.consumed_by_month.setdefault(month, 0.0)
             person_result.produced_by_month.setdefault(month, 0.0)
 
-        person_result.consumed_local_kwh = round(
-            person_result.consumed_local_kwh, KWH_PRECISION
-        )
-        person_result.produced_local_kwh = round(
-            person_result.produced_local_kwh, KWH_PRECISION
-        )
+        person_result.consumed_local_kwh = round(person_result.consumed_local_kwh, KWH_PRECISION)
+        person_result.produced_local_kwh = round(person_result.produced_local_kwh, KWH_PRECISION)
         for month in quarter_months:
             person_result.consumed_by_month[month] = round(
                 person_result.consumed_by_month[month], KWH_PRECISION

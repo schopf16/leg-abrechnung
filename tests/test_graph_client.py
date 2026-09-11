@@ -57,9 +57,7 @@ def test_get_access_token_returns_token_on_success():
 
 
 def test_get_access_token_raises_auth_error_on_bad_credentials():
-    response = httpx.Response(
-        400, json={"error": "invalid_client", "error_description": "bad secret"}
-    )
+    response = httpx.Response(400, json={"error": "invalid_client", "error_description": "bad secret"})
     client_class, _ = _async_client_mock(post_result=response)
     with patch("app.emailing.graph_client.httpx.AsyncClient", client_class):
         with pytest.raises(GraphAuthError, match="bad secret"):
@@ -141,9 +139,14 @@ def test_send_email_guesses_content_type_from_filename(tmp_path):
     with patch("app.emailing.graph_client.httpx.AsyncClient", client_class):
         asyncio.run(
             send_email(
-                _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                subject="s", body="b",
-                attachment_path=image_path, attachment_filename="einladung.png",
+                _CONFIG,
+                "token",
+                to_address="a@example.invalid",
+                to_name="A",
+                subject="s",
+                body="b",
+                attachment_path=image_path,
+                attachment_filename="einladung.png",
             )
         )
 
@@ -159,9 +162,14 @@ def test_send_email_falls_back_to_octet_stream_for_unknown_extension(tmp_path):
     with patch("app.emailing.graph_client.httpx.AsyncClient", client_class):
         asyncio.run(
             send_email(
-                _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                subject="s", body="b",
-                attachment_path=unknown_path, attachment_filename="datei.xyz123",
+                _CONFIG,
+                "token",
+                to_address="a@example.invalid",
+                to_name="A",
+                subject="s",
+                body="b",
+                attachment_path=unknown_path,
+                attachment_filename="datei.xyz123",
             )
         )
 
@@ -181,9 +189,14 @@ def test_send_email_raises_api_error_for_oversized_attachment(tmp_path):
         with pytest.raises(GraphApiError, match="zu gross"):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
-                    attachment_path=big_path, attachment_filename="gross.bin",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
+                    attachment_path=big_path,
+                    attachment_filename="gross.bin",
                 )
             )
     client.post.assert_not_called()
@@ -199,9 +212,14 @@ def test_send_email_raises_api_error_if_attachment_missing(tmp_path):
         with pytest.raises(GraphApiError, match="does-not-exist.pdf"):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
-                    attachment_path=missing_path, attachment_filename="does-not-exist.pdf",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
+                    attachment_path=missing_path,
+                    attachment_filename="does-not-exist.pdf",
                 )
             )
     client.post.assert_not_called()
@@ -214,8 +232,12 @@ def test_send_email_raises_auth_error_on_401():
         with pytest.raises(GraphAuthError):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
                 )
             )
 
@@ -224,13 +246,18 @@ def test_send_email_retries_on_429_then_succeeds():
     throttled = httpx.Response(429, headers={"Retry-After": "0"})
     success = httpx.Response(202)
     client_class, client = _async_client_mock(post_side_effect=[throttled, success])
-    with patch("app.emailing.graph_client.httpx.AsyncClient", client_class), patch(
-        "app.emailing.graph_client.asyncio.sleep", AsyncMock()
+    with (
+        patch("app.emailing.graph_client.httpx.AsyncClient", client_class),
+        patch("app.emailing.graph_client.asyncio.sleep", AsyncMock()),
     ):
         asyncio.run(
             send_email(
-                _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                subject="s", body="b",
+                _CONFIG,
+                "token",
+                to_address="a@example.invalid",
+                to_name="A",
+                subject="s",
+                body="b",
             )
         )
 
@@ -240,14 +267,19 @@ def test_send_email_retries_on_429_then_succeeds():
 def test_send_email_gives_up_after_max_retries_of_429():
     throttled = httpx.Response(429, headers={"Retry-After": "0"})
     client_class, client = _async_client_mock(post_result=throttled)
-    with patch("app.emailing.graph_client.httpx.AsyncClient", client_class), patch(
-        "app.emailing.graph_client.asyncio.sleep", AsyncMock()
+    with (
+        patch("app.emailing.graph_client.httpx.AsyncClient", client_class),
+        patch("app.emailing.graph_client.asyncio.sleep", AsyncMock()),
     ):
         with pytest.raises(GraphApiError):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
                 )
             )
     assert client.post.call_count > 1
@@ -260,8 +292,12 @@ def test_send_email_raises_api_error_on_other_status():
         with pytest.raises(GraphApiError):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
                 )
             )
 
@@ -272,7 +308,11 @@ def test_send_email_raises_api_error_on_network_failure():
         with pytest.raises(GraphApiError):
             asyncio.run(
                 send_email(
-                    _CONFIG, "token", to_address="a@example.invalid", to_name="A",
-                    subject="s", body="b",
+                    _CONFIG,
+                    "token",
+                    to_address="a@example.invalid",
+                    to_name="A",
+                    subject="s",
+                    body="b",
                 )
             )

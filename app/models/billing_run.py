@@ -266,9 +266,7 @@ def get_run(connection: sqlite3.Connection, run_id: int) -> Optional[BillingRun]
     Returns:
         The matching `BillingRun`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM billing_runs WHERE id = ?", (run_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM billing_runs WHERE id = ?", (run_id,)).fetchone()
     return BillingRun.from_row(row) if row else None
 
 
@@ -344,9 +342,7 @@ def create_run(connection: sqlite3.Connection, run: BillingRun) -> int:
     return cursor.lastrowid
 
 
-def add_items(
-    connection: sqlite3.Connection, items: list[BillingRunItem]
-) -> list[int]:
+def add_items(connection: sqlite3.Connection, items: list[BillingRunItem]) -> list[int]:
     """Insert billing run line items.
 
     Args:
@@ -390,9 +386,7 @@ def add_items(
     return ids
 
 
-def list_items(
-    connection: sqlite3.Connection, billing_run_id: int
-) -> list[BillingRunItem]:
+def list_items(connection: sqlite3.Connection, billing_run_id: int) -> list[BillingRunItem]:
     """List all line items of a billing run.
 
     Args:
@@ -444,15 +438,11 @@ def get_item(connection: sqlite3.Connection, item_id: int) -> Optional[BillingRu
     Returns:
         The matching `BillingRunItem`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM billing_run_items WHERE id = ?", (item_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM billing_run_items WHERE id = ?", (item_id,)).fetchone()
     return BillingRunItem.from_row(row) if row else None
 
 
-def set_item_pdf_path(
-    connection: sqlite3.Connection, item_id: int, pdf_path: str
-) -> None:
+def set_item_pdf_path(connection: sqlite3.Connection, item_id: int, pdf_path: str) -> None:
     """Record the filesystem path of a generated PDF for a line item.
 
     Args:
@@ -532,9 +522,7 @@ def set_item_dunning_level(
     connection.commit()
 
 
-def set_item_email_sent_at(
-    connection: sqlite3.Connection, item_id: int, sent_at: str
-) -> None:
+def set_item_email_sent_at(connection: sqlite3.Connection, item_id: int, sent_at: str) -> None:
     """Record when the invoice email for a line item was last sent.
 
     Args:

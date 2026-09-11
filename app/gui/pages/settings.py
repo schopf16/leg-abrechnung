@@ -224,10 +224,7 @@ def settings_page() -> None:
                 Returns:
                     None.
                 """
-                if (
-                    onboarding_overdue_days.value is None
-                    or onboarding_overdue_days.value < 1
-                ):
+                if onboarding_overdue_days.value is None or onboarding_overdue_days.value < 1:
                     onboarding_error.text = "Muss mindestens 1 Tag sein."
                     return
                 with connection_scope() as connection:
@@ -267,10 +264,7 @@ def settings_page() -> None:
                 Returns:
                     None.
                 """
-                if (
-                    leg_founding_min_persons.value is None
-                    or leg_founding_min_persons.value < 1
-                ):
+                if leg_founding_min_persons.value is None or leg_founding_min_persons.value < 1:
                     leg_gruendung_error.text = "Muss mindestens 1 sein."
                     return
                 with connection_scope() as connection:
@@ -293,12 +287,10 @@ def settings_page() -> None:
             f"{_INVOICE_PLACEHOLDER_HINT}."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
-            invoice_subject = ui.input(
-                "Betreff", value=current.invoice_email_subject
-            ).classes("w-full")
-            invoice_body = ui.textarea(
-                "Nachricht", value=current.invoice_email_body
-            ).classes("w-full").props("rows=6")
+            invoice_subject = ui.input("Betreff", value=current.invoice_email_subject).classes("w-full")
+            invoice_body = (
+                ui.textarea("Nachricht", value=current.invoice_email_body).classes("w-full").props("rows=6")
+            )
             invoice_email_error = ui.label("").classes("text-negative")
 
             def save_invoice_email() -> None:
@@ -348,9 +340,7 @@ def settings_page() -> None:
                     connection_test_result.text = str(exc)
                     connection_test_result.classes(add="text-negative")
                     return
-                connection_test_result.text = (
-                    f"Verbindung erfolgreich -- Absender: {config.sender_address}"
-                )
+                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
                 connection_test_result.classes(add="text-positive")
 
             ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
@@ -368,24 +358,30 @@ def settings_page() -> None:
         with ui.card().classes("w-full max-w-lg"):
             dunning_new_deadline_days = ui.number(
                 "Neue Zahlungsfrist nach 1. Mahnung (Tage)",
-                value=current.dunning_new_deadline_days, min=1, step=1, format="%.0f",
+                value=current.dunning_new_deadline_days,
+                min=1,
+                step=1,
+                format="%.0f",
             ).classes("w-full")
             dunning_minimum = ui.number(
                 "Bagatellgrenze (CHF, darunter keine Mahnung)",
-                value=current.dunning_minimum_rappen / 100, min=0, step=1, format="%.2f",
+                value=current.dunning_minimum_rappen / 100,
+                min=0,
+                step=1,
+                format="%.2f",
             ).classes("w-full")
 
             ui.label("1. Mahnung").classes("font-bold mt-3")
             dunning1_subject = ui.input("Betreff", value=current.dunning1_email_subject).classes("w-full")
-            dunning1_body = ui.textarea("Nachricht", value=current.dunning1_email_body).classes(
-                "w-full"
-            ).props("rows=6")
+            dunning1_body = (
+                ui.textarea("Nachricht", value=current.dunning1_email_body).classes("w-full").props("rows=6")
+            )
 
             ui.label("2. Mahnung").classes("font-bold mt-3")
             dunning2_subject = ui.input("Betreff", value=current.dunning2_email_subject).classes("w-full")
-            dunning2_body = ui.textarea("Nachricht", value=current.dunning2_email_body).classes(
-                "w-full"
-            ).props("rows=6")
+            dunning2_body = (
+                ui.textarea("Nachricht", value=current.dunning2_email_body).classes("w-full").props("rows=6")
+            )
 
             dunning_error = ui.label("").classes("text-negative")
 
@@ -447,6 +443,4 @@ def settings_page() -> None:
                 type="positive",
             )
 
-        ui.button("Demo-Daten erzeugen", on_click=generate_demo_data, color="secondary").classes(
-            "mt-2"
-        )
+        ui.button("Demo-Daten erzeugen", on_click=generate_demo_data, color="secondary").classes("mt-2")

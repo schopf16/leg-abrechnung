@@ -25,18 +25,32 @@ def _person(db, name: str = "Test") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="", company="", first_name=name, last_name="",
-            contact_email=f"{name.lower()}@example.invalid", contact_phone="",
-            billing_street="Weg", billing_house_number="1", billing_postal_code="3000",
-            billing_city="Bern", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None,
-            paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="",
+            company="",
+            first_name=name,
+            last_name="",
+            contact_email=f"{name.lower()}@example.invalid",
+            contact_phone="",
+            billing_street="Weg",
+            billing_house_number="1",
+            billing_postal_code="3000",
+            billing_city="Bern",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
 
 def _substation_area(db, name: str) -> int:
-    return substation_area_repo.create(db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at=""))
+    return substation_area_repo.create(
+        db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at="")
+    )
 
 
 def _leg(db, name: str) -> int:
@@ -47,8 +61,14 @@ def _site(db, substation_area_id: int, *, street: str = "Weg") -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street=street, house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=substation_area_id, created_at="",
+            id=None,
+            street=street,
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=substation_area_id,
+            created_at="",
         ),
     )
 
@@ -57,16 +77,31 @@ def _metering_point(db, site_id: int, leg_id: int | None, direction: str) -> int
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=f"CH{next(_designation_counter):031d}",
-            direction=direction, site_id=site_id, leg_id=leg_id,
-            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=f"CH{next(_designation_counter):031d}",
+            direction=direction,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
 
-def _assignment(db, person_id: int, metering_point_id: int, valid_from: date, valid_to: date | None = None) -> int:
+def _assignment(
+    db, person_id: int, metering_point_id: int, valid_from: date, valid_to: date | None = None
+) -> int:
     return assignment_repo.create(
-        db, Assignment(id=None, person_id=person_id, metering_point_id=metering_point_id, valid_from=valid_from, valid_to=valid_to, created_at="")
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            created_at="",
+        ),
     )
 
 
@@ -288,8 +323,10 @@ def test_leg_should_split_when_every_substation_area_is_independently_green(db):
     other_consumption_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
     other_feed_in_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
     for pid, mp_id in (
-        (person_id, consumption_id), (person_id, feed_in_id),
-        (other_person_id, other_consumption_id), (other_person_id, other_feed_in_id),
+        (person_id, consumption_id),
+        (person_id, feed_in_id),
+        (other_person_id, other_consumption_id),
+        (other_person_id, other_feed_in_id),
     ):
         _assignment(db, pid, mp_id, date(2026, 1, 1))
 
@@ -334,8 +371,10 @@ def test_leg_should_not_split_below_min_persons(db):
     other_consumption_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
     other_feed_in_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
     for pid, mp_id in (
-        (person_id, consumption_id), (person_id, feed_in_id),
-        (other_person_id, other_consumption_id), (other_person_id, other_feed_in_id),
+        (person_id, consumption_id),
+        (person_id, feed_in_id),
+        (other_person_id, other_consumption_id),
+        (other_person_id, other_feed_in_id),
     ):
         _assignment(db, pid, mp_id, date(2026, 1, 1))
 

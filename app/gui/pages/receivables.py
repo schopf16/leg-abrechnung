@@ -92,8 +92,10 @@ def receivables_page() -> None:
         ).classes("text-body2 text-grey-8")
 
         with ui.row().classes("w-full items-center gap-4 mt-2"):
-            search_input = ui.input("Suche (Name, Kunden-Nr.)").classes("w-full max-w-md").props(
-                "debounce=300 clearable"
+            search_input = (
+                ui.input("Suche (Name, Kunden-Nr.)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
             )
             only_forderung_switch = ui.switch("Nur offene Forderungen")
             only_guthaben_switch = ui.switch("Nur Guthaben")
@@ -145,17 +147,17 @@ def receivables_page() -> None:
                     ui.label(f"{_display_balance_chf(balance_rappen):.2f} CHF").classes(
                         "text-lg font-bold ml-auto " + _balance_color_class(balance_rappen)
                     )
-                    ui.button("Details", on_click=lambda p=person: open_person_detail(p)).props(
-                        "dense flat"
-                    )
+                    ui.button("Details", on_click=lambda p=person: open_person_detail(p)).props("dense flat")
 
         def apply_filter() -> None:
             nonlocal visible_entries
             needle = (search_input.value or "").strip().lower()
 
             def matches(person: Person, balance_rappen: int) -> bool:
-                if needle and needle not in person.display_name.lower() and needle not in str(
-                    person.customer_number or ""
+                if (
+                    needle
+                    and needle not in person.display_name.lower()
+                    and needle not in str(person.customer_number or "")
                 ):
                     return False
                 if only_forderung_switch.value and not (balance_rappen > 0):
@@ -181,9 +183,7 @@ def receivables_page() -> None:
             with connection_scope() as connection:
                 persons = person_repo.list_all(connection)
                 saldi = account_entry_repo.get_all_saldi(connection)
-                due_dunning_person_ids = {
-                    c.person.id for c in dunning.list_due_dunnings(connection)
-                }
+                due_dunning_person_ids = {c.person.id for c in dunning.list_due_dunnings(connection)}
                 running_offboarding_person_ids = {
                     o.person_id for o in person_offboarding_repo.list_in_progress(connection)
                 }
@@ -216,7 +216,9 @@ def receivables_page() -> None:
                 if ledger_entries:
                     with ui.column().classes("w-full gap-1 max-h-96 overflow-auto"):
                         for ledger_entry in ledger_entries:
-                            with ui.row().classes("w-full items-center justify-between text-body2 border-b py-1"):
+                            with ui.row().classes(
+                                "w-full items-center justify-between text-body2 border-b py-1"
+                            ):
                                 with ui.column().classes("gap-0"):
                                     ui.label(f"{ledger_entry.entry_date} -- {ledger_entry.description}")
                                 with ui.row().classes("items-center gap-2"):
@@ -227,10 +229,14 @@ def receivables_page() -> None:
                                     if ledger_entry.billing_run_item_id is not None:
                                         ui.button(
                                             "Details ansehen",
-                                            on_click=lambda item_id=ledger_entry.billing_run_item_id: open_invoice_detail(item_id),
+                                            on_click=lambda item_id=ledger_entry.billing_run_item_id: (
+                                                open_invoice_detail(item_id)
+                                            ),
                                         ).props("dense flat")
                 else:
-                    ui.label("Noch keine Rechnungen, Mahnungen oder Zahlungen erfasst.").classes("text-grey-6")
+                    ui.label("Noch keine Rechnungen, Mahnungen oder Zahlungen erfasst.").classes(
+                        "text-grey-6"
+                    )
 
                 ui.separator()
                 ui.label("Buchung manuell erfassen").classes("font-bold mt-2")
@@ -249,7 +255,9 @@ def receivables_page() -> None:
                     amount_rappen = -round(float(amount_input.value) * 100)
                     with connection_scope() as connection:
                         account_entry_repo.create(
-                            connection, person_id=person.id, kind="correction",
+                            connection,
+                            person_id=person.id,
+                            kind="correction",
                             amount_rappen=amount_rappen,
                             booked_at=date.today().isoformat(),
                             note=note_input.value or "",
@@ -315,9 +323,9 @@ def receivables_page() -> None:
                             ui.label(f"⚠ {warning}").classes("text-body2")
 
                 auto_count = sum(1 for _, m in pending if m.status == "auto_matched")
-                ui.label(f"{auto_count} automatisch zugeordnet (QR-Referenz), {len(pending) - auto_count} benötigen eine Entscheidung.").classes(
-                    "text-body2"
-                )
+                ui.label(
+                    f"{auto_count} automatisch zugeordnet (QR-Referenz), {len(pending) - auto_count} benötigen eine Entscheidung."
+                ).classes("text-body2")
 
                 for index, (tx, match) in enumerate(pending):
                     with ui.row().classes("w-full items-center gap-3 border-b py-1"):
@@ -340,19 +348,18 @@ def receivables_page() -> None:
                             options[candidate.person_id] = label
                             if rank == 0 and not tx.is_reversal:
                                 default_value = candidate.person_id
-                        select = ui.select(options, value=default_value, label="Zuordnung").classes(
-                            "w-64"
-                        )
+                        select = ui.select(options, value=default_value, label="Zuordnung").classes("w-64")
                         pending_resolution_selects.append(select)
 
-                ui.button("Import abschliessen", icon="check", on_click=lambda: commit_import(parse_result)).classes(
-                    "mt-2"
-                )
+                ui.button(
+                    "Import abschliessen", icon="check", on_click=lambda: commit_import(parse_result)
+                ).classes("mt-2")
 
         def commit_import(parse_result) -> None:
             with connection_scope() as connection:
                 batch_id = bank_transaction_repo.create_batch(
-                    connection, filename=pending_filename["value"],
+                    connection,
+                    filename=pending_filename["value"],
                     account_iban=parse_result.account_iban,
                     statement_from=parse_result.statement_from,
                     statement_to=parse_result.statement_to,
@@ -367,39 +374,56 @@ def receivables_page() -> None:
                 for (tx, match), select in zip(pending, pending_resolution_selects):
                     if match.status == "auto_matched":
                         bank_reconciliation.book_transaction(
-                            connection, bank_import_batch_id=batch_id, transaction=tx,
+                            connection,
+                            bank_import_batch_id=batch_id,
+                            transaction=tx,
                             source_format=pending_source_format["value"],
                             person_id=match.matched_person_id,
                             billing_run_item_id=match.matched_billing_run_item_id,
-                            status="auto_matched", commit=False,
+                            status="auto_matched",
+                            commit=False,
                         )
                         continue
 
                     chosen = select.value if select is not None else _LEAVE_OPEN
                     if chosen == _IGNORE:
                         bank_reconciliation.book_transaction(
-                            connection, bank_import_batch_id=batch_id, transaction=tx,
+                            connection,
+                            bank_import_batch_id=batch_id,
+                            transaction=tx,
                             source_format=pending_source_format["value"],
-                            person_id=None, billing_run_item_id=None, status="ignored",
+                            person_id=None,
+                            billing_run_item_id=None,
+                            status="ignored",
                             commit=False,
                         )
                     elif chosen == _LEAVE_OPEN:
                         bank_reconciliation.book_transaction(
-                            connection, bank_import_batch_id=batch_id, transaction=tx,
+                            connection,
+                            bank_import_batch_id=batch_id,
+                            transaction=tx,
                             source_format=pending_source_format["value"],
-                            person_id=None, billing_run_item_id=None, status=match.status,
+                            person_id=None,
+                            billing_run_item_id=None,
+                            status=match.status,
                             commit=False,
                         )
                     else:
                         matching_candidate = next(
                             (c for c in match.candidates if c.person_id == chosen), None
                         )
-                        billing_run_item_id = matching_candidate.billing_run_item_id if matching_candidate else None
+                        billing_run_item_id = (
+                            matching_candidate.billing_run_item_id if matching_candidate else None
+                        )
                         bank_reconciliation.book_transaction(
-                            connection, bank_import_batch_id=batch_id, transaction=tx,
+                            connection,
+                            bank_import_batch_id=batch_id,
+                            transaction=tx,
                             source_format=pending_source_format["value"],
-                            person_id=chosen, billing_run_item_id=billing_run_item_id,
-                            status="manually_matched", commit=False,
+                            person_id=chosen,
+                            billing_run_item_id=billing_run_item_id,
+                            status="manually_matched",
+                            commit=False,
                         )
 
             safe_notify(f"Import abgeschlossen: {len(pending)} Buchung(en) verarbeitet.", type="positive")
@@ -410,9 +434,9 @@ def receivables_page() -> None:
             refresh_open_transactions()
             refresh_recent_transactions()
 
-        ui.upload(
-            label="Datei auswählen (.xml)", auto_upload=True, on_upload=handle_upload
-        ).props('accept=".xml"').classes("w-full max-w-md")
+        ui.upload(label="Datei auswählen (.xml)", auto_upload=True, on_upload=handle_upload).props(
+            'accept=".xml"'
+        ).classes("w-full max-w-md")
 
         # -- Persistent "offene Bank-Buchungen" queue --------------------------
         ui.separator().classes("my-4")
@@ -442,7 +466,8 @@ def receivables_page() -> None:
                         return
                     with connection_scope() as connection:
                         bank_reconciliation.resolve_open_transaction(
-                            connection, tx.id,
+                            connection,
+                            tx.id,
                             person_id=None if select.value == _IGNORE else select.value,
                         )
                     safe_notify("Zuordnung gespeichert.", type="positive")
@@ -491,7 +516,8 @@ def receivables_page() -> None:
         def refresh_recent_transactions() -> None:
             with connection_scope() as connection:
                 recent = [
-                    tx for tx in bank_transaction_repo.list_recent(connection)
+                    tx
+                    for tx in bank_transaction_repo.list_recent(connection)
                     if tx.status in ("auto_matched", "manually_matched")
                 ]
             recent_tx_container.clear()

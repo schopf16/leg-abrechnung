@@ -98,9 +98,7 @@ def round_to_rappen(amount_rappen: float) -> int:
     Returns:
         The rounded amount as an integer number of Rappen.
     """
-    return int(
-        Decimal(str(amount_rappen)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    )
+    return int(Decimal(str(amount_rappen)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def compute_billing_items(
@@ -148,12 +146,8 @@ def compute_billing_items(
         produced_value_rappen = totals.produced_local_kwh * price_rp_per_kwh
         energy_net_rappen = round_to_rappen(consumed_value_rappen - produced_value_rappen)
 
-        admin_fee_consumption = round_to_rappen(
-            totals.consumed_local_kwh * admin_fee_consumption_rp_per_kwh
-        )
-        admin_fee_feed_in = round_to_rappen(
-            totals.produced_local_kwh * admin_fee_feed_in_rp_per_kwh
-        )
+        admin_fee_consumption = round_to_rappen(totals.consumed_local_kwh * admin_fee_consumption_rp_per_kwh)
+        admin_fee_feed_in = round_to_rappen(totals.produced_local_kwh * admin_fee_feed_in_rp_per_kwh)
         paper_invoice = paper_invoice_rappen if paper_invoice_by_person.get(person_id) else 0
 
         items.append(
@@ -170,8 +164,7 @@ def compute_billing_items(
                 admin_fee_feed_in_rp_per_kwh=admin_fee_feed_in_rp_per_kwh,
                 paper_invoice_rappen=paper_invoice,
                 net_amount_rappen=(
-                    energy_net_rappen + admin_fee_consumption
-                    + admin_fee_feed_in + paper_invoice
+                    energy_net_rappen + admin_fee_consumption + admin_fee_feed_in + paper_invoice
                 ),
                 pdf_path=None,
                 created_at="",
@@ -197,8 +190,10 @@ def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
         within the accepted rounding tolerance.
     """
     energy_net_by_item = [
-        i.net_amount_rappen - i.admin_fee_consumption_rappen
-        - i.admin_fee_feed_in_rappen - i.paper_invoice_rappen
+        i.net_amount_rappen
+        - i.admin_fee_consumption_rappen
+        - i.admin_fee_feed_in_rappen
+        - i.paper_invoice_rappen
         for i in items
     ]
     total_owed_to_leg = sum(n for n in energy_net_by_item if n > 0)

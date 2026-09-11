@@ -66,15 +66,13 @@ def billing_page() -> None:
 
         if not available_periods:
             ui.label(
-                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der "
-                "Seite „Import“ Daten einlesen."
+                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der Seite „Import“ Daten einlesen."
             ).classes("text-negative mt-2")
             return
 
         if not legs:
             ui.label(
-                "⚠ Noch keine LEG angelegt. Bitte zuerst unter „LEGs“ "
-                "mindestens eine LEG erfassen."
+                "⚠ Noch keine LEG angelegt. Bitte zuerst unter „LEGs“ mindestens eine LEG erfassen."
             ).classes("text-negative mt-2")
             return
 
@@ -142,13 +140,9 @@ def billing_page() -> None:
             Returns:
                 None.
             """
-            current_result_state.update(
-                run=run, control_check=control_check, distribution=distribution
-            )
+            current_result_state.update(run=run, control_check=control_check, distribution=distribution)
             with connection_scope() as connection:
-                person_names = {
-                    p.id: p.display_name for p in person_repo.list_all(connection)
-                }
+                person_names = {p.id: p.display_name for p in person_repo.list_all(connection)}
                 leg_name = leg_options.get(run.leg_id, "?")
 
             result_column.clear()
@@ -157,10 +151,7 @@ def billing_page() -> None:
                     ui.label(f"{leg_name} -- Q{run.period_quarter} {run.period_year}").classes(
                         "text-lg font-bold"
                     )
-                    ui.label(
-                        f"{distribution.interval_count} Intervalle verarbeitet, "
-                        f"{len(items)} Belege."
-                    )
+                    ui.label(f"{distribution.interval_count} Intervalle verarbeitet, {len(items)} Belege.")
                     if distribution.unassigned_kwh:
                         ui.label(
                             f"⚠ {distribution.unassigned_kwh} kWh konnten keiner "
@@ -185,9 +176,24 @@ def billing_page() -> None:
                         columns=[
                             {"name": "person", "label": "Person", "field": "person", "align": "left"},
                             {"name": "typ", "label": "Typ", "field": "typ", "align": "left"},
-                            {"name": "consumed", "label": "Bezug (kWh)", "field": "consumed", "align": "right"},
-                            {"name": "produced", "label": "Vergütung (kWh)", "field": "produced", "align": "right"},
-                            {"name": "amount", "label": "Netto-Betrag (CHF)", "field": "amount", "align": "right"},
+                            {
+                                "name": "consumed",
+                                "label": "Bezug (kWh)",
+                                "field": "consumed",
+                                "align": "right",
+                            },
+                            {
+                                "name": "produced",
+                                "label": "Vergütung (kWh)",
+                                "field": "produced",
+                                "align": "right",
+                            },
+                            {
+                                "name": "amount",
+                                "label": "Netto-Betrag (CHF)",
+                                "field": "amount",
+                                "align": "right",
+                            },
                             {"name": "email", "label": "E-Mail", "field": "email", "align": "left"},
                             {"name": "actions", "label": "", "field": "actions", "align": "right"},
                         ],
@@ -208,14 +214,14 @@ def billing_page() -> None:
                     ).classes("w-full mt-2")
                     items_table.add_slot(
                         "body-cell-actions",
-                        r'''
+                        r"""
                         <q-td :props="props">
                             <q-btn v-if="props.row.can_resend" dense flat icon="send"
                                    @click="() => $parent.$emit('resend', props.row)">
                                 <q-tooltip>Erneut senden</q-tooltip>
                             </q-btn>
                         </q-td>
-                        ''',
+                        """,
                     )
                     items_table.on(
                         "resend",
@@ -251,9 +257,7 @@ def billing_page() -> None:
 
             with result_column:
                 with ui.card().classes("w-full mt-2"):
-                    ui.label(f"Dokumente gespeichert in: {export_result.output_dir}").classes(
-                        "font-bold"
-                    )
+                    ui.label(f"Dokumente gespeichert in: {export_result.output_dir}").classes("font-bold")
                     ui.label(f"{len(export_result.document_paths)} Belege erzeugt.")
                     if export_result.invoice_list_path:
                         ui.label(f"Rechnungsliste (CSV): {export_result.invoice_list_path.name}")
@@ -288,8 +292,10 @@ def billing_page() -> None:
             with connection_scope() as connection:
                 fresh_items = billing_run_repo.list_items(connection, run.id)
             render_result(
-                run, fresh_items,
-                current_result_state["control_check"], current_result_state["distribution"],
+                run,
+                fresh_items,
+                current_result_state["control_check"],
+                current_result_state["distribution"],
             )
 
         def on_resend_click(run, item_id: int) -> None:
@@ -336,11 +342,17 @@ def billing_page() -> None:
                         try:
                             with connection_scope() as connection:
                                 await bulk_send.resend_invoice_email(
-                                    connection, config, run, item,
-                                    settings.invoice_email_subject, settings.invoice_email_body,
+                                    connection,
+                                    config,
+                                    run,
+                                    item,
+                                    settings.invoice_email_subject,
+                                    settings.invoice_email_body,
                                 )
                         except (
-                            ValueError, graph_client.GraphAuthError, graph_client.GraphApiError,
+                            ValueError,
+                            graph_client.GraphAuthError,
+                            graph_client.GraphApiError,
                         ) as exc:
                             confirm.close()
                             safe_notify(str(exc), type="negative")
@@ -371,12 +383,12 @@ def billing_page() -> None:
                     f"Rechnungen per E-Mail versenden -- {leg_options.get(run.leg_id, '?')}, "
                     f"Q{run.period_quarter} {run.period_year}"
                 ).classes("text-lg font-bold")
-                subject_input = ui.input("Betreff", value=settings.invoice_email_subject).classes(
-                    "w-full"
+                subject_input = ui.input("Betreff", value=settings.invoice_email_subject).classes("w-full")
+                body_textarea = (
+                    ui.textarea("Nachricht", value=settings.invoice_email_body)
+                    .classes("w-full")
+                    .props("rows=8")
                 )
-                body_textarea = ui.textarea(
-                    "Nachricht", value=settings.invoice_email_body
-                ).classes("w-full").props("rows=8")
                 ui.label(f"Verfügbare Platzhalter: {_INVOICE_PLACEHOLDER_HINT}").classes(
                     "text-caption text-grey-6"
                 )
@@ -412,9 +424,7 @@ def billing_page() -> None:
                             ui.label(f"- {line}").classes("text-caption text-grey-6")
                         if unknown:
                             placeholder_list = ", ".join(f"{{{name}}}" for name in unknown)
-                            ui.label(f"⚠ Unbekannte Platzhalter: {placeholder_list}").classes(
-                                "text-negative"
-                            )
+                            ui.label(f"⚠ Unbekannte Platzhalter: {placeholder_list}").classes("text-negative")
                         for person in invalid_emails:
                             ui.label(
                                 f"⚠ {person.display_name}: E-Mail-Adresse ungültig "
@@ -425,14 +435,12 @@ def billing_page() -> None:
                 body_textarea.on_value_change(lambda _: refresh_info())
                 refresh_info()
 
-                progress_bar = ui.linear_progress(value=0.0, show_value=False).classes(
-                    "w-full mt-2"
-                )
+                progress_bar = ui.linear_progress(value=0.0, show_value=False).classes("w-full mt-2")
                 progress_bar.visible = False
                 progress_label = ui.label("").classes("text-caption")
-                progress_warning = ui.label(
-                    "Bitte die App während des Versands nicht schliessen."
-                ).classes("text-caption text-warning")
+                progress_warning = ui.label("Bitte die App während des Versands nicht schliessen.").classes(
+                    "text-caption text-warning"
+                )
                 progress_warning.bind_visibility_from(progress_bar, "visible")
 
                 async def do_send() -> None:
@@ -459,8 +467,11 @@ def billing_page() -> None:
                     try:
                         with connection_scope() as connection:
                             result = await bulk_send.send_invoice_emails(
-                                connection, config, run,
-                                subject_input.value, body_textarea.value,
+                                connection,
+                                config,
+                                run,
+                                subject_input.value,
+                                body_textarea.value,
                                 on_progress=on_progress,
                             )
                     except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
@@ -554,16 +565,12 @@ def billing_page() -> None:
                 with ui.column().classes("gap-0 mt-2"):
                     ui.label(f"Energiepreis: {settings.price_rp_per_kwh:.2f} Rp./kWh")
                     ui.label(
-                        f"Verwaltungsaufwand Bezug: "
-                        f"{settings.admin_fee_consumption_rp_per_kwh:.4f} Rp./kWh"
+                        f"Verwaltungsaufwand Bezug: {settings.admin_fee_consumption_rp_per_kwh:.4f} Rp./kWh"
                     )
                     ui.label(
-                        f"Verwaltungsaufwand Einspeisung: "
-                        f"{settings.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh"
+                        f"Verwaltungsaufwand Einspeisung: {settings.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh"
                     )
-                    ui.label(
-                        f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF"
-                    )
+                    ui.label(f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF")
 
                 def confirmed() -> None:
                     dialog.close()

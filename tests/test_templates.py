@@ -20,12 +20,24 @@ def _person(
 ) -> Person:
     """Build an unpersisted `Person` for use in tests."""
     return Person(
-        id=1, salutation=salutation, company=company, first_name=first_name, last_name=last_name,
-        contact_email=email, contact_phone="",
-        billing_street="", billing_house_number="", billing_postal_code="",
-        billing_city="", billing_country="CH",
-        iban="", customer_number=123456, bkw_customer_number=None, paper_invoice=False,
-        active=True, created_at="",
+        id=1,
+        salutation=salutation,
+        company=company,
+        first_name=first_name,
+        last_name=last_name,
+        contact_email=email,
+        contact_phone="",
+        billing_street="",
+        billing_house_number="",
+        billing_postal_code="",
+        billing_city="",
+        billing_country="CH",
+        iban="",
+        customer_number=123456,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
     )
 
 

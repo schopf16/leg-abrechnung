@@ -164,9 +164,7 @@ async def send_email(
             # recipient, so a PDF deleted/moved after being generated
             # (see app.pdf.export_service) becomes a clean per-person
             # skip instead of crashing the whole batch send.
-            raise GraphApiError(
-                f"Anhang {attachment_path} konnte nicht gelesen werden: {exc}"
-            ) from exc
+            raise GraphApiError(f"Anhang {attachment_path} konnte nicht gelesen werden: {exc}") from exc
         if len(content_bytes) > MAX_INLINE_ATTACHMENT_BYTES:
             raise GraphApiError(
                 f"Anhang {attachment_filename} ist mit "

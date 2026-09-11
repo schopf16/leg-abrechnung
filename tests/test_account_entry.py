@@ -13,12 +13,24 @@ def _person(db, name: str = "P", email: str = "p@example.invalid") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="Frau", company="", first_name=name, last_name="Test",
-            contact_email=email, contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None,
-            paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="Frau",
+            company="",
+            first_name=name,
+            last_name="Test",
+            contact_email=email,
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
@@ -38,18 +50,31 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
     run_id = billing_run_repo.create_run(
         db,
         BillingRun(
-            id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
-            created_at="", price_rp_per_kwh=20.0, status="created", notes="",
+            id=None,
+            leg_id=leg_id,
+            period_year=2026,
+            period_quarter=1,
+            created_at="",
+            price_rp_per_kwh=20.0,
+            status="created",
+            notes="",
         ),
     )
     item_ids = billing_run_repo.add_items(
         db,
         [
             BillingRunItem(
-                id=None, billing_run_id=run_id, person_id=person_id,
-                consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
-                net_amount_rappen=net_amount_rappen, pdf_path=None, created_at="",
+                id=None,
+                billing_run_id=run_id,
+                person_id=person_id,
+                consumed_kwh=10.0,
+                produced_kwh=0.0,
+                price_rp_per_kwh=20.0,
+                admin_fee_consumption_rappen=0,
+                paper_invoice_rappen=0,
+                net_amount_rappen=net_amount_rappen,
+                pdf_path=None,
+                created_at="",
             )
         ],
     )
@@ -59,8 +84,12 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
 def test_create_and_list_for_person_round_trip(db):
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-5000,
-        booked_at="2026-01-15", note="Testzahlung",
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-5000,
+        booked_at="2026-01-15",
+        note="Testzahlung",
     )
 
     entries = account_entry_repo.list_for_person(db, person_id)
@@ -88,8 +117,12 @@ def test_balance_combines_invoices_and_payments(db):
     person_id = _person(db)
     run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-6_000,
-        booked_at="2026-02-01", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-6_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=item_id,
     )
 
     assert account_entry_repo.get_balance_rappen(db, person_id) == 4_000
@@ -102,8 +135,12 @@ def test_balance_reflects_overpayment_as_negative_internal_value(db):
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-15_000,
-        booked_at="2026-02-01", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-15_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=item_id,
     )
 
     assert account_entry_repo.get_balance_rappen(db, person_id) == -5_000
@@ -116,12 +153,20 @@ def test_double_payment_of_the_same_invoice_is_never_blocked(db):
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000,
-        booked_at="2026-02-01", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-10_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=item_id,
     )
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000,
-        booked_at="2026-02-05", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-10_000,
+        booked_at="2026-02-05",
+        billing_run_item_id=item_id,
     )
 
     assert len(account_entry_repo.list_for_person(db, person_id)) == 2
@@ -136,7 +181,10 @@ def test_payout_reduces_a_negative_balance_back_toward_zero(db):
     assert account_entry_repo.get_balance_rappen(db, person_id) == -8_000
 
     account_entry_repo.create(
-        db, person_id=person_id, kind="payout", amount_rappen=8_000,
+        db,
+        person_id=person_id,
+        kind="payout",
+        amount_rappen=8_000,
         booked_at="2026-02-01",
     )
 
@@ -146,7 +194,11 @@ def test_payout_reduces_a_negative_balance_back_toward_zero(db):
 def test_delete_removes_an_entry_and_updates_balance(db):
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="correction", amount_rappen=1_000, booked_at="2026-01-01",
+        db,
+        person_id=person_id,
+        kind="correction",
+        amount_rappen=1_000,
+        booked_at="2026-01-01",
     )
     assert account_entry_repo.get_balance_rappen(db, person_id) == 1_000
 
@@ -184,12 +236,20 @@ def test_get_remaining_for_item_subtracts_only_payments_linked_to_it(db):
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     _run_id_2, other_item_id = _billing_item(db, person_id, net_amount_rappen=5_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-3_000,
-        booked_at="2026-02-01", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-3_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=item_id,
     )
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-5_000,
-        booked_at="2026-02-01", billing_run_item_id=other_item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-5_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=other_item_id,
     )
 
     assert account_entry_repo.get_remaining_for_item(db, item_id, 10_000) == 7_000
@@ -202,8 +262,12 @@ def test_get_remaining_for_item_never_goes_negative(db):
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-15_000,
-        booked_at="2026-02-01", billing_run_item_id=item_id,
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-15_000,
+        booked_at="2026-02-01",
+        billing_run_item_id=item_id,
     )
 
     assert account_entry_repo.get_remaining_for_item(db, item_id, 10_000) == 0
@@ -216,8 +280,12 @@ def test_create_with_commit_false_is_visible_within_the_same_connection(db):
     per connection_scope instead of once per row)."""
     person_id = _person(db)
     account_entry_repo.create(
-        db, person_id=person_id, kind="correction", amount_rappen=1_000,
-        booked_at="2026-01-01", commit=False,
+        db,
+        person_id=person_id,
+        kind="correction",
+        amount_rappen=1_000,
+        booked_at="2026-01-01",
+        commit=False,
     )
 
     assert account_entry_repo.get_balance_rappen(db, person_id) == 1_000

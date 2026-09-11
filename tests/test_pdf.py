@@ -103,11 +103,19 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1", address_zip="3000", address_city="Bern",
-        address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        admin_fee_consumption_rp_per_kwh=0.0, admin_fee_feed_in_rp_per_kwh=0.0,
-        paper_invoice_rappen=0, extra_backup_dir="",
-        metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
+        address_street="Weg 1",
+        address_zip="3000",
+        address_city="Bern",
+        address_country="CH",
+        qr_iban="CH5730000123456789012",
+        price_rp_per_kwh=12.0,
+        admin_fee_consumption_rp_per_kwh=0.0,
+        admin_fee_feed_in_rp_per_kwh=0.0,
+        paper_invoice_rappen=0,
+        extra_backup_dir="",
+        metering_point_country="CH",
+        metering_point_identifier="",
+        web_registration_cursor=0,
         onboarding_overdue_days=30,
         leg_founding_min_persons=7,
         invoice_email_subject="Ihre Abrechnung",
@@ -122,10 +130,24 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
     person = Person(
-        id=1, salutation="", company="", first_name="Max", last_name="Muster", contact_email="", contact_phone="",
-        billing_street="Strasse", billing_house_number="1", billing_postal_code="8000",
-        billing_city="Zürich", billing_country="CH", iban="",
-        customer_number=12345678, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
+        id=1,
+        salutation="",
+        company="",
+        first_name="Max",
+        last_name="Muster",
+        contact_email="",
+        contact_phone="",
+        billing_street="Strasse",
+        billing_house_number="1",
+        billing_postal_code="8000",
+        billing_city="Zürich",
+        billing_country="CH",
+        iban="",
+        customer_number=12345678,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
 
@@ -152,11 +174,19 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1", address_zip="3000", address_city="Bern",
-        address_country="CH", qr_iban="CH5730000123456789012", price_rp_per_kwh=12.0,
-        admin_fee_consumption_rp_per_kwh=0.0, admin_fee_feed_in_rp_per_kwh=0.0,
-        paper_invoice_rappen=0, extra_backup_dir="",
-        metering_point_country="CH", metering_point_identifier="", web_registration_cursor=0,
+        address_street="Weg 1",
+        address_zip="3000",
+        address_city="Bern",
+        address_country="CH",
+        qr_iban="CH5730000123456789012",
+        price_rp_per_kwh=12.0,
+        admin_fee_consumption_rp_per_kwh=0.0,
+        admin_fee_feed_in_rp_per_kwh=0.0,
+        paper_invoice_rappen=0,
+        extra_backup_dir="",
+        metering_point_country="CH",
+        metering_point_identifier="",
+        web_registration_cursor=0,
         onboarding_overdue_days=30,
         leg_founding_min_persons=7,
         invoice_email_subject="Ihre Abrechnung",
@@ -171,10 +201,24 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     )
     leg = Leg(id=1, name="LEG Test", note="", created_at="")
     person = Person(
-        id=1, salutation="", company="", first_name="Max", last_name="Muster", contact_email="", contact_phone="",
-        billing_street="Strasse", billing_house_number="1", billing_postal_code="8000",
-        billing_city="Zürich", billing_country="CH", iban="",
-        customer_number=12345678, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
+        id=1,
+        salutation="",
+        company="",
+        first_name="Max",
+        last_name="Muster",
+        contact_email="",
+        contact_phone="",
+        billing_street="Strasse",
+        billing_house_number="1",
+        billing_postal_code="8000",
+        billing_city="Zürich",
+        billing_country="CH",
+        iban="",
+        customer_number=12345678,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
     )
     ref = generate_qrr_reference(1, 1, 1)
     bill = build_qr_bill(settings, leg, person, Decimal("10.00"), ref)
@@ -212,9 +256,7 @@ def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(
     person_result = distribution.person_results[invoice_item.person_id]
 
     output_path = tmp_path / "prosumer.pdf"
-    generate_person_bill_pdf(
-        run, invoice_item, person_result, person, leg, settings, output_path
-    )
+    generate_person_bill_pdf(run, invoice_item, person_result, person, leg, settings, output_path)
 
     _assert_is_pdf(output_path)
     assert _page_count(output_path) == 2
@@ -230,9 +272,7 @@ def test_generate_person_bill_pdf_for_credit_item_omits_payment_slip(db, tmp_pat
     person_result = distribution.person_results[credit_item.person_id]
 
     output_path = tmp_path / "credit.pdf"
-    generate_person_bill_pdf(
-        run, credit_item, person_result, person, leg, settings, output_path
-    )
+    generate_person_bill_pdf(run, credit_item, person_result, person, leg, settings, output_path)
 
     _assert_is_pdf(output_path)
     # No QR-bill section means no forced page break for its reserved area --
@@ -248,9 +288,7 @@ def test_generate_person_bill_pdf_for_pure_consumer_has_payable_qr_bill(db, tmp_
     person_result = distribution.person_results[consumer_item.person_id]
 
     output_path = tmp_path / "consumer.pdf"
-    generate_person_bill_pdf(
-        run, consumer_item, person_result, person, leg, settings, output_path
-    )
+    generate_person_bill_pdf(run, consumer_item, person_result, person, leg, settings, output_path)
 
     _assert_is_pdf(output_path)
 
@@ -275,9 +313,7 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     consumer_item.paper_invoice_rappen = 0
 
     output_path = tmp_path / "consumer_no_fees.pdf"
-    generate_person_bill_pdf(
-        run, consumer_item, person_result, person, leg, settings, output_path
-    )
+    generate_person_bill_pdf(run, consumer_item, person_result, person, leg, settings, output_path)
 
     _assert_is_pdf(output_path)
     assert _page_count(output_path) == 1
@@ -364,7 +400,9 @@ def test_export_billing_run_documents_writes_one_pdf_per_person(db, tmp_path, mo
     assert all(item.pdf_path for item in stored_items)
 
 
-def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_reexport(db, tmp_path, monkeypatch):
+def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_reexport(
+    db, tmp_path, monkeypatch
+):
     """Finding #2: a re-export (e.g. to fix a typo in the LEG address) must
     keep printing/using the due date already communicated to the person
     and already relied upon by app.domain.dunning -- never push it back

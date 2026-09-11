@@ -281,9 +281,7 @@ def get(connection: sqlite3.Connection, transaction_id: int) -> Optional[BankTra
     Returns:
         The matching `BankTransaction`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM bank_transactions WHERE id = ?", (transaction_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM bank_transactions WHERE id = ?", (transaction_id,)).fetchone()
     return BankTransaction.from_row(row) if row else None
 
 

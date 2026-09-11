@@ -33,8 +33,7 @@ from app.models.site import Site
 from app.models.assignment import Assignment
 
 
-def _person(db, name: str = "P", email: str = "p@example.invalid",
-            paper_invoice: bool = False) -> int:
+def _person(db, name: str = "P", email: str = "p@example.invalid", paper_invoice: bool = False) -> int:
     """Create a Person (fantasy email, never a real address) and return its id.
 
     Always created active -- `person_repo.create` ignores any `active`
@@ -44,12 +43,24 @@ def _person(db, name: str = "P", email: str = "p@example.invalid",
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="Frau", company="", first_name=name, last_name="Test",
-            contact_email=email, contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None,
-            paper_invoice=paper_invoice, active=True, created_at="",
+            id=None,
+            salutation="Frau",
+            company="",
+            first_name=name,
+            last_name="Test",
+            contact_email=email,
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=paper_invoice,
+            active=True,
+            created_at="",
         ),
     )
 
@@ -58,8 +69,14 @@ def _site(db) -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street="Testweg", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Testweg",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
 
@@ -72,22 +89,36 @@ def _metering_point(db, designation: str, site_id: int, leg_id) -> int:
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=designation, direction=DIRECTION_CONSUMPTION,
-            site_id=site_id, leg_id=leg_id, pv_capacity_kwp=None,
-            battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=designation,
+            direction=DIRECTION_CONSUMPTION,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
 
-def _assignment(db, person_id: int, metering_point_id: int, valid_from: date, valid_to: date | None = None) -> None:
+def _assignment(
+    db, person_id: int, metering_point_id: int, valid_from: date, valid_to: date | None = None
+) -> None:
     assignment_repo.create(
         db,
-        Assignment(id=None, person_id=person_id, metering_point_id=metering_point_id,
-                   valid_from=valid_from, valid_to=valid_to, created_at=""),
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            created_at="",
+        ),
     )
 
 
 # -- list_broadcast_recipients ------------------------------------------------
+
 
 def test_list_broadcast_recipients_includes_active_with_email(db):
     person_id = _person(db, "Anna", email="anna@example.invalid")
@@ -109,6 +140,7 @@ def test_list_broadcast_recipients_excludes_missing_email(db):
 
 
 # -- list_leg_recipients -------------------------------------------------------
+
 
 def test_list_leg_recipients_includes_current_member(db):
     leg_id = _leg(db)
@@ -183,15 +215,22 @@ def test_list_leg_recipients_excludes_missing_email(db):
 
 # -- send_broadcast_email -------------------------------------------------------
 
+
 def test_send_broadcast_email_sends_individually_and_logs(db):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         result = asyncio.run(
             send_broadcast_email(
-                db, "config", [person_a, person_b], "Betreff {vorname}", "Hallo {vorname}",
+                db,
+                "config",
+                [person_a, person_b],
+                "Betreff {vorname}",
+                "Hallo {vorname}",
                 scope="all",
             )
         )
@@ -213,14 +252,15 @@ def test_send_broadcast_email_continues_after_single_recipient_error(db):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(
-             bulk_send.graph_client, "send_email",
-             AsyncMock(side_effect=[GraphApiError("boom"), None]),
-         ):
-        result = asyncio.run(
-            send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all")
-        )
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(
+            bulk_send.graph_client,
+            "send_email",
+            AsyncMock(side_effect=[GraphApiError("boom"), None]),
+        ),
+    ):
+        result = asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all"))
 
     assert result.sent == ["Beat Test"]
     assert len(result.errors) == 1
@@ -233,10 +273,12 @@ def test_send_broadcast_email_aborts_on_auth_error(db):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(
-             bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphAuthError("bad creds"))
-         ):
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(
+            bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphAuthError("bad creds"))
+        ),
+    ):
         with pytest.raises(GraphAuthError):
             asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all"))
 
@@ -246,11 +288,18 @@ def test_send_broadcast_email_calls_on_progress_per_recipient(db):
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
     progress_calls = []
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()):
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()),
+    ):
         asyncio.run(
             send_broadcast_email(
-                db, "config", [person_a, person_b], "s", "b", scope="all",
+                db,
+                "config",
+                [person_a, person_b],
+                "s",
+                "b",
+                scope="all",
                 on_progress=lambda done, total: progress_calls.append((done, total)),
             )
         )
@@ -264,12 +313,20 @@ def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(d
     attachment_path = tmp_path / "einladung.pdf"
     attachment_path.write_bytes(b"%PDF-fake-content")
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         asyncio.run(
             send_broadcast_email(
-                db, "config", [person_a, person_b], "s", "b", scope="all",
-                attachment_path=attachment_path, attachment_filename="einladung.pdf",
+                db,
+                "config",
+                [person_a, person_b],
+                "s",
+                "b",
+                scope="all",
+                attachment_path=attachment_path,
+                attachment_filename="einladung.pdf",
             )
         )
 
@@ -290,25 +347,46 @@ def test_send_broadcast_email_returns_early_for_no_recipients(db):
 
 # -- send_invoice_emails / resend_invoice_email --------------------------------
 
+
 def _run_with_item(
-    db, *, paper_invoice=False, email="anna@example.invalid", pdf_path="rechnung.pdf",
+    db,
+    *,
+    paper_invoice=False,
+    email="anna@example.invalid",
+    pdf_path="rechnung.pdf",
     net_amount_rappen=5000,
 ) -> tuple[BillingRun, BillingRunItem]:
     """Create a Leg, a Person, a BillingRun and one BillingRunItem for them."""
     leg_id = _leg(db)
     person_id = _person(db, "Anna", email=email, paper_invoice=paper_invoice)
     run_id = billing_run_repo.create_run(
-        db, BillingRun(id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
-                        created_at="", price_rp_per_kwh=20.0, status="created", notes=""),
+        db,
+        BillingRun(
+            id=None,
+            leg_id=leg_id,
+            period_year=2026,
+            period_quarter=1,
+            created_at="",
+            price_rp_per_kwh=20.0,
+            status="created",
+            notes="",
+        ),
     )
     [item_id] = billing_run_repo.add_items(
         db,
         [
             BillingRunItem(
-                id=None, billing_run_id=run_id, person_id=person_id,
-                consumed_kwh=10.0, produced_kwh=0.0, price_rp_per_kwh=20.0,
-                admin_fee_consumption_rappen=0, paper_invoice_rappen=0,
-                net_amount_rappen=net_amount_rappen, pdf_path=pdf_path, created_at="",
+                id=None,
+                billing_run_id=run_id,
+                person_id=person_id,
+                consumed_kwh=10.0,
+                produced_kwh=0.0,
+                price_rp_per_kwh=20.0,
+                admin_fee_consumption_rappen=0,
+                paper_invoice_rappen=0,
+                net_amount_rappen=net_amount_rappen,
+                pdf_path=pdf_path,
+                created_at="",
             )
         ],
     )
@@ -319,8 +397,10 @@ def _run_with_item(
 
 def test_send_invoice_emails_skips_paper_invoice(db):
     run, _ = _run_with_item(db, paper_invoice=True)
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
 
     assert result.sent == []
@@ -330,8 +410,10 @@ def test_send_invoice_emails_skips_paper_invoice(db):
 
 def test_send_invoice_emails_skips_missing_email(db):
     run, _ = _run_with_item(db, email="")
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
 
     assert "E-Mail-Adresse" in result.skipped[0]
@@ -340,8 +422,10 @@ def test_send_invoice_emails_skips_missing_email(db):
 
 def test_send_invoice_emails_skips_missing_pdf(db):
     run, _ = _run_with_item(db, pdf_path=None)
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
 
     assert "PDF" in result.skipped[0]
@@ -351,8 +435,10 @@ def test_send_invoice_emails_skips_missing_pdf(db):
 def test_send_invoice_emails_skips_already_sent(db):
     run, item = _run_with_item(db)
     billing_run_repo.set_item_email_sent_at(db, item.id, "2026-01-01T00:00:00+00:00")
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
 
     assert "bereits" in result.skipped[0]
@@ -361,11 +447,11 @@ def test_send_invoice_emails_skips_already_sent(db):
 
 def test_send_invoice_emails_sends_and_records_timestamp(db):
     run, item = _run_with_item(db, net_amount_rappen=4250)
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
-        result = asyncio.run(
-            send_invoice_emails(db, "config", run, "Rechnung {leg}", "Betrag: {betrag}")
-        )
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
+        result = asyncio.run(send_invoice_emails(db, "config", run, "Rechnung {leg}", "Betrag: {betrag}"))
 
     assert result.sent == ["Anna Test"]
     kwargs = mock_send.call_args.kwargs
@@ -379,8 +465,10 @@ def test_send_invoice_emails_sends_and_records_timestamp(db):
 
 def test_send_invoice_emails_continues_after_error(db):
     run, _ = _run_with_item(db)
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphApiError("boom"))):
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphApiError("boom"))),
+    ):
         result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
 
     assert result.sent == []
@@ -408,8 +496,10 @@ def test_resend_invoice_email_sends_despite_already_sent(db):
     billing_run_repo.set_item_email_sent_at(db, item.id, "2026-01-01T00:00:00+00:00")
     item = billing_run_repo.list_items(db, run.id)[0]
 
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")), \
-         patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
         asyncio.run(resend_invoice_email(db, "config", run, item, "s", "b"))
 
     mock_send.assert_called_once()

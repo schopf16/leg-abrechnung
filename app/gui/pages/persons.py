@@ -54,7 +54,9 @@ def _copy_customer_number(person: Person) -> None:
     safe_notify("Kundennummer kopiert.")
 
 
-def _customer_number_row(person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6") -> None:
+def _customer_number_row(
+    person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6"
+) -> None:
     """Render the Kunden-Nr. label with an inline copy-to-clipboard button.
 
     Args:
@@ -111,8 +113,7 @@ def _print_row(person: Person) -> dict:
         "email": person.contact_email,
         "phone": person.contact_phone,
         "address": (
-            f"{person.billing_street_with_number}, "
-            f"{person.billing_postal_code} {person.billing_city}"
+            f"{person.billing_street_with_number}, {person.billing_postal_code} {person.billing_city}"
         ),
         "iban": format_iban(person.iban) if person.iban else "",
         "status": "Aktiv" if person.active else "Inaktiv",
@@ -183,14 +184,14 @@ def persons_page() -> None:
                     get_rows=lambda: [_print_row(p) for p in visible_persons],
                     get_filter_description=lambda: _filter_description(),
                 )
-                ui.button(
-                    "+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh())
-                )
+                ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
         with ui.row().classes("w-full items-center gap-4"):
-            search_input = ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)").classes(
-                "w-full max-w-md"
-            ).props("debounce=300 clearable")
+            search_input = (
+                ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
             show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -237,14 +238,12 @@ def persons_page() -> None:
                         ui.label(person.contact_phone or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         ui.label(person.billing_street_with_number or "-")
-                        ui.label(
-                            f"{person.billing_postal_code} {person.billing_city}".strip()
-                        )
+                        ui.label(f"{person.billing_postal_code} {person.billing_city}".strip())
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
-                        ui.label(
-                            "Papierrechnung: " + ("ja" if person.paper_invoice else "nein")
-                        ).classes("text-grey-7")
+                        ui.label("Papierrechnung: " + ("ja" if person.paper_invoice else "nein")).classes(
+                            "text-grey-7"
+                        )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
                         ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
@@ -253,9 +252,9 @@ def persons_page() -> None:
                                 "dense flat color=negative"
                             )
                         else:
-                            ui.button(
-                                icon="restore", on_click=lambda: on_reactivate(person)
-                            ).props("dense flat color=primary").tooltip("Wieder aktivieren")
+                            ui.button(icon="restore", on_click=lambda: on_reactivate(person)).props(
+                                "dense flat color=primary"
+                            ).tooltip("Wieder aktivieren")
 
         def apply_filter() -> None:
             """Filter the currently loaded persons by search text and active state.
@@ -444,8 +443,7 @@ def person_detail_page(person_id: int) -> None:
                         _, step_label = onboarding.current_step
                         overdue = onboarding.is_overdue(onboarding_threshold)
                         ui.label(
-                            f"Aktueller Schritt: {step_label} "
-                            f"(seit {onboarding.days_open()} Tagen)"
+                            f"Aktueller Schritt: {step_label} (seit {onboarding.days_open()} Tagen)"
                         ).classes("text-negative" if overdue else "")
                     ui.button(
                         "Bearbeiten",
@@ -495,11 +493,11 @@ def person_detail_page(person_id: int) -> None:
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         detail_table.add_slot(
             "body-cell-valid_from",
-            r'''
+            r"""
             <q-td :props="props" :class="props.row.is_future ? 'text-orange-8' : ''">
                 {{ props.value }}
             </q-td>
-            ''',
+            """,
         )
 
         def refresh_detail() -> None:
@@ -528,26 +526,20 @@ def person_detail_page(person_id: int) -> None:
                     if not show_all_switch.value and not is_relevant:
                         continue
                     mp = metering_point_repo.get(inner_connection, z.metering_point_id)
-                    site = (
-                        site_repo.get(inner_connection, mp.site_id) if mp else None
-                    )
+                    site = site_repo.get(inner_connection, mp.site_id) if mp else None
                     substation_area = (
                         substation_area_repo.get(inner_connection, site.substation_area_id)
                         if site and site.substation_area_id
                         else None
                     )
-                    leg = (
-                        leg_repo.get(inner_connection, mp.leg_id) if mp and mp.leg_id else None
-                    )
+                    leg = leg_repo.get(inner_connection, mp.leg_id) if mp and mp.leg_id else None
                     if leg is not None:
                         leg_ids_involved.add(leg.id)
                     rows.append(
                         {
                             "id": z.id,
                             "designation": mp.designation if mp else "?",
-                            "direction": DIRECTION_LABELS.get(mp.direction, mp.direction)
-                            if mp
-                            else "?",
+                            "direction": DIRECTION_LABELS.get(mp.direction, mp.direction) if mp else "?",
                             "site_address": site.full_address if site else "?",
                             "substation_area": substation_area.name if substation_area else "-",
                             "leg": leg.name if leg else "-",

@@ -11,20 +11,36 @@ def _person(db, email: str = "p@example.invalid") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="Frau", company="", first_name="P", last_name="Test",
-            contact_email=email, contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None,
-            paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="Frau",
+            company="",
+            first_name="P",
+            last_name="Test",
+            contact_email=email,
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
 
 def _batch(db, filename: str = "auszug.xml") -> int:
     return bank_transaction_repo.create_batch(
-        db, filename=filename, account_iban="CH9300762011623852957",
-        statement_from="2026-01-01", statement_to="2026-01-31", entry_count=1,
+        db,
+        filename=filename,
+        account_iban="CH9300762011623852957",
+        statement_from="2026-01-01",
+        statement_to="2026-01-31",
+        entry_count=1,
     )
 
 
@@ -110,7 +126,11 @@ def test_set_match_records_person_and_account_entry(db):
     tx_id = _insert(db, batch_id)
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000, booked_at="2026-01-15",
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-10_000,
+        booked_at="2026-01-15",
     )
 
     bank_transaction_repo.set_match(
@@ -128,7 +148,11 @@ def test_clear_match_resets_status_and_match_fields(db):
     tx_id = _insert(db, batch_id)
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000, booked_at="2026-01-15",
+        db,
+        person_id=person_id,
+        kind="payment_received",
+        amount_rappen=-10_000,
+        booked_at="2026-01-15",
     )
     bank_transaction_repo.set_match(
         db, tx_id, status="manually_matched", matched_person_id=person_id, account_entry_id=entry_id

@@ -80,9 +80,7 @@ def get(connection: sqlite3.Connection, substation_area_id: int) -> Optional[Sub
     Returns:
         The matching `substation area`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM substation_area WHERE id = ?", (substation_area_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM substation_area WHERE id = ?", (substation_area_id,)).fetchone()
     return SubstationArea.from_row(row) if row else None
 
 
@@ -96,9 +94,7 @@ def get_by_name(connection: sqlite3.Connection, name: str) -> Optional[Substatio
     Returns:
         The matching `substation area`, or `None` if no such name exists.
     """
-    row = connection.execute(
-        "SELECT * FROM substation_area WHERE name = ?", (name,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM substation_area WHERE name = ?", (name,)).fetchone()
     return SubstationArea.from_row(row) if row else None
 
 

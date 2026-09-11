@@ -128,7 +128,5 @@ def list_all(connection: sqlite3.Connection) -> list[EmailBroadcastLog]:
     Returns:
         All log entries, ordered by `sent_at` descending.
     """
-    rows = connection.execute(
-        "SELECT * FROM email_broadcast_log ORDER BY sent_at DESC, id DESC"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM email_broadcast_log ORDER BY sent_at DESC, id DESC").fetchall()
     return [EmailBroadcastLog.from_row(row) for row in rows]

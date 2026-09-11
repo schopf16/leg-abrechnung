@@ -40,9 +40,7 @@ STEP_FILTER_OPTIONS: dict[str | None, str] = {
 
 #: `(label, field)` pairs for the printed table: Person/Status, then one
 #: column per onboarding step (its date, or empty if still open).
-PRINT_COLUMNS = [("Person", "person"), ("Status", "status")] + [
-    (label, attr) for attr, label in STEPS
-]
+PRINT_COLUMNS = [("Person", "person"), ("Status", "status")] + [(label, attr) for attr, label in STEPS]
 
 
 def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> dict:
@@ -153,34 +151,28 @@ def onboardings_page() -> None:
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         with ui.row().classes("items-center gap-2"):
-                            ui.link(person.display_name, f"/persons/{person.id}").classes(
-                                "font-bold"
-                            )
+                            ui.link(person.display_name, f"/persons/{person.id}").classes("font-bold")
                             if onboarding.is_complete:
                                 ui.badge("Abgeschlossen", color="positive")
                             elif overdue:
                                 ui.badge(f"{onboarding.days_open()} Tage überfällig", color="negative")
                         if not onboarding.is_complete:
                             _, step_label = onboarding.current_step
-                            ui.label(f"Aktueller Schritt: {step_label}").classes(
-                                "text-caption text-grey-6"
-                            )
+                            ui.label(f"Aktueller Schritt: {step_label}").classes("text-caption text-grey-6")
                     with ui.column().classes("gap-0 min-w-[280px]"):
                         for attr, label in STEPS:
                             value = getattr(onboarding, attr)
                             text = f"{'✓' if value else '—'} {label}"
                             if value:
                                 text += f" ({value.isoformat()})"
-                            ui.label(text).classes(
-                                "text-caption" + ("" if value else " text-grey-6")
-                            )
+                            ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
                     with ui.row().classes("gap-1 ml-auto"):
-                        ui.button(
-                            "Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)
-                        ).props("dense flat")
-                        ui.button(
-                            "Löschen", on_click=lambda o=onboarding, p=person: on_delete(o, p)
-                        ).props("dense flat color=negative")
+                        ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
+                            "dense flat"
+                        )
+                        ui.button("Löschen", on_click=lambda o=onboarding, p=person: on_delete(o, p)).props(
+                            "dense flat color=negative"
+                        )
 
         def refresh() -> None:
             """Reload the onboarding list according to the current filters.
@@ -243,8 +235,7 @@ def onboardings_page() -> None:
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Aufnahmeprozess von "{person.display_name}" wirklich löschen?')
                 ui.label(
-                    "Nur die Nachverfolgung wird entfernt -- die Person "
-                    "selbst bleibt bestehen."
+                    "Nur die Nachverfolgung wird entfernt -- die Person selbst bleibt bestehen."
                 ).classes("text-caption text-grey-7")
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
@@ -268,9 +259,7 @@ def onboardings_page() -> None:
             """
             with connection_scope() as connection:
                 all_persons = person_repo.list_all(connection)
-                already_tracked = {
-                    o.person_id for o in person_onboarding_repo.list_all(connection)
-                }
+                already_tracked = {o.person_id for o in person_onboarding_repo.list_all(connection)}
             available_persons = [p for p in all_persons if p.id not in already_tracked]
             if not available_persons:
                 ui.notify("Alle Personen werden bereits nachverfolgt.", type="warning")
@@ -279,12 +268,12 @@ def onboardings_page() -> None:
 
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Aufnahme starten").classes("text-lg font-bold")
-                person_select = ui.select(
-                    person_options, label="Person", with_input=True
-                ).classes("w-full")
-                start_date = ui.input(
-                    "Anmeldung bei uns (Datum)", value=date.today().isoformat()
-                ).props("type=date").classes("w-full")
+                person_select = ui.select(person_options, label="Person", with_input=True).classes("w-full")
+                start_date = (
+                    ui.input("Anmeldung bei uns (Datum)", value=date.today().isoformat())
+                    .props("type=date")
+                    .classes("w-full")
+                )
                 error_label = ui.label("").classes("text-negative")
 
                 def start() -> None:

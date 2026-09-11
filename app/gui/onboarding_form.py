@@ -67,9 +67,11 @@ def open_onboarding_form(
         for attr, label in STEPS:
             value = getattr(onboarding, attr)
             with ui.row().classes("w-full items-center gap-2"):
-                date_inputs[attr] = ui.input(
-                    label, value=value.isoformat() if value else ""
-                ).props("type=date").classes("flex-grow")
+                date_inputs[attr] = (
+                    ui.input(label, value=value.isoformat() if value else "")
+                    .props("type=date")
+                    .classes("flex-grow")
+                )
                 if attr == "leg_assigned_at":
                     leg_select = ui.select(
                         leg_options, label="LEG", value=onboarding.leg_id, with_input=True

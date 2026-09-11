@@ -171,9 +171,7 @@ def get(connection: sqlite3.Connection, onboarding_id: int) -> Optional[PersonOn
     Returns:
         The matching `PersonOnboarding`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM person_onboarding WHERE id = ?", (onboarding_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person_onboarding WHERE id = ?", (onboarding_id,)).fetchone()
     return PersonOnboarding.from_row(row) if row else None
 
 
@@ -188,9 +186,7 @@ def get_by_person(connection: sqlite3.Connection, person_id: int) -> Optional[Pe
         The matching `PersonOnboarding`, or `None` if this Person has no
         tracker (never started, or not routed through this pipeline).
     """
-    row = connection.execute(
-        "SELECT * FROM person_onboarding WHERE person_id = ?", (person_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM person_onboarding WHERE person_id = ?", (person_id,)).fetchone()
     return PersonOnboarding.from_row(row) if row else None
 
 
@@ -203,9 +199,7 @@ def list_all(connection: sqlite3.Connection) -> list[PersonOnboarding]:
     Returns:
         All trackers, ordered by `created_at`.
     """
-    rows = connection.execute(
-        "SELECT * FROM person_onboarding ORDER BY created_at"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM person_onboarding ORDER BY created_at").fetchall()
     return [PersonOnboarding.from_row(row) for row in rows]
 
 
@@ -290,9 +284,7 @@ def update(connection: sqlite3.Connection, onboarding: PersonOnboarding) -> None
             onboarding.registered_at.isoformat() if onboarding.registered_at else None,
             onboarding.leg_assigned_at.isoformat() if onboarding.leg_assigned_at else None,
             onboarding.leg_id,
-            onboarding.contract_signed_at.isoformat()
-            if onboarding.contract_signed_at
-            else None,
+            onboarding.contract_signed_at.isoformat() if onboarding.contract_signed_at else None,
             onboarding.bkw_registered_at.isoformat() if onboarding.bkw_registered_at else None,
             onboarding.bkw_confirmed_at.isoformat() if onboarding.bkw_confirmed_at else None,
             onboarding.id,

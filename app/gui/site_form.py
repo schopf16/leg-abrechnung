@@ -65,20 +65,24 @@ def open_site_form(
     substation_area_options = {t.id: t.name for t in substation_areas}
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-        ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes(
-            "text-lg font-bold"
-        )
+        ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes("text-lg font-bold")
         with ui.row().classes("w-full gap-2"):
-            street = ui.input(
-                "Adresse", value=_initial(existing, "street", prefill, "street")
-            ).classes("flex-grow").props("debounce=300")
-            house_number = ui.input(
-                "Hausnummer", value=_initial(existing, "house_number", prefill, "house_number")
-            ).classes("w-24").props("debounce=300")
+            street = (
+                ui.input("Adresse", value=_initial(existing, "street", prefill, "street"))
+                .classes("flex-grow")
+                .props("debounce=300")
+            )
+            house_number = (
+                ui.input("Hausnummer", value=_initial(existing, "house_number", prefill, "house_number"))
+                .classes("w-24")
+                .props("debounce=300")
+            )
         with ui.row().classes("w-full gap-2"):
-            postal_code = ui.input(
-                "PLZ", value=_initial(existing, "postal_code", prefill, "postal_code")
-            ).classes("w-24").props("debounce=300")
+            postal_code = (
+                ui.input("PLZ", value=_initial(existing, "postal_code", prefill, "postal_code"))
+                .classes("w-24")
+                .props("debounce=300")
+            )
             municipality = ui.input(
                 "Gemeinde", value=_initial(existing, "municipality", prefill, "municipality")
             ).classes("flex-grow")
@@ -111,9 +115,7 @@ def open_site_form(
                 )
             is_duplicate = found is not None and (existing is None or found.id != existing.id)
             duplicate_warning.text = (
-                "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits."
-                if is_duplicate
-                else ""
+                "Dieser Standort (Adresse, Hausnummer, PLZ) existiert bereits." if is_duplicate else ""
             )
             return is_duplicate
 

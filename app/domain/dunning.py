@@ -115,7 +115,9 @@ def _next_level(item: BillingRunItem, today: date, new_deadline_days: int) -> Op
         # the live setting, which may have changed since. Only items sent
         # before this freeze existed (migration 30) fall back to the
         # current setting as a best-effort approximation.
-        deadline_days = item.dunning_deadline_days if item.dunning_deadline_days is not None else new_deadline_days
+        deadline_days = (
+            item.dunning_deadline_days if item.dunning_deadline_days is not None else new_deadline_days
+        )
         letzte = datetime.fromisoformat(item.last_dunning_at).date()
         return 2 if today > letzte + timedelta(days=deadline_days) else None
     return None

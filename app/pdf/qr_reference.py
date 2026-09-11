@@ -65,8 +65,7 @@ def generate_qrr_reference(customer_number: int, billing_run_id: int, item_id: i
     )
     if len(payload) != _CUSTOMER_NUMBER_DIGITS + _BILLING_RUN_DIGITS + _ITEM_DIGITS:
         raise ValueError(
-            "One of customer_number, billing_run_id or item_id is too large "
-            "to encode in a QRR reference."
+            "One of customer_number, billing_run_id or item_id is too large to encode in a QRR reference."
         )
     check_digit = esr.calc_check_digit(payload)
     return payload + check_digit

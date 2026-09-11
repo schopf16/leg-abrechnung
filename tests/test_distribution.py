@@ -40,11 +40,24 @@ def _person(db, name: str) -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="", company="", first_name=name, last_name="",
-            contact_email="", contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="",
+            company="",
+            first_name=name,
+            last_name="",
+            contact_email="",
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
@@ -70,8 +83,14 @@ def _site(db) -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Musterstrasse",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
 
@@ -98,14 +117,21 @@ def _metering_point(
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=designation,
-            direction=direction, site_id=site_id, leg_id=leg_id,
-            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=designation,
+            direction=direction,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
 
-def _assign(db, metering_point_id: int, person_id: int, valid_from: date, valid_to: date | None = None) -> None:
+def _assign(
+    db, metering_point_id: int, person_id: int, valid_from: date, valid_to: date | None = None
+) -> None:
     """Create a Assignment.
 
     Args:
@@ -121,8 +147,12 @@ def _assign(db, metering_point_id: int, person_id: int, valid_from: date, valid_
     assignment_repo.create(
         db,
         Assignment(
-            id=None, person_id=person_id, metering_point_id=metering_point_id,
-            valid_from=valid_from, valid_to=valid_to, created_at="",
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            created_at="",
         ),
     )
 
@@ -142,7 +172,15 @@ def _reading(db, metering_point_id: int, moment: datetime, direction: str, kwh: 
     """
     upsert_readings(
         db,
-        [Reading(metering_point_id=metering_point_id, timestamp=moment.isoformat(), direction=direction, kwh=kwh, source="test")],
+        [
+            Reading(
+                metering_point_id=metering_point_id,
+                timestamp=moment.isoformat(),
+                direction=direction,
+                kwh=kwh,
+                source="test",
+            )
+        ],
     )
 
 
@@ -372,13 +410,17 @@ def test_distribution_scoped_to_one_leg_excludes_other_legs_metering_points(db):
     # Computed for leg_a: only the consumer's MeteringPoint is in scope, the
     # producer's MeteringPoint (on leg_b) never even enters the computation.
     result_a = compute_quarter_distribution(db, leg_a, YEAR, QUARTER)
-    assert consumer not in result_a.person_results or result_a.person_results[consumer].consumed_local_kwh == 0.0
+    assert (
+        consumer not in result_a.person_results or result_a.person_results[consumer].consumed_local_kwh == 0.0
+    )
     assert producer not in result_a.person_results
     assert result_a.total_consumed_local_kwh() == 0.0
 
     # Computed for leg_b: symmetric -- only the producer's MeteringPoint is in scope.
     result_b = compute_quarter_distribution(db, leg_b, YEAR, QUARTER)
-    assert producer not in result_b.person_results or result_b.person_results[producer].produced_local_kwh == 0.0
+    assert (
+        producer not in result_b.person_results or result_b.person_results[producer].produced_local_kwh == 0.0
+    )
     assert consumer not in result_b.person_results
     assert result_b.total_produced_local_kwh() == 0.0
 

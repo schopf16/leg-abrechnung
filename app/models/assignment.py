@@ -102,9 +102,7 @@ class Assignment:
         return self.valid_to is None or self.valid_to >= moment.date()
 
 
-def list_for_metering_point(
-    connection: sqlite3.Connection, metering_point_id: int
-) -> list[Assignment]:
+def list_for_metering_point(connection: sqlite3.Connection, metering_point_id: int) -> list[Assignment]:
     """List all assignments of a MeteringPoint, most recent `valid_from` first.
 
     Args:
@@ -144,7 +142,9 @@ def get_relevant_for_metering_point(
         The relevant `Assignment`, or `None` if the MeteringPoint has no
         current-or-upcoming assignment at all.
     """
-    candidates = [z for z in list_for_metering_point(connection, metering_point_id) if z.is_current_or_upcoming(moment)]
+    candidates = [
+        z for z in list_for_metering_point(connection, metering_point_id) if z.is_current_or_upcoming(moment)
+    ]
     for assignment in candidates:
         if assignment.covers(moment):
             return assignment
@@ -180,9 +180,7 @@ def get(connection: sqlite3.Connection, assignment_id: int) -> Optional[Assignme
     Returns:
         The matching `Assignment`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM assignment WHERE id = ?", (assignment_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM assignment WHERE id = ?", (assignment_id,)).fetchone()
     return Assignment.from_row(row) if row else None
 
 
@@ -195,9 +193,7 @@ def list_all(connection: sqlite3.Connection) -> list[Assignment]:
     Returns:
         All assignments, ordered by MeteringPoint id and `valid_from`.
     """
-    rows = connection.execute(
-        "SELECT * FROM assignment ORDER BY metering_point_id, valid_from"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM assignment ORDER BY metering_point_id, valid_from").fetchall()
     return [Assignment.from_row(row) for row in rows]
 
 
@@ -291,9 +287,7 @@ class AssignmentWarning:
     message: str
 
 
-def find_warnings(
-    connection: sqlite3.Connection, metering_point_id: int
-) -> list[AssignmentWarning]:
+def find_warnings(connection: sqlite3.Connection, metering_point_id: int) -> list[AssignmentWarning]:
     """Detect overlapping or gapped assignment periods for one MeteringPoint.
 
     Assignments are checked pairwise after sorting by `valid_from`: any
@@ -310,9 +304,7 @@ def find_warnings(
     Returns:
         A list of `AssignmentWarning`, empty if the history is consistent.
     """
-    assignments = sorted(
-        list_for_metering_point(connection, metering_point_id), key=lambda a: a.valid_from
-    )
+    assignments = sorted(list_for_metering_point(connection, metering_point_id), key=lambda a: a.valid_from)
     warnings: list[AssignmentWarning] = []
 
     for earlier, later in zip(assignments, assignments[1:]):

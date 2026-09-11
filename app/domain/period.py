@@ -13,8 +13,19 @@ INTERVAL_MINUTES = 15
 
 #: German month names, 1-indexed (index 0 unused).
 MONTH_NAMES_DE = [
-    "", "Januar", "Februar", "März", "April", "Mai", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "Dezember",
+    "",
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
 ]
 
 
@@ -96,9 +107,7 @@ def list_available_periods(connection: sqlite3.Connection) -> dict[int, set[int]
     return periods
 
 
-def latest_available_period(
-    available: dict[int, set[int]]
-) -> Optional[tuple[int, int]]:
+def latest_available_period(available: dict[int, set[int]]) -> Optional[tuple[int, int]]:
     """Pick the most recent (year, quarter) that has data, as a GUI default.
 
     Args:
@@ -180,7 +189,4 @@ def month_label_de(year: int, month: int) -> str:
         A label such as "Januar (01.01-31.01)".
     """
     first_day, last_day = month_bounds(year, month)
-    return (
-        f"{MONTH_NAMES_DE[month]} "
-        f"({first_day.strftime('%d.%m')}-{last_day.strftime('%d.%m')})"
-    )
+    return f"{MONTH_NAMES_DE[month]} ({first_day.strftime('%d.%m')}-{last_day.strftime('%d.%m')})"

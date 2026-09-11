@@ -159,9 +159,7 @@ class WebRegistration:
             `True` if fully processed, `False` if anything is still open.
         """
         return (
-            self.person_created
-            and self.site_created
-            and all(m.metering_point_created for m in self.meters)
+            self.person_created and self.site_created and all(m.metering_point_created for m in self.meters)
         )
 
     @staticmethod
@@ -227,9 +225,7 @@ def list_all(connection: sqlite3.Connection) -> list[WebRegistration]:
         All inbox entries (with their meters loaded), sorted by
         `submitted_at` descending.
     """
-    rows = connection.execute(
-        "SELECT * FROM web_registration ORDER BY submitted_at DESC"
-    ).fetchall()
+    rows = connection.execute("SELECT * FROM web_registration ORDER BY submitted_at DESC").fetchall()
     return [WebRegistration.from_row(row, _load_meters(connection, row["id"])) for row in rows]
 
 
@@ -244,9 +240,7 @@ def get(connection: sqlite3.Connection, web_registration_id: int) -> Optional[We
         The matching `WebRegistration` (with meters loaded), or `None` if
         no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM web_registration WHERE id = ?", (web_registration_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM web_registration WHERE id = ?", (web_registration_id,)).fetchone()
     return WebRegistration.from_row(row, _load_meters(connection, row["id"])) if row else None
 
 
@@ -265,9 +259,7 @@ def get_by_email(connection: sqlite3.Connection, email: str) -> Optional[WebRegi
         The matching `WebRegistration` (with meters loaded), or `None` if
         unknown.
     """
-    row = connection.execute(
-        "SELECT * FROM web_registration WHERE email = ?", (email,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM web_registration WHERE email = ?", (email,)).fetchone()
     return WebRegistration.from_row(row, _load_meters(connection, row["id"])) if row else None
 
 

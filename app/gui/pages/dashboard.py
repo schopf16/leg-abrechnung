@@ -72,9 +72,7 @@ def _load_overview(connection) -> dict:
             )
         )
     if not settings.address_street.strip():
-        action_items.append(
-            ("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/settings")
-        )
+        action_items.append(("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/settings"))
 
     for warning in check_assignment_consistency(connection):
         action_items.append((warning.message, warning.link))
@@ -108,9 +106,7 @@ def _load_overview(connection) -> dict:
                 "name": leg.name,
                 "metering_points": leg_repo.count_metering_points(connection, leg.id),
                 "letzte_abrechnung": (
-                    f"Q{latest_run.period_quarter} {latest_run.period_year}"
-                    if latest_run
-                    else "noch keine"
+                    f"Q{latest_run.period_quarter} {latest_run.period_year}" if latest_run else "noch keine"
                 ),
             }
         )
@@ -156,17 +152,15 @@ def dashboard_page() -> None:
                 ui.link("→ Details in den Auswertungen", "/reports").classes("text-body2")
             if overview["open_registrations"]:
                 with ui.row().classes("items-center gap-2"):
-                    ui.label(
-                        f"📥 {overview['open_registrations']} offene Web-Registrierung(en)."
-                    ).classes("text-body2")
-                    ui.link("→ Zu den Web-Registrierungen", "/web-registrations").classes(
+                    ui.label(f"📥 {overview['open_registrations']} offene Web-Registrierung(en).").classes(
                         "text-body2"
                     )
+                    ui.link("→ Zu den Web-Registrierungen", "/web-registrations").classes("text-body2")
             if overview["open_onboardings"]:
                 with ui.row().classes("items-center gap-2"):
-                    ui.label(
-                        f"📋 {overview['open_onboardings']} Aufnahme(n) in Bearbeitung."
-                    ).classes("text-body2")
+                    ui.label(f"📋 {overview['open_onboardings']} Aufnahme(n) in Bearbeitung.").classes(
+                        "text-body2"
+                    )
                     ui.link("→ Zu den Aufnahmen", "/onboardings").classes("text-body2")
             if not has_issues:
                 ui.label("✓ Keine offenen Punkte.").classes("text-body2")
@@ -192,8 +186,18 @@ def dashboard_page() -> None:
             ui.table(
                 columns=[
                     {"name": "name", "label": "LEG", "field": "name", "align": "left"},
-                    {"name": "metering_points", "label": "Messpunkte", "field": "metering_points", "align": "right"},
-                    {"name": "letzte_abrechnung", "label": "Letzte Abrechnung", "field": "letzte_abrechnung", "align": "left"},
+                    {
+                        "name": "metering_points",
+                        "label": "Messpunkte",
+                        "field": "metering_points",
+                        "align": "right",
+                    },
+                    {
+                        "name": "letzte_abrechnung",
+                        "label": "Letzte Abrechnung",
+                        "field": "letzte_abrechnung",
+                        "align": "left",
+                    },
                 ],
                 rows=overview["legs"],
                 row_key="name",
@@ -216,6 +220,6 @@ def dashboard_page() -> None:
                 )
                 with ui.row().classes("gap-2 mt-2"):
                     ui.button("Zu den Einstellungen", on_click=lambda: ui.navigate.to("/settings"))
-                    ui.button("Trafokreise erfassen", on_click=lambda: ui.navigate.to("/substation-areas")).props(
-                        "flat"
-                    )
+                    ui.button(
+                        "Trafokreise erfassen", on_click=lambda: ui.navigate.to("/substation-areas")
+                    ).props("flat")

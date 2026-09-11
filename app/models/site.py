@@ -132,9 +132,7 @@ def get(connection: sqlite3.Connection, site_id: int) -> Optional[Site]:
     Returns:
         The matching `site`, or `None` if no such id exists.
     """
-    row = connection.execute(
-        "SELECT * FROM site WHERE id = ?", (site_id,)
-    ).fetchone()
+    row = connection.execute("SELECT * FROM site WHERE id = ?", (site_id,)).fetchone()
     return Site.from_row(row) if row else None
 
 

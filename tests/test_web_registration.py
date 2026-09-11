@@ -164,16 +164,22 @@ def test_delete_removes_registration_and_its_meters(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="del@example.ch", meters=meters)], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "del@example.ch")
-    assert db.execute(
-        "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
-    ).fetchone()[0] == 1
+    assert (
+        db.execute(
+            "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
+        ).fetchone()[0]
+        == 1
+    )
 
     web_registration_repo.delete(db, reg.id)
 
     assert web_registration_repo.get(db, reg.id) is None
-    assert db.execute(
-        "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
-    ).fetchone()[0] == 0
+    assert (
+        db.execute(
+            "SELECT COUNT(*) FROM web_registration_meter WHERE web_registration_id = ?", (reg.id,)
+        ).fetchone()[0]
+        == 0
+    )
 
 
 def test_sync_registrations_creates_new_row(db):

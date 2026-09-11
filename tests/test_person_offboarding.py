@@ -13,11 +13,24 @@ def _person(db, name: str = "Test") -> int:
     return person_repo.create(
         db,
         Person(
-            id=None, salutation="", company="", first_name=name, last_name="",
-            contact_email="", contact_phone="",
-            billing_street="", billing_house_number="", billing_postal_code="",
-            billing_city="", billing_country="CH",
-            iban="", customer_number=None, bkw_customer_number=None, paper_invoice=False, active=True, created_at="",
+            id=None,
+            salutation="",
+            company="",
+            first_name=name,
+            last_name="",
+            contact_email="",
+            contact_phone="",
+            billing_street="",
+            billing_house_number="",
+            billing_postal_code="",
+            billing_city="",
+            billing_country="CH",
+            iban="",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
         ),
     )
 
@@ -52,7 +65,9 @@ def test_start_for_person_without_date_leaves_step_1_open(db):
 
 def test_start_for_person_is_idempotent(db):
     person_id = _person(db)
-    first = person_offboarding_repo.start_for_person(db, person_id, reason="voluntary", decided_at=date.today())
+    first = person_offboarding_repo.start_for_person(
+        db, person_id, reason="voluntary", decided_at=date.today()
+    )
     second = person_offboarding_repo.start_for_person(
         db, person_id, reason="payment_default", decided_at=date.today() - timedelta(days=99)
     )

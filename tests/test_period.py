@@ -25,7 +25,15 @@ def _insert_reading(db, metering_point_id: int, timestamp: str) -> None:
     """
     upsert_readings(
         db,
-        [Reading(metering_point_id=metering_point_id, timestamp=timestamp, direction="consumption", kwh=1.0, source="test")],
+        [
+            Reading(
+                metering_point_id=metering_point_id,
+                timestamp=timestamp,
+                direction="consumption",
+                kwh=1.0,
+                source="test",
+            )
+        ],
     )
 
 
@@ -39,16 +47,27 @@ def _make_metering_point(db) -> int:
     site_id = site_repo.create(
         db,
         Site(
-            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Musterstrasse",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation="CH-period-test",
-            direction=DIRECTION_CONSUMPTION, site_id=site_id, leg_id=None,
-            pv_capacity_kwp=None, battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation="CH-period-test",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=site_id,
+            leg_id=None,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 

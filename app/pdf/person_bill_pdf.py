@@ -218,9 +218,7 @@ def generate_person_bill_pdf(
             )
         )
         fee_total_chf = (
-            item.admin_fee_consumption_rappen
-            + item.admin_fee_feed_in_rappen
-            + item.paper_invoice_rappen
+            item.admin_fee_consumption_rappen + item.admin_fee_feed_in_rappen + item.paper_invoice_rappen
         ) / 100
         y = draw_monthly_table(
             canvas,
@@ -233,9 +231,7 @@ def generate_person_bill_pdf(
 
     net_amount_chf = Decimal(item.net_amount_rappen) / 100
     if item.is_owed_to_leg:
-        note = (
-            "Bitte begleichen Sie diesen Betrag mit dem beiliegenden Einzahlungsschein."
-        )
+        note = "Bitte begleichen Sie diesen Betrag mit dem beiliegenden Einzahlungsschein."
     elif item.is_owed_by_leg:
         note = "Dieser Betrag wird Ihnen von der Energiegemeinschaft überwiesen."
     else:

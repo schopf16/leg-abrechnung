@@ -724,8 +724,8 @@ MIGRATIONS: list[Migration] = [
     Migration(
         version=19,
         description="Add web_registration.person_created: whether a Person "
-        "was actually created from this registration via \"Person "
-        "übernehmen\" (see app.gui.pages.web_registrierungen) -- distinct "
+        'was actually created from this registration via "Person '
+        'übernehmen" (see app.gui.pages.web_registrierungen) -- distinct '
         "from needs_review/reviewed_at, which are also cleared by simply "
         "dismissing a registration without taking it over. Used to decide "
         "whether deleting the registration (which also deletes it from "
@@ -746,7 +746,7 @@ MIGRATIONS: list[Migration] = [
         "BKW -> Bestätigung durch die BKW), see app.models.person_onboarding. "
         "Deliberately a separate, optional table rather than columns on "
         "person: a tracking row only exists once explicitly started (auto- "
-        "started by \"Person übernehmen\", or manually), so existing "
+        'started by "Person übernehmen", or manually), so existing '
         "persons never retroactively appear as having an overdue step. "
         "Also adds LegSettings.onboarding_ueberfaellig_tage, the "
         "configurable threshold (default 30 days) for flagging a step as "
@@ -789,9 +789,9 @@ MIGRATIONS: list[Migration] = [
         "Standort and Messpunkt (previously only Person, see migration "
         "19's person_created): add web_registration.standort_created and "
         "web_registration_meter.messpunkt_created, both set only by "
-        "their own \"... übernehmen\" action. Drop web_registration."
-        "needs_review/reviewed_at: the explicit \"als geprüft "
-        "markieren\" review step is replaced by simply checking whether "
+        'their own "... übernehmen" action. Drop web_registration.'
+        'needs_review/reviewed_at: the explicit "als geprüft '
+        'markieren" review step is replaced by simply checking whether '
         "Person/Standort/every reported Messpunkt have been taken over "
         "(see WebRegistration.is_fully_processed), or deleting the entry "
         "once nothing more needs doing.",

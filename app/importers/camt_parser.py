@@ -119,8 +119,11 @@ def _make_parser() -> etree.XMLParser:
         A configured `lxml.etree.XMLParser`.
     """
     return etree.XMLParser(
-        resolve_entities=False, no_network=True, load_dtd=False,
-        dtd_validation=False, huge_tree=False,
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        dtd_validation=False,
+        huge_tree=False,
     )
 
 
@@ -335,9 +338,7 @@ def _extract_entry(entry: Element, result: CamtParseResult, fallback_index: int)
     entry_ccy = _find_ns(entry, "Amt")
     entry_currency = entry_ccy.get("Ccy") if entry_ccy is not None else None
     entry_cdt_dbt_ind = _find_text(entry, "CdtDbtInd")
-    entry_booking_date = _iso_date(
-        _find_text(entry, "BookgDt", "Dt") or _find_text(entry, "BookgDt", "DtTm")
-    )
+    entry_booking_date = _iso_date(_find_text(entry, "BookgDt", "Dt") or _find_text(entry, "BookgDt", "DtTm"))
     entry_ntry_ref = _find_text(entry, "NtryRef") or ""
     is_reversal = (_find_text(entry, "RvslInd") or "").strip().lower() == "true"
 
@@ -350,19 +351,29 @@ def _extract_entry(entry: Element, result: CamtParseResult, fallback_index: int)
         # No breakdown at all -- treat the Ntry itself as one implicit
         # transaction (common for a simple, non-batched booking).
         fallback_index = _extract_transaction(
-            tx_details=None, entry=entry, entry_currency=entry_currency,
-            entry_cdt_dbt_ind=entry_cdt_dbt_ind, entry_booking_date=entry_booking_date,
-            entry_ntry_ref=entry_ntry_ref, is_reversal=is_reversal,
-            result=result, fallback_index=fallback_index,
+            tx_details=None,
+            entry=entry,
+            entry_currency=entry_currency,
+            entry_cdt_dbt_ind=entry_cdt_dbt_ind,
+            entry_booking_date=entry_booking_date,
+            entry_ntry_ref=entry_ntry_ref,
+            is_reversal=is_reversal,
+            result=result,
+            fallback_index=fallback_index,
         )
         return fallback_index
 
     for tx_details in tx_details_list:
         fallback_index = _extract_transaction(
-            tx_details=tx_details, entry=entry, entry_currency=entry_currency,
-            entry_cdt_dbt_ind=entry_cdt_dbt_ind, entry_booking_date=entry_booking_date,
-            entry_ntry_ref=entry_ntry_ref, is_reversal=is_reversal,
-            result=result, fallback_index=fallback_index,
+            tx_details=tx_details,
+            entry=entry,
+            entry_currency=entry_currency,
+            entry_cdt_dbt_ind=entry_cdt_dbt_ind,
+            entry_booking_date=entry_booking_date,
+            entry_ntry_ref=entry_ntry_ref,
+            is_reversal=is_reversal,
+            result=result,
+            fallback_index=fallback_index,
         )
     return fallback_index
 
@@ -422,7 +433,9 @@ def _extract_transaction(
         result.warnings.append(f"Buchung mit ungültigem Betrag {tx_amt_element.text!r} übersprungen.")
         return fallback_index
 
-    cdt_dbt_ind = (_find_text(tx_details, "CdtDbtInd") if tx_details is not None else None) or entry_cdt_dbt_ind
+    cdt_dbt_ind = (
+        _find_text(tx_details, "CdtDbtInd") if tx_details is not None else None
+    ) or entry_cdt_dbt_ind
     if cdt_dbt_ind not in ("CRDT", "DBIT"):
         result.warnings.append("Buchung ohne gültige Richtung (CdtDbtInd) übersprungen.")
         return fallback_index
@@ -440,9 +453,7 @@ def _extract_transaction(
 
     rmt_inf = _find_ns(tx_details, "RmtInf") if tx_details is not None else None
     structured_reference = _find_text(rmt_inf, "Strd", "CdtrRefInf", "Ref") or ""
-    remittance_text = " ".join(
-        text for element in _find_all_ns(rmt_inf, "Ustrd") if (text := _text(element))
-    )
+    remittance_text = " ".join(text for element in _find_all_ns(rmt_inf, "Ustrd") if (text := _text(element)))
 
     refs = _find_ns(tx_details, "Refs") if tx_details is not None else None
     tx_level_ref = _find_text(refs, "AcctSvcrRef") or _find_text(refs, "NtryRef")
@@ -450,7 +461,8 @@ def _extract_transaction(
     if not bank_reference:
         fallback_index += 1
         bank_reference = _synthesize_reference(
-            booking_date=entry_booking_date, amount_rappen=amount_rappen,
+            booking_date=entry_booking_date,
+            amount_rappen=amount_rappen,
             counterparty_key=counterparty_iban or counterparty_name,
             index=fallback_index,
         )

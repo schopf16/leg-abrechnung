@@ -85,9 +85,7 @@ def find_unknown_placeholders(template: str, known_keys) -> set[str]:
     return {name for name in _PLACEHOLDER_PATTERN.findall(template) if name not in known}
 
 
-def validate_person_placeholders(
-    template: str, recipients: list[Person]
-) -> list[tuple[Person, list[str]]]:
+def validate_person_placeholders(template: str, recipients: list[Person]) -> list[tuple[Person, list[str]]]:
     """Find recipients for whom a placeholder actually used in the
     template would render empty.
 

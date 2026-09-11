@@ -30,8 +30,14 @@ def _make_site(db) -> int:
     return site_repo.create(
         db,
         Site(
-            id=None, street="Musterstrasse", house_number="1", postal_code="3000", municipality="Bern", address_detail="",
-            substation_area_id=None, created_at="",
+            id=None,
+            street="Musterstrasse",
+            house_number="1",
+            postal_code="3000",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
         ),
     )
 
@@ -40,9 +46,14 @@ def _make_metering_point(db, designation: str, direction: str, site_id: int, leg
     return metering_point_repo.create(
         db,
         MeteringPoint(
-            id=None, designation=designation, direction=direction,
-            site_id=site_id, leg_id=leg_id, pv_capacity_kwp=None,
-            battery_capacity_kwh=None, created_at="",
+            id=None,
+            designation=designation,
+            direction=direction,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
         ),
     )
 
@@ -62,10 +73,34 @@ def test_monthly_energy_totals_aggregates_by_month_and_direction(db):
     upsert_readings(
         db,
         [
-            Reading(metering_point_id=consumption_mp, timestamp="2025-06-01T00:00:00", direction="consumption", kwh=10.0, source="test"),
-            Reading(metering_point_id=consumption_mp, timestamp="2025-06-01T00:15:00", direction="consumption", kwh=5.0, source="test"),
-            Reading(metering_point_id=feed_in_mp, timestamp="2025-06-01T00:00:00", direction="feed_in", kwh=3.0, source="test"),
-            Reading(metering_point_id=consumption_mp, timestamp="2025-05-01T00:00:00", direction="consumption", kwh=2.0, source="test"),
+            Reading(
+                metering_point_id=consumption_mp,
+                timestamp="2025-06-01T00:00:00",
+                direction="consumption",
+                kwh=10.0,
+                source="test",
+            ),
+            Reading(
+                metering_point_id=consumption_mp,
+                timestamp="2025-06-01T00:15:00",
+                direction="consumption",
+                kwh=5.0,
+                source="test",
+            ),
+            Reading(
+                metering_point_id=feed_in_mp,
+                timestamp="2025-06-01T00:00:00",
+                direction="feed_in",
+                kwh=3.0,
+                source="test",
+            ),
+            Reading(
+                metering_point_id=consumption_mp,
+                timestamp="2025-05-01T00:00:00",
+                direction="consumption",
+                kwh=2.0,
+                source="test",
+            ),
         ],
     )
 
@@ -91,8 +126,20 @@ def test_monthly_energy_totals_filters_by_leg(db):
     upsert_readings(
         db,
         [
-            Reading(metering_point_id=mp_a, timestamp="2025-06-01T00:00:00", direction="consumption", kwh=7.0, source="test"),
-            Reading(metering_point_id=mp_b, timestamp="2025-06-01T00:00:00", direction="consumption", kwh=4.0, source="test"),
+            Reading(
+                metering_point_id=mp_a,
+                timestamp="2025-06-01T00:00:00",
+                direction="consumption",
+                kwh=7.0,
+                source="test",
+            ),
+            Reading(
+                metering_point_id=mp_b,
+                timestamp="2025-06-01T00:00:00",
+                direction="consumption",
+                kwh=4.0,
+                source="test",
+            ),
         ],
     )
 

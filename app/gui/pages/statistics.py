@@ -80,8 +80,7 @@ def statistics_page() -> None:
 
         ui.label("Wachstum").classes("text-lg font-bold mt-6")
         ui.label(
-            "Kumulierte Anzahl je Monat -- zeigt, wie die Stammdaten über "
-            "die Zeit gewachsen sind."
+            "Kumulierte Anzahl je Monat -- zeigt, wie die Stammdaten über die Zeit gewachsen sind."
         ).classes("text-body2 text-grey-8")
         with connection_scope() as connection:
             growth = monthly_growth_counts(connection, months=_MONTHS_SHOWN)

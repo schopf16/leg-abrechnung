@@ -136,24 +136,26 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
                 continue
 
             is_active_group = any(route == active_route for route, _ in items)
-            with ui.expansion(group_label, value=is_active_group).classes(
-                "w-full leg-nav-group"
-            ).props("dense"):
+            with (
+                ui.expansion(group_label, value=is_active_group)
+                .classes("w-full leg-nav-group")
+                .props("dense")
+            ):
                 for route, label in items:
                     _nav_link(route, label, active_route, indent=True)
 
         ui.separator()
-        ui.button(
-            "Beenden", icon="power_settings_new", on_click=_confirm_quit
-        ).props("flat color=negative align=left").classes("w-full")
+        ui.button("Beenden", icon="power_settings_new", on_click=_confirm_quit).props(
+            "flat color=negative align=left"
+        ).classes("w-full")
 
         # Always visible at the bottom, on every page -- lets the
         # administrator read out a phone-friendly version identifier
         # (commit date + short hash, see app.version) to check whether
         # someone else's installation is on the latest push.
-        ui.label(f"Version {APP_VERSION}").classes(
-            "text-caption text-grey-6 q-pa-sm"
-        ).style("position: absolute; bottom: 0; left: 0;")
+        ui.label(f"Version {APP_VERSION}").classes("text-caption text-grey-6 q-pa-sm").style(
+            "position: absolute; bottom: 0; left: 0;"
+        )
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4") as content:
         yield content

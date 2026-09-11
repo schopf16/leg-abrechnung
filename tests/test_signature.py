@@ -79,9 +79,7 @@ def test_update_rejects_duplicate_name_of_a_different_signature(db):
 
 
 def test_delete_removes_signature(db):
-    signature_id = signature_repo.create(
-        db, Signature(id=None, name="Weg", content="X", created_at="")
-    )
+    signature_id = signature_repo.create(db, Signature(id=None, name="Weg", content="X", created_at=""))
 
     signature_repo.delete(db, signature_id)
 
