@@ -371,11 +371,11 @@ def _book_account_entry(
     Returns:
         The new `account_entries.id`.
     """
-    kind = "zahlungseingang" if credit_debit_indicator == "CRDT" else "auszahlung"
+    kind = "payment_received" if credit_debit_indicator == "CRDT" else "payout"
     # Internal sign convention (see app.models.account_entry): an
     # incoming payment reduces what the person owes (negative), an
     # executed payout neutralizes a credit (positive).
-    signed_amount_rappen = -amount_rappen if kind == "zahlungseingang" else amount_rappen
+    signed_amount_rappen = -amount_rappen if kind == "payment_received" else amount_rappen
     return account_entry_repo.create(
         connection,
         person_id=person_id,

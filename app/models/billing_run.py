@@ -24,7 +24,7 @@ class BillingRun:
         created_at: ISO-8601 creation timestamp.
         price_rp_per_kwh: Internal price used for this run, snapshotted at
             creation time so later price changes never alter past runs.
-        status: "erstellt" or "abgeschlossen".
+        status: "created" or "abgeschlossen".
         notes: Free-text notes.
     """
 

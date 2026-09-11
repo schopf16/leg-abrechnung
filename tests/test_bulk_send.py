@@ -192,7 +192,7 @@ def test_send_broadcast_email_sends_individually_and_logs(db):
         result = asyncio.run(
             send_broadcast_email(
                 db, "config", [person_a, person_b], "Betreff {vorname}", "Hallo {vorname}",
-                scope="alle",
+                scope="all",
             )
         )
 
@@ -219,7 +219,7 @@ def test_send_broadcast_email_continues_after_single_recipient_error(db):
              AsyncMock(side_effect=[GraphApiError("boom"), None]),
          ):
         result = asyncio.run(
-            send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="alle")
+            send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all")
         )
 
     assert result.sent == ["Beat Test"]
@@ -238,7 +238,7 @@ def test_send_broadcast_email_aborts_on_auth_error(db):
              bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphAuthError("bad creds"))
          ):
         with pytest.raises(GraphAuthError):
-            asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="alle"))
+            asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all"))
 
 
 def test_send_broadcast_email_calls_on_progress_per_recipient(db):
@@ -250,7 +250,7 @@ def test_send_broadcast_email_calls_on_progress_per_recipient(db):
          patch.object(bulk_send.graph_client, "send_email", AsyncMock()):
         asyncio.run(
             send_broadcast_email(
-                db, "config", [person_a, person_b], "s", "b", scope="alle",
+                db, "config", [person_a, person_b], "s", "b", scope="all",
                 on_progress=lambda done, total: progress_calls.append((done, total)),
             )
         )
@@ -268,7 +268,7 @@ def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(d
          patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send:
         asyncio.run(
             send_broadcast_email(
-                db, "config", [person_a, person_b], "s", "b", scope="alle",
+                db, "config", [person_a, person_b], "s", "b", scope="all",
                 attachment_path=attachment_path, attachment_filename="einladung.pdf",
             )
         )
@@ -281,7 +281,7 @@ def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(d
 
 def test_send_broadcast_email_returns_early_for_no_recipients(db):
     with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock()) as mock_token:
-        result = asyncio.run(send_broadcast_email(db, "config", [], "s", "b", scope="alle"))
+        result = asyncio.run(send_broadcast_email(db, "config", [], "s", "b", scope="all"))
 
     assert result == EmailSendResult()
     mock_token.assert_not_called()
@@ -299,7 +299,7 @@ def _run_with_item(
     person_id = _person(db, "Anna", email=email, paper_invoice=paper_invoice)
     run_id = billing_run_repo.create_run(
         db, BillingRun(id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
-                        created_at="", price_rp_per_kwh=20.0, status="erstellt", notes=""),
+                        created_at="", price_rp_per_kwh=20.0, status="created", notes=""),
     )
     [item_id] = billing_run_repo.add_items(
         db,

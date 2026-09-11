@@ -11,7 +11,7 @@ column order does not matter, matching is case-insensitive):
 - `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
 - `Richtung`: "Bezug" or "Einspeisung" (case-insensitive; the English
   synonyms "consumption"/"production"/"import"/"export" are also accepted,
-  see `app.importers.base.validate_direction`), stored as "bezug"/"einspeisung".
+  see `app.importers.base.validate_direction`), stored as "consumption"/"feed_in" (the persisted values).
 - `Wert_kWh`: energy for the interval, decimal point or comma.
 
 As with the EBIX parser, no real BKW CSV sample was available; adjust the

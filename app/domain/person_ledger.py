@@ -4,7 +4,7 @@ payout/correction booked, merged into one timeline that explains how the
 current balance actually came about -- not just the final number.
 
 Sign convention: `amount_rappen` on a movement entry (`rechnung`,
-`gutschrift`, `zahlungseingang`, `auszahlung`, `korrektur`) uses the exact
+`gutschrift`, `payment_received`, `payout`, `correction`) uses the exact
 same internal convention as `BillingRunItem.net_amount_rappen`/
 `AccountEntry.amount_rappen` (positive = increases what the person owes
 the LEG) -- no second convention invented here, so the GUI's existing
@@ -31,8 +31,8 @@ class LedgerEntry:
 
     Attributes:
         entry_date: ISO date this event is dated to, for sorting/display.
-        kind: `"rechnung"`, `"gutschrift"`, `"mahnung"`, `"zahlungseingang"`,
-            `"auszahlung"` or `"korrektur"`.
+        kind: `"invoice"`, `"credit_note"`, `"dunning"`, `"payment_received"`,
+            `"payout"` or `"correction"`.
         description: Human-readable (German) summary of this event.
         amount_rappen: Signed amount in internal convention (see module
             docstring), or `None` for a purely informational entry (a
@@ -50,9 +50,9 @@ class LedgerEntry:
 
 
 _ACCOUNT_ENTRY_LABELS = {
-    "zahlungseingang": "Zahlungseingang",
-    "auszahlung": "Auszahlung",
-    "korrektur": "Korrektur",
+    "payment_received": "Zahlungseingang",
+    "payout": "Auszahlung",
+    "correction": "Korrektur",
 }
 
 
@@ -82,11 +82,11 @@ def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
             issue_date = item.created_at[:10]
 
         if item.is_owed_to_leg:
-            kind, label = "rechnung", "Rechnung gestellt"
+            kind, label = "invoice", "Rechnung gestellt"
         elif item.is_owed_by_leg:
-            kind, label = "gutschrift", "Gutschrift erstellt"
+            kind, label = "credit_note", "Gutschrift erstellt"
         else:
-            kind, label = "rechnung", "Abrechnung (kein Saldo)"
+            kind, label = "invoice", "Abrechnung (kein Saldo)"
 
         entries.append(
             LedgerEntry(
@@ -102,7 +102,7 @@ def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
         entries.append(
             LedgerEntry(
                 entry_date=log.sent_at[:10],
-                kind="mahnung",
+                kind="dunning",
                 description=(
                     f"{log.level}. Mahnung gesendet "
                     f"({len(log.billing_run_item_ids)} Position(en), "

@@ -3,13 +3,13 @@ membership ending -- the reverse of `app.models.person_onboarding`, with
 exactly the same structure (a fixed, unordered set of step dates).
 
 Two triggers, one process, distinguished by `reason`:
-  - `"zahlungsverzug"`: prepared (never auto-started) from the dunning
+  - `"payment_default"`: prepared (never auto-started) from the dunning
     once a person's 2. dunning notice is sent without payment following -- see
     `app.domain.dunning` and `app.gui.pages.dunning`. Michael still
     confirms the actual start himself.
-  - `"freiwillig"`: a normal voluntary exit (member resigns, moves away),
+  - `"voluntary"`: a normal voluntary exit (member resigns, moves away),
     started manually, exactly like a manual "+ Aufnahme starten".
-  - `"sonstig"`: anything else.
+  - `"other"`: anything else.
 
 Ending a membership here never touches the receivables claim: a Person's
 balance (`app.models.account_entry`) is entirely independent of this table.
@@ -33,9 +33,9 @@ STEPS: list[tuple[str, str]] = [
 
 #: Valid values for `PersonOffboarding.reason`.
 REASON_OPTIONS: dict[str, str] = {
-    "zahlungsverzug": "Zahlungsverzug",
-    "freiwillig": "Freiwilliger Austritt",
-    "sonstig": "Sonstiges",
+    "payment_default": "Zahlungsverzug",
+    "voluntary": "Freiwilliger Austritt",
+    "other": "Sonstiges",
 }
 
 
@@ -46,7 +46,7 @@ class PersonOffboarding:
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         person_id: The Person being tracked (one tracking row per Person).
-        reason: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"`.
+        reason: `"payment_default"`, `"voluntary"` or `"other"`.
         decided_at: Date of step 1, "Austritt/Ausschluss beschlossen",
             or `None`.
         metering_point_exit_at: Date of step 2, "Austrittsdatum MeteringPoint
@@ -226,7 +226,7 @@ def start_for_person(
     Args:
         connection: Open SQLite connection.
         person_id: Primary key of the person to start tracking for.
-        reason: `"zahlungsverzug"`, `"freiwillig"` or `"sonstig"` -- only
+        reason: `"payment_default"`, `"voluntary"` or `"other"` -- only
             used if a tracker does not already exist.
         decided_at: Date to record for step 1, or `None` to leave it
             unset for now.

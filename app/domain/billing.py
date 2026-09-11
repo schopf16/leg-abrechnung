@@ -261,7 +261,7 @@ def create_or_replace_billing_run(
             period_quarter=quarter,
             created_at="",
             price_rp_per_kwh=settings.price_rp_per_kwh,
-            status="erstellt",
+            status="created",
             notes="",
         ),
     )

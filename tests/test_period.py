@@ -25,7 +25,7 @@ def _insert_reading(db, metering_point_id: int, timestamp: str) -> None:
     """
     upsert_readings(
         db,
-        [Reading(metering_point_id=metering_point_id, timestamp=timestamp, direction="bezug", kwh=1.0, source="test")],
+        [Reading(metering_point_id=metering_point_id, timestamp=timestamp, direction="consumption", kwh=1.0, source="test")],
     )
 
 

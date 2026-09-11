@@ -116,7 +116,7 @@ async def send_broadcast_email(
             `list_broadcast_recipients`/`list_leg_recipients`).
         subject: Email subject, may contain `{placeholder}`s.
         body: Email body, may contain `{placeholder}`s.
-        scope: `"alle"` or `"leg"`, recorded in the sent-history log.
+        scope: `"all"` or `"leg"`, recorded in the sent-history log.
         leg_id: LEG id, if `scope == "leg"`, else `None`.
         attachment_path: Optional file attached to every recipient's copy
             (the same one for the whole batch -- see `app.gui.pages.

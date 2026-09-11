@@ -130,7 +130,7 @@ def email_dispatch_page() -> None:
         with ui.stepper().props("vertical").classes("w-full") as stepper:
             with ui.step("scope", title="Empfänger-Art wählen"):
                 scope_select = ui.select(
-                    {"alle": "Alle Personen", "leg": "Personen einer LEG"},
+                    {"all": "Alle Personen", "leg": "Personen einer LEG"},
                     label="Empfänger-Art", value=None,
                 ).classes("w-full max-w-sm")
                 leg_select = ui.select(leg_options, label="LEG", value=None).classes(
@@ -152,7 +152,7 @@ def email_dispatch_page() -> None:
                         safe_notify("Bitte eine LEG wählen.", type="warning")
                         return
                     with connection_scope() as inner_connection:
-                        if scope_select.value == "alle":
+                        if scope_select.value == "all":
                             recipients = bulk_send.list_broadcast_recipients(inner_connection)
                         else:
                             recipients = bulk_send.list_leg_recipients(

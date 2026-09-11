@@ -22,8 +22,8 @@ file arrives:
    `ParsedReading` list, so it keeps working unchanged.
 
 OBIS codes used to determine direction (Swiss convention):
-    1.8.0 (and 1.8.x sub-registers) = Wirkenergie Bezug (consumption)  -> "bezug"
-    2.8.0 (and 2.8.x sub-registers) = Wirkenergie Lieferung (feed-in)  -> "einspeisung"
+    1.8.0 (and 1.8.x sub-registers) = Wirkenergie Bezug (consumption)  -> "consumption"
+    2.8.0 (and 2.8.x sub-registers) = Wirkenergie Lieferung (feed-in)  -> "feed_in"
 """
 
 from datetime import datetime, timedelta
@@ -48,7 +48,7 @@ def _obis_to_direction(obis_code: str) -> str:
         obis_code: OBIS code string, e.g. "1.8.0" or "2.8.1".
 
     Returns:
-        Either "bezug" or "einspeisung" (the persisted enum values).
+        Either "consumption" or "feed_in" (the persisted enum values).
 
     Raises:
         ImportValidationError: If the OBIS code's first component is
@@ -56,9 +56,9 @@ def _obis_to_direction(obis_code: str) -> str:
     """
     prefix = ".".join(obis_code.split(".")[:2])
     if prefix == "1.8":
-        return "bezug"
+        return "consumption"
     if prefix == "2.8":
-        return "einspeisung"
+        return "feed_in"
     raise ImportValidationError(
         f"Unbekannter OBIS-Code {obis_code!r}: erwartet 1.8.x (Bezug) "
         "oder 2.8.x (Einspeisung)."

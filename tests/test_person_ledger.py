@@ -36,7 +36,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int, *, due_date: str |
         db,
         BillingRun(
             id=None, leg_id=leg_id, period_year=2026, period_quarter=2,
-            created_at="2026-01-01T00:00:00", price_rp_per_kwh=20.0, status="erstellt", notes="",
+            created_at="2026-01-01T00:00:00", price_rp_per_kwh=20.0, status="created", notes="",
         ),
     )
     item_ids = billing_run_repo.add_items(
@@ -64,7 +64,7 @@ def test_invoice_entry_uses_due_date_minus_payment_term_as_issue_date(db):
     entries = person_ledger.list_ledger_entries(db, person_id)
 
     assert len(entries) == 1
-    assert entries[0].kind == "rechnung"
+    assert entries[0].kind == "invoice"
     assert entries[0].entry_date == (due - PAYMENT_TERM).isoformat()
     assert entries[0].amount_rappen == 10_000
     assert entries[0].billing_run_item_id == item_id
@@ -91,7 +91,7 @@ def test_credit_item_is_labeled_credit_note(db):
 
     entries = person_ledger.list_ledger_entries(db, person_id)
 
-    assert entries[0].kind == "gutschrift"
+    assert entries[0].kind == "credit_note"
     assert "Gutschrift" in entries[0].description
     assert entries[0].amount_rappen == -5_000
 
@@ -104,7 +104,7 @@ def test_dunning_entry_has_no_amount_and_describes_stage(db):
     )
 
     entries = person_ledger.list_ledger_entries(db, person_id)
-    dunning_entries = [e for e in entries if e.kind == "mahnung"]
+    dunning_entries = [e for e in entries if e.kind == "dunning"]
 
     assert len(dunning_entries) == 1
     assert dunning_entries[0].amount_rappen is None
@@ -115,21 +115,21 @@ def test_dunning_entry_has_no_amount_and_describes_stage(db):
 def test_account_entry_kinds_are_labeled_and_carry_note(db):
     person_id = _person(db)
     account_entry_repo.create(
-        db, person_id=person_id, kind="zahlungseingang", amount_rappen=-10_000,
+        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000,
         booked_at="2026-03-01", note="",
     )
     account_entry_repo.create(
-        db, person_id=person_id, kind="korrektur", amount_rappen=500,
+        db, person_id=person_id, kind="correction", amount_rappen=500,
         booked_at="2026-03-05", note="Rundungsdifferenz",
     )
 
     entries = person_ledger.list_ledger_entries(db, person_id)
 
-    payment = next(e for e in entries if e.kind == "zahlungseingang")
+    payment = next(e for e in entries if e.kind == "payment_received")
     assert payment.description == "Zahlungseingang"
     assert payment.amount_rappen == -10_000
 
-    korrektur = next(e for e in entries if e.kind == "korrektur")
+    korrektur = next(e for e in entries if e.kind == "correction")
     assert korrektur.description == "Korrektur (Rundungsdifferenz)"
     assert korrektur.amount_rappen == 500
 
@@ -147,26 +147,26 @@ def test_entries_are_sorted_chronologically_across_all_sources(db):
         db, person_id=person_id, level=1, amount_rappen=10_000, billing_run_item_ids=[item_id]
     )
     account_entry_repo.create(
-        db, person_id=person_id, kind="zahlungseingang", amount_rappen=-10_000, booked_at="2026-12-01",
+        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000, booked_at="2026-12-01",
     )
 
     entries = person_ledger.list_ledger_entries(db, person_id)
 
     assert [e.entry_date for e in entries] == sorted(e.entry_date for e in entries)
-    assert entries[0].kind == "rechnung"
-    assert entries[-1].kind == "zahlungseingang"
+    assert entries[0].kind == "invoice"
+    assert entries[-1].kind == "payment_received"
 
 
 def test_payment_links_back_to_the_invoice_it_covers(db):
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, 10_000)
     account_entry_repo.create(
-        db, person_id=person_id, kind="zahlungseingang", amount_rappen=-10_000,
+        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000,
         booked_at="2026-04-01", billing_run_item_id=item_id,
     )
 
     entries = person_ledger.list_ledger_entries(db, person_id)
-    payment = next(e for e in entries if e.kind == "zahlungseingang")
+    payment = next(e for e in entries if e.kind == "payment_received")
 
     assert payment.billing_run_item_id == item_id
 

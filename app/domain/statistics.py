@@ -103,14 +103,14 @@ def monthly_energy_totals(
 
     totals: dict[str, dict[str, float]] = {}
     for row in connection.execute(query, params):
-        totals.setdefault(row["ym"], {"bezug": 0.0, "einspeisung": 0.0})[row["direction"]] = row["total"]
+        totals.setdefault(row["ym"], {"consumption": 0.0, "feed_in": 0.0})[row["direction"]] = row["total"]
 
     return [
         MonthlyEnergy(
             year=year,
             month=month,
-            consumption_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("bezug", 0.0), 3),
-            feed_in_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("einspeisung", 0.0), 3),
+            consumption_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("consumption", 0.0), 3),
+            feed_in_kwh=round(totals.get(f"{year:04d}-{month:02d}", {}).get("feed_in", 0.0), 3),
         )
         for year, month in window
     ]

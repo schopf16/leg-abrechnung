@@ -132,7 +132,7 @@ def dunning_page() -> None:
                 def start() -> None:
                     with connection_scope() as connection:
                         person_offboarding_repo.start_for_person(
-                            connection, person.id, reason="zahlungsverzug",
+                            connection, person.id, reason="payment_default",
                             decided_at=date.fromisoformat(start_date.value),
                         )
                     dialog.close()

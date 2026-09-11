@@ -10,7 +10,7 @@ from datetime import datetime
 
 #: Recognized reading directions, matching the `readings.direction` column
 #: and `MeteringPoint.direction`.
-VALID_DIRECTIONS = frozenset({"bezug", "einspeisung"})
+VALID_DIRECTIONS = frozenset({"consumption", "feed_in"})
 
 
 @dataclass
@@ -22,8 +22,8 @@ class ParsedReading:
         designation: Business key (grid operator's metering
             point id) as it appears in the source file.
         timestamp: Interval start (naive local datetime).
-        direction: Either "bezug" (consumption) or "einspeisung" (feed-in) --
-            the persisted enum values, see `VALID_DIRECTIONS`.
+        direction: Either "consumption" or "feed_in" -- the persisted
+            enum values, see `VALID_DIRECTIONS`.
         kwh: Energy for the interval in kWh, non-negative.
     """
 
@@ -63,21 +63,24 @@ def validate_direction(raw_value: str) -> str:
             already resolved by the caller).
 
     Returns:
-        Either "bezug" or "einspeisung" (the persisted enum values).
+        Either "consumption" or "feed_in" (the persisted enum values).
 
     Raises:
         ImportValidationError: If `raw_value` cannot be mapped to a known
             direction.
     """
     normalized = raw_value.strip().lower()
+    # Source files (BKW EBIX/CSV) label the direction in German; the
+    # persisted vocabulary is English. Both spellings are accepted.
     mapping = {
-        "bezug": "bezug",
-        "consumption": "bezug",
-        "import": "bezug",
-        "einspeisung": "einspeisung",
-        "produktion": "einspeisung",
-        "production": "einspeisung",
-        "export": "einspeisung",
+        "bezug": "consumption",
+        "consumption": "consumption",
+        "import": "consumption",
+        "einspeisung": "feed_in",
+        "feed_in": "feed_in",
+        "produktion": "feed_in",
+        "production": "feed_in",
+        "export": "feed_in",
     }
     if normalized not in mapping:
         raise ImportValidationError(f"Unbekannte Richtung: {raw_value!r}")

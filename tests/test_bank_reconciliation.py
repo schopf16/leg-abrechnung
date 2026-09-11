@@ -37,7 +37,7 @@ def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]
         db,
         BillingRun(
             id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
-            created_at="", price_rp_per_kwh=20.0, status="erstellt", notes="",
+            created_at="", price_rp_per_kwh=20.0, status="created", notes="",
         ),
     )
     item_ids = billing_run_repo.add_items(

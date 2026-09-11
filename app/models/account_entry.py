@@ -44,8 +44,8 @@ class AccountEntry:
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         person_id: The Person this booking applies to.
-        kind: `"zahlungseingang"` (incoming payment), `"auszahlung"` (an
-            executed payout) or `"korrektur"` (a manual booking, e.g. a
+        kind: `"payment_received"` (incoming payment), `"payout"` (an
+            executed payout) or `"correction"` (a manual booking, e.g. a
             cash payment or a write-off -- see the module docstring for
             the sign convention).
         amount_rappen: Signed amount in Rappen, see the module docstring.
@@ -111,7 +111,7 @@ def create(
     Args:
         connection: Open SQLite connection.
         person_id: The Person this booking applies to.
-        kind: `"zahlungseingang"`, `"auszahlung"` or `"korrektur"`.
+        kind: `"payment_received"`, `"payout"` or `"correction"`.
         amount_rappen: Signed amount in Rappen (see module docstring).
         booked_at: ISO-8601 date/timestamp this booking is dated to.
         billing_run_item_id: The invoice/credit this pays, if known.

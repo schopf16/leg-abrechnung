@@ -15,8 +15,8 @@ harder-to-notice failure than a loud one; see `LegNotAssignedError`.
 
 For every 15-minute interval `t`, independently per LEG:
 
-1. `P(t)` = sum of all feed-in (feed-in) readings at `t` on that LEG.
-2. `C(t)` = sum of all consumption (consumption) readings at `t` on that LEG.
+1. `P(t)` = sum of all feed-in readings at `t` on that LEG.
+2. `C(t)` = sum of all consumption readings at `t` on that LEG.
 3. `S(t) = min(P(t), C(t))` -- only energy produced *and* consumed at the
    same instant, on the same LEG, can be shared locally.
 4. Each consumption-MeteringPoint's locally-covered share is

@@ -249,7 +249,7 @@ def receivables_page() -> None:
                     amount_rappen = -round(float(amount_input.value) * 100)
                     with connection_scope() as connection:
                         account_entry_repo.create(
-                            connection, person_id=person.id, kind="korrektur",
+                            connection, person_id=person.id, kind="correction",
                             amount_rappen=amount_rappen,
                             booked_at=date.today().isoformat(),
                             note=note_input.value or "",

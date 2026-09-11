@@ -1357,4 +1357,147 @@ Freundliche Grüsse';
             ALTER TABLE person_offboarding RENAME COLUMN person_bestaetigt_am TO person_confirmed_at;
         """,
     ),
+    Migration(
+        version=43,
+        description="Translate the persisted enum values and index names, "
+        "completing the English translation: direction 'bezug'/'einspeisung' "
+        "-> 'consumption'/'feed_in' (metering_point and readings), "
+        "person_offboarding.reason 'zahlungsverzug'/'freiwillig'/'sonstig' -> "
+        "'payment_default'/'voluntary'/'other', account_entries.kind "
+        "'zahlungseingang'/'auszahlung'/'korrektur' -> 'payment_received'/"
+        "'payout'/'correction', billing_runs.status 'erstellt' -> 'created', "
+        "email_broadcast_log.scope 'alle' -> 'all'. SQLite cannot alter a "
+        "CHECK constraint or a DEFAULT in place, so the four tables carrying "
+        "one are rebuilt with the documented copy-drop-rename procedure "
+        "(foreign keys off for the duration; referencing tables keep working "
+        "because their FK clauses name the table, which gets its old name "
+        "back). Indexes are recreated under English names. Verified against "
+        "scratch copies of both real databases with PRAGMA foreign_key_check.",
+        sql="""
+            PRAGMA foreign_keys = OFF;
+
+            -- metering_point (referenced by readings and assignment)
+            CREATE TABLE metering_point_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                designation TEXT NOT NULL UNIQUE,
+                direction TEXT NOT NULL CHECK (direction IN ('consumption', 'feed_in')),
+                site_id INTEGER NOT NULL REFERENCES site(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                leg_id INTEGER REFERENCES leg(id) ON DELETE SET NULL,
+                pv_capacity_kwp REAL,
+                battery_capacity_kwh REAL
+            );
+            INSERT INTO metering_point_new
+                (id, designation, direction, site_id, created_at, leg_id, pv_capacity_kwp, battery_capacity_kwh)
+            SELECT id, designation,
+                   CASE direction WHEN 'bezug' THEN 'consumption' ELSE 'feed_in' END,
+                   site_id, created_at, leg_id, pv_capacity_kwp, battery_capacity_kwh
+            FROM metering_point;
+            DROP TABLE metering_point;
+            ALTER TABLE metering_point_new RENAME TO metering_point;
+            CREATE INDEX idx_metering_point_leg ON metering_point(leg_id);
+            CREATE INDEX idx_metering_point_site ON metering_point(site_id);
+
+            -- readings (leaf table)
+            CREATE TABLE readings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                metering_point_id INTEGER NOT NULL REFERENCES metering_point(id) ON DELETE CASCADE,
+                timestamp TEXT NOT NULL,
+                direction TEXT NOT NULL CHECK (direction IN ('consumption', 'feed_in')),
+                kwh REAL NOT NULL,
+                source TEXT NOT NULL,
+                import_batch_id INTEGER REFERENCES import_batches(id) ON DELETE SET NULL,
+                UNIQUE (metering_point_id, timestamp, direction)
+            );
+            INSERT INTO readings_new (id, metering_point_id, timestamp, direction, kwh, source, import_batch_id)
+            SELECT id, metering_point_id, timestamp,
+                   CASE direction WHEN 'bezug' THEN 'consumption' ELSE 'feed_in' END,
+                   kwh, source, import_batch_id
+            FROM readings;
+            DROP TABLE readings;
+            ALTER TABLE readings_new RENAME TO readings;
+            CREATE INDEX idx_readings_metering_point_ts ON readings(metering_point_id, timestamp);
+
+            -- person_offboarding (leaf table)
+            CREATE TABLE person_offboarding_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+                reason TEXT NOT NULL CHECK (reason IN ('payment_default', 'voluntary', 'other')),
+                decided_at TEXT,
+                metering_point_exit_at TEXT,
+                bkw_informed_at TEXT,
+                person_confirmed_at TEXT,
+                created_at TEXT NOT NULL
+            );
+            INSERT INTO person_offboarding_new
+                (id, person_id, reason, decided_at, metering_point_exit_at, bkw_informed_at, person_confirmed_at, created_at)
+            SELECT id, person_id,
+                   CASE reason WHEN 'zahlungsverzug' THEN 'payment_default'
+                               WHEN 'freiwillig' THEN 'voluntary'
+                               ELSE 'other' END,
+                   decided_at, metering_point_exit_at, bkw_informed_at, person_confirmed_at, created_at
+            FROM person_offboarding;
+            DROP TABLE person_offboarding;
+            ALTER TABLE person_offboarding_new RENAME TO person_offboarding;
+
+            -- account_entries (referenced by bank_transactions)
+            CREATE TABLE account_entries_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE RESTRICT,
+                kind TEXT NOT NULL CHECK (kind IN ('payment_received', 'payout', 'correction')),
+                amount_rappen INTEGER NOT NULL,
+                booked_at TEXT NOT NULL,
+                billing_run_item_id INTEGER REFERENCES billing_run_items(id) ON DELETE SET NULL,
+                bank_transaction_id INTEGER REFERENCES bank_transactions(id) ON DELETE SET NULL,
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            INSERT INTO account_entries_new
+                (id, person_id, kind, amount_rappen, booked_at, billing_run_item_id, bank_transaction_id, note, created_at)
+            SELECT id, person_id,
+                   CASE kind WHEN 'zahlungseingang' THEN 'payment_received'
+                             WHEN 'auszahlung' THEN 'payout'
+                             ELSE 'correction' END,
+                   amount_rappen, booked_at, billing_run_item_id, bank_transaction_id, note, created_at
+            FROM account_entries;
+            DROP TABLE account_entries;
+            ALTER TABLE account_entries_new RENAME TO account_entries;
+            CREATE INDEX idx_account_entries_person ON account_entries(person_id);
+
+            -- billing_runs (referenced by billing_run_items): only the DEFAULT changes
+            CREATE TABLE billing_runs_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                leg_id INTEGER NOT NULL REFERENCES leg(id) ON DELETE CASCADE,
+                period_year INTEGER NOT NULL,
+                period_quarter INTEGER NOT NULL CHECK (period_quarter BETWEEN 1 AND 4),
+                created_at TEXT NOT NULL,
+                price_rp_per_kwh REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'created',
+                notes TEXT NOT NULL DEFAULT '',
+                UNIQUE (leg_id, period_year, period_quarter)
+            );
+            INSERT INTO billing_runs_new (id, leg_id, period_year, period_quarter, created_at, price_rp_per_kwh, status, notes)
+            SELECT id, leg_id, period_year, period_quarter, created_at, price_rp_per_kwh,
+                   CASE status WHEN 'erstellt' THEN 'created' ELSE status END, notes
+            FROM billing_runs;
+            DROP TABLE billing_runs;
+            ALTER TABLE billing_runs_new RENAME TO billing_runs;
+
+            UPDATE email_broadcast_log SET scope = 'all' WHERE scope = 'alle';
+
+            -- remaining German index names (pure renames)
+            DROP INDEX IF EXISTS idx_standort_trafokreis;
+            CREATE INDEX idx_site_substation_area ON site(substation_area_id);
+            DROP INDEX IF EXISTS idx_zuordnung_metering_point;
+            DROP INDEX IF EXISTS idx_zuordnung_messpunkt;
+            CREATE INDEX idx_assignment_metering_point ON assignment(metering_point_id);
+            DROP INDEX IF EXISTS idx_zuordnung_person;
+            CREATE INDEX idx_assignment_person ON assignment(person_id);
+            DROP INDEX IF EXISTS idx_person_kundennummer;
+            CREATE UNIQUE INDEX idx_person_customer_number ON person(customer_number);
+
+            PRAGMA foreign_key_check;
+            PRAGMA foreign_keys = ON;
+        """,
+    ),
 ]

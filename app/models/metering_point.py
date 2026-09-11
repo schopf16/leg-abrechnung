@@ -15,8 +15,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 #: A MeteringPoint measures either consumption or feed-in, never both.
-DIRECTION_CONSUMPTION = "bezug"
-DIRECTION_FEED_IN = "einspeisung"
+DIRECTION_CONSUMPTION = "consumption"
+DIRECTION_FEED_IN = "feed_in"
 ALL_DIRECTIONS = frozenset({DIRECTION_CONSUMPTION, DIRECTION_FEED_IN})
 
 

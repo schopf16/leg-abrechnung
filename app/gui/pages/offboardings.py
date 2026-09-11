@@ -262,7 +262,7 @@ def offboardings_page() -> None:
                         return
                     with connection_scope() as connection:
                         person_offboarding_repo.start_for_person(
-                            connection, person_select.value, reason="freiwillig", decided_at=decided_at
+                            connection, person_select.value, reason="voluntary", decided_at=decided_at
                         )
                     dialog.close()
                     safe_notify("Austritt gestartet.", type="positive")

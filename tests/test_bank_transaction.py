@@ -110,7 +110,7 @@ def test_set_match_records_person_and_account_entry(db):
     tx_id = _insert(db, batch_id)
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="zahlungseingang", amount_rappen=-10_000, booked_at="2026-01-15",
+        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000, booked_at="2026-01-15",
     )
 
     bank_transaction_repo.set_match(
@@ -128,7 +128,7 @@ def test_clear_match_resets_status_and_match_fields(db):
     tx_id = _insert(db, batch_id)
     person_id = _person(db)
     entry_id = account_entry_repo.create(
-        db, person_id=person_id, kind="zahlungseingang", amount_rappen=-10_000, booked_at="2026-01-15",
+        db, person_id=person_id, kind="payment_received", amount_rappen=-10_000, booked_at="2026-01-15",
     )
     bank_transaction_repo.set_match(
         db, tx_id, status="manually_matched", matched_person_id=person_id, account_entry_id=entry_id

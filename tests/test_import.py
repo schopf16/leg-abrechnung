@@ -65,13 +65,13 @@ def test_parse_ebix_file_extracts_readings_in_position_order():
 
     consumption = [r for r in result.readings if r.designation == "CH1000000000000000000000001"]
     assert len(consumption) == 4
-    assert all(r.direction == "bezug" for r in consumption)
+    assert all(r.direction == "consumption" for r in consumption)
     assert consumption[0].timestamp.isoformat() == "2025-07-01T00:00:00"
     assert consumption[1].timestamp.isoformat() == "2025-07-01T00:15:00"
     assert consumption[0].kwh == pytest.approx(0.1)
 
     production = [r for r in result.readings if r.designation == "CH1000000000000000000000002"]
-    assert all(r.direction == "einspeisung" for r in production)
+    assert all(r.direction == "feed_in" for r in production)
 
 
 def test_parse_ebix_file_rejects_unsupported_resolution():
@@ -87,7 +87,7 @@ def test_parse_csv_file_extracts_readings_with_comma_decimal():
     assert len(result.readings) == 4
     first = result.readings[0]
     assert first.designation == "CH1000000000000000000000001"
-    assert first.direction == "bezug"
+    assert first.direction == "consumption"
     assert first.kwh == pytest.approx(0.1)
 
 

@@ -133,7 +133,7 @@ def test_check_reading_completeness_flags_days_with_missing_values(db):
     # Only 4 of the expected 96 readings for Jan 15th.
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
+        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="consumption", kwh=0.1, source="test")
         for i in range(4)
     ]
     upsert_readings(db, readings)
@@ -167,7 +167,7 @@ def test_check_reading_completeness_no_warning_for_fully_covered_day(db):
     )
     day = datetime(YEAR, 1, 15)
     readings = [
-        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="bezug", kwh=0.1, source="test")
+        Reading(metering_point_id=metering_point_id, timestamp=(day + timedelta(minutes=15 * i)).isoformat(), direction="consumption", kwh=0.1, source="test")
         for i in range(96)
     ]
     upsert_readings(db, readings)

@@ -64,7 +64,7 @@ def test_winter_quarter_has_zero_production(db):
         """
         SELECT r.kwh FROM readings r
         JOIN metering_point mp ON mp.id = r.metering_point_id
-        WHERE mp.direction = 'einspeisung' AND r.timestamp >= ? AND r.timestamp < ?
+        WHERE mp.direction = 'feed_in' AND r.timestamp >= ? AND r.timestamp < ?
         """,
         (start.isoformat(), end.isoformat()),
     ).fetchall()
@@ -87,11 +87,11 @@ def test_summer_quarter_has_both_surplus_and_deficit_intervals(db):
 
     totals: dict[str, dict[str, float]] = {}
     for row in rows:
-        bucket = totals.setdefault(row["timestamp"], {"bezug": 0.0, "einspeisung": 0.0})
+        bucket = totals.setdefault(row["timestamp"], {"consumption": 0.0, "feed_in": 0.0})
         bucket[row["direction"]] += row["kwh"]
 
-    surplus_intervals = sum(1 for v in totals.values() if v["einspeisung"] > v["bezug"])
-    deficit_intervals = sum(1 for v in totals.values() if v["einspeisung"] < v["bezug"])
+    surplus_intervals = sum(1 for v in totals.values() if v["feed_in"] > v["consumption"])
+    deficit_intervals = sum(1 for v in totals.values() if v["feed_in"] < v["consumption"])
     assert surplus_intervals > 0
     assert deficit_intervals > 0
 

@@ -22,7 +22,7 @@ class EmailBroadcastLog:
     Attributes:
         id: Primary key, `None` for a not-yet-persisted instance.
         sent_at: ISO-8601 timestamp the send completed.
-        scope: `"alle"` or `"leg"`.
+        scope: `"all"` or `"leg"`.
         leg_id: The LEG this was sent to, if `scope == "leg"`, else `None`.
         subject: The (unrendered, with placeholders) subject template used.
         body: The (unrendered, with placeholders) body template used.
@@ -87,7 +87,7 @@ def create(
 
     Args:
         connection: Open SQLite connection.
-        scope: `"alle"` or `"leg"`.
+        scope: `"all"` or `"leg"`.
         leg_id: The LEG sent to, if `scope == "leg"`, else `None`.
         subject: The subject template used (with placeholders, unrendered).
         body: The body template used (with placeholders, unrendered).

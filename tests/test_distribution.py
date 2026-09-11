@@ -158,8 +158,8 @@ def test_zero_production_yields_zero_sharing(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, consumption_mp, t, "bezug", 2.0)
-    _reading(db, production_mp, t, "einspeisung", 0.0)
+    _reading(db, consumption_mp, t, "consumption", 2.0)
+    _reading(db, production_mp, t, "feed_in", 0.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -176,7 +176,7 @@ def test_zero_consumption_yields_zero_sharing(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, production_mp, t, "einspeisung", 5.0)
+    _reading(db, production_mp, t, "feed_in", 5.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -196,8 +196,8 @@ def test_production_surplus_limits_sharing_to_consumption(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, consumption_mp, t, "bezug", 4.0)
-    _reading(db, production_mp, t, "einspeisung", 10.0)
+    _reading(db, consumption_mp, t, "consumption", 4.0)
+    _reading(db, production_mp, t, "feed_in", 10.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -220,9 +220,9 @@ def test_production_deficit_splits_proportionally_across_consumers(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, mp_a, t, "bezug", 6.0)
-    _reading(db, mp_b, t, "bezug", 2.0)
-    _reading(db, production_mp, t, "einspeisung", 3.0)
+    _reading(db, mp_a, t, "consumption", 6.0)
+    _reading(db, mp_b, t, "consumption", 2.0)
+    _reading(db, production_mp, t, "feed_in", 3.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -250,10 +250,10 @@ def test_mid_period_move_splits_metering_point_between_two_persons(db):
 
     before_move = datetime(YEAR, 1, 15, 12, 0)
     after_move = datetime(YEAR, 2, 15, 12, 0)
-    _reading(db, consumption_mp, before_move, "bezug", 5.0)
-    _reading(db, consumption_mp, after_move, "bezug", 3.0)
-    _reading(db, production_mp, before_move, "einspeisung", 5.0)
-    _reading(db, production_mp, after_move, "einspeisung", 3.0)
+    _reading(db, consumption_mp, before_move, "consumption", 5.0)
+    _reading(db, consumption_mp, after_move, "consumption", 3.0)
+    _reading(db, production_mp, before_move, "feed_in", 5.0)
+    _reading(db, production_mp, after_move, "feed_in", 3.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -273,8 +273,8 @@ def test_unassigned_metering_point_reading_is_tracked_not_dropped(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, consumption_mp, t, "bezug", 4.0)
-    _reading(db, production_mp, t, "einspeisung", 4.0)
+    _reading(db, consumption_mp, t, "consumption", 4.0)
+    _reading(db, production_mp, t, "feed_in", 4.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
@@ -297,10 +297,10 @@ def test_monthly_breakdown_sums_to_quarter_total_and_covers_all_months(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     # January and March get readings; February gets none (must still show as 0).
-    _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "bezug", 4.0)
-    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "einspeisung", 4.0)
-    _reading(db, consumption_mp, datetime(YEAR, 3, 20, 12, 0), "bezug", 2.0)
-    _reading(db, production_mp, datetime(YEAR, 3, 20, 12, 0), "einspeisung", 2.0)
+    _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "consumption", 4.0)
+    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "feed_in", 4.0)
+    _reading(db, consumption_mp, datetime(YEAR, 3, 20, 12, 0), "consumption", 2.0)
+    _reading(db, production_mp, datetime(YEAR, 3, 20, 12, 0), "feed_in", 2.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
     consumer_result = result.person_results[consumer]
@@ -327,7 +327,7 @@ def test_metering_point_without_leg_raises_error(db):
     producer = _person(db, "Producer")
     production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id=None)
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
-    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "einspeisung", 5.0)
+    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "feed_in", 5.0)
 
     with pytest.raises(LegNotAssignedError, match="M-P1"):
         compute_quarter_distribution(db, unrelated_leg_id, YEAR, QUARTER)
@@ -345,8 +345,8 @@ def test_metering_point_without_readings_does_not_block_run(db):
     production_mp = _metering_point(db, "M-P1", DIRECTION_FEED_IN, site, leg_id)
     _assign(db, consumption_mp, consumer, date(YEAR, 1, 1))
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
-    _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "bezug", 4.0)
-    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "einspeisung", 4.0)
+    _reading(db, consumption_mp, datetime(YEAR, 1, 15, 12, 0), "consumption", 4.0)
+    _reading(db, production_mp, datetime(YEAR, 1, 15, 12, 0), "feed_in", 4.0)
 
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
     assert result.person_results[consumer].consumed_local_kwh == pytest.approx(4.0)
@@ -366,8 +366,8 @@ def test_distribution_scoped_to_one_leg_excludes_other_legs_metering_points(db):
     _assign(db, production_mp, producer, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, consumption_mp, t, "bezug", 4.0)
-    _reading(db, production_mp, t, "einspeisung", 4.0)
+    _reading(db, consumption_mp, t, "consumption", 4.0)
+    _reading(db, production_mp, t, "feed_in", 4.0)
 
     # Computed for leg_a: only the consumer's MeteringPoint is in scope, the
     # producer's MeteringPoint (on leg_b) never even enters the computation.
@@ -403,10 +403,10 @@ def test_two_legs_each_share_correctly_within_themselves(db):
     _assign(db, production_mp_b, producer_b, date(YEAR, 1, 1))
 
     t = datetime(YEAR, 1, 15, 12, 0)
-    _reading(db, consumption_mp_a, t, "bezug", 4.0)
-    _reading(db, production_mp_a, t, "einspeisung", 4.0)
-    _reading(db, consumption_mp_b, t, "bezug", 10.0)
-    _reading(db, production_mp_b, t, "einspeisung", 6.0)
+    _reading(db, consumption_mp_a, t, "consumption", 4.0)
+    _reading(db, production_mp_a, t, "feed_in", 4.0)
+    _reading(db, consumption_mp_b, t, "consumption", 10.0)
+    _reading(db, production_mp_b, t, "feed_in", 6.0)
 
     result_a = compute_quarter_distribution(db, leg_a, YEAR, QUARTER)
     assert result_a.person_results[consumer_a].consumed_local_kwh == pytest.approx(4.0)

@@ -5,7 +5,7 @@ quarter, regardless of whether they only consume, only produce, or both
 (project brief follow-up: "jede Partei erhält nur 1 PDF"). The document
 shows, in order:
 
-1. consumption (consumption) for the whole quarter, as one summed line.
+1. Consumption (Bezug) for the whole quarter, as one summed line.
 2. Vergütung (production) for the whole quarter, as one summed line.
 3. admin fee (admin surcharge on consumption) and Kosten
    paper invoice (flat paper-invoice fee), if either applies.

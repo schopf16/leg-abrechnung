@@ -676,7 +676,7 @@ def test_person_delete_deactivates_when_billing_history_exists(db):
         db,
         BillingRun(
             id=None, leg_id=leg_id, period_year=2025, period_quarter=1,
-            created_at="", price_rp_per_kwh=12.0, status="erstellt", notes="",
+            created_at="", price_rp_per_kwh=12.0, status="created", notes="",
         ),
     )
     billing_run_repo.add_items(

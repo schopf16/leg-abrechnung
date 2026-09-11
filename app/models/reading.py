@@ -14,7 +14,7 @@ class Reading:
         metering_point_id: Foreign key to the MeteringPoint this reading belongs to.
         timestamp: Interval start, as an ISO-8601 local datetime string
             (e.g. "2026-04-01T00:00:00").
-        direction: Either "bezug" (consumption) or "einspeisung" (feed-in)
+        direction: Either "consumption" or "feed_in"
             as delivered by the source file; independent from the
             MeteringPoint's configured `direction` so mismatches can be
             detected.

@@ -131,16 +131,18 @@ instead of inventing a new tracker shape.
 Identifiers, file names, the database schema, docstrings and comments are
 English. Only user-facing text is German (labels, buttons, notifications,
 user-facing error messages, PDF/CSV output, and the `{vorname}`-style
-placeholders in the administrator's stored email templates). Three things
+placeholders in the administrator's stored email templates). Two things
 deliberately keep German *string values*: the external leg-ittigen.ch
 form payload keys in `app/importers/cloudflare_client.py` (an API contract
-we don't control), the template placeholder keys in
-`app/emailing/templates.py`/`app/domain/dunning.py`, and persisted enum
-values that predate the translation (`direction` 'bezug'/'einspeisung',
-`person_offboarding.reason`, `account_entries.kind`, `billing_runs.status`,
-`email_broadcast_log.scope`) — translating those needs a table rebuild and
-is tracked as an open decision. Old migrations keep their original German
-SQL forever (replay history, see above).
+we don't control) and the template placeholder keys in
+`app/emailing/templates.py`/`app/domain/dunning.py`. Persisted enum
+values are English since migration 43 (`direction` 'consumption'/
+'feed_in', `person_offboarding.reason` 'payment_default'/'voluntary'/
+'other', `account_entries.kind` 'payment_received'/'payout'/'correction',
+`billing_runs.status` 'created', `email_broadcast_log.scope` 'all'/'leg');
+the importers still accept the German spellings from BKW files
+(`app.importers.base.validate_direction`). Old migrations keep their
+original German SQL forever (replay history, see above).
 
 Glossary (German domain term → code name):
 

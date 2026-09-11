@@ -44,7 +44,7 @@ def _billing_item(
         db,
         BillingRun(
             id=None, leg_id=leg_id, period_year=2026, period_quarter=1,
-            created_at="", price_rp_per_kwh=20.0, status="erstellt", notes="",
+            created_at="", price_rp_per_kwh=20.0, status="created", notes="",
         ),
     )
     item_ids = billing_run_repo.add_items(
@@ -136,7 +136,7 @@ def test_payment_covering_the_balance_stops_escalation_even_if_item_itself_looks
     person = _person(db)
     _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     account_entry_repo.create(
-        db, person_id=person.id, kind="zahlungseingang", amount_rappen=-10_000, booked_at=date.today().isoformat(),
+        db, person_id=person.id, kind="payment_received", amount_rappen=-10_000, booked_at=date.today().isoformat(),
     )
 
     assert dunning.list_due_dunnings(db) == []
@@ -225,7 +225,7 @@ def test_send_dunning_qr_bill_amount_excludes_item_linked_payments_already_recei
     settings_repo.update_settings(db, settings)
     item = _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     account_entry_repo.create(
-        db, person_id=person.id, kind="zahlungseingang", amount_rappen=-4_000,
+        db, person_id=person.id, kind="payment_received", amount_rappen=-4_000,
         booked_at=date.today().isoformat(), billing_run_item_id=item.id,
     )
     candidate = dunning.list_due_dunnings(db)[0]
@@ -256,7 +256,7 @@ def test_send_dunning_skips_qr_bill_for_an_item_already_fully_covered(db, tmp_pa
     covered_item = _billing_item(db, person.id, 10_000, due_date=overdue.isoformat())
     open_item = _billing_item(db, person.id, 5_000, due_date=overdue.isoformat())
     account_entry_repo.create(
-        db, person_id=person.id, kind="zahlungseingang", amount_rappen=-10_000,
+        db, person_id=person.id, kind="payment_received", amount_rappen=-10_000,
         booked_at=date.today().isoformat(), billing_run_item_id=covered_item.id,
     )
     candidate = dunning.list_due_dunnings(db)[0]
