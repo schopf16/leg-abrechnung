@@ -115,6 +115,30 @@ by a 1. Mahnung). When adding a new
 settings-driven value that gets billed/communicated to a person, default to
 this pattern rather than reading the live setting at render time.
 
+### Sorting: one mechanism, every list
+
+Every list view sorts through `app/gui/sorting.py` and nothing else: a
+module-level `SORT_OPTIONS` list of `SortOption`s (default first), a
+`render_sort_select(SORT_OPTIONS, ...)` as the **last control in the
+page's filter row**, and `apply_sort(rows, SORT_OPTIONS, sort_select.value)`
+where the page builds its visible rows. Never Quasar's `"sortable": True`
+column headers — half the lists are cards and have no header to click, so
+clickable headers could never be the mechanism that works everywhere, and
+two mechanisms is exactly what the user complained about.
+
+Sort in Python on already-loaded rows, not in the repo's `ORDER BY`: SQL
+`ORDER BY` sorts umlauts after "z". Build keys from `text_key`,
+`number_key`, `address_key` (house numbers numerically) and
+`person_name_key` (surname, falling back to the company name) rather than
+hand-rolling per page — a person or an address must come out in the same
+order on every page that lists it. Prefer negating a number in the key
+over `SortOption.reverse`, which also flips the text tiebreak. Person
+lists default to `"last_name"`/"Nachname"; a worklist may lead with its
+own urgency order (see `app/gui/pages/dunning.py`), and an inbox with
+newest-first (`web_registrations.py`). A list with only one sensible order
+just sorts that way and shows no control (`signatures.py`). Whatever is
+selected is named in the printout's filter line via `sort_description`.
+
 ### Onboarding/offboarding-style trackers
 
 `app/models/person_onboarding.py` and `app/models/person_offboarding.py`

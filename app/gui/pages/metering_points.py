@@ -11,6 +11,14 @@ from app.gui.metering_point_form import open_metering_point_form
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -38,6 +46,20 @@ PRINT_COLUMNS = [
     ("Zugeordnet", "person"),
     ("PV-Leistung (kWp)", "pv_capacity_kwp"),
     ("Batteriespeicher (kWh)", "battery_capacity_kwh"),
+]
+
+
+#: Orders the Messpunkte list offers, default first.
+SORT_OPTIONS = [
+    SortOption("designation", "Messpunkt", lambda row: text_key(row["designation"])),
+    SortOption(
+        "address",
+        "Adresse",
+        lambda row: (address_key(row["site_street"], "", row["site_city"]), text_key(row["designation"])),
+    ),
+    SortOption("leg", "LEG", lambda row: text_key(row["leg"], row["designation"])),
+    SortOption("person", "Zugeordnete Person", lambda row: text_key(row["person"], row["designation"])),
+    SortOption("direction", "Messrichtung", lambda row: text_key(row["direction"], row["designation"])),
 ]
 
 
@@ -165,17 +187,17 @@ def metering_points_page() -> None:
                     heading="Messpunkte",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: (
-                        " / ".join(
-                            filter(
-                                None,
-                                [
-                                    f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                    "Nur ohne Zuordnung" if without_assignment_switch.value else None,
-                                ],
-                            )
+                    get_filter_description=lambda: ", ".join(
+                        filter(
+                            None,
+                            [
+                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                "Nur ohne Zuordnung" if without_assignment_switch.value else None,
+                                # Always named: the printout is read away from
+                                # the screen, where the order is not self-evident.
+                                sort_description(SORT_OPTIONS, sort_select.value),
+                            ],
                         )
-                        or None
                     ),
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
@@ -187,6 +209,7 @@ def metering_points_page() -> None:
                 .props("debounce=300 clearable")
             )
             without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -251,6 +274,7 @@ def metering_points_page() -> None:
             visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             if without_assignment_switch.value:
                 visible_rows = [r for r in visible_rows if r["person"] == "-"]
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
             list_container.clear()
             with list_container:
                 if not visible_rows:

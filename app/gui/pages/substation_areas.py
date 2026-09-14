@@ -20,6 +20,7 @@ from app.domain.participant_mix import compute_participant_mix_for_substation_ar
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import SortOption, apply_sort, render_sort_select, sort_description, text_key
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
@@ -34,6 +35,27 @@ PRINT_COLUMNS = [
     ("Prosumer : Consumer", "prosumer_consumer"),
     ("Hinweis", "hint"),
     ("Bemerkung", "note"),
+]
+
+
+#: Orders the Trafokreise list offers, default first.
+SORT_OPTIONS = [
+    SortOption("name", "Name", lambda row: text_key(row["name"])),
+    SortOption(
+        "bkw_designation",
+        "BKW-Bezeichnung",
+        lambda row: (
+            text_key(row["bkw_designation"]) == ("",),
+            text_key(row["bkw_designation"], row["name"]),
+        ),
+    ),
+    SortOption(
+        "sites_count",
+        "Anzahl Standorte (meiste zuerst)",
+        # Negated rather than `reverse=True`, which would also flip the
+        # name tiebreak and list equal counts from Z to A.
+        lambda row: (-row["sites_count"], text_key(row["name"])),
+    ),
 ]
 
 
@@ -113,17 +135,27 @@ def substation_areas_page() -> None:
                     heading="Trafokreise",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: (
-                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    get_filter_description=lambda: ", ".join(
+                        filter(
+                            None,
+                            [
+                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                # Always named: the printout is read away from
+                                # the screen, where the order is not self-evident.
+                                sort_description(SORT_OPTIONS, sort_select.value),
+                            ],
+                        )
                     ),
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
-        search_input = (
-            ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)")
-            .classes("w-full max-w-md")
-            .props("debounce=300 clearable")
-        )
+        with ui.row().classes("w-full items-center gap-4"):
+            search_input = (
+                ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -166,6 +198,7 @@ def substation_areas_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
             list_container.clear()
             with list_container:
                 if not visible_rows:

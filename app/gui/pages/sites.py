@@ -1,5 +1,11 @@
 """sites management page: list, search, create, edit, delete, and a
 detail drill-down showing the site's metering points.
+
+Sorting goes through the shared "Sortierung" select (`app.gui.sorting`)
+like every other list in the app, not through Quasar's clickable column
+headers this table used to offer: the card-based lists have no headers to
+click, so clickable headers could never be the one mechanism that works
+everywhere.
 """
 
 from datetime import date, datetime
@@ -11,6 +17,14 @@ from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -20,11 +34,33 @@ from app.models import assignment as assignment_repo
 from app.models.site import Site
 
 COLUMNS = [
-    {"name": "address", "label": "Adresse", "field": "address", "align": "left", "sortable": True},
+    {"name": "address", "label": "Adresse", "field": "address", "align": "left"},
     {"name": "plz_municipality", "label": "PLZ / Gemeinde", "field": "plz_municipality", "align": "left"},
     {"name": "address_detail", "label": "Lage", "field": "address_detail", "align": "left"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
+
+#: Orders the Standorte list offers, default first.
+SORT_OPTIONS = [
+    SortOption(
+        "address",
+        "Adresse",
+        lambda row: address_key(row["_street"], row["_house_number"], row["plz_municipality"]),
+    ),
+    SortOption(
+        "municipality",
+        "PLZ / Gemeinde",
+        lambda row: (
+            text_key(row["_postal_code"], row["_municipality"]),
+            address_key(row["_street"], row["_house_number"]),
+        ),
+    ),
+    SortOption(
+        "substation_area",
+        "Trafokreis",
+        lambda row: (text_key(row["substation_area"]), address_key(row["_street"], row["_house_number"])),
+    ),
 ]
 
 
@@ -82,6 +118,12 @@ def _to_row(site: Site, substation_areas: dict) -> dict:
         "address_detail": site.address_detail,
         "substation_area": substation_area_name,
         "_search": search_text,
+        # Kept unformatted alongside the display fields so SORT_OPTIONS can
+        # order the house number numerically ("9" before "68").
+        "_street": site.street,
+        "_house_number": site.house_number,
+        "_postal_code": site.postal_code,
+        "_municipality": site.municipality,
     }
 
 
@@ -107,17 +149,27 @@ def sites_page() -> None:
                     heading="Standorte",
                     get_columns=lambda: table_columns(table),
                     get_rows=lambda: table.rows,
-                    get_filter_description=lambda: (
-                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    get_filter_description=lambda: ", ".join(
+                        filter(
+                            None,
+                            [
+                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                # Always named: the printout is read away from
+                                # the screen, where the order is not self-evident.
+                                sort_description(SORT_OPTIONS, sort_select.value),
+                            ],
+                        )
                     ),
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
-        search_input = (
-            ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)")
-            .classes("w-full max-w-md")
-            .props("debounce=300 clearable")
-        )
+        with ui.row().classes("w-full items-center gap-4"):
+            search_input = (
+                ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(
@@ -140,7 +192,8 @@ def sites_page() -> None:
                 None.
             """
             needle = (search_input.value or "").strip().lower()
-            table.rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
+            rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
+            table.rows = apply_sort(rows, SORT_OPTIONS, sort_select.value)
             table.update()
 
         def refresh() -> None:

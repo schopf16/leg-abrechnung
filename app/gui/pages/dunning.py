@@ -19,6 +19,7 @@ from app.emailing import graph_client
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import SortOption, apply_sort, person_name_key, render_sort_select, sort_description
 from app.models import dunning_log as dunning_log_repo
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
@@ -34,7 +35,7 @@ PRINT_COLUMNS = [
 ]
 
 
-def _print_row(candidate: "dunning.MahnKandidat") -> dict:
+def _print_row(candidate: dunning.DunningCandidate) -> dict:
     """Convert one dunning candidate into a row dict for the printed table.
 
     Args:
@@ -49,6 +50,24 @@ def _print_row(candidate: "dunning.MahnKandidat") -> dict:
         "level": str(candidate.level),
         "betrag": f"{candidate.total_open_rappen / 100:.2f}",
     }
+
+
+#: Orders the Mahnwesen candidate list offers, default first. "Stufe"
+#: leads here rather than the surname used elsewhere: this is a worklist,
+#: and stage 2 is what has to be dealt with first.
+SORT_OPTIONS = [
+    SortOption(
+        "level",
+        "Mahnstufe (höchste zuerst)",
+        lambda c: (-c.level, person_name_key(c.person)),
+    ),
+    SortOption("last_name", "Nachname", lambda c: person_name_key(c.person)),
+    SortOption(
+        "amount",
+        "Offener Betrag (höchster zuerst)",
+        lambda c: (-c.total_open_rappen, person_name_key(c.person)),
+    ),
+]
 
 
 @ui.page("/dunning")
@@ -69,8 +88,12 @@ def dunning_page() -> None:
                 heading="Mahnwesen",
                 get_columns=lambda: PRINT_COLUMNS,
                 get_rows=lambda: [_print_row(c) for c in current_candidates],
+                # Always named: the printout is read away from the screen,
+                # where the order is not self-evident.
+                get_filter_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
             )
 
+        sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh_candidates())
         candidates_container = ui.column().classes("w-full gap-2 mt-2")
         current_candidates: list[dunning.DunningCandidate] = []
 
@@ -95,12 +118,12 @@ def dunning_page() -> None:
             nonlocal current_candidates
             with connection_scope() as connection:
                 candidates = dunning.list_due_dunnings(connection)
-            current_candidates = candidates
+            current_candidates = apply_sort(candidates, SORT_OPTIONS, sort_select.value)
             candidates_container.clear()
             with candidates_container:
-                if not candidates:
+                if not current_candidates:
                     ui.label("Aktuell ist niemand zu mahnen.").classes("text-grey-6")
-                for candidate in candidates:
+                for candidate in current_candidates:
                     render_candidate_card(candidate)
 
         def open_prepare_offboarding_dialog(person: Person) -> None:

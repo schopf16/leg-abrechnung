@@ -17,6 +17,15 @@ from app.domain.leg_composition import compute_leg_composition
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    fold_for_sort,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -32,6 +41,39 @@ PRINT_COLUMNS = [
     ("Person", "person_name"),
     ("Gültig von", "valid_from"),
     ("Gültig bis", "valid_to"),
+]
+
+
+def _descending(iso_date: str) -> tuple[int, ...]:
+    """Key an ISO date so that the newest sorts first in an ascending sort.
+
+    Args:
+        iso_date: Date in ISO format ("YYYY-MM-DD").
+
+    Returns:
+        The date's parts, each negated.
+    """
+    return tuple(-int(part) for part in iso_date.split("-"))
+
+
+#: Orders the Zuordnungen list offers, default first. These sort the
+#: MeteringPoint *cards*; the assignments inside one card always stay in
+#: chronological order, where the sequence itself is the information.
+SORT_OPTIONS = [
+    SortOption("metering_point", "Messpunkt", lambda g: text_key(g["designation"])),
+    SortOption(
+        "address",
+        "Adresse",
+        lambda g: (address_key(g["street"], g["house_number"]), text_key(g["designation"])),
+    ),
+    SortOption("person", "Person", lambda g: (text_key(*g["person_names"]), text_key(g["designation"]))),
+    SortOption(
+        "latest_valid_from",
+        "Zuletzt begonnen",
+        # Negated (as a reversed string comparison) rather than
+        # `reverse=True`, which would also flip the name tiebreak.
+        lambda g: (_descending(g["latest_valid_from"]), text_key(g["designation"])),
+    ),
 ]
 
 
@@ -68,8 +110,13 @@ def assignments_page() -> None:
                     heading="Zuordnungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: print_rows,
+                    # Always named: the printout is read away from the
+                    # screen, where the order is not self-evident.
+                    get_filter_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
+
+        sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
 
         warnings_column = ui.column().classes("w-full")
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -120,9 +167,9 @@ def assignments_page() -> None:
                 for metering_point_id in metering_points:
                     all_warnings.extend(assignment_repo.find_warnings(connection, metering_point_id))
 
-            groups: dict[int, list[dict]] = {}
+            rows_by_metering_point: dict[int, list[dict]] = {}
             for z in assignments:
-                groups.setdefault(z.metering_point_id, []).append(
+                rows_by_metering_point.setdefault(z.metering_point_id, []).append(
                     {
                         "assignment": z,
                         "person_name": persons[z.person_id].display_name if z.person_id in persons else "?",
@@ -131,24 +178,40 @@ def assignments_page() -> None:
                     }
                 )
 
+            groups = []
+            for metering_point_id, rows in rows_by_metering_point.items():
+                mp = metering_points.get(metering_point_id)
+                site = sites.get(mp.site_id) if mp else None
+                if mp is None:
+                    label = f"Messpunkt #{metering_point_id}"
+                else:
+                    label = f"{mp.designation} — {site.full_address if site else '?'}"
+                groups.append(
+                    {
+                        "label": label,
+                        "rows": rows,
+                        "designation": mp.designation if mp else label,
+                        "street": site.street if site else "",
+                        "house_number": site.house_number if site else "",
+                        # Every person on this MeteringPoint, so sorting by
+                        # person puts the card where its earliest name belongs
+                        # and stays stable once a second person is added.
+                        "person_names": sorted((row["person_name"] for row in rows), key=fold_for_sort),
+                        "latest_valid_from": max(row["valid_from"] for row in rows),
+                    }
+                )
+
             print_rows = []
             list_container.clear()
             with list_container:
                 if not groups:
                     ui.label("Noch keine Zuordnungen erfasst.")
-                for metering_point_id, group in groups.items():
-                    mp = metering_points.get(metering_point_id)
-                    if mp is None:
-                        label = f"Messpunkt #{metering_point_id}"
-                    else:
-                        site = sites.get(mp.site_id)
-                        site_text = site.full_address if site else "?"
-                        label = f"{mp.designation} — {site_text}"
-                    render_group(label, group)
-                    for row in group:
+                for group in apply_sort(groups, SORT_OPTIONS, sort_select.value):
+                    render_group(group["label"], group["rows"])
+                    for row in group["rows"]:
                         print_rows.append(
                             {
-                                "metering_point": label,
+                                "metering_point": group["label"],
                                 "person_name": row["person_name"],
                                 "valid_from": row["valid_from"],
                                 "valid_to": row["valid_to"],
