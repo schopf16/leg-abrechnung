@@ -138,7 +138,7 @@ def receivables_page() -> None:
                 get_filter_description=lambda: _filter_description(),
                 # Named on its own line: a printout is read away from the
                 # screen, where the order is not self-evident.
-                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
             )
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -204,7 +204,7 @@ def receivables_page() -> None:
                 return True
 
             visible_entries = apply_sort(
-                [(p, s) for p, s in all_entries if matches(p, s)], SORT_OPTIONS, sort_select.value
+                [(p, s) for p, s in all_entries if matches(p, s)], SORT_OPTIONS, sort_select
             )
             list_container.clear()
             with list_container:

@@ -115,14 +115,15 @@ def sort_options(persons: dict[int, Person]) -> list[SortOption]:
 
 
 def sort_onboardings(
-    onboardings: list[PersonOnboarding], persons: dict[int, Person], sort_by: str
+    onboardings: list[PersonOnboarding], persons: dict[int, Person], sort_by
 ) -> list[PersonOnboarding]:
     """Sort trackers by one of `sort_options`' keys.
 
     Args:
         onboardings: Trackers to sort; left untouched.
         persons: `{person_id: Person}` lookup.
-        sort_by: Selected key; an unknown one falls back to the default.
+        sort_by: The page's `app.gui.sorting.SortControl`, or a bare key;
+            an unknown one falls back to the default.
 
     Returns:
         A new, sorted list.
@@ -197,7 +198,7 @@ def onboardings_page() -> None:
                     get_filter_description=lambda: _filter_description(),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(sort_options({}), sort_select.value),
+                    get_sort_description=lambda: sort_description(sort_options({}), sort_select),
                 )
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
@@ -287,7 +288,7 @@ def onboardings_page() -> None:
                 # order isn't enforced (someone might sign the contract
                 # before being assigned to a LEG).
                 onboardings = [o for o in onboardings if getattr(o, step_attr) is None]
-            onboardings = sort_onboardings(onboardings, persons, sort_select.value)
+            onboardings = sort_onboardings(onboardings, persons, sort_select)
             visible_onboardings = onboardings
             list_container.clear()
             with list_container:

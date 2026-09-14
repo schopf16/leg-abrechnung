@@ -152,7 +152,7 @@ def offboardings_page() -> None:
                     get_filter_description=lambda: _filter_description(),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(sort_options({}), sort_select.value),
+                    get_sort_description=lambda: sort_description(sort_options({}), sort_select),
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
@@ -223,7 +223,7 @@ def offboardings_page() -> None:
                     else person_offboarding_repo.list_in_progress(connection)
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
-            visible_offboardings = apply_sort(offboardings, sort_options(persons), sort_select.value)
+            visible_offboardings = apply_sort(offboardings, sort_options(persons), sort_select)
             list_container.clear()
             with list_container:
                 if not visible_offboardings:

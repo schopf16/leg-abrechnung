@@ -196,7 +196,7 @@ def legs_page() -> None:
                     ),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
@@ -256,7 +256,7 @@ def legs_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
-            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
                 if not visible_rows:
@@ -666,7 +666,7 @@ def leg_detail_page(leg_id: int) -> None:
                         for mp in metering_points
                     ],
                     DETAIL_SORT_OPTIONS,
-                    detail_sort_select.value,
+                    detail_sort_select,
                 )
             table.update()
             count_label.text = f"{len(table.rows)} Messpunkt(e)"

@@ -112,7 +112,7 @@ def assignments_page() -> None:
                     get_rows=lambda: print_rows,
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 
@@ -206,7 +206,7 @@ def assignments_page() -> None:
             with list_container:
                 if not groups:
                     ui.label("Noch keine Zuordnungen erfasst.")
-                for group in apply_sort(groups, SORT_OPTIONS, sort_select.value):
+                for group in apply_sort(groups, SORT_OPTIONS, sort_select):
                     render_group(group["label"], group["rows"])
                     for row in group["rows"]:
                         print_rows.append(

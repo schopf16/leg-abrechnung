@@ -222,7 +222,7 @@ def persons_page() -> None:
                     get_filter_description=lambda: _filter_description(),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
@@ -313,7 +313,7 @@ def persons_page() -> None:
                 for person, search_text in all_entries
                 if (person.active or show_inactive_switch.value) and (not needle or needle in search_text)
             ]
-            visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select.value)
+            visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
                 for person in visible_persons:

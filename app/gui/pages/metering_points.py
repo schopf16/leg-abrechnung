@@ -201,7 +201,7 @@ def metering_points_page() -> None:
                     ),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
@@ -277,7 +277,7 @@ def metering_points_page() -> None:
             visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             if without_assignment_switch.value:
                 visible_rows = [r for r in visible_rows if r["person"] == "-"]
-            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
                 if not visible_rows:

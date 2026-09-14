@@ -142,7 +142,7 @@ def substation_areas_page() -> None:
                     ),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
@@ -195,7 +195,7 @@ def substation_areas_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
-            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
                 if not visible_rows:
