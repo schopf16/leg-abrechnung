@@ -54,7 +54,11 @@ def _load_overview(connection) -> dict:
     legs = leg_repo.list_all(connection)
     sites = site_repo.list_all(connection)
     metering_points = metering_point_repo.list_all(connection)
-    persons = person_repo.list_all(connection)
+    # Active only: a person whose offboarding is finished (or who was
+    # deactivated because billing history blocks deletion) is history, and
+    # the Personen page hides them by default too -- the headline number
+    # must match what that page shows.
+    persons = [p for p in person_repo.list_all(connection) if p.active]
     runs = billing_run_repo.list_runs(connection)
     settings = settings_repo.get_settings(connection)
     open_registrations = sum(
