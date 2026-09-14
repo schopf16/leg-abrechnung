@@ -157,6 +157,14 @@ def _parse_submitted_date(value: str) -> date:
     since this only seeds the onboarding tracker's step-1 date, which
     remains editable afterwards regardless.
 
+    It is also the key behind this page's default order ("Eingang, neuste
+    zuerst", see `SORT_OPTIONS`), where the fallback is less harmless: a
+    registration whose timestamp the API delivered in an unexpected shape
+    is dated today and therefore jumps to the very top of the inbox. That
+    is the deliberate trade-off -- a malformed entry being too visible
+    beats it sinking to the bottom unnoticed -- but it is the reason a
+    registration can appear "newer" than it is.
+
     Args:
         value: Raw `submitted_at` value from the registration.
 
@@ -221,17 +229,12 @@ def web_registrations_page() -> None:
                     heading="Web-Registrierungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [_print_row(r) for r in visible_regs],
-                    get_filter_description=lambda: ", ".join(
-                        filter(
-                            None,
-                            [
-                                "inkl. vollständig übernommene" if show_complete_switch.value else None,
-                                # Always named: the printout is read away from
-                                # the screen, where the order is not self-evident.
-                                sort_description(SORT_OPTIONS, sort_select.value),
-                            ],
-                        )
+                    get_filter_description=lambda: (
+                        "inkl. vollständig übernommene" if show_complete_switch.value else None
                     ),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("Registrierungen abrufen", on_click=lambda: do_sync())
 

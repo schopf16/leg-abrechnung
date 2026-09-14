@@ -220,6 +220,9 @@ def persons_page() -> None:
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [_print_row(p) for p in visible_persons],
                     get_filter_description=lambda: _filter_description(),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
@@ -248,9 +251,6 @@ def persons_page() -> None:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
             if show_inactive_switch.value:
                 parts.append("inkl. deaktivierte Personen")
-            # Always named: the printout is read away from the screen,
-            # where the order is not self-evident.
-            parts.append(sort_description(SORT_OPTIONS, sort_select.value))
             return ", ".join(parts) if parts else None
 
         def render_card(person: Person) -> None:

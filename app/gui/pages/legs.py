@@ -122,22 +122,27 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
     substation_area_names_list = [t.name for t in composition.substation_areas]
     substation_area_names = ", ".join(substation_area_names_list) or "-"
     should_split = leg_should_split(connection, leg.id, min_persons=min_persons)
+    # Rank and status text come out of one branch chain on purpose: the
+    # "Preisoptimierung (Handlungsbedarf zuerst)" order must never claim
+    # something the text next to it contradicts.
     if not composition.substation_areas:
         substation_areas_status = "-"
+        # A LEG with no metering points yet has nothing to optimise. Last,
+        # not with the optimised ones -- "✓ Preisoptimiert" would be a
+        # claim about a LEG that has not been configured at all.
+        optimisation_rank = 3
     elif should_split:
         substation_areas_status = (
             f"🌟 Aufteilen empfehlenswert ({len(substation_area_names_list)} Trafokreise) -- "
             "besserer BKW-Rabatt möglich"
         )
+        optimisation_rank = 0
     elif composition.is_mixed:
         substation_areas_status = f"Nicht Preisoptimiert ({len(substation_area_names_list)} Trafokreise)"
+        optimisation_rank = 1
     else:
         substation_areas_status = "✓ Preisoptimiert"
-    # Rank behind the "Preisoptimierung" order: split-worthy LEGs first,
-    # then the merely non-optimised ones, the already-optimal ones last --
-    # the sequence they need attention in. Derived here, right next to the
-    # status text, so the two can never drift apart.
-    optimisation_rank = 0 if should_split else (1 if composition.is_mixed else 2)
+        optimisation_rank = 2
     mix = compute_participant_mix_for_leg(connection, leg.id)
     search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
     return {
@@ -186,17 +191,12 @@ def legs_page() -> None:
                     heading="LEGs",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: ", ".join(
-                        filter(
-                            None,
-                            [
-                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                # Always named: the printout is read away from
-                                # the screen, where the order is not self-evident.
-                                sort_description(SORT_OPTIONS, sort_select.value),
-                            ],
-                        )
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
                     ),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 

@@ -110,9 +110,9 @@ def assignments_page() -> None:
                     heading="Zuordnungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: print_rows,
-                    # Always named: the printout is read away from the
-                    # screen, where the order is not self-evident.
-                    get_filter_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 

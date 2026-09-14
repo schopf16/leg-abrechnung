@@ -44,8 +44,10 @@ SORT_OPTIONS = [
     SortOption(
         "bkw_designation",
         "BKW-Bezeichnung",
+        # Trafokreise the BKW has not named yet go last, not first under
+        # an empty string.
         lambda row: (
-            text_key(row["bkw_designation"]) == ("",),
+            not (row["bkw_designation"] or "").strip(),
             text_key(row["bkw_designation"], row["name"]),
         ),
     ),
@@ -135,17 +137,12 @@ def substation_areas_page() -> None:
                     heading="Trafokreise",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: ", ".join(
-                        filter(
-                            None,
-                            [
-                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                # Always named: the printout is read away from
-                                # the screen, where the order is not self-evident.
-                                sort_description(SORT_OPTIONS, sort_select.value),
-                            ],
-                        )
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
                     ),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
