@@ -22,6 +22,16 @@ from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    number_key,
+    person_name_key,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -95,6 +105,33 @@ DETAIL_COLUMNS = [
     {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
     {"name": "valid_from", "label": "Gültig von", "field": "valid_from", "align": "left"},
     {"name": "valid_to", "label": "Gültig bis", "field": "valid_to", "align": "left"},
+]
+
+
+#: Orders the Personen list offers, default first. Surname first: that is
+#: how the administrator looks somebody up, and it matches the order every
+#: other list shows the same people in.
+SORT_OPTIONS = [
+    SortOption("last_name", "Nachname", person_name_key),
+    SortOption(
+        "customer_number",
+        "Kunden-Nr.",
+        lambda person: (number_key(person.customer_number), person_name_key(person)),
+    ),
+    SortOption(
+        "city",
+        "Ort",
+        lambda person: (
+            text_key(person.billing_city),
+            address_key(person.billing_street, person.billing_house_number),
+            person_name_key(person),
+        ),
+    ),
+    SortOption(
+        "status",
+        "Status (aktive zuerst)",
+        lambda person: (not person.active, person_name_key(person)),
+    ),
 ]
 
 
@@ -193,6 +230,7 @@ def persons_page() -> None:
                 .props("debounce=300 clearable")
             )
             show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -210,6 +248,9 @@ def persons_page() -> None:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
             if show_inactive_switch.value:
                 parts.append("inkl. deaktivierte Personen")
+            # Always named: the printout is read away from the screen,
+            # where the order is not self-evident.
+            parts.append(sort_description(SORT_OPTIONS, sort_select.value))
             return ", ".join(parts) if parts else None
 
         def render_card(person: Person) -> None:
@@ -272,6 +313,7 @@ def persons_page() -> None:
                 for person, search_text in all_entries
                 if (person.active or show_inactive_switch.value) and (not needle or needle in search_text)
             ]
+            visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select.value)
             list_container.clear()
             with list_container:
                 for person in visible_persons:

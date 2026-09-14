@@ -41,6 +41,14 @@ from app.domain.participant_mix import (
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
@@ -62,6 +70,24 @@ PRINT_COLUMNS = [
     ("Trafokreis(e)", "substation_areas"),
     ("Prosumer : Consumer", "prosumer_consumer"),
     ("Bemerkung", "note"),
+]
+
+
+#: Orders the LEGs list offers, default first.
+SORT_OPTIONS = [
+    SortOption("name", "Name", lambda row: text_key(row["name"])),
+    SortOption(
+        "metering_points_count",
+        "Anzahl Messpunkte (meiste zuerst)",
+        # Negated rather than `reverse=True`, which would also flip the
+        # name tiebreak and list equal counts from Z to A.
+        lambda row: (-row["metering_points_count"], text_key(row["name"])),
+    ),
+    SortOption(
+        "optimisation",
+        "Preisoptimierung (Handlungsbedarf zuerst)",
+        lambda row: (row["optimisation_rank"], text_key(row["name"])),
+    ),
 ]
 
 
@@ -107,6 +133,11 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         substation_areas_status = f"Nicht Preisoptimiert ({len(substation_area_names_list)} Trafokreise)"
     else:
         substation_areas_status = "✓ Preisoptimiert"
+    # Rank behind the "Preisoptimierung" order: split-worthy LEGs first,
+    # then the merely non-optimised ones, the already-optimal ones last --
+    # the sequence they need attention in. Derived here, right next to the
+    # status text, so the two can never drift apart.
+    optimisation_rank = 0 if should_split else (1 if composition.is_mixed else 2)
     mix = compute_participant_mix_for_leg(connection, leg.id)
     search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
     return {
@@ -130,6 +161,7 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         "prosumer_consumer": _mix_badge(mix),
         "note": leg.note,
         "should_split": should_split,
+        "optimisation_rank": optimisation_rank,
         "_search": search_text,
     }
 
@@ -154,17 +186,27 @@ def legs_page() -> None:
                     heading="LEGs",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: (
-                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
+                    get_filter_description=lambda: ", ".join(
+                        filter(
+                            None,
+                            [
+                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                # Always named: the printout is read away from
+                                # the screen, where the order is not self-evident.
+                                sort_description(SORT_OPTIONS, sort_select.value),
+                            ],
+                        )
                     ),
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
-        search_input = (
-            ui.input("Suche (Name, Bemerkung, Trafokreis...)")
-            .classes("w-full max-w-md")
-            .props("debounce=300 clearable")
-        )
+        with ui.row().classes("w-full items-center gap-4"):
+            search_input = (
+                ui.input("Suche (Name, Bemerkung, Trafokreis...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         warnings_column = ui.column().classes("w-full")
 
@@ -214,6 +256,7 @@ def legs_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
+            visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select.value)
             list_container.clear()
             with list_container:
                 if not visible_rows:
@@ -438,11 +481,39 @@ def _metering_point_row_for_leg(
         "designation": mp.designation,
         "direction": DIRECTION_LABELS.get(mp.direction, mp.direction),
         "site_address": site.full_address if site else "?",
+        # Kept unformatted alongside the display field so DETAIL_SORT_OPTIONS
+        # can order the house number numerically ("9" before "68").
+        "_site_street": site.street if site else "",
+        "_site_house_number": site.house_number if site else "",
         "substation_area": substation_area.name if substation_area else "-",
         "is_upgrade_candidate": substation_area is not None
         and substation_area.id in upgrade_substation_area_ids,
         "leg_id": mp.leg_id,
     }
+
+
+#: Orders the LEG detail page's metering point list offers, default first.
+DETAIL_SORT_OPTIONS = [
+    SortOption("designation", "Messpunkt", lambda row: text_key(row["designation"])),
+    SortOption(
+        "site_address",
+        "Adresse",
+        lambda row: (
+            address_key(row["_site_street"], row["_site_house_number"]),
+            text_key(row["designation"]),
+        ),
+    ),
+    SortOption(
+        "substation_area",
+        "Trafokreis",
+        lambda row: (text_key(row["substation_area"]), text_key(row["designation"])),
+    ),
+    SortOption(
+        "direction",
+        "Messrichtung",
+        lambda row: (text_key(row["direction"]), text_key(row["designation"])),
+    ),
+]
 
 
 def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) -> None:
@@ -502,9 +573,9 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
 @ui.page("/legs/{leg_id}")
 def leg_detail_page(leg_id: int) -> None:
     """Render one LEG's detail view: its metering points, each with the
-    substation area assigned via its site (see `app.models.site`),
-    sortable by clicking a column header, plus a quick "LEG ändern"
-    action per row.
+    substation area assigned via its site (see `app.models.site`), sorted
+    through the same "Sortierung" select as every other list (see
+    `app.gui.sorting`), plus a quick "LEG ändern" action per row.
 
     Args:
         leg_id: Database id of the LEG, from the URL path.
@@ -529,35 +600,18 @@ def leg_detail_page(leg_id: int) -> None:
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
         upgrade_hint_column = ui.column().classes("w-full gap-0")
 
+        detail_sort_select = render_sort_select(DETAIL_SORT_OPTIONS, lambda: refresh_table())
+
         table = ui.table(
             columns=[
-                {
-                    "name": "designation",
-                    "label": "Messpunkt",
-                    "field": "designation",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "direction",
-                    "label": "Messrichtung",
-                    "field": "direction",
-                    "align": "left",
-                    "sortable": True,
-                },
-                {
-                    "name": "site_address",
-                    "label": "Adresse",
-                    "field": "site_address",
-                    "align": "left",
-                    "sortable": True,
-                },
+                {"name": "designation", "label": "Messpunkt", "field": "designation", "align": "left"},
+                {"name": "direction", "label": "Messrichtung", "field": "direction", "align": "left"},
+                {"name": "site_address", "label": "Adresse", "field": "site_address", "align": "left"},
                 {
                     "name": "substation_area",
                     "label": "Trafokreis",
                     "field": "substation_area",
                     "align": "left",
-                    "sortable": True,
                 },
                 {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ],
@@ -606,10 +660,14 @@ def leg_detail_page(leg_id: int) -> None:
                     if any(mixed.id == leg_id for mixed in c.mixed_legs)
                 ]
                 upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
-                table.rows = [
-                    _metering_point_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
-                    for mp in metering_points
-                ]
+                table.rows = apply_sort(
+                    [
+                        _metering_point_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
+                        for mp in metering_points
+                    ],
+                    DETAIL_SORT_OPTIONS,
+                    detail_sort_select.value,
+                )
             table.update()
             count_label.text = f"{len(table.rows)} Messpunkt(e)"
 

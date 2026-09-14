@@ -6,7 +6,7 @@ is testable without rendering any NiceGUI page.
 
 from datetime import date, timedelta
 
-from app.gui.pages.onboardings import DEFAULT_SORT, SORT_OPTIONS, sort_onboardings
+from app.gui.pages.onboardings import DEFAULT_SORT, sort_onboardings, sort_options
 from app.models.person import Person
 from app.models.person_onboarding import STEPS, PersonOnboarding
 
@@ -62,8 +62,10 @@ def _onboarding(
 
 def test_default_is_last_name():
     """The administrator looks people up by name, so that is the default."""
+    options = sort_options({})
     assert DEFAULT_SORT == "last_name"
-    assert DEFAULT_SORT in SORT_OPTIONS
+    assert options[0].key == DEFAULT_SORT
+    assert options[0].label == "Nachname"
 
 
 def test_sorts_by_last_name_case_insensitively():

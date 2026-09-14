@@ -7,6 +7,13 @@ outgoing email when explicitly chosen on the E-Mail-Versand page (see
 already-sent emails: their final text (signature included, if any) is
 already part of the logged history, not a live reference back to this
 table.
+
+This is the one list without a "Sortierung" select (see
+`app.gui.sorting`): a signature has a name and nothing else worth
+ordering by, so it is always sorted by name and there is no choice to
+offer. The name column is deliberately not click-sortable either -- a
+second, differently-shaped mechanism on a single page is exactly the
+inconsistency the shared select exists to remove.
 """
 
 from nicegui import ui
@@ -15,11 +22,12 @@ from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import text_key
 from app.models import signature as signature_repo
 from app.models.signature import Signature
 
 COLUMNS = [
-    {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True},
+    {"name": "name", "label": "Name", "field": "name", "align": "left"},
     {"name": "preview", "label": "Vorschau", "field": "preview", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
@@ -94,7 +102,10 @@ def signatures_page() -> None:
                 None.
             """
             needle = (search_input.value or "").strip().lower()
-            table.rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
+            rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
+            # Always by name: `signature_repo.list_all` already orders by
+            # name, but via SQL, which sorts umlauts after "z".
+            table.rows = sorted(rows, key=lambda row: text_key(row["name"]))
             table.update()
 
         def refresh() -> None:

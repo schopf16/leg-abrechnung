@@ -36,6 +36,14 @@ from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
+from app.gui.sorting import (
+    SortOption,
+    address_key,
+    apply_sort,
+    person_name_key,
+    render_sort_select,
+    sort_description,
+)
 from app.importers.cloudflare_client import (
     CloudflareApiError,
     CloudflareAuthError,
@@ -161,6 +169,35 @@ def _parse_submitted_date(value: str) -> date:
         return date.today()
 
 
+#: Orders the Web-Registrierungen inbox offers, default first. Newest
+#: first here, unlike every other list: this is an inbox, and what arrived
+#: last is what has not been looked at yet.
+SORT_OPTIONS = [
+    SortOption(
+        "submitted_at",
+        "Eingang (neuste zuerst)",
+        lambda r: _parse_submitted_date(r.submitted_at),
+        reverse=True,
+    ),
+    # A registration has the same name fields as a Person, so it keys the
+    # same way and the same people come out in the same order as elsewhere.
+    SortOption("last_name", "Nachname", person_name_key),
+    SortOption(
+        "address",
+        "Adresse",
+        lambda r: address_key(r.street, r.house_number, r.postal_code, r.city),
+    ),
+    SortOption(
+        "processed",
+        "Offene zuerst",
+        # Negated so ties break newest-first, putting the open ones at the
+        # top in the same order as under "Eingang", without reversing the
+        # processed/open grouping itself.
+        lambda r: (r.is_fully_processed, -_parse_submitted_date(r.submitted_at).toordinal()),
+    ),
+]
+
+
 @ui.page("/web-registrations")
 def web_registrations_page() -> None:
     """Render the Web-Registrierungen inbox page.
@@ -184,13 +221,24 @@ def web_registrations_page() -> None:
                     heading="Web-Registrierungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: [_print_row(r) for r in visible_regs],
-                    get_filter_description=lambda: (
-                        "inkl. vollständig übernommene" if show_complete_switch.value else None
+                    get_filter_description=lambda: ", ".join(
+                        filter(
+                            None,
+                            [
+                                "inkl. vollständig übernommene" if show_complete_switch.value else None,
+                                # Always named: the printout is read away from
+                                # the screen, where the order is not self-evident.
+                                sort_description(SORT_OPTIONS, sort_select.value),
+                            ],
+                        )
                     ),
                 )
                 ui.button("Registrierungen abrufen", on_click=lambda: do_sync())
 
-        show_complete_switch = ui.switch("Auch vollständig übernommene anzeigen")
+        with ui.row().classes("w-full items-center gap-4"):
+            show_complete_switch = ui.switch("Auch vollständig übernommene anzeigen")
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
+
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         visible_regs: list[WebRegistration] = []
@@ -299,16 +347,16 @@ def web_registrations_page() -> None:
             regs = (
                 all_regs if show_complete_switch.value else [r for r in all_regs if not r.is_fully_processed]
             )
-            visible_regs = regs
+            visible_regs = apply_sort(regs, SORT_OPTIONS, sort_select.value)
             list_container.clear()
             with list_container:
-                if not regs:
+                if not visible_regs:
                     ui.label(
                         "Keine Registrierungen."
                         if show_complete_switch.value
                         else "Keine offenen Registrierungen."
                     )
-                for reg in regs:
+                for reg in visible_regs:
                     render_card(
                         reg,
                         _registration_status(

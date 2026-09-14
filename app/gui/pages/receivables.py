@@ -24,6 +24,14 @@ from app.gui.invoice_detail import open_invoice_detail
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    apply_sort,
+    number_key,
+    person_name_key,
+    render_sort_select,
+    sort_description,
+)
 from app.importers.base import ImportValidationError
 from app.importers.camt_parser import ParsedBankTransaction, parse_camt_file
 from app.models import account_entry as account_entry_repo
@@ -76,6 +84,27 @@ def _balance_color_class(balance_rappen: int) -> str:
     return ""
 
 
+#: Orders the Debitoren list offers, default first. Each option keys an
+#: `(person, balance_rappen)` entry, and the balance stays in the internal
+#: sign convention here (positive = the person owes the LEG, see
+#: `app.models.account_entry`) -- it is negated for display only.
+SORT_OPTIONS = [
+    SortOption("last_name", "Nachname", lambda entry: person_name_key(entry[0])),
+    SortOption(
+        "balance",
+        "Saldo (höchste Forderung zuerst)",
+        # Negated rather than `reverse=True`, which would also flip the
+        # name tiebreak and list equal balances from Z to A.
+        lambda entry: (-entry[1], person_name_key(entry[0])),
+    ),
+    SortOption(
+        "customer_number",
+        "Kunden-Nr.",
+        lambda entry: (number_key(entry[0].customer_number), person_name_key(entry[0])),
+    ),
+]
+
+
 @ui.page("/receivables")
 def receivables_page() -> None:
     """Render the receivables overview, bank-import assistant and open-items queue.
@@ -101,6 +130,7 @@ def receivables_page() -> None:
             only_guthaben_switch = ui.switch("Nur Guthaben")
             only_dunning_switch = ui.switch("Nur fällige Mahnungen")
             only_offboarding_switch = ui.switch("Nur laufende Austritte")
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
             render_print_button(
                 heading="Debitoren",
                 get_columns=lambda: PRINT_COLUMNS,
@@ -134,7 +164,10 @@ def receivables_page() -> None:
                 parts.append("nur fällige Mahnungen")
             if only_offboarding_switch.value:
                 parts.append("nur laufende Austritte")
-            return ", ".join(parts) if parts else None
+            # Always named: the printout is read away from the screen,
+            # where the order is not self-evident.
+            parts.append(sort_description(SORT_OPTIONS, sort_select.value))
+            return ", ".join(parts)
 
         def render_person_card(person: Person, balance_rappen: int) -> None:
             with ui.card().classes("w-full"):
@@ -170,7 +203,9 @@ def receivables_page() -> None:
                     return False
                 return True
 
-            visible_entries = [(p, s) for p, s in all_entries if matches(p, s)]
+            visible_entries = apply_sort(
+                [(p, s) for p, s in all_entries if matches(p, s)], SORT_OPTIONS, sort_select.value
+            )
             list_container.clear()
             with list_container:
                 if not visible_entries:

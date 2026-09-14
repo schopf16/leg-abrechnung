@@ -8,7 +8,6 @@ someone who inquired by phone rather than through the web form). Deleting
 a tracker only discards the tracking record; it never touches the Person.
 """
 
-import unicodedata
 from datetime import date, datetime
 
 from nicegui import ui
@@ -18,6 +17,13 @@ from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    apply_sort,
+    person_name_key,
+    render_sort_select,
+    sort_description,
+)
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
@@ -39,18 +45,7 @@ STEP_FILTER_OPTIONS: dict[str | None, str] = {
 }
 
 
-#: Options for the "Sortierung" select. Surname first by default: the
-#: administrator looks people up by name, while the database's own order
-#: (when tracking was started) is only meaningful for the two date-based
-#: options below.
-SORT_OPTIONS: dict[str, str] = {
-    "last_name": "Nachname",
-    "registered_at": "Anmeldedatum",
-    "current_step": "Aktueller Schritt",
-    "days_open": "Offen seit (längste zuerst)",
-}
-
-#: Default sort, see `SORT_OPTIONS`.
+#: Default order for the "Sortierung" select, see `sort_options`.
 DEFAULT_SORT = "last_name"
 
 
@@ -59,92 +54,80 @@ DEFAULT_SORT = "last_name"
 PRINT_COLUMNS = [("Person", "person"), ("Status", "status")] + [(label, attr) for attr, label in STEPS]
 
 
-def _sortable(text: str) -> str:
-    """Fold a name to something that sorts the way a German reader expects.
-
-    Umlauts sort as their base letter (DIN 5007 Variant 1: "Bühler" before
-    "Burri", "Müller" before "Muzzolini"), and accents on French-Swiss
-    names are folded the same way. Plain code-point ordering would put
-    every umlaut after "z" instead, which is what the raw SQL ordering
-    still does elsewhere in the app.
+def _person_name_key(persons: dict[int, Person], onboarding: PersonOnboarding) -> tuple[str, ...]:
+    """Look up a tracker's person and key it by name.
 
     Args:
-        text: Raw name part.
+        persons: `{person_id: Person}` lookup.
+        onboarding: The tracker whose person to key on.
 
     Returns:
-        A lowercased, accent-free version for comparison only -- never
-        shown to anyone.
+        `app.gui.sorting.person_name_key`'s key; a tracker whose person is
+        gone sorts first rather than crashing the page.
     """
-    decomposed = unicodedata.normalize("NFD", text.strip().replace("ß", "ss"))
-    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+    return person_name_key(persons.get(onboarding.person_id))
 
 
-def _person_name_key(person: Person) -> tuple[str, str]:
-    """Build the surname-first sort key for a person.
+def sort_options(persons: dict[int, Person]) -> list[SortOption]:
+    """Build the orders the Aufnahmen list offers.
 
-    Follows `person_repo.list_all`'s rule (surname, falling back to the
-    company name for a company without a contact person, then first name),
-    but folds umlauts (see `_sortable`) so the list reads correctly.
+    Surname first by default: the administrator looks people up by name,
+    while the order trackers happen to have been created in is meaningful
+    only for the date-based options.
 
     Args:
-        person: Person to build the key for.
+        persons: `{person_id: Person}` lookup for the tracked persons.
 
     Returns:
-        `(primary, first_name)`, both folded for comparison.
+        The options, default first.
     """
-    primary = person.last_name.strip() or person.company.strip()
-    return (_sortable(primary), _sortable(person.first_name))
+    step_attributes = [attr for attr, _ in STEPS]
+
+    def registered(onboarding: PersonOnboarding):
+        # A tracker started but not yet dated falls back to the day
+        # tracking began, so it stays in the same ballpark instead of
+        # bunching up at the very top.
+        day = onboarding.registered_at or date.fromisoformat(onboarding.created_at[:10])
+        return (day.isoformat(), _person_name_key(persons, onboarding))
+
+    def current_step(onboarding: PersonOnboarding):
+        position = (
+            len(step_attributes)
+            if onboarding.is_complete
+            else step_attributes.index(onboarding.current_step[0])
+        )
+        return (position, _person_name_key(persons, onboarding))
+
+    def days_open(onboarding: PersonOnboarding):
+        open_days = onboarding.days_open()
+        # Negated so the longest-open tracker comes first; a finished one
+        # has no value at all and goes to the end.
+        if open_days is None:
+            return (1, 0, _person_name_key(persons, onboarding))
+        return (0, -open_days, _person_name_key(persons, onboarding))
+
+    return [
+        SortOption(DEFAULT_SORT, "Nachname", lambda o: _person_name_key(persons, o)),
+        SortOption("registered_at", "Anmeldedatum", registered),
+        SortOption("current_step", "Aktueller Schritt", current_step),
+        SortOption("days_open", "Offen seit (längste zuerst)", days_open),
+    ]
 
 
 def sort_onboardings(
     onboardings: list[PersonOnboarding], persons: dict[int, Person], sort_by: str
 ) -> list[PersonOnboarding]:
-    """Sort onboarding trackers according to one of `SORT_OPTIONS`.
-
-    Every ordering falls back to the person's name for ties, so the list
-    never reshuffles arbitrarily between two refreshes. Finished trackers
-    sort last for the two "how far along / how stuck is this" orderings,
-    where they carry no useful value.
+    """Sort trackers by one of `sort_options`' keys.
 
     Args:
-        onboardings: Trackers to sort.
-        persons: `{person_id: Person}` lookup for the tracked persons.
-        sort_by: One of `SORT_OPTIONS`' keys; an unknown value sorts by
-            name, the default.
+        onboardings: Trackers to sort; left untouched.
+        persons: `{person_id: Person}` lookup.
+        sort_by: Selected key; an unknown one falls back to the default.
 
     Returns:
-        A new, sorted list; the input is left untouched.
+        A new, sorted list.
     """
-    step_attributes = [attr for attr, _ in STEPS]
-
-    def key(onboarding: PersonOnboarding):
-        person = persons.get(onboarding.person_id)
-        name = _person_name_key(person) if person else ("", "")
-
-        if sort_by == "registered_at":
-            # Trackers started but not yet dated fall back to the day the
-            # tracking row was created, so they stay in the same ballpark
-            # instead of all bunching up at the very top.
-            registered = onboarding.registered_at or date.fromisoformat(onboarding.created_at[:10])
-            return (registered.isoformat(), name)
-
-        if sort_by == "current_step":
-            position = (
-                len(step_attributes)
-                if onboarding.is_complete
-                else step_attributes.index(onboarding.current_step[0])
-            )
-            return (position, name)
-
-        if sort_by == "days_open":
-            days_open = onboarding.days_open()
-            # Negated so the longest-open tracker comes first; completed
-            # ones have no value at all and go to the end.
-            return (1, 0, name) if days_open is None else (0, -days_open, name)
-
-        return name
-
-    return sorted(onboardings, key=key)
+    return apply_sort(onboardings, sort_options(persons), sort_by)
 
 
 def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> dict:
@@ -220,9 +203,7 @@ def onboardings_page() -> None:
             step_filter = ui.select(STEP_FILTER_OPTIONS, value=None, label="Schritt-Filter").classes(
                 "w-full max-w-sm"
             )
-            sort_select = ui.select(SORT_OPTIONS, value=DEFAULT_SORT, label="Sortierung").classes(
-                "w-full max-w-xs"
-            )
+            sort_select = render_sort_select(sort_options({}), lambda: refresh())
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         visible_onboardings: list[PersonOnboarding] = []
@@ -242,7 +223,7 @@ def onboardings_page() -> None:
                 parts.append(STEP_FILTER_OPTIONS[step_filter.value])
             # Always named: the printout is read away from the screen, where
             # the order is not self-evident.
-            parts.append(f"sortiert nach {SORT_OPTIONS[sort_select.value or DEFAULT_SORT]}")
+            parts.append(sort_description(sort_options({}), sort_select.value))
             return ", ".join(parts) if parts else None
 
         def render_card(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> None:
@@ -306,7 +287,7 @@ def onboardings_page() -> None:
                 # order isn't enforced (someone might sign the contract
                 # before being assigned to a LEG).
                 onboardings = [o for o in onboardings if getattr(o, step_attr) is None]
-            onboardings = sort_onboardings(onboardings, persons, sort_select.value or DEFAULT_SORT)
+            onboardings = sort_onboardings(onboardings, persons, sort_select.value)
             visible_onboardings = onboardings
             list_container.clear()
             with list_container:
@@ -320,7 +301,6 @@ def onboardings_page() -> None:
 
         show_complete_switch.on_value_change(lambda _: refresh())
         step_filter.on_value_change(lambda _: refresh())
-        sort_select.on_value_change(lambda _: refresh())
 
         def on_edit(onboarding: PersonOnboarding, person: Person) -> None:
             """Card button handler: open the edit dialog for this tracker.

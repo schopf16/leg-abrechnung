@@ -18,6 +18,14 @@ from app.gui.navigation import page_frame
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.sorting import (
+    SortOption,
+    apply_sort,
+    person_name_key,
+    render_sort_select,
+    sort_description,
+    text_key,
+)
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models.person import Person
@@ -28,6 +36,53 @@ from app.models.person_offboarding import REASON_OPTIONS, STEPS, PersonOffboardi
 PRINT_COLUMNS = [("Person", "person"), ("Grund", "reason"), ("Status", "status")] + [
     (label, attr) for attr, label in STEPS
 ]
+
+#: Default order for the "Sortierung" select, see `sort_options`.
+DEFAULT_SORT = "last_name"
+
+
+def sort_options(persons: dict[int, Person]) -> list[SortOption]:
+    """Build the orders the Austritte list offers.
+
+    Deliberately the same four orders, in the same wording, as the
+    Aufnahmen page (`app.gui.pages.onboardings.sort_options`) -- the two
+    pages are mirror images of each other and are used the same way.
+
+    Args:
+        persons: `{person_id: Person}` lookup for the tracked persons.
+
+    Returns:
+        The options, default first.
+    """
+    step_attributes = [attr for attr, _ in STEPS]
+
+    def name(offboarding: PersonOffboarding):
+        return person_name_key(persons.get(offboarding.person_id))
+
+    def decided(offboarding: PersonOffboarding):
+        # A tracker started but not yet dated falls back to the day
+        # tracking began, so it stays in the same ballpark instead of
+        # bunching up at the very top.
+        day = offboarding.decided_at or date.fromisoformat(offboarding.created_at[:10])
+        return (day.isoformat(), name(offboarding))
+
+    def current_step(offboarding: PersonOffboarding):
+        position = (
+            len(step_attributes)
+            if offboarding.is_complete
+            else step_attributes.index(offboarding.current_step[0])
+        )
+        return (position, name(offboarding))
+
+    def reason(offboarding: PersonOffboarding):
+        return (text_key(REASON_OPTIONS.get(offboarding.reason, offboarding.reason)), name(offboarding))
+
+    return [
+        SortOption(DEFAULT_SORT, "Nachname", name),
+        SortOption("decided_at", "Beschlussdatum", decided),
+        SortOption("current_step", "Aktueller Schritt", current_step),
+        SortOption("reason", "Grund", reason),
+    ]
 
 
 def _print_row(offboarding: PersonOffboarding, person: Person) -> dict:
@@ -98,19 +153,27 @@ def offboardings_page() -> None:
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
-        show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
+        with ui.row().classes("w-full items-center gap-4"):
+            show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
+            sort_select = render_sort_select(sort_options({}), lambda: refresh())
+
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         visible_offboardings: list[PersonOffboarding] = []
         persons: dict[int, Person] = {}
 
         def _filter_description() -> str | None:
-            """Build a short description of the currently active filter.
+            """Build a short description of the current filter and order.
 
             Returns:
-                A human-readable summary, or `None` if no filter is active.
+                A human-readable summary; never empty, since the order is
+                always named.
             """
-            return "inkl. abgeschlossene" if show_complete_switch.value else None
+            parts = ["inkl. abgeschlossene"] if show_complete_switch.value else []
+            # Always named: the printout is read away from the screen,
+            # where the order is not self-evident.
+            parts.append(sort_description(sort_options({}), sort_select.value))
+            return ", ".join(parts)
 
         def render_card(offboarding: PersonOffboarding, person: Person) -> None:
             """Render one offboarding tracker as a card.
@@ -162,12 +225,12 @@ def offboardings_page() -> None:
                     else person_offboarding_repo.list_in_progress(connection)
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
-            visible_offboardings = offboardings
+            visible_offboardings = apply_sort(offboardings, sort_options(persons), sort_select.value)
             list_container.clear()
             with list_container:
-                if not offboardings:
+                if not visible_offboardings:
                     ui.label("Keine passenden Austritte.")
-                for offboarding in offboardings:
+                for offboarding in visible_offboardings:
                     person = persons.get(offboarding.person_id)
                     if person is None:
                         continue
