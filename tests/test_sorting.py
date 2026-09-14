@@ -1,13 +1,17 @@
 """Tests for the shared sorting mechanism (`app.gui.sorting`).
 
 Everything here is a pure function over already-loaded rows, so none of it
-needs a rendered NiceGUI page. `render_sort_select` is the one exception
-and is left to the GUI smoke test.
+needs a rendered NiceGUI page. `render_sort_select` is the one function
+this file does not cover: it builds a NiceGUI element, and the project
+has no harness that renders a page, so it is verified by hand instead.
 
 The page-level option sets are tested alongside these, because what they
 have to guarantee is a property of the whole app rather than of any one
-page: every list offers the same control, with the same label, and one of
-its options selected by default.
+page: every list offers the same control, and -- crucially -- every one
+of its options survives being run over a real row. The shared helpers
+below are easy to test and were never the risk; a page keying on a dict
+field that its row builder does not produce is, and only
+`test_every_option_sorts_real_rows_without_raising` catches that.
 """
 
 from dataclasses import dataclass
@@ -56,11 +60,24 @@ def test_fold_for_sort(text, expected):
 
 def test_umlauts_sort_as_their_base_letter():
     """German rule (DIN 5007 Variant 1): "Bühler" belongs between
-    "Buchser" and "Burri", not after "Zimmermann" where plain code-point
-    ordering puts it."""
-    names = ["Zimmermann", "Burri", "Bühler", "Buchser", "Ärni"]
+    "Buchser" and "Burri".
 
-    assert sorted(names, key=fold_for_sort) == ["Ärni", "Buchser", "Bühler", "Burri", "Zimmermann"]
+    Plain code-point ordering (SQLite's BINARY/NOCASE, verified) gives
+    `Buchser, Burri, Bühler, Zimmermann, Zwahlen, Zürcher, Ärni` instead:
+    a non-leading umlaut slips past its own initial group, and a leading
+    one goes behind every "Z..." name.
+    """
+    names = ["Zimmermann", "Burri", "Bühler", "Buchser", "Ärni", "Zwahlen", "Zürcher"]
+
+    assert sorted(names, key=fold_for_sort) == [
+        "Ärni",
+        "Buchser",
+        "Bühler",
+        "Burri",
+        "Zimmermann",
+        "Zürcher",
+        "Zwahlen",
+    ]
 
 
 # -- text_key / number_key ---------------------------------------------------
@@ -191,11 +208,11 @@ def test_unknown_or_missing_key_falls_back_to_the_first_option(selected):
     rows = [{"name": "Zulu", "count": 1}, {"name": "Alpha", "count": 2}]
 
     assert [r["name"] for r in apply_sort(rows, _OPTIONS, selected)] == ["Alpha", "Zulu"]
-    assert sort_description(_OPTIONS, selected) == "sortiert nach Name"
+    assert sort_description(_OPTIONS, selected) == "nach Name"
 
 
 def test_sort_description_names_the_selected_option():
-    assert sort_description(_OPTIONS, "count") == "sortiert nach Anzahl"
+    assert sort_description(_OPTIONS, "count") == "nach Anzahl"
 
 
 # -- the page option sets ----------------------------------------------------
@@ -254,7 +271,7 @@ def test_option_keys_and_labels_are_unique_within_a_page(page, options):
 @pytest.mark.parametrize("page,options", _page_option_sets(), ids=lambda v: v if isinstance(v, str) else "")
 def test_every_option_produces_a_printable_description(page, options):
     for option in options:
-        assert sort_description(options, option.key) == f"sortiert nach {option.label}"
+        assert sort_description(options, option.key) == f"nach {option.label}"
 
 
 def test_the_person_lists_all_default_to_the_surname():
@@ -271,3 +288,315 @@ def test_the_person_lists_all_default_to_the_surname():
     ):
         assert options[0].key == "last_name", page
         assert options[0].label == "Nachname", page
+
+
+def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
+    """Build two rows per page, in the exact shape that page's own row
+    builder produces.
+
+    Each pair deliberately includes the awkward half of the real data --
+    a missing person, a `None` customer number, a site that could not be
+    resolved, an empty tracker, an unparseable timestamp -- because those
+    are what a sort key actually trips over in production.
+
+    Returns:
+        `(page name, rows, options)` triples covering every list page.
+    """
+    from datetime import date
+
+    from app.domain.dunning import DunningCandidate
+    from app.gui.pages import (
+        assignments,
+        dunning,
+        legs,
+        metering_points,
+        offboardings,
+        onboardings,
+        persons,
+        receivables,
+        sites,
+        substation_areas,
+        web_registrations,
+    )
+    from app.models.person import Person
+    from app.models.person_offboarding import STEPS as OFF_STEPS
+    from app.models.person_offboarding import PersonOffboarding
+    from app.models.person_onboarding import STEPS as ON_STEPS
+    from app.models.person_onboarding import PersonOnboarding
+    from app.models.web_registration import WebRegistration
+
+    def person(person_id, **overrides) -> Person:
+        fields = dict(
+            id=person_id,
+            salutation="",
+            company="",
+            first_name="Anna",
+            last_name="Muster",
+            contact_email="",
+            contact_phone="",
+            billing_street="Fischrain",
+            billing_house_number="68",
+            billing_postal_code="3063",
+            billing_city="Ittigen",
+            billing_country="CH",
+            iban="",
+            customer_number=7,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        fields.update(overrides)
+        return Person(**fields)
+
+    # A company with no contact person, no customer number, deactivated,
+    # and no address at all -- every optional field of the Personen page
+    # missing at once.
+    sparse_person = person(
+        2,
+        company="Wyder AG",
+        last_name="",
+        first_name="",
+        customer_number=None,
+        active=False,
+        billing_street="",
+        billing_house_number="",
+        billing_postal_code="",
+        billing_city="",
+    )
+
+    def onboarding(onboarding_id, person_id, *, complete: bool) -> PersonOnboarding:
+        tracker = PersonOnboarding(
+            id=onboarding_id,
+            person_id=person_id,
+            registered_at=None,
+            leg_assigned_at=None,
+            leg_id=None,
+            contract_signed_at=None,
+            bkw_registered_at=None,
+            bkw_confirmed_at=None,
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        if complete:
+            for attr, _ in ON_STEPS:
+                setattr(tracker, attr, date(2026, 1, 1))
+        return tracker
+
+    def offboarding(offboarding_id, person_id, *, complete: bool, reason: str) -> PersonOffboarding:
+        tracker = PersonOffboarding(
+            id=offboarding_id,
+            person_id=person_id,
+            reason=reason,
+            decided_at=None,
+            metering_point_exit_at=None,
+            bkw_informed_at=None,
+            person_confirmed_at=None,
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        if complete:
+            for attr, _ in OFF_STEPS:
+                setattr(tracker, attr, date(2026, 1, 1))
+        return tracker
+
+    def registration(registration_id, **overrides) -> WebRegistration:
+        fields = dict(
+            id=registration_id,
+            cloudflare_id="x",
+            company="",
+            salutation="",
+            first_name="Anna",
+            last_name="Muster",
+            street="Fischrain",
+            house_number="68",
+            postal_code="3063",
+            city="Ittigen",
+            email="",
+            phone="",
+            bkw_customer_number="",
+            iban="",
+            message="",
+            submitted_at="2026-01-01T10:00:00+00:00",
+            imported_at="2026-01-02T00:00:00+00:00",
+            person_created=False,
+            site_created=False,
+            meters=[],
+        )
+        fields.update(overrides)
+        return WebRegistration(**fields)
+
+    # `tracked_persons` is deliberately missing person 99, so every tracker
+    # order has to cope with a person deleted out from under it.
+    tracked_persons = {1: person(1)}
+
+    return [
+        (
+            "assignments",
+            [
+                {
+                    "label": "MP1",
+                    "rows": [],
+                    "designation": "MP1",
+                    "street": "Fischrain",
+                    "house_number": "12-14",
+                    "person_names": ["Muster"],
+                    "latest_valid_from": "2026-01-01",
+                },
+                # No person on this card at all, and no address behind it.
+                {
+                    "label": "MP2",
+                    "rows": [],
+                    "designation": "MP2",
+                    "street": "",
+                    "house_number": "",
+                    "person_names": [],
+                    "latest_valid_from": "2025-12-31",
+                },
+            ],
+            assignments.SORT_OPTIONS,
+        ),
+        (
+            "dunning",
+            [
+                DunningCandidate(
+                    person=person(1), items=[], item_target_levels={}, level=1, total_open_rappen=5000
+                ),
+                DunningCandidate(
+                    person=sparse_person, items=[], item_target_levels={}, level=2, total_open_rappen=0
+                ),
+            ],
+            dunning.SORT_OPTIONS,
+        ),
+        (
+            "legs",
+            [
+                {"name": "LEG Ittigen", "metering_points_count": 3, "optimisation_rank": 0},
+                # A LEG that was created but never configured.
+                {"name": "LEG Bühler", "metering_points_count": 0, "optimisation_rank": 3},
+            ],
+            legs.SORT_OPTIONS,
+        ),
+        (
+            "legs detail",
+            [
+                {
+                    "designation": "CH100",
+                    "direction": "Bezug",
+                    "_site_street": "Fischrain",
+                    "_site_house_number": "68",
+                    "substation_area": "TK-1",
+                },
+                # The site behind this metering point could not be resolved.
+                {
+                    "designation": "CH200",
+                    "direction": "Einspeisung",
+                    "_site_street": "",
+                    "_site_house_number": "",
+                    "substation_area": "-",
+                },
+            ],
+            legs.DETAIL_SORT_OPTIONS,
+        ),
+        (
+            "metering_points",
+            [
+                {
+                    "designation": "CH100",
+                    "site_street": "Fischrain 68",
+                    "site_city": "3063 Ittigen",
+                    "leg": "LEG Ittigen",
+                    "person": "Muster Anna",
+                    "direction": "Bezug",
+                },
+                {
+                    "designation": "CH200",
+                    "site_street": "?",
+                    "site_city": "",
+                    "leg": "-",
+                    "person": "-",
+                    "direction": "Einspeisung",
+                },
+            ],
+            metering_points.SORT_OPTIONS,
+        ),
+        (
+            "offboardings",
+            [
+                offboarding(1, 1, complete=True, reason="voluntary"),
+                # Person unknown, nothing dated, and a reason value that is
+                # not in REASON_OPTIONS (an older row, or hand-edited).
+                offboarding(2, 99, complete=False, reason="legacy-value"),
+            ],
+            offboardings.sort_options(tracked_persons),
+        ),
+        (
+            "onboardings",
+            [onboarding(1, 1, complete=True), onboarding(2, 99, complete=False)],
+            onboardings.sort_options(tracked_persons),
+        ),
+        ("persons", [person(1), sparse_person], persons.SORT_OPTIONS),
+        ("receivables", [(person(1), 1500), (sparse_person, -250)], receivables.SORT_OPTIONS),
+        (
+            "sites",
+            [
+                {
+                    "plz_municipality": "3063 Ittigen",
+                    "substation_area": "TK-1",
+                    "_street": "Fischrain",
+                    "_house_number": "68",
+                    "_postal_code": "3063",
+                    "_municipality": "Ittigen",
+                },
+                # A site saved with nothing filled in but its id.
+                {
+                    "plz_municipality": "",
+                    "substation_area": "-",
+                    "_street": "",
+                    "_house_number": "",
+                    "_postal_code": "",
+                    "_municipality": "",
+                },
+            ],
+            sites.SORT_OPTIONS,
+        ),
+        (
+            "substation_areas",
+            [
+                {"name": "TK-1", "bkw_designation": "BKW-4711", "sites_count": 5},
+                {"name": "TK-2", "bkw_designation": None, "sites_count": 0},
+            ],
+            substation_areas.SORT_OPTIONS,
+        ),
+        (
+            "web_registrations",
+            [
+                registration(1),
+                # Timestamp in a shape `_parse_submitted_date` cannot read,
+                # and a company with no contact person.
+                registration(
+                    2, submitted_at="not a timestamp", company="Wyder AG", last_name="", first_name=""
+                ),
+            ],
+            web_registrations.SORT_OPTIONS,
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "page,rows,options", _representative_rows(), ids=lambda v: v if isinstance(v, str) else ""
+)
+def test_every_option_sorts_real_rows_without_raising(page, rows, options):
+    """Every option of every page must survive the awkward half of the data.
+
+    The other page-level tests only inspect option metadata, so a key that
+    reads a dict field its row builder never produces -- or an attribute
+    that was renamed on the model -- would pass them and then crash the
+    page the moment someone picks that entry in the select. This is the
+    test that fails instead.
+    """
+    for option in options:
+        ordered = apply_sort(rows, options, option.key)
+        assert len(ordered) == len(rows), f"{page} / {option.key}"
+        assert {id(row) for row in ordered} == {id(row) for row in rows}, f"{page} / {option.key}"
+
+    # The path taken before the select has ever been touched.
+    assert len(apply_sort(rows, options, None)) == len(rows), page

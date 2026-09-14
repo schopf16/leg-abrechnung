@@ -117,7 +117,8 @@ this pattern rather than reading the live setting at render time.
 
 ### Sorting: one mechanism, every list
 
-Every list view sorts through `app/gui/sorting.py` and nothing else: a
+Every *browsable* list — the CRUD pages and worklists under
+`app/gui/pages/` — sorts through `app/gui/sorting.py` and nothing else: a
 module-level `SORT_OPTIONS` list of `SortOption`s (default first), a
 `render_sort_select(SORT_OPTIONS, ...)` as the **last control in the
 page's filter row**, and `apply_sort(rows, SORT_OPTIONS, sort_select.value)`
@@ -126,8 +127,10 @@ column headers — half the lists are cards and have no header to click, so
 clickable headers could never be the mechanism that works everywhere, and
 two mechanisms is exactly what the user complained about.
 
-Sort in Python on already-loaded rows, not in the repo's `ORDER BY`: SQL
-`ORDER BY` sorts umlauts after "z". Build keys from `text_key`,
+Sort in Python on already-loaded rows, not in the repo's `ORDER BY`:
+SQLite's BINARY/NOCASE collation mis-sorts umlauts — a non-leading one
+slips past its own initial group ("Bühler" after "Burri"), a leading one
+goes behind every "Z…" name ("Ärni" last of all). Build keys from `text_key`,
 `number_key`, `address_key` (house numbers numerically) and
 `person_name_key` (surname, falling back to the company name) rather than
 hand-rolling per page — a person or an address must come out in the same
@@ -137,7 +140,15 @@ lists default to `"last_name"`/"Nachname"; a worklist may lead with its
 own urgency order (see `app/gui/pages/dunning.py`), and an inbox with
 newest-first (`web_registrations.py`). A list with only one sensible order
 just sorts that way and shows no control (`signatures.py`). Whatever is
-selected is named in the printout's filter line via `sort_description`.
+selected is printed on the printout's own "Sortierung:" line, via
+`render_print_button`'s `get_sort_description` — never folded into the
+filter line, because a sort order is not a filter.
+
+Detail sub-tables and history tables are exempt and have no control:
+`billing.py` (runs and items), `backup.py`, `import_page.py`,
+`reports.py`, `dashboard.py`, and the metering-point tables on the
+Person and Standort detail pages. Each shows one context's rows in the
+one order that context implies, so there is no choice to offer.
 
 ### Onboarding/offboarding-style trackers
 

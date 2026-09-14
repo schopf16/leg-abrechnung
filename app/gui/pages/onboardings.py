@@ -195,6 +195,9 @@ def onboardings_page() -> None:
                         if o.person_id in persons
                     ],
                     get_filter_description=lambda: _filter_description(),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(sort_options({}), sort_select.value),
                 )
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
@@ -221,9 +224,6 @@ def onboardings_page() -> None:
                 parts.append("inkl. abgeschlossene")
             if step_filter.value is not None:
                 parts.append(STEP_FILTER_OPTIONS[step_filter.value])
-            # Always named: the printout is read away from the screen, where
-            # the order is not self-evident.
-            parts.append(sort_description(sort_options({}), sort_select.value))
             return ", ".join(parts) if parts else None
 
         def render_card(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> None:

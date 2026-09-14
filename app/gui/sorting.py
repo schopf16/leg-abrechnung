@@ -50,8 +50,14 @@ def fold_for_sort(text: Optional[str]) -> str:
 
     Umlauts sort as their base letter (DIN 5007 Variant 1: "Bühler" before
     "Burri", "Köhle" before "Kuhny"), "ß" as "ss", and accents on
-    French-Swiss names the same way. Plain code-point ordering puts every
-    umlaut after "z" instead.
+    French-Swiss names the same way.
+
+    Plain code-point ordering -- what SQLite's BINARY/NOCASE collation
+    does, so what every repo `ORDER BY` in this app does -- gets this
+    wrong in two different ways: a non-leading umlaut lands after its own
+    initial group ("Bühler" after "Burri", "Zürcher" after "Zwahlen"),
+    and a *leading* umlaut goes past every "Z..." name ("Ärni" last of
+    all). Verified against SQLite, not assumed.
 
     Args:
         text: Raw text, or `None`.
@@ -96,9 +102,16 @@ def person_name_key(person: Any) -> tuple[str, ...]:
     return text_key(person.last_name.strip() or person.company, person.first_name)
 
 
-#: Splits a trailing house number off an address: "Fischrain 68a" becomes
-#: ("Fischrain", "68", "a"). Anything without a trailing number stays whole.
-_HOUSE_NUMBER_TAIL = re.compile(r"^(.*?)\s*(\d+)\s*([^\s\d]*)$")
+#: Splits the house number off an address: "Fischrain 68a" becomes
+#: ("Fischrain", "68", "a"). Anything without a number stays whole.
+#:
+#: Anchored on the *first* number of the tail, not the last, and the
+#: remainder may itself contain digits: `house_number` is free text (see
+#: `app.models.site.Site`), so a range or a compound ("12-14", "12/14")
+#: does occur. Matching the last number would key those as street
+#: "Fischrain 12-" and drop them out of the Fischrain group entirely --
+#: exactly the misordering this function exists to prevent.
+_HOUSE_NUMBER_TAIL = re.compile(r"^(.*?)\s*(\d+)\s*(.*)$")
 
 
 def address_key(street: Optional[str], house_number: Optional[str] = "", *rest: Optional[str]) -> tuple:
@@ -205,7 +218,8 @@ def sort_description(options: Sequence[SortOption], selected_key: Optional[str])
         selected_key: Currently selected key.
 
     Returns:
-        A German phrase such as `"sortiert nach Nachname"`.
+        A German phrase such as `"nach Nachname"`, to follow the
+        printout's own "Sortierung:" label.
     """
     option = next((o for o in options if o.key == selected_key), options[0])
-    return f"sortiert nach {option.label}"
+    return f"nach {option.label}"

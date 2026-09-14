@@ -5,9 +5,14 @@ Deliberately renders a separate, plain HTML table for printing rather than
 printing the on-screen cards/table 1:1 -- the on-screen layout (wrapping
 card columns, icon buttons) makes a poor printout, whereas a compact table
 is easy to scan on paper. Always shows which list ("heading") was printed
-and the print date/time; the currently active filter is optional and
-supplied by the calling page (`filter_description`), since not every page
-has one worth mentioning.
+and the print date/time; the active filter is optional and supplied by the
+calling page (`get_filter_description`), since not every page has one
+worth mentioning.
+
+The sort order is a separate line (`get_sort_description`), never folded
+into the filter line: a sort order is not a filter, and printing
+"Filter: sortiert nach Nachname" on an unfiltered list said the opposite
+of the truth.
 
 Uses the browser's own print dialog (`window.print()`) rather than
 generating a PDF file ourselves: that dialog already offers "Als PDF
@@ -118,6 +123,7 @@ def render_print_button(
     get_columns: Callable[[], list[tuple[str, str]]],
     get_rows: Callable[[], list[dict]],
     get_filter_description: Callable[[], Optional[str]] = lambda: None,
+    get_sort_description: Callable[[], Optional[str]] = lambda: None,
 ) -> ui.button:
     """Render a "Drucken" button that prints the currently displayed rows.
 
@@ -135,6 +141,10 @@ def render_print_button(
         get_filter_description: Callback returning a short, human-readable
             description of the currently active filter(s), or `None` if
             none is active / it shouldn't be shown on the printout.
+        get_sort_description: Callback returning the active sort order,
+            normally `app.gui.sorting.sort_description`'s result, or
+            `None` for a list that offers no choice of order. Printed on
+            its own line -- the order is not self-evident on paper.
 
     Returns:
         The rendered button, in case a caller wants to further style it.
@@ -151,6 +161,7 @@ def render_print_button(
         columns = get_columns()
         rows = get_rows()
         description = get_filter_description()
+        sort_order = get_sort_description()
 
         parts = [
             f"<div class='leg-print-heading'>{html.escape(heading)}</div>",
@@ -159,6 +170,8 @@ def render_print_button(
         ]
         if description:
             parts.append(f"<div class='leg-print-meta'>Filter: {html.escape(description)}</div>")
+        if sort_order:
+            parts.append(f"<div class='leg-print-meta'>Sortierung: {html.escape(sort_order)}</div>")
 
         header_html = "".join(f"<th>{html.escape(label)}</th>" for label, _ in columns)
         if rows:

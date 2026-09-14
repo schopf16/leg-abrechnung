@@ -136,6 +136,9 @@ def receivables_page() -> None:
                 get_columns=lambda: PRINT_COLUMNS,
                 get_rows=lambda: [_print_row(p, balance) for p, balance in visible_entries],
                 get_filter_description=lambda: _filter_description(),
+                # Named on its own line: a printout is read away from the
+                # screen, where the order is not self-evident.
+                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
             )
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -164,10 +167,7 @@ def receivables_page() -> None:
                 parts.append("nur fällige Mahnungen")
             if only_offboarding_switch.value:
                 parts.append("nur laufende Austritte")
-            # Always named: the printout is read away from the screen,
-            # where the order is not self-evident.
-            parts.append(sort_description(SORT_OPTIONS, sort_select.value))
-            return ", ".join(parts)
+            return ", ".join(parts) if parts else None
 
         def render_person_card(person: Person, balance_rappen: int) -> None:
             with ui.card().classes("w-full"):

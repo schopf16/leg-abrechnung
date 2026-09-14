@@ -42,6 +42,12 @@ COLUMNS = [
 ]
 
 #: Orders the Standorte list offers, default first.
+#:
+#: "Adresse" leads and sorts by street before municipality, matching
+#: `site_repo.list_all`'s own ordering and chosen for the same reason: the
+#: real data spells the municipality several different ways ("Ittigen",
+#: "ittigen", "3063 Ittigen"), which scatters a municipality-first list.
+#: Whoever wants the old grouping picks "PLZ / Gemeinde".
 SORT_OPTIONS = [
     SortOption(
         "address",
@@ -149,17 +155,12 @@ def sites_page() -> None:
                     heading="Standorte",
                     get_columns=lambda: table_columns(table),
                     get_rows=lambda: table.rows,
-                    get_filter_description=lambda: ", ".join(
-                        filter(
-                            None,
-                            [
-                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                # Always named: the printout is read away from
-                                # the screen, where the order is not self-evident.
-                                sort_description(SORT_OPTIONS, sort_select.value),
-                            ],
-                        )
+                    get_filter_description=lambda: (
+                        f'Suche: "{search_input.value.strip()}"' if search_input.value else None
                     ),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 

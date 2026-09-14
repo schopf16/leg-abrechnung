@@ -187,18 +187,21 @@ def metering_points_page() -> None:
                     heading="Messpunkte",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: visible_rows,
-                    get_filter_description=lambda: ", ".join(
-                        filter(
-                            None,
-                            [
-                                f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
-                                "Nur ohne Zuordnung" if without_assignment_switch.value else None,
-                                # Always named: the printout is read away from
-                                # the screen, where the order is not self-evident.
-                                sort_description(SORT_OPTIONS, sort_select.value),
-                            ],
+                    get_filter_description=lambda: (
+                        " / ".join(
+                            filter(
+                                None,
+                                [
+                                    f'Suche: "{search_input.value.strip()}"' if search_input.value else None,
+                                    "Nur ohne Zuordnung" if without_assignment_switch.value else None,
+                                ],
+                            )
                         )
+                        or None
                     ),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 

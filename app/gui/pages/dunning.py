@@ -88,9 +88,9 @@ def dunning_page() -> None:
                 heading="Mahnwesen",
                 get_columns=lambda: PRINT_COLUMNS,
                 get_rows=lambda: [_print_row(c) for c in current_candidates],
-                # Always named: the printout is read away from the screen,
-                # where the order is not self-evident.
-                get_filter_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                # Named on its own line: a printout is read away from the
+                # screen, where the order is not self-evident.
+                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
             )
 
         sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh_candidates())

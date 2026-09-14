@@ -172,8 +172,11 @@ def test_tracker_whose_person_is_missing_still_sorts_without_crashing():
 
 
 def test_umlauts_sort_as_their_base_letter():
-    """German rule (DIN 5007 Variant 1): "Bühler" belongs before "Burri",
-    not after "Zimmermann" where plain code-point ordering puts it."""
+    """German rule (DIN 5007 Variant 1): "Bühler" belongs before "Burri".
+
+    That is exactly where plain code-point ordering (SQLite's
+    BINARY/NOCASE) puts it wrong -- it sorts "Bühler" *after* "Burri".
+    """
     persons = {
         1: _person(1, last_name="Burri"),
         2: _person(2, last_name="Bühler"),

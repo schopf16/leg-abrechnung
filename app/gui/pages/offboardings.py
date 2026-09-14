@@ -150,6 +150,9 @@ def offboardings_page() -> None:
                         if o.person_id in persons
                     ],
                     get_filter_description=lambda: _filter_description(),
+                    # Named on its own line: a printout is read away from
+                    # the screen, where the order is not self-evident.
+                    get_sort_description=lambda: sort_description(sort_options({}), sort_select.value),
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
@@ -163,17 +166,12 @@ def offboardings_page() -> None:
         persons: dict[int, Person] = {}
 
         def _filter_description() -> str | None:
-            """Build a short description of the current filter and order.
+            """Build a short description of the currently active filter.
 
             Returns:
-                A human-readable summary; never empty, since the order is
-                always named.
+                A human-readable summary, or `None` if no filter is active.
             """
-            parts = ["inkl. abgeschlossene"] if show_complete_switch.value else []
-            # Always named: the printout is read away from the screen,
-            # where the order is not self-evident.
-            parts.append(sort_description(sort_options({}), sort_select.value))
-            return ", ".join(parts)
+            return "inkl. abgeschlossene" if show_complete_switch.value else None
 
         def render_card(offboarding: PersonOffboarding, person: Person) -> None:
             """Render one offboarding tracker as a card.
