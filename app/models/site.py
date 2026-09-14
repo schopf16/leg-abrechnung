@@ -73,19 +73,26 @@ class Site:
 
 
 def list_all(connection: sqlite3.Connection) -> list[Site]:
-    """List all sites, ordered by municipality, street (alphabetically),
-    then house number (numerically, e.g. "2" before "10").
+    """List all sites, ordered by street (alphabetically, case-insensitive),
+    then house number (numerically, e.g. "2" before "10"), then municipality.
+
+    Street first, not municipality: a single LEG spans one or two
+    municipalities at most, and real data showed the municipality spelled
+    five different ways ("Ittigen", "ittigen", "3063 Ittigen", ...), which
+    used to scatter the list. The administrator looks for an address, so
+    the address is what the order follows.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        All connection sites, sorted by `municipality`, `street`, `house_number`.
+        All connection sites, sorted by `street`, `house_number`, `municipality`.
     """
     rows = connection.execute(
         """
         SELECT * FROM site
-        ORDER BY municipality, street, CAST(house_number AS INTEGER), house_number
+        ORDER BY street COLLATE NOCASE, CAST(house_number AS INTEGER), house_number COLLATE NOCASE,
+                 municipality COLLATE NOCASE
         """
     ).fetchall()
     return [Site.from_row(row) for row in rows]

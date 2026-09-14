@@ -717,6 +717,54 @@ def test_site_list_all_sorts_house_number_numerically(db):
     assert house_numbers == ["1", "2", "10"]
 
 
+def test_site_list_all_sorts_by_street_regardless_of_municipality_spelling(db):
+    """Real data spells the same municipality several ways ("Ittigen",
+    "ittigen", "3063 Ittigen"). Ordering by municipality first scattered
+    the list, so the address is what the order follows."""
+    site_repo.create(
+        db,
+        Site(
+            id=None,
+            street="Zytgloggeweg",
+            house_number="1",
+            postal_code="3063",
+            municipality="Ittigen",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
+        ),
+    )
+    site_repo.create(
+        db,
+        Site(
+            id=None,
+            street="Amselweg",
+            house_number="2",
+            postal_code="3063",
+            municipality="3063 Ittigen",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
+        ),
+    )
+    site_repo.create(
+        db,
+        Site(
+            id=None,
+            street="mittelweg",
+            house_number="3",
+            postal_code="3063",
+            municipality="ittigen",
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
+        ),
+    )
+
+    streets = [s.street for s in site_repo.list_all(db)]
+    assert streets == ["Amselweg", "mittelweg", "Zytgloggeweg"]
+
+
 def test_metering_point_pv_and_batterie_fields_roundtrip(db):
     """PV-Leistung and Batteriespeicher survive create/update, and default to `None`."""
     site_id = _make_site(db)
