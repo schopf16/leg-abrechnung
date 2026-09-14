@@ -160,7 +160,7 @@ def sites_page() -> None:
                     ),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
@@ -194,7 +194,7 @@ def sites_page() -> None:
             """
             needle = (search_input.value or "").strip().lower()
             rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
-            table.rows = apply_sort(rows, SORT_OPTIONS, sort_select.value)
+            table.rows = apply_sort(rows, SORT_OPTIONS, sort_select)
             table.update()
 
         def refresh() -> None:

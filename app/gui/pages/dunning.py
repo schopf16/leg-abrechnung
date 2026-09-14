@@ -90,7 +90,7 @@ def dunning_page() -> None:
                 get_rows=lambda: [_print_row(c) for c in current_candidates],
                 # Named on its own line: a printout is read away from the
                 # screen, where the order is not self-evident.
-                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
             )
 
         sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh_candidates())
@@ -118,7 +118,7 @@ def dunning_page() -> None:
             nonlocal current_candidates
             with connection_scope() as connection:
                 candidates = dunning.list_due_dunnings(connection)
-            current_candidates = apply_sort(candidates, SORT_OPTIONS, sort_select.value)
+            current_candidates = apply_sort(candidates, SORT_OPTIONS, sort_select)
             candidates_container.clear()
             with candidates_container:
                 if not current_candidates:

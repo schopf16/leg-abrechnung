@@ -600,3 +600,67 @@ def test_every_option_sorts_real_rows_without_raising(page, rows, options):
 
     # The path taken before the select has ever been touched.
     assert len(apply_sort(rows, options, None)) == len(rows), page
+
+
+# -- the direction toggle ----------------------------------------------------
+
+
+class _FakeControl:
+    """Stands in for `SortControl`, which needs a rendered NiceGUI page.
+
+    `_resolve` reads both fields by attribute, so this is enough to drive
+    every direction case without a browser.
+    """
+
+    def __init__(self, value: str, descending: bool = False) -> None:
+        self.value = value
+        self.descending = descending
+
+
+def test_direction_toggle_reverses_the_selected_order():
+    rows = [{"name": "Alpha", "count": 1}, {"name": "Zulu", "count": 2}]
+
+    ascending = apply_sort(rows, _OPTIONS, _FakeControl("name"))
+    descending = apply_sort(rows, _OPTIONS, _FakeControl("name", descending=True))
+
+    assert [r["name"] for r in ascending] == ["Alpha", "Zulu"]
+    assert [r["name"] for r in descending] == ["Zulu", "Alpha"]
+
+
+def test_toggling_an_already_descending_option_flips_it_back():
+    """The arrow must do something visible on "meiste zuerst" options too.
+
+    Those are descending by construction, so a naive "apply reverse on
+    top" would leave them unchanged; the two cancel out instead.
+    """
+    options = [SortOption("count", "Anzahl (meiste zuerst)", lambda row: row["count"], reverse=True)]
+    rows = [{"count": 1}, {"count": 3}, {"count": 2}]
+
+    default = apply_sort(rows, options, _FakeControl("count"))
+    toggled = apply_sort(rows, options, _FakeControl("count", descending=True))
+
+    assert [r["count"] for r in default] == [3, 2, 1]
+    assert [r["count"] for r in toggled] == [1, 2, 3]
+
+
+def test_a_bare_key_still_means_ascending():
+    """Pages pass the control; a plain key has to keep working too."""
+    rows = [{"name": "Zulu", "count": 1}, {"name": "Alpha", "count": 2}]
+
+    assert [r["name"] for r in apply_sort(rows, _OPTIONS, "name")] == ["Alpha", "Zulu"]
+
+
+def test_printout_names_the_direction_only_when_it_is_reversed():
+    assert sort_description(_OPTIONS, _FakeControl("name")) == "nach Name"
+    assert sort_description(_OPTIONS, _FakeControl("name", descending=True)) == "nach Name (absteigend)"
+
+
+@pytest.mark.parametrize(
+    "page,rows,options", _representative_rows(), ids=lambda v: v if isinstance(v, str) else ""
+)
+def test_every_option_also_sorts_descending_without_raising(page, rows, options):
+    """The arrow applies to every option on every page, so every option
+    has to survive being reversed too."""
+    for option in options:
+        ordered = apply_sort(rows, options, _FakeControl(option.key, descending=True))
+        assert len(ordered) == len(rows), f"{page} / {option.key}"

@@ -234,7 +234,7 @@ def web_registrations_page() -> None:
                     ),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
-                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select.value),
+                    get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("Registrierungen abrufen", on_click=lambda: do_sync())
 
@@ -350,7 +350,7 @@ def web_registrations_page() -> None:
             regs = (
                 all_regs if show_complete_switch.value else [r for r in all_regs if not r.is_fully_processed]
             )
-            visible_regs = apply_sort(regs, SORT_OPTIONS, sort_select.value)
+            visible_regs = apply_sort(regs, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
                 if not visible_regs:
