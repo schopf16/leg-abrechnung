@@ -33,10 +33,11 @@ class WebRegistrationMeter:
         note: Optional free-text purpose label from the submitter (e.g.
             "PV", "Wohnhaus", "Wärmepumpe") -- not a `MeteringPoint` field,
             purely a hint for the administrator.
-        metering_point_created: Whether a `MeteringPoint` was actually created for
-            this reported meter via "MeteringPoint übernehmen" (see
+        metering_point_taken_over: Whether this reported meter still needs
+            action -- `False` until a `MeteringPoint` was created for it,
+            an existing one was linked, or it was marked by hand (see
             `app.gui.pages.web_registrations`). Only
-            `mark_metering_point_created` sets it; `upsert_from_submission`
+            `mark_metering_point_taken_over` sets it; `upsert_from_submission`
             carries it forward by `meter_number` across a repeat
             submission, since that call otherwise replaces all of a
             registration's meter rows wholesale.
@@ -46,7 +47,7 @@ class WebRegistrationMeter:
     web_registration_id: Optional[int]
     meter_number: str
     note: str
-    metering_point_created: bool = False
+    metering_point_taken_over: bool = False
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "WebRegistrationMeter":
@@ -63,7 +64,7 @@ class WebRegistrationMeter:
             web_registration_id=row["web_registration_id"],
             meter_number=row["meter_number"],
             note=row["note"],
-            metering_point_created=bool(row["metering_point_created"]),
+            metering_point_taken_over=bool(row["metering_point_taken_over"]),
         )
 
 
@@ -100,16 +101,19 @@ class WebRegistration:
         submitted_at: Submission timestamp as reported by the API.
         imported_at: ISO-8601 timestamp this row was last written here
             (insert or update).
-        person_created: Whether a `Person` was actually created from this
-            registration via "Person übernehmen" (see `app.gui.pages.
-            web_registrations`). Only `mark_person_created` sets it;
+        person_taken_over: Whether this registration's Person still needs
+            action -- `False` until one was created, an existing one was
+            linked, or it was marked by hand (see `app.gui.pages.
+            web_registrations`). Only `mark_person_taken_over` sets it;
             used to decide whether deleting this registration (see
             `delete`) needs the strong irrevocable-data-loss warning.
-        site_created: Whether a `site` was actually created from
-            this registration's reported address via "site
-            übernehmen". Only `mark_site_created` sets it.
+        site_taken_over: Whether this registration's site still needs
+            action -- `False` until one was created, the existing site at
+            that address was linked (the usual case in an apartment
+            block), or it was marked by hand. Only
+            `mark_site_taken_over` sets it.
         meters: Zählernummern reported with this registration, zero, one
-            or several -- each with its own `metering_point_created` flag.
+            or several -- each with its own `metering_point_taken_over` flag.
     """
 
     id: Optional[int]
@@ -129,8 +133,8 @@ class WebRegistration:
     message: str
     submitted_at: str
     imported_at: str
-    person_created: bool = False
-    site_created: bool = False
+    person_taken_over: bool = False
+    site_taken_over: bool = False
     meters: list[WebRegistrationMeter] = field(default_factory=list)
 
     @property
@@ -152,14 +156,17 @@ class WebRegistration:
         """Whether there is nothing left to take over from this registration.
 
         `True` once Person, site and every reported MeteringPoint have
-        all been created via their respective "... übernehmen" action --
-        the only remaining action at that point is deleting the entry.
+        each been dealt with -- created from this registration, linked to
+        an existing record, or marked by hand. The only remaining action
+        at that point is deleting the entry.
 
         Returns:
             `True` if fully processed, `False` if anything is still open.
         """
         return (
-            self.person_created and self.site_created and all(m.metering_point_created for m in self.meters)
+            self.person_taken_over
+            and self.site_taken_over
+            and all(m.metering_point_taken_over for m in self.meters)
         )
 
     @staticmethod
@@ -192,8 +199,8 @@ class WebRegistration:
             message=row["message"],
             submitted_at=row["submitted_at"],
             imported_at=row["imported_at"],
-            person_created=bool(row["person_created"]),
-            site_created=bool(row["site_created"]),
+            person_taken_over=bool(row["person_taken_over"]),
+            site_taken_over=bool(row["site_taken_over"]),
             meters=meters,
         )
 
@@ -271,7 +278,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
     then reinsert) rather than diffing them individually -- the number of
     meters per registration is small, and this avoids having to decide
     which meter row "is the same" across a content change -- except for
-    `metering_point_created`, which is explicitly carried forward by
+    `metering_point_taken_over`, which is explicitly carried forward by
     `meter_number` (see the loop below): unlike a brand new meter row,
     that flag records real administrator work that a same-content resync
     must not silently discard.
@@ -286,8 +293,8 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
         The primary key of the inserted or updated row.
     """
     existing = get_by_email(connection, registration.email)
-    previously_created_by_meter = (
-        {m.meter_number: m.metering_point_created for m in existing.meters} if existing else {}
+    previously_taken_over_by_meter = (
+        {m.meter_number: m.metering_point_taken_over for m in existing.meters} if existing else {}
     )
     now = datetime.now(timezone.utc).isoformat()
 
@@ -358,13 +365,13 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
 
     for meter in registration.meters:
         connection.execute(
-            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note, metering_point_created) "
+            "INSERT INTO web_registration_meter (web_registration_id, meter_number, note, metering_point_taken_over) "
             "VALUES (?, ?, ?, ?)",
             (
                 web_registration_id,
                 meter.meter_number,
                 meter.note,
-                previously_created_by_meter.get(meter.meter_number, False),
+                previously_taken_over_by_meter.get(meter.meter_number, False),
             ),
         )
 
@@ -372,29 +379,14 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
     return web_registration_id
 
 
-def mark_person_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Record that a `Person` was actually created from this registration.
+def mark_person_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Record that this registration's Person needs no further action.
 
-    Idempotent. The only way `person_created` is set.
+    Set whether the Person was created from the registration, linked to an
+    already-existing one, or marked by hand -- see the module docstring of
+    `app.gui.pages.web_registrations` for why all three close the item.
 
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
-    connection.execute(
-        "UPDATE web_registration SET person_created = 1 WHERE id = ?",
-        (web_registration_id,),
-    )
-    connection.commit()
-
-
-def mark_site_created(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Record that a `site` was actually created from this registration.
-
-    Idempotent. The only way `site_created` is set.
+    Idempotent. The only way `person_taken_over` is set.
 
     Args:
         connection: Open SQLite connection.
@@ -404,16 +396,42 @@ def mark_site_created(connection: sqlite3.Connection, web_registration_id: int) 
         None.
     """
     connection.execute(
-        "UPDATE web_registration SET site_created = 1 WHERE id = ?",
+        "UPDATE web_registration SET person_taken_over = 1 WHERE id = ?",
         (web_registration_id,),
     )
     connection.commit()
 
 
-def mark_metering_point_created(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
-    """Record that a `MeteringPoint` was actually created for one reported meter.
+def mark_site_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Record that this registration's site needs no further action.
 
-    Idempotent. The only way a meter's `metering_point_created` is set.
+    Set whether the site was created from the registration, linked to an
+    already-existing one -- the common case, since everybody living in one
+    apartment block shares a single site -- or marked by hand.
+
+    Idempotent. The only way `site_taken_over` is set.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration SET site_taken_over = 1 WHERE id = ?",
+        (web_registration_id,),
+    )
+    connection.commit()
+
+
+def mark_metering_point_taken_over(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
+    """Record that one reported meter needs no further action.
+
+    Set whether the MeteringPoint was created from the reported meter,
+    linked to an already-existing one, or marked by hand.
+
+    Idempotent. The only way a meter's `metering_point_taken_over` is set.
 
     Args:
         connection: Open SQLite connection.
@@ -423,7 +441,7 @@ def mark_metering_point_created(connection: sqlite3.Connection, web_registration
         None.
     """
     connection.execute(
-        "UPDATE web_registration_meter SET metering_point_created = 1 WHERE id = ?",
+        "UPDATE web_registration_meter SET metering_point_taken_over = 1 WHERE id = ?",
         (web_registration_meter_id,),
     )
     connection.commit()

@@ -417,8 +417,8 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
             message="",
             submitted_at="2026-01-01T10:00:00+00:00",
             imported_at="2026-01-02T00:00:00+00:00",
-            person_created=False,
-            site_created=False,
+            person_taken_over=False,
+            site_taken_over=False,
             meters=[],
         )
         fields.update(overrides)

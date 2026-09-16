@@ -1500,4 +1500,26 @@ Freundliche Grüsse';
             PRAGMA foreign_keys = ON;
         """,
     ),
+    Migration(
+        version=44,
+        description="Rename the Web-Registrierung take-over flags from "
+        "'*_created' to '*_taken_over' (web_registration.person_created/"
+        "site_created and web_registration_meter.metering_point_created). "
+        "The flag used to mean strictly 'a record was created from this "
+        "registration', which left no way to close an entry whose Person/"
+        "site/MeteringPoint already existed -- two members of the same "
+        "apartment block share one site, so the second registration could "
+        "never reach is_fully_processed and stayed in the inbox forever. "
+        "The flag now means 'nothing left to take over here', whether that "
+        "came from creating the record, linking the existing one, or the "
+        "administrator marking it by hand when a typo kept the match from "
+        "being found. Pure column renames: values carry over unchanged, "
+        "since everything previously flagged was indeed created.",
+        sql="""
+            ALTER TABLE web_registration RENAME COLUMN person_created TO person_taken_over;
+            ALTER TABLE web_registration RENAME COLUMN site_created TO site_taken_over;
+            ALTER TABLE web_registration_meter
+                RENAME COLUMN metering_point_created TO metering_point_taken_over;
+        """,
+    ),
 ]
