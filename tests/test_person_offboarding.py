@@ -36,7 +36,7 @@ def _person(db, name: str = "Test") -> int:
 
 
 def test_migration_27_creates_person_offboarding_table(db):
-    assert get_schema_version(db) == 43
+    assert get_schema_version(db) == 44
     assert person_offboarding_repo.list_all(db) == []
 
 

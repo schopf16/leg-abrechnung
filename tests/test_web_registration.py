@@ -53,7 +53,7 @@ def _submission(
 
 def test_migration_22_adds_take_over_tracking_columns(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 43
+    assert get_schema_version(db) == 44
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -61,54 +61,54 @@ def test_migration_22_adds_take_over_tracking_columns(db):
     assert db.execute("SELECT COUNT(*) FROM web_registration_meter").fetchone()[0] == 0
 
 
-def test_mark_site_created_is_idempotent(db):
+def test_mark_site_taken_over_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
-    assert web_registration_repo.get(db, reg_id).site_created is False
+    assert web_registration_repo.get(db, reg_id).site_taken_over is False
 
-    web_registration_repo.mark_site_created(db, reg_id)
-    web_registration_repo.mark_site_created(db, reg_id)
+    web_registration_repo.mark_site_taken_over(db, reg_id)
+    web_registration_repo.mark_site_taken_over(db, reg_id)
 
-    assert web_registration_repo.get(db, reg_id).site_created is True
+    assert web_registration_repo.get(db, reg_id).site_taken_over is True
 
 
-def test_mark_metering_point_created_is_idempotent(db):
+def test_mark_metering_point_taken_over_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
     meter = web_registration_repo.list_all(db)[0].meters[0]
-    assert meter.metering_point_created is False
+    assert meter.metering_point_taken_over is False
 
-    web_registration_repo.mark_metering_point_created(db, meter.id)
-    web_registration_repo.mark_metering_point_created(db, meter.id)
+    web_registration_repo.mark_metering_point_taken_over(db, meter.id)
+    web_registration_repo.mark_metering_point_taken_over(db, meter.id)
 
     reloaded = web_registration_repo.list_all(db)[0].meters[0]
-    assert reloaded.metering_point_created is True
+    assert reloaded.metering_point_taken_over is True
 
 
-def test_mark_person_created_is_idempotent(db):
+def test_mark_person_taken_over_is_idempotent(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1)], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
-    assert web_registration_repo.get(db, reg_id).person_created is False
+    assert web_registration_repo.get(db, reg_id).person_taken_over is False
 
-    web_registration_repo.mark_person_created(db, reg_id)
-    web_registration_repo.mark_person_created(db, reg_id)
+    web_registration_repo.mark_person_taken_over(db, reg_id)
+    web_registration_repo.mark_person_taken_over(db, reg_id)
 
-    assert web_registration_repo.get(db, reg_id).person_created is True
+    assert web_registration_repo.get(db, reg_id).person_taken_over is True
 
 
-def test_mark_person_created_is_independent_of_site_and_metering_point(db):
+def test_mark_person_taken_over_is_independent_of_site_and_metering_point(db):
     """Each of the three take-over flags is set only by its own action."""
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "PV")])], []]):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
 
-    web_registration_repo.mark_person_created(db, reg_id)
+    web_registration_repo.mark_person_taken_over(db, reg_id)
     reg = web_registration_repo.get(db, reg_id)
-    assert reg.person_created is True
-    assert reg.site_created is False
-    assert reg.meters[0].metering_point_created is False
+    assert reg.person_taken_over is True
+    assert reg.site_taken_over is False
+    assert reg.meters[0].metering_point_taken_over is False
     assert reg.is_fully_processed is False
 
 
@@ -123,12 +123,12 @@ def test_is_fully_processed_requires_person_site_and_every_meter(db):
 
     assert web_registration_repo.get(db, reg_id).is_fully_processed is False
 
-    web_registration_repo.mark_person_created(db, reg_id)
-    web_registration_repo.mark_site_created(db, reg_id)
-    web_registration_repo.mark_metering_point_created(db, meter_ids[0])
+    web_registration_repo.mark_person_taken_over(db, reg_id)
+    web_registration_repo.mark_site_taken_over(db, reg_id)
+    web_registration_repo.mark_metering_point_taken_over(db, meter_ids[0])
     assert web_registration_repo.get(db, reg_id).is_fully_processed is False  # meter_ids[1] still open
 
-    web_registration_repo.mark_metering_point_created(db, meter_ids[1])
+    web_registration_repo.mark_metering_point_taken_over(db, meter_ids[1])
     assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 
 
@@ -137,18 +137,18 @@ def test_is_fully_processed_true_with_no_meters_once_person_and_site_done(db):
         sync_registrations(db, "token")
     reg_id = web_registration_repo.list_all(db)[0].id
 
-    web_registration_repo.mark_person_created(db, reg_id)
-    web_registration_repo.mark_site_created(db, reg_id)
+    web_registration_repo.mark_person_taken_over(db, reg_id)
+    web_registration_repo.mark_site_taken_over(db, reg_id)
 
     assert web_registration_repo.get(db, reg_id).is_fully_processed is True
 
 
 def test_person_created_survives_a_content_update_via_upsert(db):
-    """A repeat submission with changed content must not reset person_created."""
+    """A repeat submission with changed content must not reset person_taken_over."""
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="p@example.ch", phone="111")], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "p@example.ch")
-    web_registration_repo.mark_person_created(db, reg.id)
+    web_registration_repo.mark_person_taken_over(db, reg.id)
 
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="p@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
@@ -156,7 +156,7 @@ def test_person_created_survives_a_content_update_via_upsert(db):
     assert result.updated == 1
     updated = web_registration_repo.get_by_email(db, "p@example.ch")
     assert updated.phone == "222"
-    assert updated.person_created is True
+    assert updated.person_taken_over is True
 
 
 def test_delete_removes_registration_and_its_meters(db):
@@ -219,7 +219,7 @@ def test_sync_registrations_unchanged_repeat_keeps_person_created(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="a@example.ch", meters=meters)], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "a@example.ch")
-    web_registration_repo.mark_person_created(db, reg.id)
+    web_registration_repo.mark_person_taken_over(db, reg.id)
 
     # Same content, same email, arriving again with a higher cloudflare_id.
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="a@example.ch", meters=meters)], []]):
@@ -228,14 +228,14 @@ def test_sync_registrations_unchanged_repeat_keeps_person_created(db):
     assert result.unchanged == 1
     assert result.updated == 0
     still_created = web_registration_repo.get_by_email(db, "a@example.ch")
-    assert still_created.person_created is True
+    assert still_created.person_taken_over is True
 
 
 def test_sync_registrations_changed_field_updates_row_in_place(db):
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, email="b@example.ch", phone="111")], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "b@example.ch")
-    web_registration_repo.mark_person_created(db, reg.id)
+    web_registration_repo.mark_person_taken_over(db, reg.id)
 
     with patch(_SYNC_TARGET, side_effect=[[_submission(2, email="b@example.ch", phone="222")], []]):
         result = sync_registrations(db, "token")
@@ -244,15 +244,15 @@ def test_sync_registrations_changed_field_updates_row_in_place(db):
     assert result.unchanged == 0
     updated = web_registration_repo.get_by_email(db, "b@example.ch")
     assert updated.phone == "222"
-    # person_created is not reset by an unrelated content change.
-    assert updated.person_created is True
+    # person_taken_over is not reset by an unrelated content change.
+    assert updated.person_taken_over is True
     # The row is updated in place, not duplicated.
     assert len(web_registration_repo.list_all(db)) == 1
 
 
 def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_point_created(db):
     """Replacing a registration's meter set on a repeat submission must not
-    silently discard metering_point_created for a meter that persists by
+    silently discard metering_point_taken_over for a meter that persists by
     meter_number -- see `upsert_from_submission`'s docstring."""
     with patch(
         _SYNC_TARGET,
@@ -264,7 +264,7 @@ def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_p
         sync_registrations(db, "token")
     reg = web_registration_repo.get_by_email(db, "c@example.ch")
     keep_meter = next(m for m in reg.meters if m.meter_number == "CH-KEEP")
-    web_registration_repo.mark_metering_point_created(db, keep_meter.id)
+    web_registration_repo.mark_metering_point_taken_over(db, keep_meter.id)
 
     # CH-KEEP reappears (with a changed note), CH-DROP is gone, CH-NEW is added.
     with patch(
@@ -281,8 +281,8 @@ def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_p
     by_number = {m.meter_number: m for m in updated.meters}
     assert set(by_number) == {"CH-KEEP", "CH-NEW"}
     assert by_number["CH-KEEP"].note == "PV"
-    assert by_number["CH-KEEP"].metering_point_created is True
-    assert by_number["CH-NEW"].metering_point_created is False
+    assert by_number["CH-KEEP"].metering_point_taken_over is True
+    assert by_number["CH-NEW"].metering_point_taken_over is False
 
 
 def test_sync_registrations_advances_cursor_for_noop_entries_too(db):
@@ -350,3 +350,182 @@ def test_sync_registrations_paginates_while_page_is_full(db, monkeypatch):
     assert calls == [0, 2, 3]
     assert result.created == 3
     assert settings_repo.get_settings(db).web_registration_cursor == 3
+
+
+# -- Matching an already-existing record (the apartment-block case) ----------
+#
+# Two members of the same block share one site. The first registration
+# creates it; from the second onwards there is nothing to create, and the
+# page must offer to link the existing site instead. Before this, the
+# second entry could never reach is_fully_processed and sat in the inbox
+# for good -- four entries in the real database were already stuck.
+
+
+def _ingest(db, submission):
+    """Put one submission into the inbox the way the app does, via the sync."""
+    with patch(_SYNC_TARGET, side_effect=[[submission], []]):
+        sync_registrations(db, "token")
+
+
+def _status_for(db, reg):
+    """Run the page's matcher over everything currently in the database."""
+    from app.gui.pages.web_registrations import _registration_status, _site_key
+    from app.models import metering_point as metering_point_repo
+    from app.models import person as person_repo
+    from app.models import site as site_repo
+
+    return _registration_status(
+        reg,
+        {p.contact_email: p for p in person_repo.list_all(db) if p.contact_email},
+        {_site_key(s.street, s.house_number, s.postal_code): s for s in site_repo.list_all(db)},
+        {mp.designation: mp for mp in metering_point_repo.list_all(db)},
+    )
+
+
+def _a_site(db, street="Fischrain", house_number="68", postal_code="3063", municipality="Ittigen"):
+    """Persist one site and return it."""
+    from app.models import site as site_repo
+    from app.models.site import Site
+
+    site_id = site_repo.create(
+        db,
+        Site(
+            id=None,
+            street=street,
+            house_number=house_number,
+            postal_code=postal_code,
+            municipality=municipality,
+            address_detail="",
+            substation_area_id=None,
+            created_at="",
+        ),
+    )
+    return site_repo.get(db, site_id)
+
+
+def test_second_registration_in_the_same_block_matches_the_existing_site(db):
+    """The reported bug: person two at one address found no site."""
+    _a_site(db)
+    _ingest(db, _submission(1, email="zwei@example.ch", street="Fischrain", house_number="68"))
+    reg = web_registration_repo.get_by_email(db, "zwei@example.ch")
+
+    status = _status_for(db, reg)
+
+    assert status.site is not None
+    assert status.site.full_address == "Fischrain 68, 3063 Ittigen"
+
+
+def test_linking_the_existing_site_completes_the_registration(db):
+    """Marking it taken over must actually close the entry -- that is the
+    whole point, and what `site_created` could never express."""
+    _a_site(db)
+    _ingest(db, _submission(2, email="link@example.ch", meters=None))
+    reg = web_registration_repo.get_by_email(db, "link@example.ch")
+    web_registration_repo.mark_person_taken_over(db, reg.id)
+
+    assert not web_registration_repo.get(db, reg.id).is_fully_processed
+
+    web_registration_repo.mark_site_taken_over(db, reg.id)
+
+    assert web_registration_repo.get(db, reg.id).is_fully_processed
+
+
+def test_address_matching_ignores_case_and_padding(db):
+    _a_site(db, street="Fischrain", house_number="68", postal_code="3063")
+    _ingest(
+        db,
+        _submission(
+            3,
+            email="case@example.ch",
+            street="  fischrain ",
+            house_number=" 68",
+            postal_code="3063",
+        ),
+    )
+    reg = web_registration_repo.get_by_email(db, "case@example.ch")
+
+    assert _status_for(db, reg).site is not None
+
+
+def test_a_typo_in_the_street_finds_nothing_and_stays_hand_markable(db):
+    """Deliberately no fuzzy matching: linking the wrong address is worse
+    than not finding it. The administrator marks it by hand instead, which
+    must still close the entry."""
+    _a_site(db, street="Fischrain", house_number="68")
+    _ingest(
+        db,
+        _submission(4, email="typo@example.ch", street="Fishrain", house_number="68", meters=None),
+    )
+    reg = web_registration_repo.get_by_email(db, "typo@example.ch")
+
+    assert _status_for(db, reg).site is None
+
+    web_registration_repo.mark_person_taken_over(db, reg.id)
+    web_registration_repo.mark_site_taken_over(db, reg.id)
+
+    assert web_registration_repo.get(db, reg.id).is_fully_processed
+
+
+def test_an_unknown_address_matches_nothing(db):
+    _a_site(db, street="Fischrain", house_number="68")
+    _ingest(db, _submission(5, email="neu@example.ch", street="Quellenrain", house_number="26"))
+    reg = web_registration_repo.get_by_email(db, "neu@example.ch")
+
+    assert _status_for(db, reg).site is None
+
+
+def test_an_empty_email_matches_no_person(db):
+    """`persons_by_email.get("")` must not match a person whose email is
+    empty -- an empty key is not an identity.
+
+    Built directly rather than through the sync: `registration_sync` drops
+    submissions without an email (it is the matching key), so this row
+    cannot reach the inbox. The guard is defensive, and stays that way.
+    """
+    from app.models.person import Person
+    from app.models.web_registration import WebRegistration
+
+    nameless = Person(
+        id=None,
+        salutation="",
+        company="",
+        first_name="Ohne",
+        last_name="Mail",
+        contact_email="",
+        contact_phone="",
+        billing_street="",
+        billing_house_number="",
+        billing_postal_code="",
+        billing_city="",
+        billing_country="CH",
+        iban="",
+        customer_number=None,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
+    )
+    reg = WebRegistration(
+        id=1,
+        cloudflare_id=1,
+        company="",
+        salutation="",
+        first_name="Anna",
+        last_name="Muster",
+        street="Musterweg",
+        house_number="1",
+        postal_code="3063",
+        city="Ittigen",
+        email="",
+        phone="",
+        bkw_customer_number="",
+        iban="",
+        message="",
+        submitted_at="2026-01-01T10:00:00",
+        imported_at="",
+        meters=[],
+    )
+
+    from app.gui.pages.web_registrations import _registration_status
+
+    assert _registration_status(reg, {"": nameless}, {}, {}).person is None
