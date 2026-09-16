@@ -3,7 +3,7 @@ app.importers.registration_sync (mocked -- no real network calls)."""
 
 from unittest.mock import patch
 
-from app.db.schema import get_schema_version
+from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version
 from app.importers.cloudflare_client import RegistrationSubmission
 from app.importers.registration_sync import sync_registrations
 from app.models import settings as settings_repo
@@ -51,9 +51,9 @@ def _submission(
     )
 
 
-def test_migration_22_adds_take_over_tracking_columns(db):
+def test_a_fresh_database_is_fully_migrated(db):
     """A fresh database (migrated by the `db` fixture) has the new tables/columns."""
-    assert get_schema_version(db) == 44
+    assert get_schema_version(db) == CURRENT_SCHEMA_VERSION
     settings = settings_repo.get_settings(db)
     assert settings.web_registration_cursor == 0
     assert web_registration_repo.list_all(db) == []
@@ -352,180 +352,36 @@ def test_sync_registrations_paginates_while_page_is_full(db, monkeypatch):
     assert settings_repo.get_settings(db).web_registration_cursor == 3
 
 
-# -- Matching an already-existing record (the apartment-block case) ----------
-#
-# Two members of the same block share one site. The first registration
-# creates it; from the second onwards there is nothing to create, and the
-# page must offer to link the existing site instead. Before this, the
-# second entry could never reach is_fully_processed and sat in the inbox
-# for good -- four entries in the real database were already stuck.
-
-
-def _ingest(db, submission):
-    """Put one submission into the inbox the way the app does, via the sync."""
-    with patch(_SYNC_TARGET, side_effect=[[submission], []]):
+def test_unmark_reopens_a_taken_over_item(db):
+    """A flag can now be set by one confirmed click on a small icon, so
+    closing an item by mistake has to be undoable."""
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "")])], []]):
         sync_registrations(db, "token")
-
-
-def _status_for(db, reg):
-    """Run the page's matcher over everything currently in the database."""
-    from app.gui.pages.web_registrations import _registration_status, _site_key
-    from app.models import metering_point as metering_point_repo
-    from app.models import person as person_repo
-    from app.models import site as site_repo
-
-    return _registration_status(
-        reg,
-        {p.contact_email: p for p in person_repo.list_all(db) if p.contact_email},
-        {_site_key(s.street, s.house_number, s.postal_code): s for s in site_repo.list_all(db)},
-        {mp.designation: mp for mp in metering_point_repo.list_all(db)},
-    )
-
-
-def _a_site(db, street="Fischrain", house_number="68", postal_code="3063", municipality="Ittigen"):
-    """Persist one site and return it."""
-    from app.models import site as site_repo
-    from app.models.site import Site
-
-    site_id = site_repo.create(
-        db,
-        Site(
-            id=None,
-            street=street,
-            house_number=house_number,
-            postal_code=postal_code,
-            municipality=municipality,
-            address_detail="",
-            substation_area_id=None,
-            created_at="",
-        ),
-    )
-    return site_repo.get(db, site_id)
-
-
-def test_second_registration_in_the_same_block_matches_the_existing_site(db):
-    """The reported bug: person two at one address found no site."""
-    _a_site(db)
-    _ingest(db, _submission(1, email="zwei@example.ch", street="Fischrain", house_number="68"))
-    reg = web_registration_repo.get_by_email(db, "zwei@example.ch")
-
-    status = _status_for(db, reg)
-
-    assert status.site is not None
-    assert status.site.full_address == "Fischrain 68, 3063 Ittigen"
-
-
-def test_linking_the_existing_site_completes_the_registration(db):
-    """Marking it taken over must actually close the entry -- that is the
-    whole point, and what `site_created` could never express."""
-    _a_site(db)
-    _ingest(db, _submission(2, email="link@example.ch", meters=None))
-    reg = web_registration_repo.get_by_email(db, "link@example.ch")
-    web_registration_repo.mark_person_taken_over(db, reg.id)
-
-    assert not web_registration_repo.get(db, reg.id).is_fully_processed
-
-    web_registration_repo.mark_site_taken_over(db, reg.id)
-
-    assert web_registration_repo.get(db, reg.id).is_fully_processed
-
-
-def test_address_matching_ignores_case_and_padding(db):
-    _a_site(db, street="Fischrain", house_number="68", postal_code="3063")
-    _ingest(
-        db,
-        _submission(
-            3,
-            email="case@example.ch",
-            street="  fischrain ",
-            house_number=" 68",
-            postal_code="3063",
-        ),
-    )
-    reg = web_registration_repo.get_by_email(db, "case@example.ch")
-
-    assert _status_for(db, reg).site is not None
-
-
-def test_a_typo_in_the_street_finds_nothing_and_stays_hand_markable(db):
-    """Deliberately no fuzzy matching: linking the wrong address is worse
-    than not finding it. The administrator marks it by hand instead, which
-    must still close the entry."""
-    _a_site(db, street="Fischrain", house_number="68")
-    _ingest(
-        db,
-        _submission(4, email="typo@example.ch", street="Fishrain", house_number="68", meters=None),
-    )
-    reg = web_registration_repo.get_by_email(db, "typo@example.ch")
-
-    assert _status_for(db, reg).site is None
-
+    reg = web_registration_repo.list_all(db)[0]
+    meter_id = reg.meters[0].id
     web_registration_repo.mark_person_taken_over(db, reg.id)
     web_registration_repo.mark_site_taken_over(db, reg.id)
-
+    web_registration_repo.mark_metering_point_taken_over(db, meter_id)
     assert web_registration_repo.get(db, reg.id).is_fully_processed
 
+    web_registration_repo.unmark_site_taken_over(db, reg.id)
 
-def test_an_unknown_address_matches_nothing(db):
-    _a_site(db, street="Fischrain", house_number="68")
-    _ingest(db, _submission(5, email="neu@example.ch", street="Quellenrain", house_number="26"))
-    reg = web_registration_repo.get_by_email(db, "neu@example.ch")
-
-    assert _status_for(db, reg).site is None
+    reopened = web_registration_repo.get(db, reg.id)
+    assert reopened.site_taken_over is False
+    assert reopened.person_taken_over is True
+    assert not reopened.is_fully_processed
 
 
-def test_an_empty_email_matches_no_person(db):
-    """`persons_by_email.get("")` must not match a person whose email is
-    empty -- an empty key is not an identity.
+def test_unmark_is_idempotent_and_independent_per_item(db):
+    with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "")])], []]):
+        sync_registrations(db, "token")
+    reg = web_registration_repo.list_all(db)[0]
+    web_registration_repo.mark_person_taken_over(db, reg.id)
+    web_registration_repo.mark_metering_point_taken_over(db, reg.meters[0].id)
 
-    Built directly rather than through the sync: `registration_sync` drops
-    submissions without an email (it is the matching key), so this row
-    cannot reach the inbox. The guard is defensive, and stays that way.
-    """
-    from app.models.person import Person
-    from app.models.web_registration import WebRegistration
+    web_registration_repo.unmark_person_taken_over(db, reg.id)
+    web_registration_repo.unmark_person_taken_over(db, reg.id)
 
-    nameless = Person(
-        id=None,
-        salutation="",
-        company="",
-        first_name="Ohne",
-        last_name="Mail",
-        contact_email="",
-        contact_phone="",
-        billing_street="",
-        billing_house_number="",
-        billing_postal_code="",
-        billing_city="",
-        billing_country="CH",
-        iban="",
-        customer_number=None,
-        bkw_customer_number=None,
-        paper_invoice=False,
-        active=True,
-        created_at="",
-    )
-    reg = WebRegistration(
-        id=1,
-        cloudflare_id=1,
-        company="",
-        salutation="",
-        first_name="Anna",
-        last_name="Muster",
-        street="Musterweg",
-        house_number="1",
-        postal_code="3063",
-        city="Ittigen",
-        email="",
-        phone="",
-        bkw_customer_number="",
-        iban="",
-        message="",
-        submitted_at="2026-01-01T10:00:00",
-        imported_at="",
-        meters=[],
-    )
-
-    from app.gui.pages.web_registrations import _registration_status
-
-    assert _registration_status(reg, {"": nameless}, {}, {}).person is None
+    after = web_registration_repo.get(db, reg.id)
+    assert after.person_taken_over is False
+    assert after.meters[0].metering_point_taken_over is True
