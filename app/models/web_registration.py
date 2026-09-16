@@ -104,9 +104,11 @@ class WebRegistration:
         person_taken_over: Whether this registration's Person still needs
             action -- `False` until one was created, an existing one was
             linked, or it was marked by hand (see `app.gui.pages.
-            web_registrations`). Only `mark_person_taken_over` sets it;
-            used to decide whether deleting this registration (see
-            `delete`) needs the strong irrevocable-data-loss warning.
+            web_registrations`). Set by `mark_person_taken_over`, cleared
+            by `unmark_person_taken_over`. Deliberately NOT what the
+            delete dialog keys its data-loss warning on: this flag says
+            the item needs no more attention, not that the submitted data
+            was copied anywhere.
         site_taken_over: Whether this registration's site still needs
             action -- `False` until one was created, the existing site at
             that address was linked (the usual case in an apartment
@@ -442,6 +444,70 @@ def mark_metering_point_taken_over(connection: sqlite3.Connection, web_registrat
     """
     connection.execute(
         "UPDATE web_registration_meter SET metering_point_taken_over = 1 WHERE id = ?",
+        (web_registration_meter_id,),
+    )
+    connection.commit()
+
+
+def unmark_person_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Reopen this registration's Person item.
+
+    The counterpart to `mark_person_taken_over`. A flag can now be set by
+    one confirmed click on a small icon, so closing an item by mistake has
+    to be undoable -- without this the only way back was editing the
+    database by hand.
+
+    Idempotent.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration SET person_taken_over = 0 WHERE id = ?",
+        (web_registration_id,),
+    )
+    connection.commit()
+
+
+def unmark_site_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
+    """Reopen this registration's site item.
+
+    The counterpart to `mark_site_taken_over`; see
+    `unmark_person_taken_over` for why the inverse exists. Idempotent.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_id: Primary key of the inbox entry.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration SET site_taken_over = 0 WHERE id = ?",
+        (web_registration_id,),
+    )
+    connection.commit()
+
+
+def unmark_metering_point_taken_over(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
+    """Reopen one reported meter.
+
+    The counterpart to `mark_metering_point_taken_over`; see
+    `unmark_person_taken_over` for why the inverse exists. Idempotent.
+
+    Args:
+        connection: Open SQLite connection.
+        web_registration_meter_id: Primary key of the `web_registration_meter` row.
+
+    Returns:
+        None.
+    """
+    connection.execute(
+        "UPDATE web_registration_meter SET metering_point_taken_over = 0 WHERE id = ?",
         (web_registration_meter_id,),
     )
     connection.commit()

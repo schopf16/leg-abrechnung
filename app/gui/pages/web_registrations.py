@@ -20,7 +20,7 @@ more than it sounds -- everyone living in one apartment block shares a
 single site, so from the second registration at that address onwards
 there is nothing to create, and before this existed such an entry could
 never reach `is_fully_processed` and sat in the inbox for good. Where a
-match is found (`_registration_status`), the card therefore offers only
+match is found (`app.domain.registration_matching`), the card offers
 "Vorhandenen ... verknüpfen", never a second create button that would
 duplicate the site.
 
@@ -35,7 +35,6 @@ over (`WebRegistration.is_fully_processed`) simply has nothing more to do
 here, and can be deleted once truly obsolete.
 """
 
-from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable, Optional
 
@@ -62,15 +61,11 @@ from app.importers.cloudflare_client import (
     CloudflareAuthError,
     delete_submissions,
 )
+from app.domain.registration_matching import RegistrationMatch, decide_take_over, load_matches
 from app.importers.registration_sync import sync_registrations
-from app.models import metering_point as metering_point_repo
-from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import site as site_repo
 from app.models import web_registration as web_registration_repo
-from app.models.metering_point import MeteringPoint
-from app.models.person import Person
-from app.models.site import Site
 from app.models.web_registration import WebRegistration, WebRegistrationMeter
 
 #: `(label, field)` pairs for the printed table.
@@ -105,68 +100,6 @@ def _print_row(reg: WebRegistration) -> dict:
         "meters": ", ".join(m.meter_number for m in reg.meters) or "-",
         "status": "Vollständig übernommen" if reg.is_fully_processed else "Offen",
     }
-
-
-def _site_key(street: str, house_number: str, postal_code: str) -> tuple[str, str, str]:
-    """Normalise an address into the key both sides of the match use.
-
-    Args:
-        street: Street name.
-        house_number: House number.
-        postal_code: Postal code.
-
-    Returns:
-        The three parts, trimmed and lowercased. Deliberately exact apart
-        from case and padding: a near-match is a judgment call, and
-        guessing one wrong would silently link a registration to the
-        wrong address. A typo is handled by the administrator instead,
-        via "Von Hand als übernommen markieren".
-    """
-    return (street.strip().lower(), house_number.strip().lower(), postal_code.strip().lower())
-
-
-@dataclass
-class _RegistrationStatus:
-    """The already-existing records one registration's Person/site/meters
-    match, if any, *without* having been taken over via this page.
-
-    Holds the matched records themselves rather than plain booleans, so
-    the confirmation dialog can name what it is about to link -- linking
-    the wrong address is not something to confirm blind.
-
-    Attributes:
-        person: The existing Person with this registration's email, or `None`.
-        site: The existing site at this registration's address, or `None`.
-        metering_points: `{meter.id: MeteringPoint or None}` per reported meter.
-    """
-
-    person: Optional[Person]
-    site: Optional[Site]
-    metering_points: dict[int, Optional[MeteringPoint]]
-
-
-def _registration_status(
-    reg: WebRegistration,
-    persons_by_email: dict[str, Person],
-    sites_by_address: dict[tuple[str, str, str], Site],
-    metering_points_by_designation: dict[str, MeteringPoint],
-) -> _RegistrationStatus:
-    """Compute which existing records this registration already matches.
-
-    Args:
-        reg: Registration to check.
-        persons_by_email: Existing Persons keyed by non-empty `contact_email`.
-        sites_by_address: Existing sites keyed by `_site_key`.
-        metering_points_by_designation: Existing MeteringPoints by `designation`.
-
-    Returns:
-        The computed `_RegistrationStatus`.
-    """
-    return _RegistrationStatus(
-        person=persons_by_email.get(reg.email) if reg.email else None,
-        site=sites_by_address.get(_site_key(reg.street, reg.house_number, reg.postal_code)),
-        metering_points={m.id: metering_points_by_designation.get(m.meter_number) for m in reg.meters},
-    )
 
 
 def _parse_bkw_customer_number(value: str) -> Optional[int]:
@@ -315,37 +248,51 @@ def web_registrations_page() -> None:
             *,
             done: bool,
             existing: Optional[str],
+            match_is_identity: bool,
             on_create: Callable[[], None],
             on_take_over: Callable[[], None],
+            on_reopen: Callable[[], None],
         ) -> None:
-            """Render one item's take-over control in whichever of its three
-            states applies.
+            """Render one item's take-over control.
 
-            Nothing left to do -- just the badge. A matching record already
-            exists -- offer to link it, *not* to create a second one: two
-            members of the same apartment block share one site, and
-            creating a duplicate is the mistake this row exists to
-            prevent. Nothing matches -- offer the prefilled create dialog,
-            plus a hand-marking escape hatch, because a typo in the
-            submitted address must not leave the entry stuck in the inbox
-            forever.
+            Which actions to offer is decided by
+            `app.domain.registration_matching.decide_take_over`, not here --
+            it governs what gets written, so it is a rule rather than a
+            rendering detail. This function only draws the result.
 
             Args:
                 what: The item's German name, e.g. "Standort".
                 done: Whether this item needs no further action.
-                existing: Display text of the already-existing record this
-                    registration matches, or `None` if nothing matches.
+                existing: Display text of the matched record, or `None`.
+                match_is_identity: Whether a match identifies the record
+                    (address, Messpunktbezeichnung) or merely suggests it
+                    (email) -- see the domain module.
                 on_create: Opens the prefilled create dialog.
-                on_take_over: Marks the item as taken over, creating nothing.
+                on_take_over: Marks the item taken over, creating nothing.
+                on_reopen: Undoes that, putting the item back on the list.
 
             Returns:
                 None.
             """
+            choice = decide_take_over(done=done, existing=existing, match_is_identity=match_is_identity)
             with ui.row().classes("items-center gap-2"):
-                if done:
+                if choice.done:
                     ui.badge("übernommen", color="positive")
+                    ui.button(
+                        icon="undo",
+                        on_click=lambda: _confirm(
+                            f"{what} wieder öffnen?",
+                            f"Der {what} erscheint danach wieder als offener Punkt dieser "
+                            f"Registrierung. Bereits erfasste Daten werden nicht gelöscht.",
+                            "Wieder öffnen",
+                            on_reopen,
+                        ),
+                    ).props(f'dense flat color=grey size=sm aria-label="{what} wieder öffnen"').tooltip(
+                        f"{what} versehentlich als übernommen markiert -- wieder öffnen"
+                    )
                     return
-                if existing is not None:
+
+                if choice.offer_link and existing is not None:
                     ui.button(
                         f"Vorhandenen {what} verknüpfen",
                         on_click=lambda: _confirm(
@@ -357,31 +304,42 @@ def web_registrations_page() -> None:
                         ),
                     ).props("dense flat color=primary size=sm")
                     ui.badge("existiert bereits", color="info")
-                    return
-                ui.button(f"{what} übernehmen", on_click=on_create).props("dense flat color=primary size=sm")
-                ui.button(
-                    icon="done_all",
-                    on_click=lambda: _confirm(
-                        f"{what} von Hand als übernommen markieren?",
-                        f"Nur wählen, wenn dieser {what} bereits erfasst ist, aber wegen "
-                        f"einer abweichenden Schreibweise nicht automatisch gefunden wurde. "
-                        f"Es wird nichts erstellt und nichts verknüpft -- der Punkt gilt "
-                        f"danach einfach als erledigt.",
-                        "Als übernommen markieren",
-                        on_take_over,
-                    ),
-                ).props("dense flat color=grey size=sm").tooltip(
-                    f"{what} ist schon erfasst, wurde aber nicht gefunden (z. B. Tippfehler) "
-                    f"-- von Hand als übernommen markieren"
-                )
 
-        def render_card(reg: WebRegistration, status: _RegistrationStatus) -> None:
+                if choice.offer_create:
+                    # When a match was only a suggestion (an email), this is
+                    # the way out of a wrong one -- so it is labelled as the
+                    # alternative it now is, not as the primary action.
+                    label = f"{what} trotzdem neu erfassen" if choice.offer_link else f"{what} übernehmen"
+                    ui.button(label, on_click=on_create).props(
+                        f"dense flat size=sm color={'grey' if choice.offer_link else 'primary'}"
+                    )
+
+                if choice.offer_hand_mark:
+                    ui.button(
+                        icon="done_all",
+                        on_click=lambda: _confirm(
+                            f"{what} von Hand als übernommen markieren?",
+                            f"Nur wählen, wenn dieser {what} bereits erfasst ist, aber wegen "
+                            f"einer abweichenden Schreibweise nicht automatisch gefunden wurde. "
+                            f"Es wird nichts erstellt und nichts verknüpft -- der Punkt gilt "
+                            f"danach einfach als erledigt und lässt sich jederzeit wieder öffnen.",
+                            "Als übernommen markieren",
+                            on_take_over,
+                        ),
+                    ).props(
+                        f'dense flat color=grey size=sm aria-label="{what} von Hand als übernommen markieren"'
+                    ).tooltip(
+                        f"{what} ist schon erfasst, wurde aber nicht gefunden (z. B. Tippfehler) "
+                        f"-- von Hand als übernommen markieren"
+                    )
+
+        def render_card(reg: WebRegistration, match: RegistrationMatch) -> None:
             """Render one registration as a card with wrapping field groups.
 
             Args:
                 reg: Registration to render.
-                status: Precomputed "does a match already exist?" status
-                    (see `_registration_status`).
+                match: The existing records this registration matches, from
+                    `app.domain.registration_matching.load_matches`.
 
             Returns:
                 None.
@@ -416,29 +374,39 @@ def web_registrations_page() -> None:
                     _take_over_row(
                         "Person",
                         done=reg.person_taken_over,
-                        existing=status.person.display_name if status.person else None,
+                        existing=match.person.display_name if match.person else None,
+                        # An email is a suggestion, not an identity -- a
+                        # household that shares one address resolves to
+                        # whoever registered first, so creating the other
+                        # person has to stay possible.
+                        match_is_identity=False,
                         on_create=lambda r=reg: on_take_over_person(r),
                         on_take_over=lambda r=reg: mark_person_done(r),
+                        on_reopen=lambda r=reg: reopen_person(r),
                     )
                     _take_over_row(
                         "Standort",
                         done=reg.site_taken_over,
-                        existing=status.site.full_address if status.site else None,
+                        existing=match.site.full_address if match.site else None,
+                        match_is_identity=True,
                         on_create=lambda r=reg: on_take_over_site(r),
                         on_take_over=lambda r=reg: mark_site_done(r),
+                        on_reopen=lambda r=reg: reopen_site(r),
                     )
                     if reg.meters:
                         for meter in reg.meters:
                             with ui.row().classes("items-center gap-2"):
                                 meter_label = meter.meter_number + (f" ({meter.note})" if meter.note else "")
                                 ui.label(meter_label).classes("font-mono text-caption min-w-[160px]")
-                                existing_mp = status.metering_points.get(meter.id)
+                                existing_mp = match.metering_points.get(meter.id)
                                 _take_over_row(
                                     "Messpunkt",
                                     done=meter.metering_point_taken_over,
                                     existing=existing_mp.designation if existing_mp else None,
+                                    match_is_identity=True,
                                     on_create=lambda r=reg, m=meter: on_take_over_metering_point(r, m),
                                     on_take_over=lambda m=meter: mark_metering_point_done(m),
+                                    on_reopen=lambda m=meter: reopen_metering_point(m),
                                 )
                     else:
                         ui.label("Keine Zähler gemeldet.").classes("text-caption text-grey-6")
@@ -452,16 +420,7 @@ def web_registrations_page() -> None:
             nonlocal visible_regs
             with connection_scope() as connection:
                 all_regs = web_registration_repo.list_all(connection)
-                persons_by_email = {
-                    p.contact_email: p for p in person_repo.list_all(connection) if p.contact_email
-                }
-                sites_by_address = {
-                    _site_key(s.street, s.house_number, s.postal_code): s
-                    for s in site_repo.list_all(connection)
-                }
-                metering_points_by_designation = {
-                    mp.designation: mp for mp in metering_point_repo.list_all(connection)
-                }
+                matches = load_matches(connection, all_regs)
             regs = (
                 all_regs if show_complete_switch.value else [r for r in all_regs if not r.is_fully_processed]
             )
@@ -477,9 +436,7 @@ def web_registrations_page() -> None:
                 for reg in visible_regs:
                     render_card(
                         reg,
-                        _registration_status(
-                            reg, persons_by_email, sites_by_address, metering_points_by_designation
-                        ),
+                        matches[reg.id],
                     )
 
         show_complete_switch.on_value_change(lambda _: refresh())
@@ -567,6 +524,48 @@ def web_registrations_page() -> None:
             safe_notify("Messpunkt als übernommen markiert.", type="positive")
             refresh()
 
+        def reopen_person(reg: WebRegistration) -> None:
+            """Put this registration's Person item back on the open list.
+
+            Args:
+                reg: Registration to reopen the Person item for.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                web_registration_repo.unmark_person_taken_over(connection, reg.id)
+            safe_notify("Person wieder geöffnet.", type="info")
+            refresh()
+
+        def reopen_site(reg: WebRegistration) -> None:
+            """Put this registration's site item back on the open list.
+
+            Args:
+                reg: Registration to reopen the site item for.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                web_registration_repo.unmark_site_taken_over(connection, reg.id)
+            safe_notify("Standort wieder geöffnet.", type="info")
+            refresh()
+
+        def reopen_metering_point(meter: WebRegistrationMeter) -> None:
+            """Put one reported meter back on the open list.
+
+            Args:
+                meter: The reported meter to reopen.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                web_registration_repo.unmark_metering_point_taken_over(connection, meter.id)
+            safe_notify("Messpunkt wieder geöffnet.", type="info")
+            refresh()
+
         def on_take_over_site(reg: WebRegistration) -> None:
             """Card button handler: open a prefilled site-creation dialog.
 
@@ -631,6 +630,13 @@ def web_registrations_page() -> None:
             """
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'"{reg.display_name or reg.email}" wirklich löschen?').classes("font-bold")
+                # Always warned about, never only when something is still
+                # open: "übernommen" no longer implies the submitted data
+                # was copied anywhere -- linking an existing record or
+                # marking by hand copies nothing at all. Deleting wipes the
+                # remote Worker database too, and that has no undo (see
+                # app.importers.cloudflare_client.delete_submissions), so
+                # the one thing this dialog must never do is stay silent.
                 if not reg.is_fully_processed:
                     ui.label(
                         "⚠ Person, Standort und/oder Messpunkt(e) dieser "
@@ -639,6 +645,14 @@ def web_registrations_page() -> None:
                         "unwiderruflich aus der Web-Datenbank entfernt -- "
                         "danach gibt es keine Kopie mehr."
                     ).classes("text-negative text-body2 font-bold")
+                else:
+                    ui.label(
+                        "⚠ Die eingereichten Angaben (Telefon, IBAN, "
+                        "BKW-Kundennummer, Nachricht) werden auch aus der "
+                        "Web-Datenbank entfernt. Soweit sie nicht in einem "
+                        "Personen-Datensatz erfasst wurden, gibt es danach "
+                        "keine Kopie mehr."
+                    ).classes("text-negative text-body2")
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
