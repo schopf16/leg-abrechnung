@@ -150,7 +150,7 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
     assert mix.consumer_count == 1
     assert mix.is_one_sided is False
     assert mix.ratio == "1:1"
-    assert mix.total_persons == 2  # a true producer is counted on both sides, see above
+    assert mix.total_persons == 2  # a true prosumer is counted on both sides, see above
 
 
 def test_ended_assignment_before_reference_date_no_longer_counts(db):
@@ -205,7 +205,7 @@ def test_hint_nur_suppliers(db):
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
-    assert "Nur Producer" in mix.hint
+    assert "Nur Produzenten" in mix.hint
 
 
 def test_hint_nur_consumers(db):
@@ -217,7 +217,7 @@ def test_hint_nur_consumers(db):
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
-    assert "Nur Consumer" in mix.hint
+    assert "Nur Konsumenten" in mix.hint
 
 
 def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable(db):

@@ -38,7 +38,7 @@ def _person(db, name: str = "Test") -> int:
     )
 
 
-def test_migration_20_creates_person_onboarding_table_and_threshold_column(db):
+def test_a_fresh_database_has_the_onboarding_table_and_threshold_column(db):
     """A fresh database (migrated by the `db` fixture) has the new table/column."""
     assert get_schema_version(db) == CURRENT_SCHEMA_VERSION
     assert settings_repo.get_settings(db).onboarding_overdue_days == 30

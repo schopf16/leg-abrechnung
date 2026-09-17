@@ -200,7 +200,7 @@ Glossary (German domain term → code name):
 | Stichtag | `reference_date` |
 | Aufnahme / Austritt | onboarding / offboarding |
 | Rabattstufe (BKW, 40%/20% auf die Netznutzung) | `discount_level` `high`/`low` |
-| Producer / Consumer (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
+| Produzent / Konsument (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
 | LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
 
 ### Domain model core
@@ -218,7 +218,9 @@ In `app.domain.participant_mix`, **Producer** means the feed-in side and
 **Consumer** the consumption side — the split is per MeteringPoint
 direction, not per person. Someone with both is counted on both sides;
 that person is the only real "Prosumer", a word this module deliberately
-no longer uses for the producer side.
+no longer uses for the producer side, and the one place the word must
+stay. The German UI says "Produzent"/"Konsument" (BKW's own words on
+their LEG pages); only the identifiers are English.
 
 `SubstationArea` (BKW Trafokreis, physical) → `Site` (physical connection
 site with an address) → `MeteringPoint` (a meter, consumption or feed-in
