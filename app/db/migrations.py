@@ -1522,4 +1522,21 @@ Freundliche Grüsse';
                 RENAME COLUMN metering_point_created TO metering_point_taken_over;
         """,
     ),
+    Migration(
+        version=45,
+        description="Add leg.discount_level: which BKW discount tier a LEG "
+        "actually gets on the Netznutzung. BKW grants 40% where the shared "
+        "electricity needs no transformation stage and 20% where it does, "
+        "and calls the two 'hohe'/'niedrige Rabattstufe' on its own LEG "
+        "pages -- NOT 'Anschlussleistung', which is a connection rating in "
+        "kW and a different thing entirely. The tier follows from BKW's own "
+        "grid topology and is confirmed by BKW per location, so it is "
+        "entered by hand rather than derived: this app can see whether a "
+        "LEG spans several Trafokreise (app.domain.leg_composition), which "
+        "correlates but is not the same statement. 'unknown' until asked.",
+        sql="""
+            ALTER TABLE leg ADD COLUMN discount_level TEXT NOT NULL DEFAULT 'unknown'
+                CHECK (discount_level IN ('high', 'low', 'unknown'));
+        """,
+    ),
 ]

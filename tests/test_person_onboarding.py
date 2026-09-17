@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from app.db.schema import get_schema_version
+from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version
 from app.models import leg as leg_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
@@ -40,7 +40,7 @@ def _person(db, name: str = "Test") -> int:
 
 def test_migration_20_creates_person_onboarding_table_and_threshold_column(db):
     """A fresh database (migrated by the `db` fixture) has the new table/column."""
-    assert get_schema_version(db) == 44
+    assert get_schema_version(db) == CURRENT_SCHEMA_VERSION
     assert settings_repo.get_settings(db).onboarding_overdue_days == 30
     assert person_onboarding_repo.list_all(db) == []
 

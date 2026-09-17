@@ -58,9 +58,9 @@ class LegSettings:
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
         leg_founding_min_persons: Minimum `app.domain.participant_mix.
-            ParticipantMix.total_persons` (Prosumer- plus Consumer-count)
+            ParticipantMix.total_persons` (Producer- plus Consumer-count)
             a substation area must reach, in addition to already having both a
-            Prosumer and a Consumer, before the app suggests splitting it
+            Producer and a Consumer, before the app suggests splitting it
             off its current multi-substation-area LEG into its own, better-
             discounted one. Default 7.
         invoice_email_subject: Subject template for invoice emails (see

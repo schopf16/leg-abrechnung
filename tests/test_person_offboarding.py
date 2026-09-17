@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 
-from app.db.schema import get_schema_version
+from app.db.schema import CURRENT_SCHEMA_VERSION, get_schema_version
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
 from app.models.person import Person
@@ -36,7 +36,7 @@ def _person(db, name: str = "Test") -> int:
 
 
 def test_migration_27_creates_person_offboarding_table(db):
-    assert get_schema_version(db) == 44
+    assert get_schema_version(db) == CURRENT_SCHEMA_VERSION
     assert person_offboarding_repo.list_all(db) == []
 
 

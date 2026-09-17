@@ -177,7 +177,8 @@ we don't control) and the template placeholder keys in
 values are English since migration 43 (`direction` 'consumption'/
 'feed_in', `person_offboarding.reason` 'payment_default'/'voluntary'/
 'other', `account_entries.kind` 'payment_received'/'payout'/'correction',
-`billing_runs.status` 'created', `email_broadcast_log.scope` 'all'/'leg');
+`billing_runs.status` 'created', `email_broadcast_log.scope` 'all'/'leg',
+`leg.discount_level` 'high'/'low'/'unknown');
 the importers still accept the German spellings from BKW files
 (`app.importers.base.validate_direction`). Old migrations keep their
 original German SQL forever (replay history, see above).
@@ -198,9 +199,26 @@ Glossary (German domain term → code name):
 | Saldo | `balance` |
 | Stichtag | `reference_date` |
 | Aufnahme / Austritt | onboarding / offboarding |
+| Rabattstufe (BKW, 40%/20% auf die Netznutzung) | `discount_level` `high`/`low` |
+| Producer / Consumer (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
 | LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
 
 ### Domain model core
+
+A LEG also carries `discount_level`: the BKW discount tier on the
+Netznutzung (40% without a transformation stage, 20% with one — BKW calls
+these "hohe"/"niedrige Rabattstufe", **not** "Anschlussleistung", which is
+a kW connection rating). It is entered by hand and never derived: it
+follows from BKW's grid topology and is confirmed by BKW per location.
+Whether a LEG spans several substation areas (`app.domain.leg_composition`)
+correlates with it but is a different statement, so the app must not
+overwrite one with the other.
+
+In `app.domain.participant_mix`, **Producer** means the feed-in side and
+**Consumer** the consumption side — the split is per MeteringPoint
+direction, not per person. Someone with both is counted on both sides;
+that person is the only real "Prosumer", a word this module deliberately
+no longer uses for the producer side.
 
 `SubstationArea` (BKW Trafokreis, physical) → `Site` (physical connection
 site with an address) → `MeteringPoint` (a meter, consumption or feed-in

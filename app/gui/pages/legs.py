@@ -54,7 +54,13 @@ from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models.leg import Leg, LegInUseError
+from app.models.leg import (
+    DISCOUNT_LEVEL_OPTIONS,
+    DISCOUNT_LEVEL_SHORT,
+    DISCOUNT_LEVEL_UNKNOWN,
+    Leg,
+    LegInUseError,
+)
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
 DIRECTION_LABELS = {
@@ -68,7 +74,8 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("Messpunkte", "metering_points_count"),
     ("Trafokreis(e)", "substation_areas"),
-    ("Prosumer : Consumer", "prosumer_consumer"),
+    ("Producer : Consumer", "producer_consumer"),
+    ("Rabattstufe", "discount_level"),
     ("Bemerkung", "note"),
 ]
 
@@ -92,7 +99,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Prosumer : <N> Consumer" badge.
+    """Format a `ParticipantMix` as a coloured "<N> Producer : <N> Consumer" badge.
 
     Args:
         mix: The `app.domain.participant_mix.ParticipantMix` to display.
@@ -102,7 +109,7 @@ def _mix_badge(mix) -> str:
         LEG is one-sided (or empty).
     """
     symbol = "🔴" if mix.is_one_sided else "🟢"
-    return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
+    return f"{symbol} {mix.producer_count} Producer : {mix.consumer_count} Consumer"
 
 
 def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
@@ -163,7 +170,9 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         # not an exhaustive list (the full list of metering points with their
         # substation area is one click away on this LEG's own detail page).
         "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
-        "prosumer_consumer": _mix_badge(mix),
+        "producer_consumer": _mix_badge(mix),
+        "discount_level": DISCOUNT_LEVEL_SHORT.get(leg.discount_level, leg.discount_level),
+        "discount_level_known": leg.discount_level != DISCOUNT_LEVEL_UNKNOWN,
         "note": leg.note,
         "should_split": should_split,
         "optimisation_rank": optimisation_rank,
@@ -228,7 +237,12 @@ def legs_page() -> None:
                 with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                     ui.label(row["name"]).classes("font-bold")
                     ui.label(f"{row['metering_points_count']} Messpunkt(e)").classes("text-body2")
-                    ui.label(row["prosumer_consumer"]).classes("text-body2")
+                    ui.label(row["producer_consumer"]).classes("text-body2")
+                    # Greyed out while nobody has asked BKW yet, so an
+                    # unanswered question does not read like an answer.
+                    ui.label(row["discount_level"]).classes(
+                        "text-body2 " + ("" if row["discount_level_known"] else "text-grey-6 italic")
+                    )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(
                             icon="visibility",
@@ -294,7 +308,7 @@ def legs_page() -> None:
                 for leg in legs:
                     for substation_area_name, person_count in upgrade_info_by_leg.get(leg.id, []):
                         mixed_warnings.append(
-                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Prosumer und "
+                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Producer und "
                             f"Consumer für eine eigene LEG -- {person_count} Person(en) "
                             f"aus „{leg.name}“ könnten dorthin wechseln."
                         )
@@ -327,6 +341,17 @@ def legs_page() -> None:
                     .props("debounce=300")
                 )
                 duplicate_warning = ui.label("").classes("text-warning")
+                discount_level = ui.select(
+                    DISCOUNT_LEVEL_OPTIONS,
+                    value=existing.discount_level if existing else DISCOUNT_LEVEL_UNKNOWN,
+                    label="Rabattstufe (BKW)",
+                ).classes("w-full")
+                ui.label(
+                    "Die BKW gewährt 40% Rabatt auf die Netznutzung, wenn der "
+                    "geteilte Strom ohne Transformationsstufe auskommt, sonst 20%. "
+                    "Welche Stufe gilt, ergibt sich aus dem Netz der BKW und wird "
+                    "von ihr pro Standort bestätigt -- hier nur eintragen, nicht raten."
+                ).classes("text-caption text-grey-6")
                 note = (
                     ui.textarea(
                         "Bemerkung (optional)",
@@ -377,6 +402,7 @@ def legs_page() -> None:
                                     name=name.value.strip(),
                                     note=note.value.strip(),
                                     created_at=existing.created_at,
+                                    discount_level=discount_level.value or DISCOUNT_LEVEL_UNKNOWN,
                                 )
                                 leg_repo.update(connection, updated)
                             else:
@@ -385,6 +411,7 @@ def legs_page() -> None:
                                     name=name.value.strip(),
                                     note=note.value.strip(),
                                     created_at="",
+                                    discount_level=discount_level.value or DISCOUNT_LEVEL_UNKNOWN,
                                 )
                                 leg_repo.create(connection, new_leg)
                     except Exception as exc:  # unique constraint race, etc.
@@ -675,7 +702,7 @@ def leg_detail_page(leg_id: int) -> None:
             with upgrade_hint_column:
                 for candidate in upgrade_candidates:
                     ui.label(
-                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Prosumer und "
+                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Producer und "
                         f"Consumer für eine eigene LEG -- {candidate.person_count} Person(en) auf "
                         "den unten markierten Messpunkten könnten dorthin wechseln."
                     ).classes("text-body2 text-amber-9")
