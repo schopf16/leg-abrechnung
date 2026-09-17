@@ -32,7 +32,7 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("BKW-Bezeichnung", "bkw_designation"),
     ("Standorte", "sites_count"),
-    ("Prosumer : Consumer", "prosumer_consumer"),
+    ("Producer : Consumer", "producer_consumer"),
     ("Hinweis", "hint"),
     ("Bemerkung", "note"),
 ]
@@ -62,7 +62,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Prosumer : <N> Consumer" badge.
+    """Format a `ParticipantMix` as a coloured "<N> Producer : <N> Consumer" badge.
 
     Args:
         mix: The `app.domain.participant_mix.ParticipantMix` to display.
@@ -72,7 +72,7 @@ def _mix_badge(mix) -> str:
         substation area is one-sided (or empty).
     """
     symbol = "🔴" if mix.is_one_sided else "🟢"
-    return f"{symbol} {mix.prosumer_count} Prosumer : {mix.consumer_count} Consumer"
+    return f"{symbol} {mix.producer_count} Producer : {mix.consumer_count} Consumer"
 
 
 def _to_row(
@@ -97,9 +97,9 @@ def _to_row(
         plus a hidden `_search` key used for client-side filtering.
     """
     mix = compute_participant_mix_for_substation_area(connection, substation_area.id)
-    prosumer_consumer = _mix_badge(mix)
+    producer_consumer = _mix_badge(mix)
     if substation_area.id in upgrade_substation_area_ids:
-        prosumer_consumer += " ⭐ Potential für eigenes LEG"
+        producer_consumer += " ⭐ Potential für eigenes LEG"
 
     search_text = " ".join(
         [substation_area.name, substation_area.bkw_designation or "", substation_area.note or ""]
@@ -109,7 +109,7 @@ def _to_row(
         "name": substation_area.name,
         "bkw_designation": substation_area.bkw_designation,
         "sites_count": len(site_ids),
-        "prosumer_consumer": prosumer_consumer,
+        "producer_consumer": producer_consumer,
         "hint": mix.hint,
         "note": substation_area.note,
         "_search": search_text,
@@ -175,7 +175,7 @@ def substation_areas_page() -> None:
                         if row["bkw_designation"]:
                             ui.label(row["bkw_designation"]).classes("text-caption text-grey-6")
                     ui.label(f"{row['sites_count']} Standort(e)").classes("text-body2")
-                    ui.label(row["prosumer_consumer"]).classes("text-body2")
+                    ui.label(row["producer_consumer"]).classes("text-body2")
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
                         ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(

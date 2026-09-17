@@ -1,12 +1,12 @@
-"""Whether a substation area or LEG has a workable mix of Prosumer and Consumer
+"""Whether a substation area or LEG has a workable mix of Producer and Consumer
 participants.
 
-Local sharing needs both sides: a substation area/LEG with only Prosumer
+Local sharing needs both sides: a substation area/LEG with only Producer
 (everyone feeds in, nobody draws from the shared pool) or only Consumer
 (nobody feeds in, nothing to share) makes no sense to run as its own LEG,
 independent of any BKW discount-rate question. This module answers "does
 this substation area/LEG have both sides at all", expressed as a simple
-Prosumer:Consumer participant-count ratio, and -- built on top of that --
+Producer:Consumer participant-count ratio, and -- built on top of that --
 "could this substation area now split off into its own LEG" once it has both
 sides but its participants are still folded into a larger, multi-
 substation area LEG (a lower-BKW-discount arrangement, see
@@ -14,7 +14,7 @@ substation area LEG (a lower-BKW-discount arrangement, see
 substation area to have at least `LegSettings.leg_founding_min_persons`
 people overall (`ParticipantMix.total_persons`, default 7) -- both
 sides being present is necessary but not sufficient: a substation area with
-just one Prosumer and one Consumer is rarely worth founding a dedicated
+just one Producer and one Consumer is rarely worth founding a dedicated
 LEG over, so `leg_should_split`/`find_upgrade_candidates` take this as an
 explicit `min_persons` parameter rather than hardcoding it.
 
@@ -23,7 +23,7 @@ model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
 StromVV -- turned out to need too much manual, hard-to-obtain data per
 site to be worth it):
 
-    Prosumer: a person with a current-or-upcoming Assignment (see
+    Producer: a person with a current-or-upcoming Assignment (see
         `app.models.assignment.Assignment.is_current_or_upcoming` -- counts
         an assignment pre-entered ahead of its start date too, not just
         ones already running today; real customer data made this the
@@ -37,7 +37,7 @@ site to be worth it):
         one consumption-MeteringPoint in scope -- "bezieht Strom". Same overlap
         applies.
 
-A true prosumer (feeds in AND consumes) is deliberately counted on both
+A true producer (feeds in AND consumes) is deliberately counted on both
 sides -- the question this module answers is whether a supply side and a
 demand side both exist at all, not a strict partition of people into two
 disjoint camps.
@@ -81,15 +81,15 @@ def _moment(reference_date: Optional[date]) -> datetime:
 
 @dataclass
 class ParticipantMix:
-    """The Prosumer:Consumer participant balance for a substation area or LEG.
+    """The Producer:Consumer participant balance for a substation area or LEG.
 
     Attributes:
-        prosumer_count: Distinct persons counted as Prosumer (see module
+        producer_count: Distinct persons counted as Producer (see module
             docstring).
         consumer_count: Distinct persons counted as Consumer.
     """
 
-    prosumer_count: int
+    producer_count: int
     consumer_count: int
 
     @property
@@ -97,27 +97,27 @@ class ParticipantMix:
         """Whether one side is completely empty.
 
         Returns:
-            `True` if there are no Prosumer, or no Consumer, at all
+            `True` if there are no Producer, or no Consumer, at all
             (a substation area/LEG with neither is not "one-sided", it is
             simply empty -- also `True` in that case, since it equally
             cannot function as its own LEG).
         """
-        return self.prosumer_count == 0 or self.consumer_count == 0
+        return self.producer_count == 0 or self.consumer_count == 0
 
     @property
     def ratio(self) -> str:
-        """The ratio as a simple `"<Prosumer>:<Consumer>"` string.
+        """The ratio as a simple `"<Producer>:<Consumer>"` string.
 
         Returns:
             E.g. `"3:5"`.
         """
-        return f"{self.prosumer_count}:{self.consumer_count}"
+        return f"{self.producer_count}:{self.consumer_count}"
 
     @property
     def total_persons(self) -> int:
-        """The simple sum of `prosumer_count` and `consumer_count`.
+        """The simple sum of `producer_count` and `consumer_count`.
 
-        A true prosumer is counted on both sides (see the module
+        A true producer is counted on both sides (see the module
         docstring), so this is not a deduplicated headcount -- it is
         exactly the two numbers shown together in `ratio` added up,
         matching how an administrator reads that badge. Used to gate the
@@ -127,9 +127,9 @@ class ParticipantMix:
         splitting off into its own LEG.
 
         Returns:
-            `prosumer_count + consumer_count`.
+            `producer_count + consumer_count`.
         """
-        return self.prosumer_count + self.consumer_count
+        return self.producer_count + self.consumer_count
 
     @property
     def hint(self) -> Optional[str]:
@@ -139,21 +139,21 @@ class ParticipantMix:
             `None` if both sides are present, or if the scope has no
             participants at all yet (nothing to warn about).
         """
-        if self.prosumer_count and self.consumer_count:
+        if self.producer_count and self.consumer_count:
             return None
-        if self.prosumer_count == 0 and self.consumer_count == 0:
+        if self.producer_count == 0 and self.consumer_count == 0:
             return None
         return (
             "Nur Consumer -- niemand liefert lokal geteilten Strom."
-            if self.prosumer_count == 0
-            else "Nur Prosumer -- niemand bezieht lokal geteilten Strom."
+            if self.producer_count == 0
+            else "Nur Producer -- niemand bezieht lokal geteilten Strom."
         )
 
 
 def compute_participant_mix(
     connection: sqlite3.Connection, site_ids: list[int], reference_date: Optional[date] = None
 ) -> ParticipantMix:
-    """Compute the Prosumer:Consumer mix for an arbitrary set of sites.
+    """Compute the Producer:Consumer mix for an arbitrary set of sites.
 
     The one core computation, used both for a hypothetical "this
     substation area as its own LEG" check (`compute_participant_mix_for_substation_area`)
@@ -172,7 +172,7 @@ def compute_participant_mix(
     moment = _moment(reference_date)
     site_ids_set = set(site_ids)
 
-    prosumer_ids: set[int] = set()
+    producer_ids: set[int] = set()
     consumer_ids: set[int] = set()
     for metering_point in metering_point_repo.list_all(connection):
         if metering_point.site_id not in site_ids_set:
@@ -181,11 +181,11 @@ def compute_participant_mix(
             if not assignment.is_current_or_upcoming(moment):
                 continue
             if metering_point.direction == DIRECTION_FEED_IN:
-                prosumer_ids.add(assignment.person_id)
+                producer_ids.add(assignment.person_id)
             elif metering_point.direction == DIRECTION_CONSUMPTION:
                 consumer_ids.add(assignment.person_id)
 
-    return ParticipantMix(prosumer_count=len(prosumer_ids), consumer_count=len(consumer_ids))
+    return ParticipantMix(producer_count=len(producer_ids), consumer_count=len(consumer_ids))
 
 
 def compute_participant_mix_for_substation_area(
@@ -233,7 +233,7 @@ def leg_should_split(
     """Whether a mixed LEG's substation areas would each work fine standalone.
 
     If every substation area a LEG spans would, on its own, already have both a
-    Prosumer and a Consumer (see `compute_participant_mix_for_substation_area`)
+    Producer and a Consumer (see `compute_participant_mix_for_substation_area`)
     and enough people overall, splitting the LEG into one dedicated LEG
     per substation area strands nobody -- and earns every one of them the
     better single-substation area BKW discount instead of today's shared, lower
@@ -274,7 +274,7 @@ class UpgradeCandidate:
     """A substation area that could now form its own (better-discounted) LEG.
 
     Attributes:
-        substation area: The substation area with a newly-workable Prosumer/Consumer mix.
+        substation area: The substation area with a newly-workable Producer/Consumer mix.
         mixed_legs: The LEGs currently used by this substation area's
             participants that span more than one substation area -- these are
             the ones a dedicated LEG would let them leave.
@@ -303,14 +303,14 @@ def find_upgrade_candidates(
         min_persons: Minimum `ParticipantMix.total_persons` a substation area
             must reach to be suggested -- pass `LegSettings.
             leg_founding_min_persons` (default 0, i.e. no minimum). A
-            substation area with only, say, one Prosumer and one Consumer is
+            substation area with only, say, one Producer and one Consumer is
             technically non-one-sided but rarely worth founding a
             dedicated LEG over; this keeps the suggestion from firing
             until there is a real number of people behind it.
 
     Returns:
         One `UpgradeCandidate` per substation area with a newly-workable
-        Prosumer/Consumer mix (both sides present, `total_persons >=
+        Producer/Consumer mix (both sides present, `total_persons >=
         min_persons`) whose participants are (at least partly) still in
         a mixed LEG. A substation area already fully moved into a dedicated
         LEG of its own produces no candidate -- the recommendation is

@@ -239,7 +239,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
     discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
 
     Gated on `LegSettings.leg_founding_min_persons` -- a substation area with
-    both a Prosumer and a Consumer but too few people overall is not
+    both a Producer and a Consumer but too few people overall is not
     flagged, see that setting's docstring.
 
     Args:
@@ -257,7 +257,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
                 category="substation_area_upgrade_potential",
                 message=(
                     f"Trafokreis „{candidate.substation_area.name}“ hat jetzt sowohl "
-                    f"Prosumer als auch Consumer ({candidate.mix.ratio}) -- "
+                    f"Producer als auch Consumer ({candidate.mix.ratio}) -- "
                     f"{candidate.person_count} Person(en) in {leg_names} könnten "
                     "in ein eigenes LEG wechseln."
                 ),

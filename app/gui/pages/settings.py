@@ -240,10 +240,10 @@ def settings_page() -> None:
 
         ui.label("LEG-Gründung").classes("text-lg font-bold")
         ui.label(
-            "Ein Trafokreis braucht mindestens einen Prosumer und einen "
+            "Ein Trafokreis braucht mindestens einen Producer und einen "
             "Consumer, um lokal verteilen zu können -- das prüft die App "
             "immer. Zusätzlich muss er insgesamt mindestens so viele "
-            "Personen (Prosumer- plus Consumer-Anzahl) haben, wie hier "
+            "Personen (Producer- plus Consumer-Anzahl) haben, wie hier "
             "hinterlegt, damit „Trafokreise“, „LEGs“ und die Übersicht "
             "vorschlagen, ihn aus einer LEG mit mehreren Trafokreisen in "
             "eine eigene, besser rabattierte LEG auszugliedern."

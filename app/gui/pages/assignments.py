@@ -110,18 +110,42 @@ def assignments_page() -> None:
                     heading="Zuordnungen",
                     get_columns=lambda: PRINT_COLUMNS,
                     get_rows=lambda: print_rows,
+                    get_filter_description=lambda: _filter_description(),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
                     get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 
-        sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
+        with ui.row().classes("w-full items-center gap-4"):
+            search_input = (
+                ui.input("Suche (Messpunkt, Person, Adresse...)")
+                .classes("w-full max-w-md")
+                .props("debounce=300 clearable")
+            )
+            only_current_switch = ui.switch("Nur laufende Zuordnungen")
+            sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
+
+        search_input.on_value_change(lambda _: refresh())
+        only_current_switch.on_value_change(lambda _: refresh())
 
         warnings_column = ui.column().classes("w-full")
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         print_rows: list[dict] = []
+
+        def _filter_description() -> str | None:
+            """Build a short description of the currently active filter.
+
+            Returns:
+                A human-readable summary, or `None` if no filter is active.
+            """
+            parts = []
+            if search_input.value:
+                parts.append(f'Suche: "{search_input.value.strip()}"')
+            if only_current_switch.value:
+                parts.append("nur laufende Zuordnungen")
+            return ", ".join(parts) if parts else None
 
         def render_group(metering_point_label: str, group: list[dict]) -> None:
             """Render one MeteringPoint's card with all of its assignments.
@@ -158,6 +182,9 @@ def assignments_page() -> None:
                 None.
             """
             nonlocal print_rows
+            # One moment for the whole pass, so two cards cannot disagree
+            # about what "laufend" means mid-render.
+            now = datetime.now()
             with connection_scope() as connection:
                 metering_points = {mp.id: mp for mp in metering_point_repo.list_all(connection)}
                 sites = {s.id: s for s in site_repo.list_all(connection)}
@@ -198,15 +225,31 @@ def assignments_page() -> None:
                         # and stays stable once a second person is added.
                         "person_names": sorted((row["person_name"] for row in rows), key=fold_for_sort),
                         "latest_valid_from": max(row["valid_from"] for row in rows),
+                        # Whether this MeteringPoint has anybody on it now or
+                        # soon. The card keeps showing its full history
+                        # either way -- the sequence is the information; the
+                        # switch only decides which cards are worth seeing.
+                        "has_current": any(row["assignment"].is_current_or_upcoming(now) for row in rows),
+                        "_search": " ".join([label] + [row["person_name"] for row in rows]).lower(),
                     }
                 )
+
+            needle = (search_input.value or "").strip().lower()
+            visible = [
+                g
+                for g in groups
+                if (not needle or needle in g["_search"])
+                and (not only_current_switch.value or g["has_current"])
+            ]
 
             print_rows = []
             list_container.clear()
             with list_container:
                 if not groups:
                     ui.label("Noch keine Zuordnungen erfasst.")
-                for group in apply_sort(groups, SORT_OPTIONS, sort_select):
+                elif not visible:
+                    ui.label("Keine Zuordnungen für diesen Filter.")
+                for group in apply_sort(visible, SORT_OPTIONS, sort_select):
                     render_group(group["label"], group["rows"])
                     for row in group["rows"]:
                         print_rows.append(

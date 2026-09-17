@@ -1,4 +1,4 @@
-"""Tests for app.domain.participant_mix (Prosumer:Consumer ratio,
+"""Tests for app.domain.participant_mix (Producer:Consumer ratio,
 one-sided substation areas, LEG upgrade candidates)."""
 
 import itertools
@@ -115,11 +115,11 @@ def test_consumer_counted_for_consumption_person(db):
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
     assert mix.consumer_count == 1
-    assert mix.prosumer_count == 0
+    assert mix.producer_count == 0
     assert mix.is_one_sided is True
 
 
-def test_prosumer_counted_for_feed_in_person(db):
+def test_producer_counted_for_feed_in_person(db):
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
@@ -128,7 +128,7 @@ def test_prosumer_counted_for_feed_in_person(db):
 
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
-    assert mix.prosumer_count == 1
+    assert mix.producer_count == 1
     assert mix.consumer_count == 0
     assert mix.is_one_sided is True
 
@@ -146,11 +146,11 @@ def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
 
     mix = participant_mix.compute_participant_mix(db, [site_id])
 
-    assert mix.prosumer_count == 1
+    assert mix.producer_count == 1
     assert mix.consumer_count == 1
     assert mix.is_one_sided is False
     assert mix.ratio == "1:1"
-    assert mix.total_persons == 2  # a true prosumer is counted on both sides, see above
+    assert mix.total_persons == 2  # a true producer is counted on both sides, see above
 
 
 def test_ended_assignment_before_reference_date_no_longer_counts(db):
@@ -163,10 +163,10 @@ def test_ended_assignment_before_reference_date_no_longer_counts(db):
     mix = participant_mix.compute_participant_mix(db, [site_id], reference_date=date(2026, 1, 1))
 
     assert mix.consumer_count == 0
-    assert mix.prosumer_count == 0
+    assert mix.producer_count == 0
 
 
-def test_not_yet_started_assignment_counts_as_prosumer_and_consumer(db):
+def test_not_yet_started_assignment_counts_as_producer_and_consumer(db):
     """Real customer data surfaced this: every LEG showed 0:0 because every
     Assignment was pre-entered for the following quarter's move-ins. A
     not-yet-started Assignment is now always relevant here (`Assignment.
@@ -182,7 +182,7 @@ def test_not_yet_started_assignment_counts_as_prosumer_and_consumer(db):
     mix = participant_mix.compute_participant_mix(db, [site_id], reference_date=date(2026, 9, 10))
 
     assert mix.consumer_count == 1
-    assert mix.prosumer_count == 1
+    assert mix.producer_count == 1
 
 
 def test_empty_scope_is_not_flagged_as_one_sided(db):
@@ -190,7 +190,7 @@ def test_empty_scope_is_not_flagged_as_one_sided(db):
     nothing to warn about."""
     mix = participant_mix.compute_participant_mix(db, [])
 
-    assert mix.prosumer_count == 0
+    assert mix.producer_count == 0
     assert mix.consumer_count == 0
     assert mix.is_one_sided is True
     assert mix.hint is None
@@ -205,7 +205,7 @@ def test_hint_nur_suppliers(db):
 
     mix = participant_mix.compute_participant_mix_for_substation_area(db, substation_area_id)
 
-    assert "Nur Prosumer" in mix.hint
+    assert "Nur Producer" in mix.hint
 
 
 def test_hint_nur_consumers(db):

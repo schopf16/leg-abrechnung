@@ -543,7 +543,7 @@ def test_check_substation_area_one_sided_flags_producer_only_substation_area(db)
     warnings = check_substation_area_one_sided(db)
 
     assert len(warnings) == 1
-    assert "Nur Prosumer" in warnings[0].message
+    assert "Nur Producer" in warnings[0].message
     assert warnings[0].link == "/substation-areas"
 
 
