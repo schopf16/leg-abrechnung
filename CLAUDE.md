@@ -264,3 +264,36 @@ green locally before pushing:
 
 Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
+
+### Security review is Claude's job, not GitHub's
+
+On GitHub this repository runs **CodeQL** (default setup), **secret
+scanning** with push protection, and **Dependabot** alerts plus security
+updates. Two GitHub features are deliberately **off** and must stay off:
+**AI Scan** and **Copilot Autofix** — both require a paid Copilot licence
+and AI credits this account does not have, and left on they fail red with
+`You are not licensed to use Copilot` on every single PR. If that red
+check reappears, it is a licence error, not a finding: check the job log
+before treating it as one.
+
+Note what is and is not lost by that. AI Scan only covers languages
+CodeQL does not, and this codebase is Python plus GitHub Actions, both of
+which CodeQL handles — so nothing stops being *detected*. Copilot Autofix
+only *suggests patches* for CodeQL alerts. The gap is therefore the
+suggested fix and a second pair of eyes, not the detection.
+
+**Therefore, on every review and before every push:** review the change
+for security implications yourself — do not rely on GitHub to raise them.
+Use the `security-review` skill on the branch diff. Pay attention to what
+bandit's pattern matching and CodeQL's dataflow do not cover well and
+what this app actually handles: personal data of real members (names,
+addresses, IBANs, emails), the Microsoft Graph credentials and the
+leg-ittigen.ch API token (`app/config.py`), SQL built by string
+formatting, anything written to `logs/` (log lines can contain real names
+and amounts — see `app/logging_setup.py`), file paths taken from user
+input, and the QR-bill/Rappen arithmetic, where a wrong number is a wrong
+invoice to a real person. When CodeQL does flag something, propose the
+fix in the PR — that is exactly the part Autofix would have done.
+
+This is a convention, not an enforced hook: it works because this file is
+read at the start of every session. Nothing in CI checks that it happened.
