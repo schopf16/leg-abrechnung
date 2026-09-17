@@ -32,7 +32,7 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("BKW-Bezeichnung", "bkw_designation"),
     ("Standorte", "sites_count"),
-    ("Producer : Consumer", "producer_consumer"),
+    ("Produzent : Konsument", "producer_consumer"),
     ("Hinweis", "hint"),
     ("Bemerkung", "note"),
 ]
@@ -62,7 +62,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Producer : <N> Consumer" badge.
+    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge.
 
     Args:
         mix: The `app.domain.participant_mix.ParticipantMix` to display.
@@ -72,7 +72,7 @@ def _mix_badge(mix) -> str:
         substation area is one-sided (or empty).
     """
     symbol = "🔴" if mix.is_one_sided else "🟢"
-    return f"{symbol} {mix.producer_count} Producer : {mix.consumer_count} Consumer"
+    return f"{symbol} {mix.producer_count} Produzent : {mix.consumer_count} Konsument"
 
 
 def _to_row(

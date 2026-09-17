@@ -37,7 +37,7 @@ site to be worth it):
         one consumption-MeteringPoint in scope -- "bezieht Strom". Same overlap
         applies.
 
-A true producer (feeds in AND consumes) is deliberately counted on both
+A true prosumer (feeds in AND consumes) is deliberately counted on both
 sides -- the question this module answers is whether a supply side and a
 demand side both exist at all, not a strict partition of people into two
 disjoint camps.
@@ -117,7 +117,7 @@ class ParticipantMix:
     def total_persons(self) -> int:
         """The simple sum of `producer_count` and `consumer_count`.
 
-        A true producer is counted on both sides (see the module
+        A true prosumer is counted on both sides (see the module
         docstring), so this is not a deduplicated headcount -- it is
         exactly the two numbers shown together in `ratio` added up,
         matching how an administrator reads that badge. Used to gate the
@@ -144,9 +144,9 @@ class ParticipantMix:
         if self.producer_count == 0 and self.consumer_count == 0:
             return None
         return (
-            "Nur Consumer -- niemand liefert lokal geteilten Strom."
+            "Nur Konsumenten -- niemand liefert lokal geteilten Strom."
             if self.producer_count == 0
-            else "Nur Producer -- niemand bezieht lokal geteilten Strom."
+            else "Nur Produzenten -- niemand bezieht lokal geteilten Strom."
         )
 
 

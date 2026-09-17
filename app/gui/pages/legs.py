@@ -74,7 +74,7 @@ PRINT_COLUMNS = [
     ("Name", "name"),
     ("Messpunkte", "metering_points_count"),
     ("Trafokreis(e)", "substation_areas"),
-    ("Producer : Consumer", "producer_consumer"),
+    ("Produzent : Konsument", "producer_consumer"),
     ("Rabattstufe", "discount_level"),
     ("Bemerkung", "note"),
 ]
@@ -99,7 +99,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Producer : <N> Consumer" badge.
+    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge.
 
     Args:
         mix: The `app.domain.participant_mix.ParticipantMix` to display.
@@ -109,7 +109,7 @@ def _mix_badge(mix) -> str:
         LEG is one-sided (or empty).
     """
     symbol = "🔴" if mix.is_one_sided else "🟢"
-    return f"{symbol} {mix.producer_count} Producer : {mix.consumer_count} Consumer"
+    return f"{symbol} {mix.producer_count} Produzent : {mix.consumer_count} Konsument"
 
 
 def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
@@ -308,7 +308,7 @@ def legs_page() -> None:
                 for leg in legs:
                     for substation_area_name, person_count in upgrade_info_by_leg.get(leg.id, []):
                         mixed_warnings.append(
-                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Producer und "
+                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Produzenten und "
                             f"Consumer für eine eigene LEG -- {person_count} Person(en) "
                             f"aus „{leg.name}“ könnten dorthin wechseln."
                         )
@@ -623,6 +623,12 @@ def leg_detail_page(leg_id: int) -> None:
         ui.label(leg.name).classes("text-xl font-bold mt-2")
         if leg.note:
             ui.label(leg.note).classes("text-body2 text-grey-7")
+        # Same greying as the overview card: an unanswered question must
+        # not read like an answer.
+        ui.label(DISCOUNT_LEVEL_SHORT.get(leg.discount_level, leg.discount_level)).classes(
+            "text-body2 "
+            + ("text-grey-7" if leg.discount_level != DISCOUNT_LEVEL_UNKNOWN else "text-grey-6 italic")
+        )
 
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
         upgrade_hint_column = ui.column().classes("w-full gap-0")
@@ -702,7 +708,7 @@ def leg_detail_page(leg_id: int) -> None:
             with upgrade_hint_column:
                 for candidate in upgrade_candidates:
                     ui.label(
-                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Producer und "
+                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Produzenten und "
                         f"Consumer für eine eigene LEG -- {candidate.person_count} Person(en) auf "
                         "den unten markierten Messpunkten könnten dorthin wechseln."
                     ).classes("text-body2 text-amber-9")

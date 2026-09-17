@@ -18,6 +18,7 @@ from app.domain import participant_mix
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.period import quarter_bounds
 from app.models import bank_transaction as bank_transaction_repo
+from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
@@ -25,6 +26,7 @@ from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
+from app.models.leg import DISCOUNT_LEVEL_HIGH
 
 #: Expected number of 15-minute readings per MeteringPoint per full calendar day.
 _EXPECTED_READINGS_PER_DAY = 96
@@ -234,6 +236,49 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
     ]
 
 
+def check_leg_discount_level_conflict(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag a LEG whose entered Rabattstufe contradicts its own composition.
+
+    The high tier (40%) is the one BKW grants when the shared electricity
+    needs no transformation stage. A LEG spanning several Trafokreise is
+    the case where one typically *is* needed, so the two statements
+    disagree -- and the LEG overview shows them on the same card, one
+    above the other, which is how the contradiction was noticed.
+
+    Deliberately only reported, never corrected: the tier comes from BKW
+    per location and the app has no standing to overrule it (see
+    `app.models.leg.DISCOUNT_LEVEL_HIGH`). Only the high-tier case is
+    flagged -- a low tier on a single-Trafokreis LEG is perfectly
+    possible, since the grid topology, not the Trafokreis count, decides.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A `QualityWarning` per LEG where the two disagree.
+    """
+    warnings: list[QualityWarning] = []
+    for leg in leg_repo.list_all(connection):
+        if leg.discount_level != DISCOUNT_LEVEL_HIGH:
+            continue
+        composition = compute_leg_composition(connection, leg.id)
+        if not composition.is_mixed:
+            continue
+        names = ", ".join(t.name for t in composition.substation_areas)
+        warnings.append(
+            QualityWarning(
+                category="leg_discount_level_conflict",
+                message=(
+                    f"LEG „{leg.name}“ ist als hohe Rabattstufe (40%) erfasst, umfasst "
+                    f"aber mehrere Trafokreise ({names}). Das passt normalerweise nicht "
+                    "zusammen -- bitte die Rabattstufe mit der BKW abgleichen."
+                ),
+                link="/legs",
+            )
+        )
+    return warnings
+
+
 def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag substation areas that could now split off into their own, better-
     discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
@@ -257,7 +302,7 @@ def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityW
                 category="substation_area_upgrade_potential",
                 message=(
                     f"Trafokreis „{candidate.substation_area.name}“ hat jetzt sowohl "
-                    f"Producer als auch Consumer ({candidate.mix.ratio}) -- "
+                    f"Produzenten als auch Konsumenten ({candidate.mix.ratio}) -- "
                     f"{candidate.person_count} Person(en) in {leg_names} könnten "
                     "in ein eigenes LEG wechseln."
                 ),

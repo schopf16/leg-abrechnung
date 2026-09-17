@@ -123,7 +123,7 @@ def assignments_page() -> None:
                 .classes("w-full max-w-md")
                 .props("debounce=300 clearable")
             )
-            only_current_switch = ui.switch("Nur laufende Zuordnungen")
+            only_current_switch = ui.switch("Nur laufende oder künftige Zuordnungen")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
 
         search_input.on_value_change(lambda _: refresh())
@@ -144,7 +144,7 @@ def assignments_page() -> None:
             if search_input.value:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
             if only_current_switch.value:
-                parts.append("nur laufende Zuordnungen")
+                parts.append("nur laufende oder künftige Zuordnungen")
             return ", ".join(parts) if parts else None
 
         def render_group(metering_point_label: str, group: list[dict]) -> None:
@@ -226,10 +226,17 @@ def assignments_page() -> None:
                         "person_names": sorted((row["person_name"] for row in rows), key=fold_for_sort),
                         "latest_valid_from": max(row["valid_from"] for row in rows),
                         # Whether this MeteringPoint has anybody on it now or
-                        # soon. The card keeps showing its full history
-                        # either way -- the sequence is the information; the
-                        # switch only decides which cards are worth seeing.
-                        "has_current": any(row["assignment"].is_current_or_upcoming(now) for row in rows),
+                        # soon. "Or soon" on purpose, and the label says so:
+                        # pre-entering a whole quarter's move-ins ahead of
+                        # time is the normal workflow here (see
+                        # `app.domain.participant_mix`), and hiding those
+                        # would bury exactly the ones needing attention.
+                        # The card keeps showing its full history either
+                        # way -- the sequence is the information; the switch
+                        # only decides which cards are worth seeing.
+                        "has_current_or_upcoming": any(
+                            row["assignment"].is_current_or_upcoming(now) for row in rows
+                        ),
                         "_search": " ".join([label] + [row["person_name"] for row in rows]).lower(),
                     }
                 )
@@ -239,16 +246,16 @@ def assignments_page() -> None:
                 g
                 for g in groups
                 if (not needle or needle in g["_search"])
-                and (not only_current_switch.value or g["has_current"])
+                and (not only_current_switch.value or g["has_current_or_upcoming"])
             ]
 
             print_rows = []
             list_container.clear()
             with list_container:
                 if not groups:
-                    ui.label("Noch keine Zuordnungen erfasst.")
+                    ui.label("Noch keine Zuordnungen erfasst.").classes("text-grey-6")
                 elif not visible:
-                    ui.label("Keine Zuordnungen für diesen Filter.")
+                    ui.label("Keine Zuordnungen für diesen Filter.").classes("text-grey-6")
                 for group in apply_sort(visible, SORT_OPTIONS, sort_select):
                     render_group(group["label"], group["rows"])
                     for row in group["rows"]:

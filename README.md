@@ -74,14 +74,22 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   Abrechnungsgruppe eines Messpunkts. Per Default entspricht eine LEG
   genau einem physischen Trafokreis der BKW — sie kann aber auch gezielt
   Messpunkte aus mehreren Trafokreisen zusammenfassen, wenn sich deren
-  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Die BKW
-  gewährt dafür vermutlich einen tieferen Rabatt als innerhalb eines
-  einzelnen Trafokreises (40% vs. 20%) — die App berechnet diesen Rabatt
-  nicht, warnt aber auf der LEG-Seite, der Personen-Detailseite und beim
-  Zuweisen einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst,
-  damit Sie die betroffenen Personen informieren können. Der LEG-Name
-  erscheint als Absender auf den Rechnungen dieser LEG. Name (muss
-  eindeutig sein) und optionale Bemerkung.
+  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Die App
+  warnt auf der LEG-Seite, der Personen-Detailseite und beim Zuweisen
+  einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst, damit Sie
+  die betroffenen Personen informieren können. Der LEG-Name erscheint als
+  Absender auf den Rechnungen dieser LEG. Erfasst werden: Name (muss
+  eindeutig sein), optionale Bemerkung und die **Rabattstufe (BKW)**.
+
+  Zur Rabattstufe: die BKW gewährt 40% Rabatt auf die Netznutzung, wenn
+  der lokal geteilte Strom ohne Transformationsstufe auskommt, sonst 20%.
+  Welche Stufe gilt, ergibt sich aus dem Netz der BKW und wird von ihr pro
+  Standort bestätigt — die App leitet sie deshalb **nicht** her, sondern
+  hält nur fest, was die BKW gesagt hat (drei Werte: noch nicht bekannt /
+  hohe Stufe 40% / niedrige Stufe 20%). Ob eine LEG mehrere Trafokreise
+  umfasst, hängt damit zusammen, ist aber nicht dasselbe; passen die
+  beiden Angaben nicht zueinander, erscheint ein Hinweis in der Übersicht
+  statt einer stillen Korrektur.
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Web-Registrierungen** — Posteingang für Anmeldungen über das
@@ -99,8 +107,8 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
 - **Einstellungen** — Absender-Adresse/QR-IBAN, interner Strompreis,
   Verwaltungsaufwand (Rp./kWh) und Kosten der Papierrechnung, sowie der
   Demo-Daten-Generator zum Ausprobieren. Diese Werte gelten global für alle
-  LEGs; nur der Name (das Absender-Label auf der Rechnung) wird pro LEG
-  festgelegt.
+  LEGs; pro LEG festgelegt werden nur der Name (das Absender-Label auf der
+  Rechnung) und die BKW-Rabattstufe.
 - **Backup** — Datenbank sichern und wiederherstellen.
 
 Jede Listenansicht hat oben ein Suchfeld (einfacher Teilstring-Filter über
