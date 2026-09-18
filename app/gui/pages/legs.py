@@ -56,7 +56,7 @@ from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.domain.production_capacity import STATUS_BELOW, STATUS_TIGHT, compute_headroom
+from app.domain.production_capacity import compute_headroom, status_classes
 from app.models.leg import Leg, LegInUseError
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
@@ -93,24 +93,6 @@ SORT_OPTIONS = [
         lambda row: (row["optimisation_rank"], text_key(row["name"])),
     ),
 ]
-
-
-def _capacity_classes(status: str) -> str:
-    """Pick the colour for a LEG's production-capacity line.
-
-    Args:
-        status: A `app.domain.production_capacity` status constant.
-
-    Returns:
-        Tailwind classes. Below the legal floor is the only red: "tight"
-        is a heads-up, and an unrecorded figure is greyed, since nobody
-        having looked yet is not the same as being in trouble.
-    """
-    if status == STATUS_BELOW:
-        return "text-negative font-bold"
-    if status == STATUS_TIGHT:
-        return "text-warning"
-    return "text-grey-6 italic" if status == "unknown" else "text-body2"
 
 
 def _mix_badge(mix) -> str:
@@ -190,7 +172,11 @@ def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> d
         "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
         "producer_consumer": _mix_badge(mix),
         "production_capacity": headroom.label
-        + (f" (Stand {leg.production_capacity_recorded_at})" if leg.production_capacity_recorded_at else ""),
+        + (
+            f" (Stand {leg.production_capacity_recorded_at})"
+            if leg.production_capacity_percent is not None and leg.production_capacity_recorded_at
+            else ""
+        ),
         "production_capacity_status": headroom.status,
         "note": leg.note,
         "should_split": should_split,
@@ -258,7 +244,7 @@ def legs_page() -> None:
                     ui.label(f"{row['metering_points_count']} Messpunkt(e)").classes("text-body2")
                     ui.label(row["producer_consumer"]).classes("text-body2")
                     ui.label(row["production_capacity"]).classes(
-                        "text-body2 " + _capacity_classes(row["production_capacity_status"])
+                        "text-body2 " + status_classes(row["production_capacity_status"])
                     )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(
@@ -363,11 +349,14 @@ def legs_page() -> None:
                     .props("debounce=300")
                 )
                 duplicate_warning = ui.label("").classes("text-warning")
+                # No upper bound: Art. 19e sets only a minimum, and a LEG
+                # with a large producer and few consumers legitimately shows
+                # over 100% in the portal. `ui.number`'s max clamps silently
+                # on blur, so setting one would quietly corrupt such a value.
                 capacity_percent = ui.number(
                     "Produktionsleistung (% der Anschlussleistung)",
                     value=existing.production_capacity_percent if existing else None,
                     min=0,
-                    max=100,
                     step=0.1,
                 ).classes("w-full")
                 capacity_date = (
@@ -379,6 +368,24 @@ def legs_page() -> None:
                     .props("type=date")
                     .classes("w-full")
                 )
+
+                def _stamp_today() -> None:
+                    """Move the Stand to today whenever the percentage changes.
+
+                    A fresh figure carried an old date otherwise, and the
+                    date is the only staleness safeguard the feature has.
+                    Still editable afterwards, for entering an older
+                    reading on purpose.
+
+                    Returns:
+                        None.
+                    """
+                    previous = existing.production_capacity_percent if existing else None
+                    if capacity_percent.value != previous:
+                        capacity_date.value = date.today().isoformat()
+
+                capacity_percent.on_value_change(lambda _: _stamp_today())
+
                 ui.label(
                     "Wert aus dem BKW-LEG-Portal, das ihn bei jeder Messpunkt-Anmeldung "
                     "anzeigt („37.6 % tatsächlich / 5 % erforderlich“). Mindestens 5 % "
@@ -428,6 +435,15 @@ def legs_page() -> None:
                     if check_duplicate():
                         error_label.text = "Dieser Name wird bereits verwendet."
                         return
+                    if capacity_percent.value is not None:
+                        if capacity_percent.value < 0:
+                            error_label.text = "Produktionsleistung darf nicht negativ sein."
+                            return
+                        if not capacity_date.value:
+                            error_label.text = (
+                                "Bitte das Datum angeben, an dem der Wert im BKW-Portal gelesen wurde."
+                            )
+                            return
                     try:
                         with connection_scope() as connection:
                             if existing:
@@ -676,10 +692,10 @@ def leg_detail_page(leg_id: int) -> None:
             headroom.label
             + (
                 f" (Stand {leg.production_capacity_recorded_at})"
-                if leg.production_capacity_recorded_at
+                if leg.production_capacity_percent is not None and leg.production_capacity_recorded_at
                 else ""
             )
-        ).classes("text-body2 " + _capacity_classes(headroom.status))
+        ).classes("text-body2 " + status_classes(headroom.status))
 
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
         upgrade_hint_column = ui.column().classes("w-full gap-0")

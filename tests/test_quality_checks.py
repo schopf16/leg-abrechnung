@@ -582,7 +582,7 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
 # -- Produktionsleistung vs. the 5% floor ------------------------------------
 
 
-def _leg_with_capacity(db, percent):
+def _leg_with_capacity(db, percent, recorded_at="2026-09-18"):
     """Create a LEG carrying a recorded production-capacity percentage."""
     from app.models import leg as leg_repo
     from app.models.leg import Leg
@@ -595,7 +595,7 @@ def _leg_with_capacity(db, percent):
             note="",
             created_at="",
             production_capacity_percent=percent,
-            production_capacity_recorded_at="2026-09-18",
+            production_capacity_recorded_at=recorded_at,
         ),
     )
 
@@ -625,7 +625,10 @@ def test_a_leg_inside_the_warning_band_is_reported_with_its_headroom(db):
 
     assert len(warnings) == 1
     assert warnings[0].category == "leg_production_capacity_tight"
-    assert "1,6-fache" in warnings[0].message
+    assert "auf das 1,6-Fache steigen" in warnings[0].message
+    # The dashboard is where the figure gets acted on, so it must say how
+    # old it is rather than presenting a snapshot as current fact.
+    assert "Stand 18.09.2026" in warnings[0].message
 
 
 def test_a_comfortable_leg_is_not_reported(db):
@@ -641,5 +644,77 @@ def test_a_leg_without_a_recorded_figure_is_not_reported(db):
     from app.domain.quality_checks import check_leg_production_capacity
 
     _leg(db)
+
+    assert check_leg_production_capacity(db) == []
+
+
+def test_the_warning_band_honours_the_configured_threshold(db):
+    """Hard-coding 10 inside the check would otherwise pass every test in
+    this block -- the same guard the LEG-founding check already has."""
+    from app.domain.quality_checks import check_leg_production_capacity
+    from app.models import settings as settings_repo
+
+    _leg_with_capacity(db, 12.0)
+
+    assert check_leg_production_capacity(db) == []
+
+    settings = settings_repo.get_settings(db)
+    settings.production_capacity_warn_percent = 20.0
+    settings_repo.update_settings(db, settings)
+
+    warnings = check_leg_production_capacity(db)
+    assert len(warnings) == 1
+    assert warnings[0].category == "leg_production_capacity_tight"
+
+
+def test_a_metering_point_added_after_the_reading_makes_it_stale(db):
+    """The figure stops matching the LEG the moment it grows -- that is the
+    whole reason the recording date is stored."""
+    from app.domain.quality_checks import check_leg_production_capacity
+
+    leg_id = _leg_with_capacity(db, 37.6, recorded_at="2026-01-05")
+    site_id = _site_in(db, _substation_area(db, "TK-Neu"), street="Neu")
+    _metering_point_direction(db, "CH-NEU", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
+
+    stale = [w for w in check_leg_production_capacity(db) if w.category == "leg_production_capacity_stale"]
+
+    assert len(stale) == 1
+    assert "1 Messpunkt" in stale[0].message
+    assert "Stand 05.01.2026" in stale[0].message
+
+
+def test_a_metering_point_added_the_same_day_is_not_stale(db):
+    """The portal shows the figure *while* the metering point is being
+    registered, so the reading already accounts for it. Only a later
+    addition makes it out of date."""
+    from app.domain.quality_checks import check_leg_production_capacity
+    from datetime import date as _date
+
+    leg_id = _leg_with_capacity(db, 37.6, recorded_at=_date.today().isoformat())
+    site_id = _site_in(db, _substation_area(db, "TK-Heute"), street="Heute")
+    _metering_point_direction(db, "CH-HEUTE", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
+
+    assert [
+        w for w in check_leg_production_capacity(db) if w.category == "leg_production_capacity_stale"
+    ] == []
+
+
+def test_a_leg_that_has_not_grown_is_not_reported_as_stale(db):
+    from app.domain.quality_checks import check_leg_production_capacity
+
+    _leg_with_capacity(db, 37.6)
+
+    assert [
+        w for w in check_leg_production_capacity(db) if w.category == "leg_production_capacity_stale"
+    ] == []
+
+
+def test_an_unrecorded_leg_is_never_reported_as_stale(db):
+    """No date means nothing to be stale against."""
+    from app.domain.quality_checks import check_leg_production_capacity
+
+    leg_id = _leg(db)
+    site_id = _site_in(db, _substation_area(db, "TK-X"), street="X")
+    _metering_point_direction(db, "CH-X", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
 
     assert check_leg_production_capacity(db) == []

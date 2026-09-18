@@ -11,7 +11,7 @@ step for too long, and the one-sided-substation area / LEG-upgrade signals from
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from app.domain import participant_mix
@@ -243,6 +243,55 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
     ]
 
 
+def _recorded_on(recorded_at: Optional[str]) -> str:
+    """Render the date a production percentage was read, for a warning.
+
+    Args:
+        recorded_at: ISO date from `Leg.production_capacity_recorded_at`,
+            or `None`.
+
+    Returns:
+        `"Stand 18.09.2026"`, or `"Stand unbekannt"`. Always stated: the
+        dashboard is where the figure gets acted on, and a months-old
+        snapshot presented bare reads as current fact.
+    """
+    if not recorded_at:
+        return "Stand unbekannt"
+    try:
+        return f"Stand {date.fromisoformat(recorded_at).strftime('%d.%m.%Y')}"
+    except ValueError:
+        return f"Stand {recorded_at}"
+
+
+def _metering_points_added_since(metering_points: list, leg) -> int:
+    """Count this LEG's metering points created after its figure was read.
+
+    A LEG that has grown since the percentage was read off the portal no
+    longer matches that percentage. Strictly *after*, by date: BKW shows
+    the figure while a metering point is being registered, so one created
+    the same day is already reflected in the reading and must not trigger
+    a nag. `created_at` is the closest signal the schema offers -- there is no history of when a metering point was
+    assigned to a LEG, so a long-existing metering point moved into this
+    LEG later is not caught. It under-reports rather than over-reports,
+    which is the right direction for a nag.
+
+    Args:
+        metering_points: All metering points, loaded once by the caller.
+        leg: The LEG to count for.
+
+    Returns:
+        How many were created after the recording date; `0` when no date
+        was recorded.
+    """
+    if not leg.production_capacity_recorded_at:
+        return 0
+    return sum(
+        1
+        for mp in metering_points
+        if mp.leg_id == leg.id and (mp.created_at or "")[:10] > leg.production_capacity_recorded_at
+    )
+
+
 def check_leg_production_capacity(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag a LEG whose recorded production capacity is below, or close to,
     the legal floor.
@@ -253,6 +302,11 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
     (`LegSettings.production_capacity_warn_percent`), so that the next
     consumer can be parked in another LEG before the floor is actually
     hit.
+
+    A LEG that has grown since its figure was read is reported too, and
+    first: acting on a percentage that predates the LEG's current shape is
+    worse than acting on a tight one. Every message states the recording
+    date, because this is the surface the figure actually gets acted on.
 
     A LEG whose figure has never been recorded is deliberately silent:
     the value can only come from BKW's portal, so not having looked yet
@@ -266,9 +320,28 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
         band.
     """
     warn_percent = settings_repo.get_settings(connection).production_capacity_warn_percent
+    metering_points = metering_point_repo.list_all(connection)
     warnings: list[QualityWarning] = []
     for leg in leg_repo.list_all(connection):
         headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
+        stand = _recorded_on(leg.production_capacity_recorded_at)
+
+        # Stale before anything else: acting on a figure that predates the
+        # LEG's current shape is worse than acting on a tight one.
+        added = _metering_points_added_since(metering_points, leg)
+        if leg.production_capacity_percent is not None and added:
+            warnings.append(
+                QualityWarning(
+                    category="leg_production_capacity_stale",
+                    message=(
+                        f"LEG „{leg.name}“: Produktionsleistung "
+                        f"{format_percent(leg.production_capacity_percent)} ({stand}) -- seither "
+                        f"{'wurde' if added == 1 else 'wurden'} {added} Messpunkt(e) hinzugefügt. "
+                        "Wert im BKW-Portal neu ablesen."
+                    ),
+                    link="/legs",
+                )
+            )
         if headroom.status == STATUS_BELOW:
             warnings.append(
                 QualityWarning(
@@ -276,7 +349,7 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                     message=(
                         f"LEG „{leg.name}“: Produktionsleistung {format_percent(headroom.percent)} liegt "
                         f"unter den gesetzlich nötigen {REQUIRED_PERCENT:.0f} % "
-                        "(Art. 19e Abs. 1 StromVV) -- Produktion zubauen oder "
+                        f"(Art. 19e Abs. 1 StromVV, {stand}) -- Produktion zubauen oder "
                         "Verbrauchsstellen in eine andere LEG verschieben."
                     ),
                     link="/legs",
@@ -288,8 +361,10 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                     category="leg_production_capacity_tight",
                     message=(
                         f"LEG „{leg.name}“: Produktionsleistung {format_percent(headroom.percent)} -- "
-                        f"die Anschlussleistung darf noch etwa das {format_factor(headroom.growth_factor)}-fache "
-                        "erreichen. Neue Bezüger besser vorerst einer anderen LEG zuweisen."
+                        f"die gesamte Anschlussleistung der Bezüger darf noch auf das "
+                        f"{format_factor(headroom.growth_factor)}-Fache steigen "
+                        f"(bei unveränderter Produktion, {stand}). Neue Bezüger besser "
+                        "vorerst einer anderen LEG zuweisen."
                     ),
                     link="/legs",
                 )
