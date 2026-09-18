@@ -18,7 +18,7 @@ from app.domain.leg_composition import compute_leg_composition
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
-    check_leg_discount_level_conflict,
+    check_leg_production_capacity,
     check_leg_upgrade_potential,
     check_onboarding_progress,
     check_substation_area_one_sided,
@@ -89,7 +89,7 @@ def _load_overview(connection) -> dict:
         action_items.append((warning.message, warning.link))
     for warning in check_substation_area_one_sided(connection):
         action_items.append((warning.message, warning.link))
-    for warning in check_leg_discount_level_conflict(connection):
+    for warning in check_leg_production_capacity(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_leg_upgrade_potential(connection):
         action_items.append((warning.message, warning.link))

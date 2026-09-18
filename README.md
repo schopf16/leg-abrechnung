@@ -79,17 +79,26 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst, damit Sie
   die betroffenen Personen informieren können. Der LEG-Name erscheint als
   Absender auf den Rechnungen dieser LEG. Erfasst werden: Name (muss
-  eindeutig sein), optionale Bemerkung und die **Rabattstufe (BKW)**.
+  eindeutig sein), optionale Bemerkung und die **Produktionsleistung in
+  Prozent**.
 
-  Zur Rabattstufe: die BKW gewährt 40% Rabatt auf die Netznutzung, wenn
-  der lokal geteilte Strom ohne Transformationsstufe auskommt, sonst 20%.
-  Welche Stufe gilt, ergibt sich aus dem Netz der BKW und wird von ihr pro
-  Standort bestätigt — die App leitet sie deshalb **nicht** her, sondern
-  hält nur fest, was die BKW gesagt hat (drei Werte: noch nicht bekannt /
-  hohe Stufe 40% / niedrige Stufe 20%). Ob eine LEG mehrere Trafokreise
-  umfasst, hängt damit zusammen, ist aber nicht dasselbe; passen die
-  beiden Angaben nicht zueinander, erscheint ein Hinweis in der Übersicht
-  statt einer stillen Korrektur.
+  Zur Produktionsleistung: eine LEG braucht laut Art. 19e Abs. 1 StromVV
+  eine installierte Produktionsleistung von mindestens **5 % der
+  Anschlussleistung** aller teilnehmenden Endverbraucher. Das BKW-LEG-
+  Portal zeigt den aktuellen Wert bei jeder Messpunkt-Anmeldung an
+  („37.6 % tatsächlich / 5 % erforderlich“) — dieser Wert wird hier mit
+  dem Datum seiner Erfassung eingetragen. Die App kann ihn **nicht**
+  selbst berechnen: die Anschlussleistung der Standorte ist ihr nicht
+  bekannt und von ihr aus nicht ermittelbar.
+
+  Was die App daraus macht: ein neuer Bezüger erhöht die
+  Anschlussleistung und senkt damit den Prozentsatz. Aus dem erfassten
+  Wert ergibt sich deshalb direkt, wie viel Luft noch bleibt — bei 37,6 %
+  darf die Anschlussleistung noch rund auf das 7,5-fache wachsen, bevor
+  die 5 % unterschritten sind. Wird es eng, meldet das die Übersicht,
+  damit ein neuer Bezüger vorerst einer anderen LEG zugewiesen werden
+  kann. Ab wann „eng“ gilt, stellen Sie unter „Einstellungen“ ein
+  (Vorgabe 10 %); die 5 % selbst sind gesetzlich und nicht änderbar.
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Web-Registrierungen** — Posteingang für Anmeldungen über das
@@ -108,7 +117,7 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   Verwaltungsaufwand (Rp./kWh) und Kosten der Papierrechnung, sowie der
   Demo-Daten-Generator zum Ausprobieren. Diese Werte gelten global für alle
   LEGs; pro LEG festgelegt werden nur der Name (das Absender-Label auf der
-  Rechnung) und die BKW-Rabattstufe.
+  Rechnung) und die Produktionsleistung in Prozent.
 - **Backup** — Datenbank sichern und wiederherstellen.
 
 Jede Listenansicht hat oben ein Suchfeld (einfacher Teilstring-Filter über
