@@ -108,11 +108,24 @@ def test_a_factor_of_one_means_no_room_left():
     assert compute_headroom(5.0, warn_percent=10.0).growth_factor == pytest.approx(1.0)
 
 
-def test_the_label_names_the_percentage_and_the_room():
+def test_the_label_says_grow_TO_the_factor_not_BY_it():
+    """ "darf noch ~1,2× wachsen" reads as +120 % when it means +20 %, and
+    in the whole warning band the factor is 1.0-2.0 -- so the misreading
+    always errs towards admitting a consumer that breaks the floor."""
     comfortable = compute_headroom(37.6, warn_percent=10.0)
 
     assert "37,6 %" in comfortable.label
-    assert "7,5" in comfortable.label
+    assert "auf das ~7,5-Fache steigen" in comfortable.label
+    assert "×" not in comfortable.label
+
+
+def test_every_label_names_the_assumption_it_rests_on():
+    """The factor only holds with production unchanged, and the subject is
+    the consumers' *total* Anschlussleistung, not the new customer's own."""
+    for percent in (6.0, 37.6):
+        label = compute_headroom(percent, warn_percent=10.0).label
+        assert "bei unveränderter Produktion" in label, percent
+        assert "gesamte Anschlussleistung der Bezüger" in label, percent
 
 
 def test_the_below_label_names_the_legal_minimum_not_the_headroom():
@@ -173,3 +186,61 @@ def test_a_name_only_edit_keeps_the_recorded_figure(db):
     after = leg_repo.get(db, leg_id)
     assert after.production_capacity_percent == pytest.approx(37.6)
     assert after.production_capacity_recorded_at == "2026-09-18"
+
+
+# -- the GUI row builder -----------------------------------------------------
+#
+# `_to_row` takes a plain connection and returns a dict, so it is testable
+# the same way `app.gui.pages.dashboard._load_overview` already is. It
+# carries the staleness suffix and the colour, neither of which any other
+# test touched.
+
+
+def _row_for(db, **overrides):
+    from app.gui.pages.legs import _to_row
+
+    leg_id = leg_repo.create(db, _leg(**overrides))
+    return _to_row(db, leg_repo.get(db, leg_id), min_persons=7, warn_percent=10.0)
+
+
+def test_the_row_appends_the_recording_date(db):
+    row = _row_for(db, production_capacity_percent=37.6, production_capacity_recorded_at="2026-09-18")
+
+    assert "(Stand 2026-09-18)" in row["production_capacity"]
+    assert row["production_capacity_status"] == STATUS_COMFORTABLE
+
+
+def test_the_row_omits_the_date_when_nothing_was_recorded(db):
+    row = _row_for(db)
+
+    assert "Stand" not in row["production_capacity"]
+    assert row["production_capacity_status"] == STATUS_UNKNOWN
+
+
+def test_a_date_without_a_percentage_does_not_produce_a_contradiction(db):
+    """Otherwise the card reads "nicht erfasst (Stand 2026-01-02)"."""
+    row = _row_for(db, production_capacity_recorded_at="2026-01-02")
+
+    assert "Stand" not in row["production_capacity"]
+
+
+def test_the_row_status_drives_the_colour(db):
+    from app.domain.production_capacity import status_classes
+
+    below = _row_for(db, name="A", production_capacity_percent=3.0)
+    tight = _row_for(db, name="B", production_capacity_percent=8.0)
+
+    assert below["production_capacity_status"] == STATUS_BELOW
+    assert "text-negative" in status_classes(below["production_capacity_status"])
+    assert tight["production_capacity_status"] == STATUS_TIGHT
+    assert "text-warning" in status_classes(tight["production_capacity_status"])
+
+
+def test_a_percentage_above_one_hundred_is_allowed(db):
+    """Art. 19e sets only a minimum -- a big producer with few consumers
+    legitimately shows more than 100 % in the portal, and an upper bound on
+    the input would silently clamp it."""
+    leg_id = leg_repo.create(db, _leg(production_capacity_percent=150.0))
+
+    assert leg_repo.get(db, leg_id).production_capacity_percent == pytest.approx(150.0)
+    assert compute_headroom(150.0, warn_percent=10.0).status == STATUS_COMFORTABLE

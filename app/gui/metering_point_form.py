@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.production_capacity import compute_headroom, status_classes
 from app.domain.metering_point_validation import (
     assemble_metering_point_designation,
     validate_metering_point_designation,
@@ -64,6 +65,8 @@ def open_metering_point_form(
         settings = settings_repo.get_settings(connection)
     site_options = {s.id: s.full_address for s in sites}
     leg_options = {leg.id: leg.name for leg in legs}
+    legs_by_id = {leg.id: leg for leg in legs}
+    capacity_warn_percent = settings.production_capacity_warn_percent
 
     if existing:
         default_country = existing.designation[:2]
@@ -123,6 +126,33 @@ def open_metering_point_form(
             value=existing.leg_id if existing else None,
             with_input=True,
         ).classes("w-full")
+        # This is the moment the decision is actually made -- whether this
+        # consumer fits into the chosen LEG or waits in another one until a
+        # producer signs up. The figure lived only on the LEG pages before.
+        capacity_hint = ui.label("").classes("text-caption")
+
+        def _show_capacity() -> None:
+            """Show the selected LEG's production-capacity headroom.
+
+            Returns:
+                None.
+            """
+            leg = legs_by_id.get(leg_select.value)
+            if leg is None:
+                capacity_hint.text = ""
+                return
+            headroom = compute_headroom(leg.production_capacity_percent, warn_percent=capacity_warn_percent)
+            capacity_hint.text = headroom.label + (
+                f" (Stand {leg.production_capacity_recorded_at})"
+                if leg.production_capacity_percent is not None and leg.production_capacity_recorded_at
+                else ""
+            )
+            capacity_hint.classes(
+                replace="text-caption " + (status_classes(headroom.status) or "text-grey-7")
+            )
+
+        leg_select.on_value_change(lambda _: _show_capacity())
+        _show_capacity()
         with ui.row().classes("w-full gap-2"):
             pv_leistung = ui.number(
                 "PV-Leistung (kWp, optional)",

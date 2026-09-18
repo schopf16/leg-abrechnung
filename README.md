@@ -79,8 +79,8 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst, damit Sie
   die betroffenen Personen informieren können. Der LEG-Name erscheint als
   Absender auf den Rechnungen dieser LEG. Erfasst werden: Name (muss
-  eindeutig sein), optionale Bemerkung und die **Produktionsleistung in
-  Prozent**.
+  eindeutig sein), optionale Bemerkung sowie die **Produktionsleistung in
+  Prozent** mit dem Datum, an dem sie abgelesen wurde („Stand vom“).
 
   Zur Produktionsleistung: eine LEG braucht laut Art. 19e Abs. 1 StromVV
   eine installierte Produktionsleistung von mindestens **5 % der
@@ -94,11 +94,16 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   Was die App daraus macht: ein neuer Bezüger erhöht die
   Anschlussleistung und senkt damit den Prozentsatz. Aus dem erfassten
   Wert ergibt sich deshalb direkt, wie viel Luft noch bleibt — bei 37,6 %
-  darf die Anschlussleistung noch rund auf das 7,5-fache wachsen, bevor
-  die 5 % unterschritten sind. Wird es eng, meldet das die Übersicht,
+  darf die gesamte Anschlussleistung der Bezüger noch auf das 7,5-Fache
+  ihres heutigen Werts steigen (bei unveränderter Produktion), bevor die
+  5 % unterschritten sind. Wird es eng, meldet das die Übersicht,
   damit ein neuer Bezüger vorerst einer anderen LEG zugewiesen werden
   kann. Ab wann „eng“ gilt, stellen Sie unter „Einstellungen“ ein
   (Vorgabe 10 %); die 5 % selbst sind gesetzlich und nicht änderbar.
+  Kommt nach dem Stand-Datum ein Messpunkt in die LEG, meldet die
+  Übersicht, dass der Wert neu abzulesen ist. Beim Zuweisen eines
+  Messpunkts zu einer LEG wird der Wert direkt unter der LEG-Auswahl
+  angezeigt — dort, wo die Entscheidung fällt.
 - **Zuordnungen** — welcher Messpunkt in welchem Zeitraum zu welcher
   Person gehört (wichtig bei Umzügen mitten im Quartal).
 - **Web-Registrierungen** — Posteingang für Anmeldungen über das

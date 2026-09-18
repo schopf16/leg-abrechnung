@@ -220,11 +220,15 @@ judgement and lives in `LegSettings.production_capacity_warn_percent`.
 Percentages and factors are written German-style via `format_percent`/
 `format_factor` so the same figure never appears two ways.
 
-The BKW *discount* tier (40% within one substation area, 20% across
-several) is deliberately **not** stored: it follows from whether a LEG
-pools several substation areas, which `app.domain.leg_composition`
-already computes. A `leg.discount_level` column existed briefly
-(migrations 45 and 46) and was removed again.
+The BKW *discount* tier (40%/20% on the Netznutzung) is deliberately
+**not** stored — the administrator knows it and does not need it
+recorded. Do not restate it as derivable: BKW's criterion is the number
+of **Netzebenen** the shared electricity crosses, confirmed by BKW per
+location. Whether a LEG pools several substation areas
+(`app.domain.leg_composition`) correlates with that but is not the same
+statement, as migration 45's permanent description also says. A
+`leg.discount_level` column existed briefly (migrations 45 and 46) and
+was removed again.
 
 In `app.domain.participant_mix`, **Producer** means the feed-in side and
 **Consumer** the consumption side — the split is per MeteringPoint

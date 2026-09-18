@@ -14,7 +14,6 @@ from app.emailing import graph_client
 from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
-from app.models.settings import LegSettings
 
 #: Shown as a hint above the invoice email template fields -- Person
 #: placeholders plus the invoice-only context ones from
@@ -121,34 +120,22 @@ def settings_page() -> None:
                     qr_iban_error.text = qr_iban_problem
                     error_label.text = qr_iban_problem
                     return
-                updated = LegSettings(
-                    address_street=street.value.strip(),
-                    address_zip=zip_code.value.strip(),
-                    address_city=city.value.strip(),
-                    address_country=country.value.strip() or "CH",
-                    qr_iban=normalize_iban(qr_iban.value),
-                    price_rp_per_kwh=float(price.value),
-                    admin_fee_consumption_rp_per_kwh=float(admin_fee_consumption.value),
-                    admin_fee_feed_in_rp_per_kwh=float(admin_fee_feed_in.value),
-                    paper_invoice_rappen=round(float(paper_invoice_fee.value) * 100),
-                    extra_backup_dir=current.extra_backup_dir,
-                    metering_point_country=current.metering_point_country,
-                    metering_point_identifier=current.metering_point_identifier,
-                    web_registration_cursor=current.web_registration_cursor,
-                    onboarding_overdue_days=current.onboarding_overdue_days,
-                    leg_founding_min_persons=current.leg_founding_min_persons,
-                    production_capacity_warn_percent=current.production_capacity_warn_percent,
-                    invoice_email_subject=current.invoice_email_subject,
-                    invoice_email_body=current.invoice_email_body,
-                    dunning_new_deadline_days=current.dunning_new_deadline_days,
-                    dunning_minimum_rappen=current.dunning_minimum_rappen,
-                    dunning1_email_subject=current.dunning1_email_subject,
-                    dunning1_email_body=current.dunning1_email_body,
-                    dunning2_email_subject=current.dunning2_email_subject,
-                    dunning2_email_body=current.dunning2_email_body,
-                    updated_at="",
-                )
+                # Re-read rather than writing back `current`, which was
+                # loaded when the page was built: every other form on this
+                # page saves independently, so a stale snapshot silently
+                # reverted whatever they had changed in the meantime. Only
+                # the fields this form owns are touched.
                 with connection_scope() as connection:
+                    updated = settings_repo.get_settings(connection)
+                    updated.address_street = street.value.strip()
+                    updated.address_zip = zip_code.value.strip()
+                    updated.address_city = city.value.strip()
+                    updated.address_country = country.value.strip() or "CH"
+                    updated.qr_iban = normalize_iban(qr_iban.value)
+                    updated.price_rp_per_kwh = float(price.value)
+                    updated.admin_fee_consumption_rp_per_kwh = float(admin_fee_consumption.value)
+                    updated.admin_fee_feed_in_rp_per_kwh = float(admin_fee_feed_in.value)
+                    updated.paper_invoice_rappen = round(float(paper_invoice_fee.value) * 100)
                     settings_repo.update_settings(connection, updated)
                 error_label.text = ""
                 ui.notify("Einstellungen gespeichert.", type="positive")
@@ -294,8 +281,7 @@ def settings_page() -> None:
             production_capacity_warn_percent = ui.number(
                 "Warnen unterhalb von (%)",
                 value=current.production_capacity_warn_percent,
-                min=5,
-                max=100,
+                min=5.5,
                 step=0.5,
             ).classes("w-full")
             capacity_error = ui.label("").classes("text-negative")
@@ -307,9 +293,11 @@ def settings_page() -> None:
                     None.
                 """
                 value = production_capacity_warn_percent.value
-                if value is None or value < 5:
+                # Exactly 5 would empty the warning band entirely: a LEG
+                # sitting on the legal floor would show a green tick.
+                if value is None or value <= 5:
                     capacity_error.text = (
-                        "Muss mindestens 5 % sein -- darunter greift die gesetzliche Grenze."
+                        "Muss über 5 % liegen -- 5 % ist die gesetzliche Grenze selbst, keine Vorwarnung."
                     )
                     return
                 with connection_scope() as connection:
