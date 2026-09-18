@@ -579,70 +579,67 @@ def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(
     assert check_substation_area_one_sided(db) == []
 
 
-# -- Rabattstufe vs. the LEG's own composition -------------------------------
+# -- Produktionsleistung vs. the 5% floor ------------------------------------
 
 
-def _leg_spanning_two_substation_areas(db) -> int:
-    """A LEG with metering points on two different Trafokreise."""
-    leg_id = _leg(db)
-    for index, name in enumerate(("TK-A", "TK-B")):
-        site_id = _site_in(db, _substation_area(db, name), street=f"Weg{index}")
-        _metering_point_direction(db, f"CH-M{index}", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
-    return leg_id
-
-
-def _leg_on_one_substation_area(db) -> int:
-    """A LEG whose metering points all sit on a single Trafokreis."""
-    leg_id = _leg(db)
-    site_id = _site_in(db, _substation_area(db, "TK-Solo"), street="Solo")
-    _metering_point_direction(db, "CH-S1", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
-    return leg_id
-
-
-def test_a_high_tier_on_a_multi_substation_area_leg_is_flagged(db):
-    """The LEG card shows the entered tier and the computed composition one
-    above the other, so it could assert both "40%" and "spans 3 Trafokreise"
-    at once with nothing pointing at the contradiction."""
-    from app.domain.quality_checks import check_leg_discount_level_conflict
+def _leg_with_capacity(db, percent):
+    """Create a LEG carrying a recorded production-capacity percentage."""
     from app.models import leg as leg_repo
-    from app.models.leg import DISCOUNT_LEVEL_HIGH
+    from app.models.leg import Leg
 
-    leg_id = _leg_spanning_two_substation_areas(db)
-    stored = leg_repo.get(db, leg_id)
-    stored.discount_level = DISCOUNT_LEVEL_HIGH
-    leg_repo.update(db, stored)
+    return leg_repo.create(
+        db,
+        Leg(
+            id=None,
+            name=f"LEG {percent}",
+            note="",
+            created_at="",
+            production_capacity_percent=percent,
+            production_capacity_recorded_at="2026-09-18",
+        ),
+    )
 
-    warnings = check_leg_discount_level_conflict(db)
+
+def test_a_leg_below_five_percent_is_reported_as_a_problem(db):
+    """Art. 19e Abs. 1 StromVV -- this one is law, not judgement."""
+    from app.domain.quality_checks import check_leg_production_capacity
+
+    _leg_with_capacity(db, 3.2)
+
+    warnings = check_leg_production_capacity(db)
 
     assert len(warnings) == 1
-    assert "hohe Rabattstufe" in warnings[0].message
+    assert warnings[0].category == "leg_production_capacity_below"
+    assert "5 %" in warnings[0].message
     assert warnings[0].link == "/legs"
 
 
-def test_a_high_tier_on_a_single_substation_area_leg_is_not_flagged(db):
-    from app.domain.quality_checks import check_leg_discount_level_conflict
-    from app.models import leg as leg_repo
-    from app.models.leg import DISCOUNT_LEVEL_HIGH
+def test_a_leg_inside_the_warning_band_is_reported_with_its_headroom(db):
+    """The point of the early warning: park the next consumer elsewhere
+    before the floor is actually hit."""
+    from app.domain.quality_checks import check_leg_production_capacity
 
-    leg_id = _leg_on_one_substation_area(db)
-    stored = leg_repo.get(db, leg_id)
-    stored.discount_level = DISCOUNT_LEVEL_HIGH
-    leg_repo.update(db, stored)
+    _leg_with_capacity(db, 8.0)
 
-    assert check_leg_discount_level_conflict(db) == []
+    warnings = check_leg_production_capacity(db)
+
+    assert len(warnings) == 1
+    assert warnings[0].category == "leg_production_capacity_tight"
+    assert "1,6-fache" in warnings[0].message
 
 
-def test_a_low_or_unknown_tier_is_never_flagged(db):
-    """Only the high tier can contradict the composition: the grid topology
-    decides, not the Trafokreis count, so a low tier on a single-Trafokreis
-    LEG is perfectly normal."""
-    from app.domain.quality_checks import check_leg_discount_level_conflict
-    from app.models import leg as leg_repo
-    from app.models.leg import DISCOUNT_LEVEL_LOW, DISCOUNT_LEVEL_UNKNOWN
+def test_a_comfortable_leg_is_not_reported(db):
+    from app.domain.quality_checks import check_leg_production_capacity
 
-    leg_id = _leg_spanning_two_substation_areas(db)
-    for level in (DISCOUNT_LEVEL_LOW, DISCOUNT_LEVEL_UNKNOWN):
-        stored = leg_repo.get(db, leg_id)
-        stored.discount_level = level
-        leg_repo.update(db, stored)
-        assert check_leg_discount_level_conflict(db) == [], level
+    _leg_with_capacity(db, 37.6)
+
+    assert check_leg_production_capacity(db) == []
+
+
+def test_a_leg_without_a_recorded_figure_is_not_reported(db):
+    """Nobody having read the portal yet is not a fault."""
+    from app.domain.quality_checks import check_leg_production_capacity
+
+    _leg(db)
+
+    assert check_leg_production_capacity(db) == []

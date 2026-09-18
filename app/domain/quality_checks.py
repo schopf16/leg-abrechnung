@@ -26,7 +26,14 @@ from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
-from app.models.leg import DISCOUNT_LEVEL_HIGH
+from app.domain.production_capacity import (
+    REQUIRED_PERCENT,
+    STATUS_BELOW,
+    STATUS_TIGHT,
+    compute_headroom,
+    format_factor,
+    format_percent,
+)
 
 #: Expected number of 15-minute readings per MeteringPoint per full calendar day.
 _EXPECTED_READINGS_PER_DAY = 96
@@ -236,46 +243,57 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
     ]
 
 
-def check_leg_discount_level_conflict(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag a LEG whose entered Rabattstufe contradicts its own composition.
+def check_leg_production_capacity(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag a LEG whose recorded production capacity is below, or close to,
+    the legal floor.
 
-    The high tier (40%) is the one BKW grants when the shared electricity
-    needs no transformation stage. A LEG spanning several Trafokreise is
-    the case where one typically *is* needed, so the two statements
-    disagree -- and the LEG overview shows them on the same card, one
-    above the other, which is how the contradiction was noticed.
+    Art. 19e Abs. 1 StromVV requires at least 5% -- that part is law and
+    is reported as an outright problem. The "getting tight" band above it
+    is the administrator's own early warning
+    (`LegSettings.production_capacity_warn_percent`), so that the next
+    consumer can be parked in another LEG before the floor is actually
+    hit.
 
-    Deliberately only reported, never corrected: the tier comes from BKW
-    per location and the app has no standing to overrule it (see
-    `app.models.leg.DISCOUNT_LEVEL_HIGH`). Only the high-tier case is
-    flagged -- a low tier on a single-Trafokreis LEG is perfectly
-    possible, since the grid topology, not the Trafokreis count, decides.
+    A LEG whose figure has never been recorded is deliberately silent:
+    the value can only come from BKW's portal, so not having looked yet
+    is not a fault the app should nag about.
 
     Args:
         connection: Open SQLite connection.
 
     Returns:
-        A `QualityWarning` per LEG where the two disagree.
+        A `QualityWarning` per LEG below the floor or inside the warning
+        band.
     """
+    warn_percent = settings_repo.get_settings(connection).production_capacity_warn_percent
     warnings: list[QualityWarning] = []
     for leg in leg_repo.list_all(connection):
-        if leg.discount_level != DISCOUNT_LEVEL_HIGH:
-            continue
-        composition = compute_leg_composition(connection, leg.id)
-        if not composition.is_mixed:
-            continue
-        names = ", ".join(t.name for t in composition.substation_areas)
-        warnings.append(
-            QualityWarning(
-                category="leg_discount_level_conflict",
-                message=(
-                    f"LEG „{leg.name}“ ist als hohe Rabattstufe (40%) erfasst, umfasst "
-                    f"aber mehrere Trafokreise ({names}). Das passt normalerweise nicht "
-                    "zusammen -- bitte die Rabattstufe mit der BKW abgleichen."
-                ),
-                link="/legs",
+        headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
+        if headroom.status == STATUS_BELOW:
+            warnings.append(
+                QualityWarning(
+                    category="leg_production_capacity_below",
+                    message=(
+                        f"LEG „{leg.name}“: Produktionsleistung {format_percent(headroom.percent)} liegt "
+                        f"unter den gesetzlich nötigen {REQUIRED_PERCENT:.0f} % "
+                        "(Art. 19e Abs. 1 StromVV) -- Produktion zubauen oder "
+                        "Verbrauchsstellen in eine andere LEG verschieben."
+                    ),
+                    link="/legs",
+                )
             )
-        )
+        elif headroom.status == STATUS_TIGHT:
+            warnings.append(
+                QualityWarning(
+                    category="leg_production_capacity_tight",
+                    message=(
+                        f"LEG „{leg.name}“: Produktionsleistung {format_percent(headroom.percent)} -- "
+                        f"die Anschlussleistung darf noch etwa das {format_factor(headroom.growth_factor)}-fache "
+                        "erreichen. Neue Bezüger besser vorerst einer anderen LEG zuweisen."
+                    ),
+                    link="/legs",
+                )
+            )
     return warnings
 
 

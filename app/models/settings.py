@@ -63,6 +63,13 @@ class LegSettings:
             Producer and a Consumer, before the app suggests splitting it
             off its current multi-substation-area LEG into its own, better-
             discounted one. Default 7.
+        production_capacity_warn_percent: Below this percentage a LEG's
+            recorded production capacity (see `app.models.leg.Leg.
+            production_capacity_percent`) is flagged as getting tight, so
+            the next consumer can be parked in another LEG before the legal
+            5% floor is actually hit. The floor itself is Art. 19e Abs. 1
+            StromVV and is NOT configurable; this is only the early
+            warning. Default 10.
         invoice_email_subject: Subject template for invoice emails (see
             `app.emailing.bulk_send.send_invoice_emails`), may contain
             `{placeholder}`s (see `app.emailing.templates`). Written once
@@ -107,6 +114,7 @@ class LegSettings:
     web_registration_cursor: int
     onboarding_overdue_days: int
     leg_founding_min_persons: int
+    production_capacity_warn_percent: float
     invoice_email_subject: str
     invoice_email_body: str
     dunning_new_deadline_days: int
@@ -143,6 +151,7 @@ class LegSettings:
             web_registration_cursor=row["web_registration_cursor"],
             onboarding_overdue_days=row["onboarding_overdue_days"],
             leg_founding_min_persons=row["leg_founding_min_persons"],
+            production_capacity_warn_percent=row["production_capacity_warn_percent"],
             invoice_email_subject=row["invoice_email_subject"],
             invoice_email_body=row["invoice_email_body"],
             dunning_new_deadline_days=row["dunning_new_deadline_days"],
@@ -194,7 +203,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             paper_invoice_rappen = ?,
             extra_backup_dir = ?, metering_point_country = ?, metering_point_identifier = ?,
             web_registration_cursor = ?, onboarding_overdue_days = ?,
-            leg_founding_min_persons = ?,
+            leg_founding_min_persons = ?, production_capacity_warn_percent = ?,
             invoice_email_subject = ?, invoice_email_body = ?,
             dunning_new_deadline_days = ?, dunning_minimum_rappen = ?,
             dunning1_email_subject = ?, dunning1_email_body = ?,
@@ -217,6 +226,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.web_registration_cursor,
             settings.onboarding_overdue_days,
             settings.leg_founding_min_persons,
+            settings.production_capacity_warn_percent,
             settings.invoice_email_subject,
             settings.invoice_email_body,
             settings.dunning_new_deadline_days,

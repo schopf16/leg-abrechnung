@@ -137,6 +137,7 @@ def settings_page() -> None:
                     web_registration_cursor=current.web_registration_cursor,
                     onboarding_overdue_days=current.onboarding_overdue_days,
                     leg_founding_min_persons=current.leg_founding_min_persons,
+                    production_capacity_warn_percent=current.production_capacity_warn_percent,
                     invoice_email_subject=current.invoice_email_subject,
                     invoice_email_body=current.invoice_email_body,
                     dunning_new_deadline_days=current.dunning_new_deadline_days,
@@ -275,6 +276,50 @@ def settings_page() -> None:
                 ui.notify("LEG-Gründung-Einstellung gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save_leg_founding_min_persons).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("Produktionsleistung").classes("text-lg font-bold")
+        ui.label(
+            "Eine LEG braucht laut Art. 19e Abs. 1 StromVV eine "
+            "Produktionsleistung von mindestens 5 % der Anschlussleistung "
+            "aller Teilnehmenden. Diese 5 % sind gesetzlich und nicht "
+            "änderbar. Hier legen Sie nur fest, ab welchem Wert die App "
+            "schon vorher warnt, damit ein neuer Bezüger rechtzeitig einer "
+            "anderen LEG zugewiesen werden kann, statt erst beim "
+            "Unterschreiten. Den aktuellen Prozentwert tragen Sie pro LEG "
+            "ein; er stammt aus dem BKW-LEG-Portal."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            production_capacity_warn_percent = ui.number(
+                "Warnen unterhalb von (%)",
+                value=current.production_capacity_warn_percent,
+                min=5,
+                max=100,
+                step=0.5,
+            ).classes("w-full")
+            capacity_error = ui.label("").classes("text-negative")
+
+            def save_production_capacity_warn_percent() -> None:
+                """Validate and persist the production-capacity warning threshold.
+
+                Returns:
+                    None.
+                """
+                value = production_capacity_warn_percent.value
+                if value is None or value < 5:
+                    capacity_error.text = (
+                        "Muss mindestens 5 % sein -- darunter greift die gesetzliche Grenze."
+                    )
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.production_capacity_warn_percent = float(value)
+                    settings_repo.update_settings(connection, settings)
+                capacity_error.text = ""
+                ui.notify("Warnschwelle gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_production_capacity_warn_percent).classes("mt-2")
 
         ui.separator().classes("my-6")
 

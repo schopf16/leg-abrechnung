@@ -177,8 +177,7 @@ we don't control) and the template placeholder keys in
 values are English since migration 43 (`direction` 'consumption'/
 'feed_in', `person_offboarding.reason` 'payment_default'/'voluntary'/
 'other', `account_entries.kind` 'payment_received'/'payout'/'correction',
-`billing_runs.status` 'created', `email_broadcast_log.scope` 'all'/'leg',
-`leg.discount_level` 'high'/'low'/'unknown');
+`billing_runs.status` 'created', `email_broadcast_log.scope` 'all'/'leg');
 the importers still accept the German spellings from BKW files
 (`app.importers.base.validate_direction`). Old migrations keep their
 original German SQL forever (replay history, see above).
@@ -199,20 +198,33 @@ Glossary (German domain term → code name):
 | Saldo | `balance` |
 | Stichtag | `reference_date` |
 | Aufnahme / Austritt | onboarding / offboarding |
-| Rabattstufe (BKW, 40%/20% auf die Netznutzung) | `discount_level` `high`/`low` |
+| Produktionsleistung (% der Anschlussleistung, min. 5%) | `production_capacity_percent` |
 | Produzent / Konsument (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
 | LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
 
 ### Domain model core
 
-A LEG also carries `discount_level`: the BKW discount tier on the
-Netznutzung (40% without a transformation stage, 20% with one — BKW calls
-these "hohe"/"niedrige Rabattstufe", **not** "Anschlussleistung", which is
-a kW connection rating). It is entered by hand and never derived: it
-follows from BKW's grid topology and is confirmed by BKW per location.
-Whether a LEG spans several substation areas (`app.domain.leg_composition`)
-correlates with it but is a different statement, so the app must not
-overwrite one with the other.
+A LEG also carries `production_capacity_percent` (plus the date it was
+read): the installed production capacity as a percentage of the
+participants' total Anschlussleistung. Art. 19e Abs. 1 StromVV requires
+at least 5%, and BKW's LEG portal shows the current figure on every
+metering point registration. It is copied in by hand and **cannot** be
+derived — a site's Anschlussleistung is not in this database and cannot
+be obtained. `app/domain/production_capacity.py` turns it into the number
+that actually gets used: with production unchanged, the participants'
+total Anschlussleistung may grow by `percent / 5` before breaking the
+floor, which answers "does another consumer still fit in this LEG, or
+does the next one wait in the pooled LEG until a producer signs up".
+The 5% floor is law and a constant; where "getting tight" begins is
+judgement and lives in `LegSettings.production_capacity_warn_percent`.
+Percentages and factors are written German-style via `format_percent`/
+`format_factor` so the same figure never appears two ways.
+
+The BKW *discount* tier (40% within one substation area, 20% across
+several) is deliberately **not** stored: it follows from whether a LEG
+pools several substation areas, which `app.domain.leg_composition`
+already computes. A `leg.discount_level` column existed briefly
+(migrations 45 and 46) and was removed again.
 
 In `app.domain.participant_mix`, **Producer** means the feed-in side and
 **Consumer** the consumption side — the split is per MeteringPoint

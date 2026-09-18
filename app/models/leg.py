@@ -19,32 +19,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-#: The BKW discount tier a LEG gets on the Netznutzung, by its stored
-#: value. BKW grants 40% where the locally shared electricity needs no
-#: transformation stage and 20% where it does, and calls the two "hohe"
-#: and "niedrige Rabattstufe" on its own LEG pages. Entered by hand: the
-#: tier follows from BKW's grid topology and is confirmed by BKW per
-#: location, so the app must not guess it -- whether a LEG spans several
-#: Trafokreise (see `app.domain.leg_composition`) correlates with it but
-#: is a different statement.
-DISCOUNT_LEVEL_HIGH = "high"
-DISCOUNT_LEVEL_LOW = "low"
-DISCOUNT_LEVEL_UNKNOWN = "unknown"
-
-#: German labels for the three values, for selects and printouts.
-DISCOUNT_LEVEL_OPTIONS = {
-    DISCOUNT_LEVEL_UNKNOWN: "Noch nicht bekannt",
-    DISCOUNT_LEVEL_HIGH: "Hohe Rabattstufe (40% Rabatt auf die Netznutzung)",
-    DISCOUNT_LEVEL_LOW: "Niedrige Rabattstufe (20% Rabatt auf die Netznutzung)",
-}
-
-#: Short forms of the same, for the overview card and the printed table.
-DISCOUNT_LEVEL_SHORT = {
-    DISCOUNT_LEVEL_UNKNOWN: "Rabattstufe unbekannt",
-    DISCOUNT_LEVEL_HIGH: "Hohe Rabattstufe (40%)",
-    DISCOUNT_LEVEL_LOW: "Niedrige Rabattstufe (20%)",
-}
-
 
 @dataclass
 class Leg:
@@ -58,15 +32,23 @@ class Leg:
             appears on this LEG's invoices.
         note: Free-text notes (optional).
         created_at: ISO-8601 creation timestamp.
-        discount_level: Which BKW discount tier this LEG gets, one of
-            `DISCOUNT_LEVEL_HIGH`/`_LOW`/`_UNKNOWN` -- see those constants.
+        production_capacity_percent: Installed production capacity as a
+            percentage of the participants' total Anschlussleistung, as
+            shown by BKW's LEG portal, or `None` while never recorded.
+            Art. 19e Abs. 1 StromVV requires at least 5%. Copied in by
+            hand: the Anschlussleistung of a site is not in this app and
+            cannot be obtained, so the figure can only come from BKW.
+        production_capacity_recorded_at: ISO date the percentage was read
+            off the portal, or `None`. Kept because the figure goes stale
+            the moment a metering point joins or leaves the LEG.
     """
 
     id: Optional[int]
     name: str
     note: str
     created_at: str
-    discount_level: str = DISCOUNT_LEVEL_UNKNOWN
+    production_capacity_percent: Optional[float] = None
+    production_capacity_recorded_at: Optional[str] = None
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Leg":
@@ -83,7 +65,8 @@ class Leg:
             name=row["name"],
             note=row["note"],
             created_at=row["created_at"],
-            discount_level=row["discount_level"],
+            production_capacity_percent=row["production_capacity_percent"],
+            production_capacity_recorded_at=row["production_capacity_recorded_at"],
         )
 
 
@@ -144,14 +127,16 @@ def create(connection: sqlite3.Connection, leg: Leg) -> int:
     """
     cursor = connection.execute(
         """
-        INSERT INTO leg (name, note, created_at, discount_level)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO leg
+            (name, note, created_at, production_capacity_percent, production_capacity_recorded_at)
+        VALUES (?, ?, ?, ?, ?)
         """,
         (
             leg.name,
             leg.note,
             datetime.now(timezone.utc).isoformat(),
-            leg.discount_level,
+            leg.production_capacity_percent,
+            leg.production_capacity_recorded_at,
         ),
     )
     connection.commit()
@@ -178,10 +163,17 @@ def update(connection: sqlite3.Connection, leg: Leg) -> None:
     connection.execute(
         """
         UPDATE leg SET
-            name = ?, note = ?, discount_level = ?
+            name = ?, note = ?,
+            production_capacity_percent = ?, production_capacity_recorded_at = ?
         WHERE id = ?
         """,
-        (leg.name, leg.note, leg.discount_level, leg.id),
+        (
+            leg.name,
+            leg.note,
+            leg.production_capacity_percent,
+            leg.production_capacity_recorded_at,
+            leg.id,
+        ),
     )
     connection.commit()
 

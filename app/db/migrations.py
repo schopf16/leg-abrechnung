@@ -1539,4 +1539,29 @@ Freundliche Grüsse';
                 CHECK (discount_level IN ('high', 'low', 'unknown'));
         """,
     ),
+    Migration(
+        version=46,
+        description="Replace leg.discount_level with the number the "
+        "administrator actually needs: leg.production_capacity_percent, the "
+        "installed production capacity as a percentage of the participants' "
+        "total Anschlussleistung. Art. 19e Abs. 1 StromVV requires at least "
+        "5%; BKW's LEG portal shows the current figure on every metering "
+        "point registration ('37.6 % tatsächlich / 5 % erforderlich'), and "
+        "that figure is copied in here. It cannot be derived locally -- the "
+        "Anschlussleistung of a site is not in this app and cannot be "
+        "obtained. Recorded with the date it was read, because it goes stale "
+        "the moment the LEG grows. discount_level is dropped again: the "
+        "tier follows from whether a LEG pools several Trafokreise, so it "
+        "was never a fact worth storing per LEG (added in migration 45, "
+        "which stays in history untouched). leg_settings gains the warning "
+        "threshold, default 10%, so 'getting tight' is tunable rather than "
+        "hardcoded -- same pattern as leg_founding_min_persons.",
+        sql="""
+            ALTER TABLE leg DROP COLUMN discount_level;
+            ALTER TABLE leg ADD COLUMN production_capacity_percent REAL;
+            ALTER TABLE leg ADD COLUMN production_capacity_recorded_at TEXT;
+            ALTER TABLE leg_settings ADD COLUMN production_capacity_warn_percent REAL NOT NULL
+                DEFAULT 10.0;
+        """,
+    ),
 ]

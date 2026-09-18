@@ -29,6 +29,8 @@ find_upgrade_candidates`) and, per affected MeteringPoint, as a coloured star
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
 """
 
+from datetime import date
+
 from nicegui import ui
 
 from app.db.connection import connection_scope
@@ -54,13 +56,8 @@ from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.models.leg import (
-    DISCOUNT_LEVEL_OPTIONS,
-    DISCOUNT_LEVEL_SHORT,
-    DISCOUNT_LEVEL_UNKNOWN,
-    Leg,
-    LegInUseError,
-)
+from app.domain.production_capacity import STATUS_BELOW, STATUS_TIGHT, compute_headroom
+from app.models.leg import Leg, LegInUseError
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
 DIRECTION_LABELS = {
@@ -75,7 +72,7 @@ PRINT_COLUMNS = [
     ("Messpunkte", "metering_points_count"),
     ("Trafokreis(e)", "substation_areas"),
     ("Produzent : Konsument", "producer_consumer"),
-    ("Rabattstufe", "discount_level"),
+    ("Produktionsleistung", "production_capacity"),
     ("Bemerkung", "note"),
 ]
 
@@ -98,6 +95,24 @@ SORT_OPTIONS = [
 ]
 
 
+def _capacity_classes(status: str) -> str:
+    """Pick the colour for a LEG's production-capacity line.
+
+    Args:
+        status: A `app.domain.production_capacity` status constant.
+
+    Returns:
+        Tailwind classes. Below the legal floor is the only red: "tight"
+        is a heads-up, and an unrecorded figure is greyed, since nobody
+        having looked yet is not the same as being in trouble.
+    """
+    if status == STATUS_BELOW:
+        return "text-negative font-bold"
+    if status == STATUS_TIGHT:
+        return "text-warning"
+    return "text-grey-6 italic" if status == "unknown" else "text-body2"
+
+
 def _mix_badge(mix) -> str:
     """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge.
 
@@ -112,7 +127,7 @@ def _mix_badge(mix) -> str:
     return f"{symbol} {mix.producer_count} Produzent : {mix.consumer_count} Konsument"
 
 
-def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
+def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> dict:
     """Convert a `Leg` into a row dict backing both the card and the printout.
 
     Args:
@@ -120,6 +135,8 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         leg: LEG to convert.
         min_persons: `LegSettings.leg_founding_min_persons`, passed
             through to `leg_should_split`.
+        warn_percent: `LegSettings.production_capacity_warn_percent`, the
+            point below which the production capacity counts as tight.
 
     Returns:
         A dict with the fields required by `PRINT_COLUMNS` and `render_card`,
@@ -150,6 +167,7 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
     else:
         substation_areas_status = "✓ Preisoptimiert"
         optimisation_rank = 2
+    headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
     mix = compute_participant_mix_for_leg(connection, leg.id)
     search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
     return {
@@ -171,8 +189,9 @@ def _to_row(connection, leg: Leg, *, min_persons: int) -> dict:
         # substation area is one click away on this LEG's own detail page).
         "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
         "producer_consumer": _mix_badge(mix),
-        "discount_level": DISCOUNT_LEVEL_SHORT.get(leg.discount_level, leg.discount_level),
-        "discount_level_known": leg.discount_level != DISCOUNT_LEVEL_UNKNOWN,
+        "production_capacity": headroom.label
+        + (f" (Stand {leg.production_capacity_recorded_at})" if leg.production_capacity_recorded_at else ""),
+        "production_capacity_status": headroom.status,
         "note": leg.note,
         "should_split": should_split,
         "optimisation_rank": optimisation_rank,
@@ -238,10 +257,8 @@ def legs_page() -> None:
                     ui.label(row["name"]).classes("font-bold")
                     ui.label(f"{row['metering_points_count']} Messpunkt(e)").classes("text-body2")
                     ui.label(row["producer_consumer"]).classes("text-body2")
-                    # Greyed out while nobody has asked BKW yet, so an
-                    # unanswered question does not read like an answer.
-                    ui.label(row["discount_level"]).classes(
-                        "text-body2 " + ("" if row["discount_level_known"] else "text-grey-6 italic")
+                    ui.label(row["production_capacity"]).classes(
+                        "text-body2 " + _capacity_classes(row["production_capacity_status"])
                     )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button(
@@ -286,9 +303,14 @@ def legs_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
+                settings = settings_repo.get_settings(connection)
+                min_persons = settings.leg_founding_min_persons
+                warn_percent = settings.production_capacity_warn_percent
                 legs = leg_repo.list_all(connection)
-                all_rows = [_to_row(connection, leg, min_persons=min_persons) for leg in legs]
+                all_rows = [
+                    _to_row(connection, leg, min_persons=min_persons, warn_percent=warn_percent)
+                    for leg in legs
+                ]
 
                 # Aggregated per LEG, naming each candidate substation area
                 # individually -- a LEG can be the "too spread out" target
@@ -341,16 +363,28 @@ def legs_page() -> None:
                     .props("debounce=300")
                 )
                 duplicate_warning = ui.label("").classes("text-warning")
-                discount_level = ui.select(
-                    DISCOUNT_LEVEL_OPTIONS,
-                    value=existing.discount_level if existing else DISCOUNT_LEVEL_UNKNOWN,
-                    label="Rabattstufe (BKW)",
+                capacity_percent = ui.number(
+                    "Produktionsleistung (% der Anschlussleistung)",
+                    value=existing.production_capacity_percent if existing else None,
+                    min=0,
+                    max=100,
+                    step=0.1,
                 ).classes("w-full")
+                capacity_date = (
+                    ui.input(
+                        "Stand vom",
+                        value=(existing.production_capacity_recorded_at if existing else "")
+                        or date.today().isoformat(),
+                    )
+                    .props("type=date")
+                    .classes("w-full")
+                )
                 ui.label(
-                    "Die BKW gewährt 40% Rabatt auf die Netznutzung, wenn der "
-                    "geteilte Strom ohne Transformationsstufe auskommt, sonst 20%. "
-                    "Welche Stufe gilt, ergibt sich aus dem Netz der BKW und wird "
-                    "von ihr pro Standort bestätigt -- hier nur eintragen, nicht raten."
+                    "Wert aus dem BKW-LEG-Portal, das ihn bei jeder Messpunkt-Anmeldung "
+                    "anzeigt („37.6 % tatsächlich / 5 % erforderlich“). Mindestens 5 % "
+                    "sind gesetzlich nötig (Art. 19e Abs. 1 StromVV). Die App kann den "
+                    "Wert nicht selbst berechnen -- die Anschlussleistung der Standorte "
+                    "ist ihr nicht bekannt."
                 ).classes("text-caption text-grey-6")
                 note = (
                     ui.textarea(
@@ -402,7 +436,12 @@ def legs_page() -> None:
                                     name=name.value.strip(),
                                     note=note.value.strip(),
                                     created_at=existing.created_at,
-                                    discount_level=discount_level.value or DISCOUNT_LEVEL_UNKNOWN,
+                                    production_capacity_percent=capacity_percent.value,
+                                    production_capacity_recorded_at=(
+                                        (capacity_date.value or None)
+                                        if capacity_percent.value is not None
+                                        else None
+                                    ),
                                 )
                                 leg_repo.update(connection, updated)
                             else:
@@ -411,7 +450,12 @@ def legs_page() -> None:
                                     name=name.value.strip(),
                                     note=note.value.strip(),
                                     created_at="",
-                                    discount_level=discount_level.value or DISCOUNT_LEVEL_UNKNOWN,
+                                    production_capacity_percent=capacity_percent.value,
+                                    production_capacity_recorded_at=(
+                                        (capacity_date.value or None)
+                                        if capacity_percent.value is not None
+                                        else None
+                                    ),
                                 )
                                 leg_repo.create(connection, new_leg)
                     except Exception as exc:  # unique constraint race, etc.
@@ -623,12 +667,19 @@ def leg_detail_page(leg_id: int) -> None:
         ui.label(leg.name).classes("text-xl font-bold mt-2")
         if leg.note:
             ui.label(leg.note).classes("text-body2 text-grey-7")
-        # Same greying as the overview card: an unanswered question must
-        # not read like an answer.
-        ui.label(DISCOUNT_LEVEL_SHORT.get(leg.discount_level, leg.discount_level)).classes(
-            "text-body2 "
-            + ("text-grey-7" if leg.discount_level != DISCOUNT_LEVEL_UNKNOWN else "text-grey-6 italic")
-        )
+        # Same colouring as the overview card, so the same figure does not
+        # look different depending on where it is read.
+        with connection_scope() as settings_connection:
+            warn_percent = settings_repo.get_settings(settings_connection).production_capacity_warn_percent
+        headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
+        ui.label(
+            headroom.label
+            + (
+                f" (Stand {leg.production_capacity_recorded_at})"
+                if leg.production_capacity_recorded_at
+                else ""
+            )
+        ).classes("text-body2 " + _capacity_classes(headroom.status))
 
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
         upgrade_hint_column = ui.column().classes("w-full gap-0")
