@@ -9,7 +9,7 @@ import logging
 import os
 import platform
 
-from nicegui import app, ui
+from nicegui import Client, app, ui
 from wsproto.utilities import LocalProtocolError
 
 from app.db.connection import connection_scope
@@ -46,11 +46,29 @@ def _handle_ui_exception(exception: Exception) -> None:
     Returns:
         None.
     """
-    safe_notify(
+    message = (
         f"Es ist ein Fehler aufgetreten ({type(exception).__name__}). "
-        'Details siehe Log-Datei im Ordner „logs".',
-        type="negative",
+        'Details siehe Log-Datei im Ordner „logs".'
     )
+    # Enter a client's slot explicitly rather than relying on the ambient
+    # one. NiceGUI runs a handler inside `with parent_slot:` but calls
+    # `handle_exception` *outside* it (see `nicegui.events.handle_event`),
+    # so for a SYNCHRONOUS handler there is no slot left by the time we
+    # get here: `ui.notify` raises and `safe_notify` swallows it, which is
+    # exactly why a broken upload handler stayed invisible for nine days.
+    # Async handlers do not have this problem -- NiceGUI handles their
+    # exceptions inside the slot.
+    #
+    # Notifying every connected client is correct here rather than a
+    # broadcast hack: this is a single-user native desktop window (see
+    # `main`), so there is normally exactly one.
+    clients = [client for client in Client.instances.values() if client.has_socket_connection]
+    if not clients:
+        logger.error("Unhandled UI exception with no client to notify", exc_info=exception)
+        return
+    for client in clients:
+        with client:
+            safe_notify(message, type="negative")
 
 
 def bootstrap() -> None:

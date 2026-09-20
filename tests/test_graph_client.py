@@ -10,6 +10,7 @@ import pytest
 
 from app.config import GraphConfig
 from app.emailing.graph_client import (
+    Attachment,
     GraphApiError,
     GraphAuthError,
     get_access_token,
@@ -117,8 +118,7 @@ def test_send_email_attaches_pdf_as_base64(tmp_path):
                 to_name="Anna Muster",
                 subject="Betreff",
                 body="Text",
-                attachment_path=pdf_path,
-                attachment_filename="rechnung.pdf",
+                attachments=[Attachment(path=pdf_path, filename="rechnung.pdf")],
             )
         )
 
@@ -145,8 +145,7 @@ def test_send_email_guesses_content_type_from_filename(tmp_path):
                 to_name="A",
                 subject="s",
                 body="b",
-                attachment_path=image_path,
-                attachment_filename="einladung.png",
+                attachments=[Attachment(path=image_path, filename="einladung.png")],
             )
         )
 
@@ -168,8 +167,7 @@ def test_send_email_falls_back_to_octet_stream_for_unknown_extension(tmp_path):
                 to_name="A",
                 subject="s",
                 body="b",
-                attachment_path=unknown_path,
-                attachment_filename="datei.xyz123",
+                attachments=[Attachment(path=unknown_path, filename="datei.xyz123")],
             )
         )
 
@@ -195,8 +193,7 @@ def test_send_email_raises_api_error_for_oversized_attachment(tmp_path):
                     to_name="A",
                     subject="s",
                     body="b",
-                    attachment_path=big_path,
-                    attachment_filename="gross.bin",
+                    attachments=[Attachment(path=big_path, filename="gross.bin")],
                 )
             )
     client.post.assert_not_called()
@@ -218,8 +215,7 @@ def test_send_email_raises_api_error_if_attachment_missing(tmp_path):
                     to_name="A",
                     subject="s",
                     body="b",
-                    attachment_path=missing_path,
-                    attachment_filename="does-not-exist.pdf",
+                    attachments=[Attachment(path=missing_path, filename="does-not-exist.pdf")],
                 )
             )
     client.post.assert_not_called()

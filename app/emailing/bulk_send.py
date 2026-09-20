@@ -9,7 +9,7 @@ for the `{placeholder}` substitution used in both flows.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from app.config import GraphConfig
 from app.emailing import graph_client
@@ -100,8 +100,7 @@ async def send_broadcast_email(
     *,
     scope: str,
     leg_id: Optional[int] = None,
-    attachment_path: Optional[Path] = None,
-    attachment_filename: Optional[str] = None,
+    attachments: Sequence[graph_client.Attachment] = (),
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> EmailSendResult:
     """Send a personalized email to each of an explicit list of recipients.
@@ -116,12 +115,11 @@ async def send_broadcast_email(
         body: Email body, may contain `{placeholder}`s.
         scope: `"all"` or `"leg"`, recorded in the sent-history log.
         leg_id: LEG id, if `scope == "leg"`, else `None`.
-        attachment_path: Optional file attached to every recipient's copy
-            (the same one for the whole batch -- see `app.gui.pages.
-            email_dispatch`, which lets the administrator pick one file
-            for the send). `None` for no attachment.
-        attachment_filename: Filename shown for the attachment, required
-            if `attachment_path` is given.
+        attachments: Files attached to every recipient's copy -- the same
+            set for the whole batch (see `app.gui.pages.email_dispatch`,
+            where the administrator picks them). Empty for no attachment.
+            The size limit applies to their total, see
+            `graph_client.MAX_INLINE_ATTACHMENT_BYTES`.
         on_progress: Called as `on_progress(done, total)` after each send
             attempt (success, skip, or failure) -- lets the GUI show a
             live progress bar. Optional.
@@ -156,8 +154,7 @@ async def send_broadcast_email(
                 to_name=person.display_name,
                 subject=rendered_subject,
                 body=rendered_body,
-                attachment_path=attachment_path,
-                attachment_filename=attachment_filename,
+                attachments=attachments,
             )
             result.sent.append(person.display_name)
             sent_emails.append(person.contact_email)
@@ -178,7 +175,11 @@ async def send_broadcast_email(
             subject=subject,
             body=body,
             recipient_emails=sent_emails,
-            attachment_filename=attachment_filename,
+            # One name per line: a filename may legally contain a comma,
+            # so a comma-joined list could not be split back apart. Safe on
+            # Windows, which forbids characters 1-31 in a filename; see
+            # `app.models.email_log`.
+            attachment_filenames="\n".join(a.filename for a in attachments) or None,
         )
     return result
 
@@ -370,7 +371,6 @@ async def _send_one_invoice_email(
         to_name=person.display_name,
         subject=render_template(subject, values),
         body=render_template(body, values),
-        attachment_path=Path(item.pdf_path),
-        attachment_filename=Path(item.pdf_path).name,
+        attachments=[graph_client.Attachment(path=Path(item.pdf_path), filename=Path(item.pdf_path).name)],
     )
     billing_run_repo.set_item_email_sent_at(connection, item.id, datetime.now(timezone.utc).isoformat())

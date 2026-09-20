@@ -1564,4 +1564,18 @@ Freundliche Grüsse';
                 DEFAULT 10.0;
         """,
     ),
+    Migration(
+        version=47,
+        description="Rename email_broadcast_log.attachment_filename to "
+        "attachment_filenames (plural): a broadcast can now carry several "
+        "attachments, stored one name per line. A filename may legally "
+        "contain a comma, so a comma-separated list could not be split "
+        "back apart; a newline cannot occur in a Windows or POSIX "
+        "filename. Existing single names carry over unchanged -- one name "
+        "is a one-line list.",
+        sql="""
+            ALTER TABLE email_broadcast_log
+                RENAME COLUMN attachment_filename TO attachment_filenames;
+        """,
+    ),
 ]

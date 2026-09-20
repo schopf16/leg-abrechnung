@@ -52,7 +52,7 @@ def test_recipient_count_zero_for_empty_list(db):
 
 def test_attachment_filename_defaults_to_none(db):
     email_log_repo.create(db, scope="all", leg_id=None, subject="s", body="b", recipient_emails=[])
-    assert email_log_repo.list_all(db)[0].attachment_filename is None
+    assert email_log_repo.list_all(db)[0].attachment_filenames is None
 
 
 def test_attachment_filename_round_trip(db):
@@ -63,6 +63,6 @@ def test_attachment_filename_round_trip(db):
         subject="s",
         body="b",
         recipient_emails=[],
-        attachment_filename="Einladung.pdf",
+        attachment_filenames="Einladung.pdf",
     )
-    assert email_log_repo.list_all(db)[0].attachment_filename == "Einladung.pdf"
+    assert email_log_repo.list_all(db)[0].attachment_filenames == "Einladung.pdf"

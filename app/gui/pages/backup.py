@@ -12,26 +12,10 @@ from app.backup.backup_service import (
     restore_backup,
 )
 from app.db.connection import connection_scope
+from app.format_size import format_size
 from app.gui.navigation import page_frame
 from app.gui.safe_notify import safe_notify
 from app.models import settings as settings_repo
-
-
-def _format_size(size_bytes: int) -> str:
-    """Format a byte count as a human-readable size.
-
-    Args:
-        size_bytes: File size in bytes.
-
-    Returns:
-        A string such as "1.3 MB".
-    """
-    size = float(size_bytes)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} GB"
 
 
 @ui.page("/backup")
@@ -110,7 +94,7 @@ def backup_page() -> None:
                     "filename": b.path.name,
                     "path": str(b.path),
                     "created_at": b.created_at.strftime("%d.%m.%Y %H:%M:%S"),
-                    "size": _format_size(b.size_bytes),
+                    "size": format_size(b.size_bytes),
                 }
                 for b in list_backups()
             ]

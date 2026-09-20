@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.emailing import bulk_send
+from app.emailing import bulk_send, graph_client
 from app.emailing.bulk_send import (
     EmailSendResult,
     list_broadcast_recipients,
@@ -325,15 +325,16 @@ def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(d
                 "s",
                 "b",
                 scope="all",
-                attachment_path=attachment_path,
-                attachment_filename="einladung.pdf",
+                attachments=[graph_client.Attachment(path=attachment_path, filename="einladung.pdf")],
             )
         )
 
     for call in mock_send.call_args_list:
-        assert call.kwargs["attachment_path"] == attachment_path
-        assert call.kwargs["attachment_filename"] == "einladung.pdf"
-    assert email_log_repo.list_all(db)[0].attachment_filename == "einladung.pdf"
+        sent_attachments = call.kwargs["attachments"]
+        assert len(sent_attachments) == 1
+        assert sent_attachments[0].path == attachment_path
+        assert sent_attachments[0].filename == "einladung.pdf"
+    assert email_log_repo.list_all(db)[0].attachment_filenames == "einladung.pdf"
 
 
 def test_send_broadcast_email_returns_early_for_no_recipients(db):
@@ -457,7 +458,7 @@ def test_send_invoice_emails_sends_and_records_timestamp(db):
     kwargs = mock_send.call_args.kwargs
     assert kwargs["subject"] == "Rechnung LEG Test"
     assert kwargs["body"] == "Betrag: 42.50"
-    assert kwargs["attachment_path"].name == "rechnung.pdf"
+    assert kwargs["attachments"][0].path.name == "rechnung.pdf"
 
     updated_item = billing_run_repo.list_items(db, run.id)[0]
     assert updated_item.email_sent_at is not None

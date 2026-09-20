@@ -29,8 +29,13 @@ class EmailBroadcastLog:
         recipient_emails: Email addresses of everyone the send actually
             succeeded for (not everyone it was attempted for) -- the
             honest record of who really got this message.
-        attachment_filename: Name of the file attached to this send, or
-            `None` if it was sent without an attachment.
+        attachment_filenames: Names of the files attached to this send,
+            one per line, or `None` if it was sent without any. A newline
+            rather than a comma because a filename may legally contain a
+            comma, and cannot contain a newline on Windows (characters
+            1-31 are forbidden), which is the only platform this app runs
+            on. POSIX is laxer -- it excludes only NUL and "/" -- so this
+            is a Windows-specific guarantee, not a universal one.
     """
 
     id: Optional[int]
@@ -40,7 +45,7 @@ class EmailBroadcastLog:
     subject: str
     body: str
     recipient_emails: list[str] = field(default_factory=list)
-    attachment_filename: Optional[str] = None
+    attachment_filenames: Optional[str] = None
 
     @property
     def recipient_count(self) -> int:
@@ -69,7 +74,7 @@ class EmailBroadcastLog:
             subject=row["subject"],
             body=row["body"],
             recipient_emails=json.loads(row["recipient_emails"]),
-            attachment_filename=row["attachment_filename"],
+            attachment_filenames=row["attachment_filenames"],
         )
 
 
@@ -81,7 +86,7 @@ def create(
     subject: str,
     body: str,
     recipient_emails: list[str],
-    attachment_filename: Optional[str] = None,
+    attachment_filenames: Optional[str] = None,
 ) -> int:
     """Record one completed broadcast/LEG email send.
 
@@ -92,8 +97,8 @@ def create(
         subject: The subject template used (with placeholders, unrendered).
         body: The body template used (with placeholders, unrendered).
         recipient_emails: Email addresses actually reached.
-        attachment_filename: Name of the file attached to this send, or
-            `None` if it was sent without one.
+        attachment_filenames: Names of the files attached to this send,
+            one per line, or `None` if it was sent without any.
 
     Returns:
         The primary key of the new log entry.
@@ -101,7 +106,7 @@ def create(
     cursor = connection.execute(
         """
         INSERT INTO email_broadcast_log
-            (sent_at, scope, leg_id, subject, body, recipient_count, recipient_emails, attachment_filename)
+            (sent_at, scope, leg_id, subject, body, recipient_count, recipient_emails, attachment_filenames)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -112,7 +117,7 @@ def create(
             body,
             len(recipient_emails),
             json.dumps(recipient_emails),
-            attachment_filename,
+            attachment_filenames,
         ),
     )
     connection.commit()
