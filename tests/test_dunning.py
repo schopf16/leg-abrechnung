@@ -229,7 +229,7 @@ def test_send_dunning_sends_email_with_pdf_attachment_and_advances_level(db, tmp
     mock_send.assert_called_once()
     _, kwargs = mock_send.call_args
     assert kwargs["to_address"] == person.contact_email
-    assert kwargs["attachment_path"] == pdf_path
+    assert kwargs["attachments"][0].path == pdf_path
 
     updated_item = billing_run_repo.get_item(db, item.id)
     assert updated_item.dunning_level == 1

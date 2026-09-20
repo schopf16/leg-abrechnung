@@ -21,12 +21,14 @@ UI for the whole batch.
 import asyncio
 import base64
 import mimetypes
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import httpx
 
 from app.config import GraphConfig
+from app.format_size import format_size
 
 _TOKEN_URL_TEMPLATE = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
 _SEND_MAIL_URL_TEMPLATE = "https://graph.microsoft.com/v1.0/users/{sender_address}/sendMail"
@@ -44,7 +46,35 @@ _DEFAULT_RETRY_AFTER_SECONDS = 5.0
 #: attachment (see `app.emailing.bulk_send.send_broadcast_email`) is
 #: administrator-chosen and could be larger, hence the check; the simpler
 #: upload-session flow for even bigger files was deliberately not built.
-MAX_INLINE_ATTACHMENT_BYTES = 3 * 1024 * 1024
+#: Microsoft's request-size ceiling for `sendMail`. Exceeding it is a 413,
+#: no matter how the bytes are distributed across attachments.
+MAX_REQUEST_BYTES = 4 * 1024 * 1024
+
+#: Room left for everything that is not attachment content: subject, body,
+#: recipient, and the JSON field names around it.
+_ENVELOPE_ALLOWANCE_BYTES = 256 * 1024
+
+#: How many raw attachment bytes one message may carry. Derived, not
+#: guessed: attachments travel base64-encoded (see `send_email`), which
+#: inflates them by 4/3, so the old flat "3 MB" produced a request of
+#: exactly 4.00 MB at the boundary -- over the ceiling before the subject
+#: was even added. Measured: 3 MiB raw -> 4.00 MB request, rejected.
+MAX_INLINE_ATTACHMENT_BYTES = ((MAX_REQUEST_BYTES - _ENVELOPE_ALLOWANCE_BYTES) * 3) // 4
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """One file to attach to an outgoing email.
+
+    Attributes:
+        path: File to read the bytes from at send time.
+        filename: Name the recipient sees, which is not necessarily the
+            name on disk -- a broadcast attachment is held in a temp file
+            with a generated name (see `app.gui.pages.email_dispatch`).
+    """
+
+    path: Path
+    filename: str
 
 
 class GraphAuthError(Exception):
@@ -114,8 +144,7 @@ async def send_email(
     to_name: str,
     subject: str,
     body: str,
-    attachment_path: Optional[Path] = None,
-    attachment_filename: Optional[str] = None,
+    attachments: Sequence[Attachment] = (),
 ) -> None:
     """Send one plain-text email to exactly one recipient.
 
@@ -131,14 +160,14 @@ async def send_email(
         to_name: Recipient's display name.
         subject: Email subject.
         body: Plain-text email body.
-        attachment_path: Optional file to attach (any type -- an invoice
-            PDF, see `app.emailing.bulk_send._send_one_invoice_email`, or
-            an administrator-chosen file for a broadcast email, see
-            `app.emailing.bulk_send.send_broadcast_email`). Its content
-            type is guessed from `attachment_filename` via `mimetypes`,
-            falling back to `application/octet-stream`.
-        attachment_filename: Filename shown for the attachment (required
-            if `attachment_path` is given).
+        attachments: Files to attach (any type -- an invoice PDF, see
+            `app.emailing.bulk_send._send_one_invoice_email`, a dunning
+            notice, or the administrator's own files for a broadcast, see
+            `app.emailing.bulk_send.send_broadcast_email`). Each content
+            type is guessed from its `filename` via `mimetypes`, falling
+            back to `application/octet-stream`. The size limit applies to
+            the **total** and is checked across all of them -- see
+            `MAX_INLINE_ATTACHMENT_BYTES` for why it is not a flat 3 MB.
 
     Returns:
         None.
@@ -155,31 +184,41 @@ async def send_email(
         "body": {"contentType": "Text", "content": body},
         "toRecipients": [{"emailAddress": {"address": to_address, "name": to_name}}],
     }
-    if attachment_path is not None:
-        try:
-            content_bytes = attachment_path.read_bytes()
-        except OSError as exc:
-            # Deliberately a GraphApiError, not a raw OSError: callers
-            # (app.emailing.bulk_send) only catch Graph* exceptions per
-            # recipient, so a PDF deleted/moved after being generated
-            # (see app.pdf.export_service) becomes a clean per-person
-            # skip instead of crashing the whole batch send.
-            raise GraphApiError(f"Anhang {attachment_path} konnte nicht gelesen werden: {exc}") from exc
-        if len(content_bytes) > MAX_INLINE_ATTACHMENT_BYTES:
-            raise GraphApiError(
-                f"Anhang {attachment_filename} ist mit "
-                f"{len(content_bytes) / 1024 / 1024:.1f} MB zu gross -- Microsoft "
-                f"Graph erlaubt hier maximal {MAX_INLINE_ATTACHMENT_BYTES // 1024 // 1024} MB."
+    if attachments:
+        payload_attachments = []
+        total_bytes = 0
+        for attachment in attachments:
+            try:
+                content_bytes = attachment.path.read_bytes()
+            except OSError as exc:
+                # Deliberately a GraphApiError, not a raw OSError: callers
+                # (app.emailing.bulk_send) only catch Graph* exceptions per
+                # recipient, so a PDF deleted/moved after being generated
+                # (see app.pdf.export_service) becomes a clean per-person
+                # skip instead of crashing the whole batch send.
+                raise GraphApiError(f"Anhang {attachment.path} konnte nicht gelesen werden: {exc}") from exc
+            total_bytes += len(content_bytes)
+            content_type = mimetypes.guess_type(attachment.filename or str(attachment.path))[0]
+            payload_attachments.append(
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": attachment.filename,
+                    "contentType": content_type or "application/octet-stream",
+                    "contentBytes": base64.b64encode(content_bytes).decode("ascii"),
+                }
             )
-        content_type = mimetypes.guess_type(attachment_filename or str(attachment_path))[0]
-        message["attachments"] = [
-            {
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                "name": attachment_filename,
-                "contentType": content_type or "application/octet-stream",
-                "contentBytes": base64.b64encode(content_bytes).decode("ascii"),
-            }
-        ]
+        # Checked over the total: Microsoft's limit is on the message, so
+        # three 2 MB files fail even though each one alone would pass.
+        if total_bytes > MAX_INLINE_ATTACHMENT_BYTES:
+            names = ", ".join(a.filename for a in attachments)
+            raise GraphApiError(
+                f"Anhänge ({names}) sind zusammen mit "
+                f"{format_size(total_bytes)} zu gross -- erlaubt sind hier "
+                f"insgesamt {format_size(MAX_INLINE_ATTACHMENT_BYTES)} "
+                "(Microsoft begrenzt die ganze Anfrage auf 4 MB, und Anhänge "
+                "werden base64-codiert um ein Drittel grösser)."
+            )
+        message["attachments"] = payload_attachments
 
     url = _SEND_MAIL_URL_TEMPLATE.format(sender_address=config.sender_address)
     headers = {"Authorization": f"Bearer {access_token}"}

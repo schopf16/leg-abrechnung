@@ -263,8 +263,7 @@ async def send_dunning(connection, config: Optional[GraphConfig], candidate: Dun
             to_name=person.display_name,
             subject=subject,
             body=body,
-            attachment_path=pdf_path,
-            attachment_filename=pdf_path.name,
+            attachments=[graph_client.Attachment(path=pdf_path, filename=pdf_path.name)],
         )
 
     now = datetime.now(timezone.utc).isoformat()

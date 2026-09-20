@@ -281,6 +281,40 @@ green locally before pushing:
 Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
 
+**A page rendering is not evidence that it works.** Rendering every route
+proves only that each page *builds*, never that a click does anything.
+The `nicegui 3.15 → 3.16` bump (`2a33e40`, the Dependabot commit "Bump
+the python-dependencies group with 7 updates", 2026-09-11) changed the
+upload API from `event.name`/`event.content.read()` to
+`event.file.name`/`await event.file.read()`; the email attachment handler
+kept the old attributes and raised, so for nine days every broadcast went
+out **without its attachment**.
+
+Why nobody saw it is worth knowing, because it is this app's own defect
+and it is now fixed. `app/main.py` registers `app.on_exception(
+_handle_ui_exception)` precisely so a handler crash shows a red toast.
+But NiceGUI runs a handler inside `with parent_slot:` and calls
+`handle_exception` *outside* it (`nicegui.events.handle_event`), so for a
+**synchronous** handler no slot remains: `ui.notify` raises `RuntimeError`
+and `app/gui/safe_notify.py` swallows it. Async handlers are unaffected —
+NiceGUI handles their exceptions inside the slot. `_handle_ui_exception`
+therefore now enters a connected client's context itself before
+notifying, and `safe_notify` logs its give-up branch at ERROR with a
+traceback, so "we could not tell the user" is at least greppable.
+
+So when bumping a GUI dependency or touching an event handler, drive at
+least one real interaction per changed surface rather than stopping at
+render. Where a handler reads framework objects, extract that part into a
+module-level function so a test can call it (`read_uploaded_file` in
+`app/gui/pages/email_dispatch.py`), and pin the framework's event shape
+in a contract test (`tests/test_email_attachments.py`) so the next API
+change fails a test instead of a real send.
+
+Note also that `tests/conftest.py` has an autouse fixture pointing
+`connection_scope()` at a throwaway database: without it, any test that
+renders a page opens the real `data/leg_abrechnung.sqlite3` with actual
+members' data in it.
+
 ### Security review is Claude's job, not GitHub's
 
 On GitHub this repository runs **CodeQL** (default setup), **secret
