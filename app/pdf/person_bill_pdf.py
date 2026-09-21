@@ -2,17 +2,26 @@
 
 Every person gets exactly one document per LEG they participate in for a
 quarter, regardless of whether they only consume, only produce, or both
-(project brief follow-up: "jede Partei erhält nur 1 PDF"). The document
-shows, in order:
+(project brief follow-up: "jede Partei erhält nur 1 PDF"). That holds
+however many sites and metering points they hold: a participant is one
+customer of the LEG with one netted amount, the way a vZEV operator
+receives one figure from the grid operator and works out the internal
+shares themselves. The document shows, in order:
 
-1. Consumption (Bezug) for the whole quarter, as one summed line.
-2. Vergütung (production) for the whole quarter, as one summed line.
-3. admin fee (admin surcharge on consumption) and Kosten
+1. The locally shared energy, grouped by site: each site's address, its
+   Bezug and its Einspeisung itemised per metering point, and that
+   site's own balance -- the figure a participant with several sites
+   carries into their own internal allocation.
+2. admin fee (admin surcharge on consumption) and Kosten
    paper invoice (flat paper-invoice fee), if either applies.
-4. The net settlement: consumption value minus production value plus the
+3. The net settlement: consumption value minus production value plus the
    two fees above, rounded to the nearest Rappen exactly once for the
    energy portion (the fees are their own already-rounded/exact lines --
    see `app.domain.billing`'s module docstring).
+
+Every franc figure above the net settlement is an unrounded display
+value; the grouping itself is `app.pdf.bill_breakdown`, kept separate so
+it can be tested without generating a PDF.
 
 A Swiss QR-bill (Einzahlungsschein) is only printed when the person
 actually owes the LEG money (`net_amount_rappen > 0`). When the net
@@ -31,15 +40,18 @@ from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.person import Person
 from app.models.settings import LegSettings
+from app.pdf.bill_breakdown import BillBreakdown, MeteringPointInfo, build_bill_breakdown
 from app.pdf.layout import (
     CONTENT_BOTTOM_Y,
+    TableLine,
+    draw_billing_table,
     draw_intro_text,
     draw_meta_block,
-    draw_monthly_table,
     draw_net_settlement,
     draw_recipient_block,
     draw_sender_block,
     draw_title,
+    ensure_space,
     new_canvas,
 )
 from app.pdf.qr_bill_render import build_qr_bill, draw_qr_bill
@@ -64,31 +76,60 @@ def _quarter_period_label(year: int, quarter: int) -> str:
     return f"{start.strftime('%d.%m.%Y')} – {last_day.strftime('%d.%m.%Y')}"
 
 
-def _energy_row(
-    year: int, quarter: int, kwh: float, price_rp_per_kwh: float
-) -> tuple[list[tuple[str, str, str, str]], float]:
-    """Build a single summed display row for one quarter's energy total.
+def _energy_lines(breakdown: BillBreakdown, price_rp_per_kwh: float) -> list[TableLine]:
+    """Turn a grouped breakdown into the document's energy lines.
+
+    One block per site -- heading, a "Bezug" section, an "Einspeisung"
+    section, and the site's own balance. The balance is the figure a
+    participant with several sites carries into their own internal
+    allocation; the LEG itself only ever settles the single net amount
+    below.
+
+    The grand totals per direction are only appended when the document
+    covers more than one site: with a single site they would repeat the
+    block's own balance one line further down.
 
     Args:
-        year: Calendar year of the billing quarter.
-        quarter: Quarter number, 1 to 4.
-        kwh: Total energy for the quarter, in kWh.
-        price_rp_per_kwh: Internal energy price in Rappen per kWh.
+        breakdown: The person's quarter, grouped by site.
+        price_rp_per_kwh: The run's frozen price, in Rappen per kWh.
 
     Returns:
-        A `(rows, subtotal_chf)` tuple: `rows` has exactly one
-        `(period_label, kwh_text, price_text, amount_text)` tuple;
-        `subtotal_chf` is the unrounded amount in Swiss francs, for
-        display only.
+        The lines to hand to `draw_billing_table`.
     """
-    amount_rappen = kwh * price_rp_per_kwh
-    row = (
-        _quarter_period_label(year, quarter),
-        f"{kwh:.3f}",
-        f"{price_rp_per_kwh:.2f}",
-        f"{amount_rappen / 100:.2f}",
-    )
-    return [row], amount_rappen / 100
+    price_text = f"{price_rp_per_kwh:.2f}"
+    lines: list[TableLine] = []
+
+    for site in breakdown.sites:
+        lines.append(TableLine(site.address, style="group"))
+        for section_label, rows in (("Bezug", site.consumption), ("Einspeisung", site.feed_in)):
+            if not rows:
+                continue
+            lines.append(TableLine(section_label, style="subgroup"))
+            lines.extend(
+                TableLine(row.name, f"{row.kwh:.3f}", price_text, f"{row.amount_chf:.2f}") for row in rows
+            )
+        lines.append(TableLine("Saldo Standort", amount=f"{site.balance_chf:.2f}", style="total"))
+
+    if breakdown.has_multiple_sites:
+        lines.append(
+            TableLine(
+                "Total Bezug",
+                f"{breakdown.total_consumed_kwh:.3f}",
+                amount=f"{breakdown.total_consumption_chf:.2f}",
+                style="total",
+            )
+        )
+        if breakdown.feed_in_rows:
+            lines.append(
+                TableLine(
+                    "Total Einspeisung",
+                    f"{breakdown.total_produced_kwh:.3f}",
+                    amount=f"{breakdown.total_feed_in_chf:.2f}",
+                    style="total",
+                )
+            )
+
+    return lines
 
 
 def generate_person_bill_pdf(
@@ -99,6 +140,8 @@ def generate_person_bill_pdf(
     leg: Leg,
     settings: LegSettings,
     output_path,
+    *,
+    metering_point_info: dict[int, MeteringPointInfo],
 ):
     """Render one person's combined billing document as a PDF.
 
@@ -123,6 +166,11 @@ def generate_person_bill_pdf(
         settings: Current LEG-wide settings (address, QR-IBAN, admin fee
             rate for display).
         output_path: Destination path for the generated PDF.
+        metering_point_info: Resolved metering point and site data for
+            every metering point in `person_result`, keyed by metering
+            point id (built by the caller, see
+            `app.pdf.export_service.export_billing_run_documents`) --
+            this layer reads no database.
 
     Returns:
         `output_path`, for convenience.
@@ -144,6 +192,7 @@ def generate_person_bill_pdf(
             f"Zahlbar bis: {date.fromisoformat(item.due_date).strftime('%d.%m.%Y')}",
             f"Kunden-Nr.: {person.formatted_customer_number}",
             f"Periode: {period}",
+            _quarter_period_label(run.period_year, run.period_quarter),
         ],
     )
 
@@ -155,30 +204,15 @@ def generate_person_bill_pdf(
         y,
     )
 
-    if item.consumed_kwh > 0:
-        rows, consumed_subtotal_chf = _energy_row(
-            run.period_year, run.period_quarter, person_result.consumed_local_kwh, item.price_rp_per_kwh
-        )
-        y = draw_monthly_table(
+    breakdown = build_bill_breakdown(person_result, metering_point_info, item.price_rp_per_kwh)
+    energy_lines = _energy_lines(breakdown, item.price_rp_per_kwh)
+    if energy_lines:
+        y = draw_billing_table(
             canvas,
             y,
-            "Bezug (lokal gedeckter Verbrauch)",
-            rows,
-            "Zwischensumme Bezug",
-            f"{consumed_subtotal_chf:.2f} CHF",
-        )
-
-    if item.produced_kwh > 0:
-        rows, produced_subtotal_chf = _energy_row(
-            run.period_year, run.period_quarter, person_result.produced_local_kwh, item.price_rp_per_kwh
-        )
-        y = draw_monthly_table(
-            canvas,
-            y,
-            "Vergütung (lokal gelieferte Produktion)",
-            rows,
-            "Zwischensumme Vergütung",
-            f"{produced_subtotal_chf:.2f} CHF",
+            "Lokal geteilter Strom",
+            energy_lines,
+            label_header="Standort / Messpunkt",
         )
 
     if (
@@ -190,10 +224,10 @@ def generate_person_bill_pdf(
         # are frozen at billing time, so a later rate change in
         # Einstellungen never alters how an already-billed fee appears
         # (see the module docstring of app.domain.billing).
-        fee_rows = []
+        fee_lines = []
         if item.admin_fee_consumption_rappen > 0:
-            fee_rows.append(
-                (
+            fee_lines.append(
+                TableLine(
                     "Verwaltungsaufwand Bezug",
                     f"{item.consumed_kwh:.3f}",
                     f"{item.admin_fee_consumption_rp_per_kwh:.4f}",
@@ -201,33 +235,25 @@ def generate_person_bill_pdf(
                 )
             )
         if item.admin_fee_feed_in_rappen > 0:
-            fee_rows.append(
-                (
+            fee_lines.append(
+                TableLine(
                     "Verwaltungsaufwand Einspeisung",
                     f"{item.produced_kwh:.3f}",
                     f"{item.admin_fee_feed_in_rp_per_kwh:.4f}",
                     f"{item.admin_fee_feed_in_rappen / 100:.2f}",
                 )
             )
-        fee_rows.append(
-            (
-                "Kosten Papierrechnung",
-                "",
-                "",
-                f"{item.paper_invoice_rappen / 100:.2f}",
-            )
-        )
+        fee_lines.append(TableLine("Kosten Papierrechnung", amount=f"{item.paper_invoice_rappen / 100:.2f}"))
         fee_total_chf = (
             item.admin_fee_consumption_rappen + item.admin_fee_feed_in_rappen + item.paper_invoice_rappen
         ) / 100
-        y = draw_monthly_table(
-            canvas,
-            y,
-            "Verwaltungsaufwand",
-            fee_rows,
-            "Total Verwaltungsaufwand",
-            f"{fee_total_chf:.2f} CHF",
-        )
+        fee_lines.append(TableLine("Total Verwaltungsaufwand", amount=f"{fee_total_chf:.2f}", style="total"))
+        y = draw_billing_table(canvas, y, "Verwaltungsaufwand", fee_lines, label_header="Position")
+
+    # The net settlement is drawn as one block and cannot break, so give it
+    # a page of its own rather than let it run off the bottom of a long
+    # itemisation.
+    y = ensure_space(canvas, y, 45)
 
     net_amount_chf = Decimal(item.net_amount_rappen) / 100
     if item.is_owed_to_leg:

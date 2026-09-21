@@ -21,6 +21,7 @@ from app.domain.quality_checks import (
     check_leg_production_capacity,
     check_leg_upgrade_potential,
     check_onboarding_progress,
+    check_open_billing_cycle,
     check_substation_area_one_sided,
     check_unresolved_bank_transactions,
 )
@@ -84,6 +85,8 @@ def _load_overview(connection) -> dict:
     for warning in check_leg_assignment(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_onboarding_progress(connection):
+        action_items.append((warning.message, warning.link))
+    for warning in check_open_billing_cycle(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_unresolved_bank_transactions(connection):
         action_items.append((warning.message, warning.link))

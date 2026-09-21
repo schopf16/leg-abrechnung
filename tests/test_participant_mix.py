@@ -393,3 +393,110 @@ def test_leg_should_not_split_when_not_mixed(db):
     _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
 
     assert participant_mix.leg_should_split(db, dedicated_leg_id) is False
+
+
+# --- The overview has to agree with itself ------------------------------
+#
+# Reported from real data: a LEG showing 35 metering points but "8
+# Produzent : 25 Konsument" -- two metering points counted in neither.
+# Two separate causes, both of which made the badge read lower than the
+# count beside it.
+
+
+def test_the_two_sides_add_up_to_the_metering_point_count(db):
+    """What a reader checks first: 9 + 26 has to be the 35 shown beside it."""
+    leg_id = _leg(db, "LEG")
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    person_id = _person(db)
+
+    for _ in range(3):
+        mp = _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN)
+        _assignment(db, person_id, mp, date(2025, 1, 1))
+    for _ in range(5):
+        mp = _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)
+        _assignment(db, person_id, mp, date(2025, 1, 1))
+
+    mix = participant_mix.compute_participant_mix_for_leg(db, leg_id)
+
+    assert mix.producer_metering_points + mix.consumer_metering_points == leg_repo.count_metering_points(
+        db, leg_id
+    )
+    assert mix.ratio == "3:5"
+    # One person holds all eight, so the person counts are 1:1 -- which is
+    # exactly why the badge must not show them.
+    assert (mix.producer_count, mix.consumer_count) == (1, 1)
+
+
+def test_a_metering_point_without_a_current_assignment_still_counts(db):
+    """It belongs to the LEG and it has a direction, so it is not invisible.
+
+    Dropping it is one of the two reasons the badge fell short of the
+    metering point count, and nothing on screen said why.
+    """
+    leg_id = _leg(db, "LEG")
+    site_id = _site(db, _substation_area(db, "TRA"))
+    person_id = _person(db)
+
+    assigned = _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)
+    _assignment(db, person_id, assigned, date(2025, 1, 1))
+    _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)  # never assigned
+    moved_out = _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN)
+    _assignment(db, person_id, moved_out, date(2020, 1, 1), date(2020, 12, 31))
+
+    mix = participant_mix.compute_participant_mix_for_leg(db, leg_id)
+
+    assert mix.consumer_metering_points == 2
+    assert mix.producer_metering_points == 1
+    assert mix.unassigned_metering_points == 2, "beide müssen gesondert ausgewiesen sein"
+    # The people are counted as before: nobody currently holds the other two.
+    assert (mix.producer_count, mix.consumer_count) == (0, 1)
+
+
+def test_a_leg_counts_its_own_metering_points_not_its_neighbours(db):
+    """LEG membership hangs on the metering point, not on the address.
+
+    Two meters at one address can belong to different LEGs, so scoping
+    the mix through the sites pulled a neighbour's meter into these
+    figures -- and made them disagree with the count beside them.
+    """
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    ours, theirs = _leg(db, "Unsere"), _leg(db, "Fremde")
+    person_id = _person(db)
+
+    mine = _metering_point(db, site_id, ours, DIRECTION_CONSUMPTION)
+    _assignment(db, person_id, mine, date(2025, 1, 1))
+    not_mine = _metering_point(db, site_id, theirs, DIRECTION_FEED_IN)
+    _assignment(db, person_id, not_mine, date(2025, 1, 1))
+
+    mix = participant_mix.compute_participant_mix_for_leg(db, ours)
+
+    assert mix.consumer_metering_points == 1
+    assert mix.producer_metering_points == 0, "der Messpunkt der anderen LEG gehört nicht dazu"
+    assert mix.producer_metering_points + mix.consumer_metering_points == (
+        leg_repo.count_metering_points(db, ours)
+    )
+
+
+def test_the_founding_threshold_still_counts_people(db):
+    """Seven meters are not seven members.
+
+    The overview changed to metering points; the threshold that decides
+    whether a substation area is worth its own LEG must not follow, or a
+    single person with eight meters would look like a community.
+    """
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    leg_id = _leg(db, "LEG")
+    person_id = _person(db)
+
+    for direction in (DIRECTION_FEED_IN, *[DIRECTION_CONSUMPTION] * 7):
+        mp = _metering_point(db, site_id, leg_id, direction)
+        _assignment(db, person_id, mp, date(2025, 1, 1))
+
+    mix = participant_mix.compute_participant_mix_for_substation_area(db, area_id)
+
+    assert mix.producer_metering_points + mix.consumer_metering_points == 8
+    assert mix.total_persons == 2, "eine Person, auf beiden Seiten gezählt"
+    assert not participant_mix.leg_should_split(db, leg_id, min_persons=7)

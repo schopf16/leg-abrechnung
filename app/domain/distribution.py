@@ -29,11 +29,28 @@ assigned to it at that exact moment (see `app.models.assignment`), so a
 mid-quarter move splits a MeteringPoint's energy between two persons
 automatically. Moving never changes the MeteringPoint, its site, or that
 MeteringPoint's LEG -- only which Person the Assignment points at.
+
+The result covers everyone who took part in the quarter, not only those
+whose meters actually moved energy: every person with an Assignment
+overlapping the quarter appears, and every metering point they held
+appears under them, at zero where nothing was shared. A bill's line-up
+must not change from one quarter to the next -- otherwise a recipient
+cannot tell whether a missing meter was deliberately left out or simply
+forgotten. See `_seed_participants`.
+
+The per-MeteringPoint resolution survives into the result
+(`PersonQuarterResult.by_metering_point`) rather than being summed away:
+a billing document itemises the shared energy per site and per metering
+point, and a participant holding several of them -- a property
+management with more than one building -- has to allocate their single
+amount internally. Summing the breakdown reproduces the person's totals
+exactly; it is the same energy at a finer resolution, never an extra
+figure alongside it.
 """
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from app.domain.period import months_in_quarter, quarter_bounds
 from app.models import metering_point as metering_point_repo
@@ -60,6 +77,36 @@ class LegNotAssignedError(Exception):
 
 
 @dataclass
+class MeteringPointQuarterResult:
+    """One metering point's locally shared energy totals for a quarter.
+
+    The distribution engine already computes every share per metering
+    point; this keeps that resolution instead of discarding it into the
+    person's total, so a billing document can itemise where a
+    participant's kWh came from (see `app.pdf.bill_breakdown`). A
+    participant holding several metering points -- a property management
+    with more than one building -- cannot allocate their amount
+    internally from a single summed figure.
+
+    A metering point measures either consumption or feed-in, never both
+    (`app.models.metering_point`), so exactly one of the two totals below
+    is ever non-zero. Both are kept anyway: the caller groups these by
+    site without needing to re-check each metering point's direction.
+
+    Attributes:
+        metering_point_id: The metering point these totals belong to.
+        consumed_local_kwh: Locally-sourced energy consumed through this
+            metering point, rounded to `KWH_PRECISION` decimals.
+        produced_local_kwh: Locally-delivered energy fed in through this
+            metering point, same rounding.
+    """
+
+    metering_point_id: int
+    consumed_local_kwh: float = 0.0
+    produced_local_kwh: float = 0.0
+
+
+@dataclass
 class PersonQuarterResult:
     """One person's locally shared energy totals for a quarter, within one LEG.
 
@@ -78,6 +125,12 @@ class PersonQuarterResult:
         produced_by_month: Locally-delivered production, keyed by calendar
             month (1-12), same rounding and completeness as
             `consumed_by_month`.
+        by_metering_point: The same quarter totals broken down per
+            metering point, keyed by metering point id. Summing these
+            reproduces `consumed_local_kwh`/`produced_local_kwh` exactly
+            (both are rounded from the same full-precision figures), so
+            this is a finer view of the same energy, never an additional
+            one.
     """
 
     person_id: int
@@ -85,6 +138,7 @@ class PersonQuarterResult:
     produced_local_kwh: float = 0.0
     consumed_by_month: dict[int, float] = field(default_factory=dict)
     produced_by_month: dict[int, float] = field(default_factory=dict)
+    by_metering_point: dict[int, MeteringPointQuarterResult] = field(default_factory=dict)
 
 
 @dataclass
@@ -186,6 +240,51 @@ def _load_leg_and_designation_by_metering_point(
     return leg_id_by_metering_point, designation_by_metering_point
 
 
+def _seed_participants(
+    result: DistributionResult,
+    assignments_by_metering_point: dict[int, list],
+    quarter_start: date,
+    quarter_end_exclusive: date,
+) -> None:
+    """Enter every participant of the quarter into the result, at zero.
+
+    Who took part is decided by the assignments, not by the energy: a
+    metering point that shared nothing this quarter -- a flat standing
+    empty, a winter with no feed-in at all -- still belongs on its
+    owner's bill, with 0 kWh. The line-up of a bill must not change from
+    one quarter to the next, or the recipient cannot tell whether a
+    missing meter was left out on purpose or forgotten.
+
+    The distribution loop then adds onto these entries, so a participant
+    with energy is indistinguishable from one seeded here.
+
+    Args:
+        result: The result to seed, modified in place.
+        assignments_by_metering_point: Assignments of every metering
+            point belonging to this LEG, keyed by metering point id.
+        quarter_start: First calendar day of the quarter.
+        quarter_end_exclusive: Midnight of the day after the quarter
+            ends, as `app.domain.period.quarter_bounds` returns it.
+
+    Returns:
+        None.
+    """
+    last_day = quarter_end_exclusive - timedelta(days=1)
+    for metering_point_id, assignments in assignments_by_metering_point.items():
+        for assignment in assignments:
+            overlaps = assignment.valid_from <= last_day and (
+                assignment.valid_to is None or assignment.valid_to >= quarter_start
+            )
+            if not overlaps:
+                continue
+            person_result = result.person_results.setdefault(
+                assignment.person_id, PersonQuarterResult(person_id=assignment.person_id)
+            )
+            person_result.by_metering_point.setdefault(
+                metering_point_id, MeteringPointQuarterResult(metering_point_id=metering_point_id)
+            )
+
+
 def compute_quarter_distribution(
     connection: sqlite3.Connection, leg_id: int, year: int, quarter: int
 ) -> DistributionResult:
@@ -231,13 +330,17 @@ def compute_quarter_distribution(
 
     leg_rows = [row for row in rows if leg_id_by_metering_point[row["metering_point_id"]] == leg_id]
 
-    assignments_by_metering_point: dict[int, list] = {}
-    for metering_point_id in {row["metering_point_id"] for row in leg_rows}:
-        assignments_by_metering_point[metering_point_id] = assignment_repo.list_for_metering_point(
-            connection, metering_point_id
-        )
+    # Assignments are loaded for every metering point of this LEG, not just
+    # the ones with readings: a metering point that delivered nothing this
+    # quarter still belongs on its owner's bill (see `_seed_participants`).
+    assignments_by_metering_point: dict[int, list] = {
+        metering_point_id: assignment_repo.list_for_metering_point(connection, metering_point_id)
+        for metering_point_id, mp_leg_id in leg_id_by_metering_point.items()
+        if mp_leg_id == leg_id
+    }
 
     result = DistributionResult(leg_id=leg_id, year=year, quarter=quarter)
+    _seed_participants(result, assignments_by_metering_point, start.date(), end.date())
     person_cache: dict[tuple[int, date], "int | None"] = {}
 
     result.interval_count = len({row["timestamp"] for row in leg_rows})
@@ -269,17 +372,23 @@ def compute_quarter_distribution(
             person_result = result.person_results.setdefault(
                 person_id, PersonQuarterResult(person_id=person_id)
             )
+            metering_point_id = row["metering_point_id"]
+            metering_point_result = person_result.by_metering_point.setdefault(
+                metering_point_id, MeteringPointQuarterResult(metering_point_id=metering_point_id)
+            )
             month = moment.month
             if is_consumption:
                 person_result.consumed_local_kwh += local_share
                 person_result.consumed_by_month[month] = (
                     person_result.consumed_by_month.get(month, 0.0) + local_share
                 )
+                metering_point_result.consumed_local_kwh += local_share
             else:
                 person_result.produced_local_kwh += local_share
                 person_result.produced_by_month[month] = (
                     person_result.produced_by_month.get(month, 0.0) + local_share
                 )
+                metering_point_result.produced_local_kwh += local_share
 
     quarter_months = [month for _, month in months_in_quarter(year, quarter)]
     for person_result in result.person_results.values():
@@ -291,6 +400,13 @@ def compute_quarter_distribution(
 
         person_result.consumed_local_kwh = round(person_result.consumed_local_kwh, KWH_PRECISION)
         person_result.produced_local_kwh = round(person_result.produced_local_kwh, KWH_PRECISION)
+        for metering_point_result in person_result.by_metering_point.values():
+            metering_point_result.consumed_local_kwh = round(
+                metering_point_result.consumed_local_kwh, KWH_PRECISION
+            )
+            metering_point_result.produced_local_kwh = round(
+                metering_point_result.produced_local_kwh, KWH_PRECISION
+            )
         for month in quarter_months:
             person_result.consumed_by_month[month] = round(
                 person_result.consumed_by_month[month], KWH_PRECISION

@@ -18,6 +18,38 @@ from app.gui.safe_notify import safe_notify
 from app.models import settings as settings_repo
 
 
+def _backup_row(info) -> dict:
+    """Describe one backup file for the table.
+
+    The counts are what makes two backups tellable apart -- a filename
+    and a size say nothing about which state a snapshot holds -- so they
+    come before the filename rather than after it.
+
+    Args:
+        info: A `app.backup.backup_service.BackupFileInfo`.
+
+    Returns:
+        A row dict matching the table's columns.
+    """
+    contents = info.contents
+    return {
+        "filename": info.path.name,
+        "path": str(info.path),
+        "created_at": info.created_at.strftime("%d.%m.%Y %H:%M"),
+        # An unreadable backup shows dashes, never zeroes: "no answer"
+        # and "an empty community" must not look the same.
+        "legs": contents.legs if contents else "?",
+        "persons": contents.persons if contents else "?",
+        "metering_points": contents.metering_points if contents else "?",
+        "size": format_size(info.size_bytes),
+        # A file that cannot be restored still appears, carrying the
+        # reason -- otherwise "why is my file not in the list" has no
+        # answer anywhere.
+        "state": "✓ verwendbar" if info.is_usable else f"✗ {info.problem}",
+        "usable": info.is_usable,
+    }
+
+
 @ui.page("/backup")
 def backup_page() -> None:
     """Render the backup and restore page.
@@ -65,9 +97,18 @@ def backup_page() -> None:
 
         backups_table = ui.table(
             columns=[
-                {"name": "filename", "label": "Datei", "field": "filename", "align": "left"},
                 {"name": "created_at", "label": "Erstellt am", "field": "created_at", "align": "left"},
+                {"name": "legs", "label": "LEG", "field": "legs", "align": "right"},
+                {"name": "persons", "label": "Personen", "field": "persons", "align": "right"},
+                {
+                    "name": "metering_points",
+                    "label": "Messpunkte",
+                    "field": "metering_points",
+                    "align": "right",
+                },
                 {"name": "size", "label": "Grösse", "field": "size", "align": "right"},
+                {"name": "state", "label": "Zustand", "field": "state", "align": "left"},
+                {"name": "filename", "label": "Datei", "field": "filename", "align": "left"},
                 {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ],
             rows=[],
@@ -77,7 +118,7 @@ def backup_page() -> None:
             "body-cell-actions",
             r"""
             <q-td :props="props">
-                <q-btn dense flat label="Wiederherstellen" color="warning"
+                <q-btn v-if="props.row.usable" dense flat label="Wiederherstellen" color="warning"
                        @click="() => $parent.$emit('restore', props.row)" />
             </q-td>
             """,
@@ -89,15 +130,7 @@ def backup_page() -> None:
             Returns:
                 None.
             """
-            backups_table.rows = [
-                {
-                    "filename": b.path.name,
-                    "path": str(b.path),
-                    "created_at": b.created_at.strftime("%d.%m.%Y %H:%M:%S"),
-                    "size": format_size(b.size_bytes),
-                }
-                for b in list_backups()
-            ]
+            backups_table.rows = [_backup_row(b) for b in list_backups()]
             backups_table.update()
 
         def do_create_backup() -> None:

@@ -17,10 +17,13 @@ from pathlib import Path
 from app.domain.distribution import compute_quarter_distribution
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
+from app.models import site as site_repo
 from app.models.billing_run import BillingRun
 from app.paths import OUTPUT_DIR
+from app.pdf.bill_breakdown import MeteringPointInfo
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
 from app.pdf.person_bill_pdf import PAYMENT_TERM, generate_person_bill_pdf
 from app.pdf.qr_bill_render import QrBillConfigurationError
@@ -39,6 +42,10 @@ class ExportResult:
             (Auszahlungsliste), or `None` if the run has no payouts to make.
         errors: Human-readable (German) messages for line items that could
             not be rendered (e.g. missing QR-IBAN configuration).
+        removed_paths: Documents of a superseded run that were deleted
+            before writing this one (see `_remove_superseded_documents`).
+            Surfaced rather than silently discarded -- a file vanishing
+            without a word is how the next surprise starts.
     """
 
     output_dir: Path
@@ -46,6 +53,7 @@ class ExportResult:
     invoice_list_path: Path | None = None
     payout_list_path: Path | None = None
     errors: list[str] = field(default_factory=list)
+    removed_paths: list[Path] = field(default_factory=list)
 
 
 def _sanitize_filename_part(text: str) -> str:
@@ -60,6 +68,90 @@ def _sanitize_filename_part(text: str) -> str:
     """
     cleaned = re.sub(r"[^\w\säöüÄÖÜ-]", "_", text, flags=re.UNICODE).strip()
     return cleaned[:60] or "Person"
+
+
+#: Filename patterns this module itself produces, and the only ones it
+#: will ever delete. Anything else in the folder belongs to the user.
+_GENERATED_PATTERNS = ("Abrechnung_*.pdf", "Rechnungsliste_*.csv", "Auszahlungsliste_*.csv")
+
+
+def _remove_superseded_documents(output_dir: Path, keep: set[Path]) -> list[Path]:
+    """Delete the documents of an earlier run for this LEG and quarter.
+
+    Re-running a quarter deletes the old run and creates a new one, whose
+    line items get fresh ids -- so the export used to write
+    `Abrechnung_Muster_7.pdf` next to the previous `..._1.pdf` and leave
+    both lying there, identical in every visible respect but the amount.
+    Choosing between them is not a judgement anyone can make from a file
+    listing, and getting it wrong means sending a member the wrong
+    invoice. There is exactly one current set, so exactly one set is kept.
+
+    Only files matching `_GENERATED_PATTERNS` are touched: the folder may
+    hold notes or a signed copy the administrator put there, and none of
+    that is this function's to remove.
+
+    Called *after* the new documents are written, never before: an export
+    that fails halfway -- a missing QR-IBAN, a vanished person -- would
+    otherwise leave the administrator with neither the new documents nor
+    the old ones.
+
+    Args:
+        output_dir: The run's output folder.
+        keep: Absolute paths written by the export that just ran.
+
+    Returns:
+        `(removed, problems)`: the paths actually deleted, and German
+        messages for any that could not be.
+    """
+    removed: list[Path] = []
+    problems: list[str] = []
+    for pattern in _GENERATED_PATTERNS:
+        for path in sorted(output_dir.glob(pattern)):
+            if not path.is_file() or path.resolve() in keep:
+                continue
+            try:
+                path.unlink()
+            except OSError as exc:
+                # A superseded document the administrator happens to have
+                # open in a PDF viewer cannot be deleted on Windows. The
+                # export itself succeeded -- the new documents are already
+                # written -- so this is reported, never raised: presenting
+                # a completed export as a failure would be worse than the
+                # stale file it is warning about.
+                problems.append(f"„{path.name}“ konnte nicht entfernt werden ({exc.strerror or exc}).")
+                continue
+            removed.append(path)
+    return removed, problems
+
+
+def _load_metering_point_info(connection: sqlite3.Connection) -> dict[int, MeteringPointInfo]:
+    """Resolve every metering point into what the billing document prints.
+
+    Done once per export rather than once per document: the same handful
+    of sites is referenced by most participants.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        `MeteringPointInfo` keyed by metering point id. A metering point
+        whose site has vanished is left out, and the document simply
+        omits it rather than failing to render.
+    """
+    sites = {site.id: site for site in site_repo.list_all(connection)}
+    info: dict[int, MeteringPointInfo] = {}
+    for metering_point in metering_point_repo.list_all(connection):
+        site = sites.get(metering_point.site_id)
+        if site is None:
+            continue
+        info[metering_point.id] = MeteringPointInfo(
+            designation=metering_point.designation,
+            label=metering_point.label,
+            site_id=site.id,
+            site_address=site.full_address,
+            direction=metering_point.direction,
+        )
+    return info
 
 
 def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun) -> ExportResult:
@@ -81,6 +173,7 @@ def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun
     # netted amount is); recomputed here from the same live readings the
     # run itself was built from.
     distribution = compute_quarter_distribution(connection, run.leg_id, run.period_year, run.period_quarter)
+    metering_point_info = _load_metering_point_info(connection)
 
     output_dir = OUTPUT_DIR / f"{run.period_year}_Q{run.period_quarter}" / _sanitize_filename_part(leg.name)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -108,7 +201,16 @@ def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun
             billing_run_repo.set_item_due_date(connection, item.id, item.due_date)
 
         try:
-            generate_person_bill_pdf(run, item, person_result, person, leg, settings, path)
+            generate_person_bill_pdf(
+                run,
+                item,
+                person_result,
+                person,
+                leg,
+                settings,
+                path,
+                metering_point_info=metering_point_info,
+            )
         except QrBillConfigurationError as exc:
             result.errors.append(f"{person.display_name}: {exc}")
             continue
@@ -125,5 +227,12 @@ def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun
         payout_list_path = output_dir / f"Auszahlungsliste_Q{run.period_quarter}_{run.period_year}.csv"
         generate_payout_list_csv(items, persons, payout_list_path)
         result.payout_list_path = payout_list_path
+
+    written = {path.resolve() for path in result.document_paths}
+    for path in (result.invoice_list_path, result.payout_list_path):
+        if path is not None:
+            written.add(path.resolve())
+    result.removed_paths, cleanup_problems = _remove_superseded_documents(output_dir, written)
+    result.errors.extend(cleanup_problems)
 
     return result

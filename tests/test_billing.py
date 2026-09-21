@@ -283,7 +283,13 @@ def test_verify_sum_balance_ignores_admin_fee_feed_in_too():
 
 
 def test_full_billing_run_winter_quarter_has_zero_amounts(db):
-    """With demo data, the winter run (P=0 throughout) bills nothing."""
+    """With demo data, the winter run (P=0 throughout) charges nothing.
+
+    It still produces one item per participant, reading 0.00 -- a
+    quarter in which nothing could be shared is a result the recipient
+    is entitled to see, not a silence. The flat paper-invoice fee is
+    deliberately withheld from such a document.
+    """
     create_demo_data(db)
     leg_id = _demo_leg_id(db)
     run, items, control_check, distribution = create_or_replace_billing_run(db, leg_id, *WINTER_QUARTER)
@@ -291,7 +297,9 @@ def test_full_billing_run_winter_quarter_has_zero_amounts(db):
     assert run.leg_id == leg_id
     assert run.period_year == WINTER_QUARTER[0]
     assert run.period_quarter == WINTER_QUARTER[1]
-    assert items == []
+    assert items, "jeder Teilnehmer erhält auch im Nullquartal eine Position"
+    assert all(i.net_amount_rappen == 0 for i in items)
+    assert all(i.paper_invoice_rappen == 0 for i in items), "keine Pauschale auf einem Nullbeleg"
     assert control_check.balanced
     assert distribution.total_consumed_local_kwh() == 0.0
     assert distribution.total_produced_local_kwh() == 0.0

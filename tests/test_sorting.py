@@ -506,6 +506,7 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
                     "leg": "LEG Ittigen",
                     "person": "Muster Anna",
                     "direction": "Bezug",
+                    "label": "Whg. 3. OG",
                 },
                 {
                     "designation": "CH200",
@@ -514,6 +515,9 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
                     "leg": "-",
                     "person": "-",
                     "direction": "Einspeisung",
+                    # No label entered -- the common case, and what the
+                    # sort key has to cope with.
+                    "label": "",
                 },
             ],
             metering_points.SORT_OPTIONS,

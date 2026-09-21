@@ -40,6 +40,7 @@ DIRECTION_LABELS = {
 #: keys `_to_row` puts into each row dict.
 PRINT_COLUMNS = [
     ("Messpunkt", "designation"),
+    ("Bezeichnung", "label"),
     ("Messrichtung", "direction"),
     ("Standort-Adresse", "site_address"),
     ("LEG", "leg"),
@@ -60,6 +61,7 @@ SORT_OPTIONS = [
     SortOption("leg", "LEG", lambda row: text_key(row["leg"], row["designation"])),
     SortOption("person", "Zugeordnete Person", lambda row: text_key(row["person"], row["designation"])),
     SortOption("direction", "Messrichtung", lambda row: text_key(row["direction"], row["designation"])),
+    SortOption("label", "Bezeichnung", lambda row: text_key(row["label"], row["designation"])),
 ]
 
 
@@ -143,6 +145,7 @@ def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
     search_text = " ".join(
         [
             mp.designation,
+            mp.label,
             DIRECTION_LABELS.get(mp.direction, mp.direction),
             site_address,
             leg_name,
@@ -152,6 +155,7 @@ def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
     return {
         "id": mp.id,
         "designation": mp.designation,
+        "label": mp.label,
         "direction": DIRECTION_LABELS.get(mp.direction, mp.direction),
         "site_id": mp.site_id,
         "site_address": site_address,
@@ -232,6 +236,8 @@ def metering_points_page() -> None:
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         _metering_point_designation_row(row["designation"])
+                        if row["label"]:
+                            ui.label(row["label"]).classes("text-caption text-grey-8")
                         ui.label(row["direction"]).classes("text-caption text-grey-6")
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         ui.label(row["site_street"])
@@ -389,6 +395,8 @@ def metering_point_detail_page(metering_point_id: int) -> None:
         ui.link("← Zurück zu Messpunkten", "/metering-points")
         _metering_point_designation_row(mp.designation, classes="text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
+            if mp.label:
+                ui.label(f"Bezeichnung: {mp.label}")
             ui.label(f"Messrichtung: {DIRECTION_LABELS.get(mp.direction, mp.direction)}")
             if site:
                 ui.label(f"Standort: {' '.join(p for p in (site.street, site.house_number) if p)}")

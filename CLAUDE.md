@@ -130,6 +130,14 @@ column headers — half the lists are cards and have no header to click, so
 clickable headers could never be the mechanism that works everywhere, and
 two mechanisms is exactly what the user complained about.
 
+The key functions themselves live in `app/sort_keys.py`, which imports no
+NiceGUI, and `app/gui/sorting.py` re-exports them — pages keep importing
+them from there. The PDF layer groups a person's sites and has to put
+them in the same order the Standorte page does, and it must not import
+from `app/gui` (same reason `app/format_size.py` is layer-neutral). One
+set of keys is what makes "the same order everywhere" true rather than
+aspirational.
+
 Sort in Python on already-loaded rows, not in the repo's `ORDER BY`:
 SQLite's BINARY/NOCASE collation mis-sorts umlauts — a non-leading one
 slips past its own initial group ("Bühler" after "Burri"), a leading one
@@ -200,6 +208,7 @@ Glossary (German domain term → code name):
 | Aufnahme / Austritt | onboarding / offboarding |
 | Produktionsleistung (% der Anschlussleistung, min. 5%) | `production_capacity_percent` |
 | Produzent / Konsument (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
+| Bezeichnung (frei, z. B. „Whg. 3. OG") | `MeteringPoint.label` |
 | LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
 
 ### Domain model core
@@ -238,6 +247,53 @@ no longer uses for the producer side, and the one place the word must
 stay. The German UI says "Produzent"/"Konsument" (BKW's own words on
 their LEG pages); only the identifiers are English.
 
+### One customer, one document — the vZEV model
+
+A participant is **one** customer of the LEG: one netted amount, one
+reference number, one payment, one receivables account, one dunning
+notice — however many sites and metering points they hold. This is the
+model the administrator is themselves billed under as a vZEV operator:
+the grid operator pays out one surplus or sends one invoice, and who owes
+what inside the building is the operator's own problem. A property
+management with several buildings is billed the same way.
+
+So there is deliberately **no** per-customer billing logic: no
+distribution key of their own, no split into several documents, no
+setting that makes one participant's bill work differently. The moment
+one customer gets their own rules, every quarter turns into a
+negotiation about adjusting their invoice by hand.
+
+What such a participant does get is detail. `app/pdf/bill_breakdown.py`
+groups the quarter by site and metering point, and the document prints
+each site's address, its Bezug and Einspeisung itemised per metering
+point, and that site's own balance -- the figure they carry into their
+own internal allocation. The grouping is presentation only: the amount
+comes from `app/domain/billing.py` as it always did, from the person's
+totals. `MeteringPoint.label` exists for the same reader, because
+"CH1018…" tells nobody which flat it is.
+
+**Every metering point the person held is on the document, including one
+that shared nothing — then at 0.000 kWh.** A bill's line-up must not
+change from quarter to quarter: a recipient who finds a meter missing
+cannot tell whether it was deliberately excluded or forgotten. Which side
+a meter is listed under follows its `direction`, never which of its
+totals happens to be non-zero, so a PV meter that delivered nothing this
+quarter stays in the Einspeisung section rather than vanishing. The same
+reasoning gives everyone with an assignment a document, even one reading
+0.00 CHF — `app.domain.distribution._seed_participants` enters every
+participant of the quarter into the result at zero, and billing and the
+PDF both simply fall out of that. The one figure withheld from a zero
+document is the flat paper-invoice fee: charging 2 francs for a statement
+reading 0.00 is not defensible, and a quarter with no local sharing would
+otherwise become an invoice run for the fee alone.
+
+Two things this made necessary, both of which had been latent:
+`app/pdf/layout.py`'s table drawing now breaks across pages (no document
+had ever held more than two energy lines, so it simply drew off the
+bottom of the page and through the QR-bill's reserved area), and it
+truncates a label that would collide with the kWh column. reportlab
+never complains about either, so the column has to enforce its own bounds.
+
 `SubstationArea` (BKW Trafokreis, physical) → `Site` (physical connection
 site with an address) → `MeteringPoint` (a meter, consumption or feed-in
 direction) → `Assignment` (time-bounded link from a metering point to a
@@ -247,6 +303,84 @@ substation area, but can span several if their owners pool together (the
 app warns about this on several pages but doesn't compute the resulting
 BKW discount itself). `BillingRun`/`BillingRunItem` are produced per LEG
 per quarter from `app.domain.distribution.compute_quarter_distribution`.
+
+### Exactly one current set of documents
+
+Re-billing a quarter deletes the run and creates a new one, so its line
+items get fresh ids — and the export used to write
+`Abrechnung_Muster_7.pdf` next to the previous `..._1.pdf` and leave both
+lying there, identical in every visible respect but the amount. That is
+how a member gets sent the invoice from before a price correction. So
+`app.pdf.export_service` removes the superseded documents, and three
+details of that are deliberate: only files matching
+`_GENERATED_PATTERNS` are touched (the folder may hold the
+administrator's own notes), the removal happens *after* the new documents
+are written (a half-failed export must not leave them with neither set),
+and what was removed is reported in `ExportResult.removed_paths` rather
+than done silently.
+
+`create_billing_runs_for_all_legs` bills and exports every LEG in one
+pass, because doing them one at a time is how a LEG gets forgotten —
+nothing in the per-LEG flow says which ones are still outstanding. A LEG
+that fails lands its message in its own `LegRunOutcome` and the rest
+continue; `LegNotAssignedError` stays the one deployment-wide abort.
+
+### Before billing, say what the quarter contains
+
+`app.domain.statistics.quarter_energy_totals` answers the two questions
+the app used to leave open: which quarter is worth billing, and did the
+last import land. A quarter can hold a hundred thousand readings and
+still be unbillable — the demo's winter quarter has 11'415 kWh of
+consumption and **no feed-in at all**, so nothing can be shared and every
+document reads 0.00. `QuarterEnergy.note` says so *before* the run, on
+the Abrechnung page and in the Auswertungen table.
+`missing_metering_points` compares metering points that held an
+assignment against those that actually reported, using the same overlap
+rule as the distribution, so a shortfall really does mean a partial
+import rather than someone who moved out.
+
+### Billing is a guided run, and the gate is not decorative
+
+`app/models/billing_cycle.py` tracks a quarter's billing the same way
+`person_onboarding` tracks a membership: a fixed `STEPS` list, one
+optional date each, one row per quarter covering **every** LEG. The
+billing page renders it through `app/gui/billing_cycle_view.py`.
+
+Before it may be computed, `app/domain/billing_checks.py` has to pass.
+The reason it blocks rather than warns is worth stating plainly: the
+distribution splits each interval's shared energy among whoever is
+present at that instant, so a metering point whose readings were never
+imported does not merely go unbilled — its absence **enlarges everyone
+else's share**, and the resulting invoices look entirely normal. One
+forgotten file is therefore wrong invoices for the whole LEG.
+
+Four checks, all blocking: every metering point has a LEG; every
+assigned metering point delivered a full quarter of 15-minute values
+(zero kWh is a statement, no data is not); assignments without overlaps
+or gaps; and locally delivered equals locally drawn per LEG. That last
+one is an engine invariant, not a measurement — `S(t)` is split equally
+across both sides — so a difference only ever means energy could not be
+attributed to anyone (`unassigned_kwh`), never that production exceeded
+consumption. Surplus in either direction is settled with BKW and never
+reaches this app.
+
+Two things learned by running it rather than reading it:
+
+- **The balance tolerance has to scale with the participant count.**
+  Each person's totals round to three decimals independently, so a fixed
+  0.001 kWh fired on perfectly sound data. Same reasoning as
+  `verify_sum_balance`, which scales its Rappen tolerance with the item
+  count.
+- **A recorded check is not a promise about now.** The control points are
+  recomputed on every page load and never stored; when they are red
+  although step 2 carries a date, the page says the data changed since.
+  A tick that no longer holds is worse than no tick.
+
+The gate can be stepped past, because BKW may genuinely never deliver a
+meter's data — but only via `record_override`, which refuses a blank
+reason and keeps the text visible from then on. The control points stay
+red afterwards: an override excuses proceeding, it does not repair
+anything.
 
 ### Bank reconciliation / dunning / offboarding (receivables feature set)
 
@@ -281,6 +415,15 @@ green locally before pushing:
 Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
 
+**Run the whole suite before a commit, not after every edit.** It takes
+four to six minutes, and roughly half of that is `create_demo_data`
+rebuilding 229'632 readings, once per test, 54 times over. While working,
+run the test files the change actually touches
+(`pytest tests/test_billing.py -q`) plus a render check when a page
+changed; save the full suite and the four gates for the point where the
+work is claimed to be done. Waiting six minutes to learn that a one-line
+edit compiles is not verification, it is ceremony.
+
 **A page rendering is not evidence that it works.** Rendering every route
 proves only that each page *builds*, never that a click does anything.
 The `nicegui 3.15 → 3.16` bump (`2a33e40`, the Dependabot commit "Bump
@@ -309,6 +452,14 @@ module-level function so a test can call it (`read_uploaded_file` in
 `app/gui/pages/email_dispatch.py`), and pin the framework's event shape
 in a contract test (`tests/test_email_attachments.py`) so the next API
 change fails a test instead of a real send.
+
+A page function's own tests are not enough either: they call it
+directly, which never touches routing. `/backup` answered HTTP 422 for a
+whole session because a helper had been inserted between `@ui.page(...)`
+and the function it decorated, making the *helper* the route -- FastAPI
+then demanded its argument as a query parameter, and the real page was
+never registered. `tests/test_page_routes.py` checks the routing table
+itself for exactly that.
 
 Note also that `tests/conftest.py` has an autouse fixture pointing
 `connection_scope()` at a throwaway database: without it, any test that

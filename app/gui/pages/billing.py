@@ -4,18 +4,21 @@ from nicegui import ui
 
 from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
-from app.domain.billing import create_or_replace_billing_run
+from app.domain.billing import create_billing_runs_for_all_legs, create_or_replace_billing_run
 from app.domain.distribution import LegNotAssignedError
-from app.domain.period import list_available_periods
+from app.domain.period import last_completed_quarter
+from app.domain.statistics import quarter_energy_totals
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
     PERSON_PLACEHOLDERS,
     find_invalid_email_addresses,
     find_unknown_placeholders,
 )
+from app.gui.billing_cycle_view import render_billing_cycle
 from app.gui.navigation import page_frame
-from app.gui.period_selector import build_period_selector
+from app.gui.period_selector import QUARTER_LABELS
 from app.gui.safe_notify import safe_notify
+from app.models import billing_cycle as billing_cycle_repo
 from app.models import billing_run as billing_run_repo
 from app.models import leg as leg_repo
 from app.models import person as person_repo
@@ -26,6 +29,46 @@ from app.pdf.export_service import export_billing_run_documents
 #: billing-context ones (see `app.emailing.bulk_send.INVOICE_EXTRA_PLACEHOLDERS`).
 _INVOICE_PLACEHOLDER_KEYS = {*PERSON_PLACEHOLDERS, *bulk_send.INVOICE_EXTRA_PLACEHOLDERS}
 _INVOICE_PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in _INVOICE_PLACEHOLDER_KEYS)
+
+
+def _all_legs_row(outcome) -> dict:
+    """Build one table row describing how a single LEG's run went.
+
+    Args:
+        outcome: The `app.domain.billing.LegRunOutcome` to describe.
+
+    Returns:
+        A row dict matching the all-LEGs result table's columns.
+    """
+    if not outcome.succeeded:
+        return {
+            "leg": outcome.leg.name,
+            "items": "-",
+            "invoiced": "-",
+            "credited": "-",
+            "balance": "-",
+            "documents": "-",
+            "note": f"⚠ {outcome.error}",
+        }
+
+    export = outcome.export
+    note = outcome.error or ""
+    if export is not None and export.errors:
+        note = "⚠ " + "; ".join(export.errors)
+    elif export is not None and export.removed_paths:
+        note = f"{len(export.removed_paths)} Beleg(e) des Vorlaufs ersetzt"
+    elif not outcome.items:
+        note = "keine Teilnehmer in diesem Quartal"
+
+    return {
+        "leg": outcome.leg.name,
+        "items": len(outcome.items),
+        "invoiced": f"{outcome.total_invoiced_rappen / 100:.2f}",
+        "credited": f"{outcome.total_credited_rappen / 100:.2f}",
+        "balance": "✓" if outcome.control_check and outcome.control_check.balanced else "⚠",
+        "documents": len(export.document_paths) if export is not None else "-",
+        "note": note,
+    }
 
 
 def _type_label(item) -> str:
@@ -61,14 +104,7 @@ def billing_page() -> None:
         ).classes("text-body2 text-grey-8")
 
         with connection_scope() as connection:
-            available_periods = list_available_periods(connection)
             legs = leg_repo.list_all(connection)
-
-        if not available_periods:
-            ui.label(
-                "⚠ Noch keine Messdaten vorhanden. Bitte zuerst auf der Seite „Import“ Daten einlesen."
-            ).classes("text-negative mt-2")
-            return
 
         if not legs:
             ui.label(
@@ -78,10 +114,188 @@ def billing_page() -> None:
 
         leg_options = {leg.id: leg.name for leg in legs}
 
+        # The billing run picks the period, not the readings: a run is
+        # started when the quarter comes up, and its first step is getting
+        # the readings in. Offering only quarters that already have data
+        # made that step unreachable -- you could not start a run until
+        # its first step was long done.
+        cycle_select = ui.select({}, label="Rechnungslauf").classes("w-64")
+
+        def current_period() -> "tuple[int, int] | None":
+            """The quarter the page is currently working on.
+
+            Returns:
+                The selected cycle's `(year, quarter)`, or `None` if no
+                cycle is selected.
+            """
+            return cycle_select.value
+
+        def refresh_cycle_options(select_period=None) -> None:
+            """Reload the list of billing runs into the chooser.
+
+            Args:
+                select_period: `(year, quarter)` to select afterwards;
+                    defaults to keeping the current selection, else the
+                    newest run.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                cycles = billing_cycle_repo.list_all(connection)
+            options = {
+                (c.period_year, c.period_quarter): (
+                    f"{c.label} -- {'abgeschlossen' if c.is_complete else c.current_step[1]}"
+                )
+                for c in cycles
+            }
+            wanted = select_period or cycle_select.value
+            if wanted not in options:
+                wanted = next(iter(options), None)
+            cycle_select.set_options(options, value=wanted)
+
+        def open_new_cycle_dialog() -> None:
+            """Ask for a year and quarter and start a run for it.
+
+            Free input on purpose: the quarter to bill is decided by the
+            calendar, not by what happens to be imported already.
+
+            Returns:
+                None.
+            """
+            default_year, default_quarter = last_completed_quarter()
+            with ui.dialog() as dialog, ui.card().classes("w-full max-w-sm"):
+                ui.label("Neuer Rechnungslauf").classes("text-lg font-bold")
+                ui.label(
+                    "Quartal wählen -- unabhängig davon, ob die Messdaten schon "
+                    "eingelesen sind. Das Einlesen ist der erste Schritt des Laufs."
+                ).classes("text-caption text-grey-6")
+                with ui.row().classes("w-full gap-2"):
+                    year_input = ui.number("Jahr", value=default_year, format="%d").classes("w-28")
+                    quarter_input = ui.select(QUARTER_LABELS, label="Quartal", value=default_quarter).classes(
+                        "flex-grow"
+                    )
+                error = ui.label("").classes("text-negative text-caption")
+
+                def create() -> None:
+                    try:
+                        year = int(year_input.value)
+                    except (TypeError, ValueError):
+                        error.text = "Bitte ein gültiges Jahr eingeben."
+                        return
+                    if not 2000 <= year <= 2100:
+                        error.text = "Jahr ausserhalb des zulässigen Bereichs (2000-2100)."
+                        return
+                    quarter = int(quarter_input.value)
+                    with connection_scope() as connection:
+                        billing_cycle_repo.start_for_period(connection, year, quarter)
+                    dialog.close()
+                    refresh_cycle_options((year, quarter))
+                    refresh_after_quarter_change()
+                    safe_notify(f"Rechnungslauf Q{quarter} {year} bereit.", type="positive")
+
+                with ui.row().classes("w-full justify-end gap-2 mt-2"):
+                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
+                    ui.button("Rechnungslauf starten", on_click=create)
+            dialog.open()
+
+        with ui.row().classes("items-end gap-2") as cycle_row:
+            ui.button("+ Neuer Rechnungslauf", on_click=open_new_cycle_dialog).props("outline")
+        cycle_select.move(cycle_row, target_index=0)
+        refresh_cycle_options()
+
+        # What the chosen quarter actually holds. Picking a quarter used to
+        # be a guess: a quarter with readings but no feed-in at all yields
+        # an empty run and no documents, and nothing said so beforehand.
+        quarter_info = ui.column().classes("w-full gap-0 mt-2")
+
+        def refresh_quarter_info() -> None:
+            """Show the selected quarter's data situation, with any warning.
+
+            Returns:
+                None.
+            """
+            quarter_info.clear()
+            period = current_period()
+            if period is None:
+                return
+            year, quarter = period
+            with connection_scope() as connection:
+                totals = quarter_energy_totals(connection)
+            summary = next((t for t in totals if (t.year, t.quarter) == (year, quarter)), None)
+            with quarter_info:
+                scope = "alle LEGs"
+                if summary is None:
+                    ui.label(f"Q{quarter} {year}, {scope}: keine Messdaten.").classes(
+                        "text-caption text-negative"
+                    )
+                    return
+                # Each number gets its own Swiss thousands separator:
+                # applying the swap to the whole sentence also turned the
+                # commas between the parts into apostrophes.
+                consumption = f"{summary.consumption_kwh:,.1f}".replace(",", "'")
+                feed_in = f"{summary.feed_in_kwh:,.1f}".replace(",", "'")
+                readings = f"{summary.reading_count:,}".replace(",", "'")
+                ui.label(
+                    f"Q{quarter} {year}, {scope}: "
+                    f"Bezug {consumption} kWh, "
+                    f"Einspeisung {feed_in} kWh, "
+                    f"{summary.metering_points_with_readings}/{summary.metering_points_expected} "
+                    f"Messpunkte mit Messdaten, {readings} Messwerte"
+                ).classes("text-caption text-grey-8")
+                if summary.note:
+                    ui.label(f"⚠ {summary.note}").classes("text-caption text-warning")
+
+        # The guided run: six steps and the control points that gate them.
+        # Rebuilt whenever the quarter changes or a step is recorded, so
+        # the control points are always recomputed and never remembered.
+        cycle_column = ui.column().classes("w-full gap-2 mt-4")
+
+        def refresh_cycle() -> None:
+            """Rebuild the guided billing run for the selected quarter.
+
+            Returns:
+                None.
+            """
+            cycle_column.clear()
+            period = current_period()
+            if period is None:
+                with cycle_column:
+                    ui.label(
+                        "Noch kein Rechnungslauf angelegt. „+ Neuer Rechnungslauf“ "
+                        "startet einen -- Jahr und Quartal wählst du frei, die "
+                        "Messdaten dürfen noch fehlen."
+                    ).classes("text-grey-7")
+                return
+            with cycle_column:
+                render_billing_cycle(
+                    *period,
+                    on_compute=lambda: confirm_rates_then_run_billing(all_legs=True),
+                    on_send_emails=open_send_dialog_for_selected_quarter,
+                    on_changed=refresh_cycle,
+                )
+
+        def refresh_after_quarter_change() -> None:
+            """Refresh both the quarter summary and the guided run.
+
+            Returns:
+                None.
+            """
+            refresh_quarter_info()
+            refresh_cycle()
+
+        cycle_select.on_value_change(lambda _: refresh_after_quarter_change())
+        refresh_quarter_info()
+
+        ui.label("Einzelne LEG").classes("text-lg font-bold mt-6")
+        ui.label(
+            "Werkzeuge für eine einzelne LEG des gewählten Quartals -- der "
+            "geführte Ablauf oben deckt immer alle LEGs ab."
+        ).classes("text-caption text-grey-6")
         with ui.row().classes("items-end gap-2"):
             leg_select = ui.select(leg_options, label="LEG", value=None).classes("w-64")
-            selector = build_period_selector(available_periods)
             run_button = ui.button("Abrechnung erstellen / neu berechnen")
+            all_legs_button = ui.button("Alle LEGs abrechnen und exportieren").props("outline")
 
         result_column = ui.column().classes("w-full mt-4")
 
@@ -364,6 +578,48 @@ def billing_page() -> None:
                     ui.button("Trotzdem senden", on_click=do_resend, color="negative")
             confirm.open()
 
+        def open_send_dialog_for_selected_quarter() -> None:
+            """Open the invoice dispatch for the quarter the page is on.
+
+            The dispatch dialog works per LEG (each LEG has its own run,
+            its own letterhead and its own template placeholders), so
+            with more than one LEG this offers the choice rather than
+            silently picking the first.
+
+            Returns:
+                None.
+            """
+            period = current_period()
+            if period is None:
+                safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
+                return
+            with connection_scope() as connection:
+                runs = [
+                    run
+                    for run in billing_run_repo.list_runs(connection)
+                    if (run.period_year, run.period_quarter) == period
+                ]
+            if not runs:
+                safe_notify("Für dieses Quartal wurde noch keine Abrechnung erstellt.", type="warning")
+                return
+            if len(runs) == 1:
+                open_invoice_email_dialog(runs[0])
+                return
+
+            with ui.dialog() as chooser, ui.card().classes("w-full max-w-md"):
+                ui.label("Rechnungen versenden -- LEG wählen").classes("text-lg font-bold")
+                for run in runs:
+
+                    def pick(run=run) -> None:
+                        chooser.close()
+                        open_invoice_email_dialog(run)
+
+                    ui.button(leg_options.get(run.leg_id, "?"), on_click=pick).props("outline").classes(
+                        "w-full"
+                    )
+                ui.button("Abbrechen", on_click=chooser.close).props("flat").classes("mt-2")
+            chooser.open()
+
         def open_invoice_email_dialog(run) -> None:
             """Open the "Rechnungen per E-Mail versenden" dialog for one run.
 
@@ -509,7 +765,7 @@ def billing_page() -> None:
             if leg_select.value is None:
                 safe_notify("Bitte eine LEG wählen.", type="warning")
                 return
-            period = selector.selected_period
+            period = current_period()
             if period is None:
                 safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
                 return
@@ -532,23 +788,102 @@ def billing_page() -> None:
             )
             refresh_runs_table()
 
-        def confirm_rates_then_run_billing() -> None:
+        def run_billing_for_all_legs() -> None:
+            """Bill and export every LEG for the selected quarter, in one pass.
+
+            Only ever called from the rate-confirmation dialog, so every
+            notification below needs `safe_notify` (see
+            `app.gui.safe_notify`).
+
+            Returns:
+                None.
+            """
+            period = current_period()
+            if period is None:
+                safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
+                return
+            year, quarter = period
+            try:
+                with connection_scope() as connection:
+                    outcomes = create_billing_runs_for_all_legs(connection, year, quarter)
+            except LegNotAssignedError as exc:
+                result_column.clear()
+                with result_column:
+                    ui.label(f"⚠ {exc}").classes("text-negative")
+                safe_notify("Abrechnung nicht möglich: LEG-Zuweisung fehlt.", type="negative")
+                return
+
+            result_column.clear()
+            with result_column:
+                ui.label(f"Alle LEGs -- Q{quarter} {year}").classes("text-lg font-bold")
+                ui.table(
+                    columns=[
+                        {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
+                        {"name": "items", "label": "Positionen", "field": "items", "align": "right"},
+                        {
+                            "name": "invoiced",
+                            "label": "Rechnungen (CHF)",
+                            "field": "invoiced",
+                            "align": "right",
+                        },
+                        {
+                            "name": "credited",
+                            "label": "Gutschriften (CHF)",
+                            "field": "credited",
+                            "align": "right",
+                        },
+                        {"name": "balance", "label": "Summenabgleich", "field": "balance"},
+                        {"name": "documents", "label": "Belege", "field": "documents", "align": "right"},
+                        {"name": "note", "label": "Hinweis", "field": "note", "align": "left"},
+                    ],
+                    rows=[_all_legs_row(outcome) for outcome in outcomes],
+                    row_key="leg",
+                ).classes("w-full")
+
+                output_dirs = {str(o.export.output_dir.parent) for o in outcomes if o.export is not None}
+                for output_dir in sorted(output_dirs):
+                    ui.label(f"Ausgabeordner: {output_dir}").classes("text-caption text-grey-7")
+
+            failed = [o for o in outcomes if o.error]
+            replaced = sum(len(o.export.removed_paths) for o in outcomes if o.export is not None)
+            message = f"{len(outcomes) - len(failed)} von {len(outcomes)} LEGs abgerechnet."
+            if replaced:
+                message += f" {replaced} Beleg(e) eines früheren Laufs ersetzt."
+            safe_notify(message, type="warning" if failed else "positive", timeout=8000)
+
+            # The step is recorded only when every LEG came through: a
+            # partially failed pass is exactly the state that must stay
+            # visibly unfinished.
+            if not failed:
+                with connection_scope() as connection:
+                    cycle = billing_cycle_repo.get_by_period(connection, year, quarter)
+                    if cycle is not None and cycle.computed_at is None:
+                        billing_cycle_repo.mark_step(connection, cycle, "computed_at")
+            refresh_runs_table()
+            refresh_cycle()
+
+        def confirm_rates_then_run_billing(*, all_legs: bool = False) -> None:
             """Show the currently configured billing rates for confirmation,
-            then run (or re-run) billing for the selected LEG/period.
+            then run (or re-run) billing for the selected period.
 
             The actual amounts get frozen onto each `BillingRunItem` the
             moment the run is created (see `app.domain.billing`) -- this
             step exists purely so a wrong rate is caught *before* that
             freeze happens, since a later correction in Einstellungen can
-            no longer change what has already been billed.
+            no longer change what has already been billed. It is therefore
+            the same gate for one LEG and for all of them.
+
+            Args:
+                all_legs: Whether to bill and export every LEG rather than
+                    just the selected one.
 
             Returns:
                 None.
             """
-            if leg_select.value is None:
+            if leg_select.value is None and not all_legs:
                 ui.notify("Bitte eine LEG wählen.", type="warning")
                 return
-            if selector.selected_period is None:
+            if current_period() is None:
                 ui.notify("Bitte Jahr und Quartal wählen.", type="warning")
                 return
 
@@ -572,17 +907,38 @@ def billing_page() -> None:
                     )
                     ui.label(f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF")
 
+                year, quarter = current_period()
+                with connection_scope() as connection:
+                    totals = quarter_energy_totals(connection, None if all_legs else leg_select.value)
+                summary = next((t for t in totals if (t.year, t.quarter) == (year, quarter)), None)
+                if summary is not None and summary.note:
+                    ui.label(f"⚠ {summary.note}").classes("text-warning mt-2")
+
                 def confirmed() -> None:
                     dialog.close()
-                    run_billing()
+                    if all_legs:
+                        run_billing_for_all_legs()
+                    else:
+                        run_billing()
 
                 with ui.row().classes("w-full justify-end gap-2 mt-4"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.link("Einstellungen anpassen", "/settings").classes("self-center")
-                    ui.button("Ansätze sind korrekt -- Rechnung erstellen", on_click=confirmed)
+                    ui.button(
+                        "Ansätze sind korrekt -- alle LEGs abrechnen"
+                        if all_legs
+                        else "Ansätze sind korrekt -- Rechnung erstellen",
+                        on_click=confirmed,
+                    )
             dialog.open()
 
-        run_button.on_click(confirm_rates_then_run_billing)
+        run_button.on_click(lambda: confirm_rates_then_run_billing())
+        all_legs_button.on_click(lambda: confirm_rates_then_run_billing(all_legs=True))
+
+        # Built last, not where it is placed: the guided run calls the
+        # actions defined above it, which do not exist yet at that point
+        # in the page body.
+        refresh_cycle()
 
         ui.label("Bisherige Läufe").classes("text-lg font-bold mt-6")
         refresh_runs_table()

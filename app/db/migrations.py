@@ -1578,4 +1578,51 @@ Freundliche Grüsse';
                 RENAME COLUMN attachment_filename TO attachment_filenames;
         """,
     ),
+    Migration(
+        version=48,
+        description="metering_point gains a free-text label ('Allgemeinstrom', "
+        "'Whg. 3. OG', 'PV Dach'). A billing document now itemises the "
+        "locally shared energy per site and per metering point, so that a "
+        "participant holding several -- a property management with more "
+        "than one building -- can allocate the amount internally. A "
+        "metering point's own identity is its grid-operator designation "
+        "(CH1018...), which is unusable for that: nobody can tell which "
+        "flat it belongs to. The designation stays the identity; this is "
+        "purely what gets printed beside it. Empty by default, and an "
+        "empty label simply prints nothing extra.",
+        sql="""
+            ALTER TABLE metering_point ADD COLUMN label TEXT NOT NULL DEFAULT '';
+        """,
+    ),
+    Migration(
+        version=49,
+        description="Add billing_cycle: the quarterly billing process as a "
+        "tracked sequence of steps, in the same shape as person_onboarding "
+        "and person_offboarding (a fixed STEPS list, one optional date per "
+        "step). One row per quarter covering every LEG, because billing one "
+        "LEG at a time is how a LEG gets forgotten. override_reason records "
+        "why the control points were bypassed, if they ever were -- readings "
+        "missing for a single metering point distort every other "
+        "participant's invoice, since the shared energy of each interval is "
+        "divided among whoever is present, so proceeding anyway has to be a "
+        "documented decision rather than an oversight. Purely additive; "
+        "billing_runs keeps its own (unused) status column.",
+        sql="""
+            CREATE TABLE billing_cycle (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period_year INTEGER NOT NULL,
+                period_quarter INTEGER NOT NULL CHECK (period_quarter BETWEEN 1 AND 4),
+                readings_imported_at TEXT,
+                readings_checked_at TEXT,
+                computed_at TEXT,
+                emails_sent_at TEXT,
+                paper_invoices_sent_at TEXT,
+                payouts_done_at TEXT,
+                override_reason TEXT NOT NULL DEFAULT '',
+                override_at TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE (period_year, period_quarter)
+            );
+        """,
+    ),
 ]
