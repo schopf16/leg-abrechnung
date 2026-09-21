@@ -41,6 +41,14 @@ class MeteringPoint:
             unknown or not applicable (purely informational, not used in
             billing/distribution).
         created_at: ISO-8601 creation timestamp.
+        label: Free-text name for this metering point ("Allgemeinstrom",
+            "Whg. 3. OG", "PV Dach"), or `""`. Printed beside the
+            `designation` on the billing document, which itemises the
+            shared energy per metering point (see
+            `app.pdf.bill_breakdown`): a participant holding several of
+            them cannot allocate the amount internally from
+            "CH1018..." alone. Never an identity -- `designation` is, and
+            stays, the business key.
     """
 
     id: Optional[int]
@@ -51,6 +59,7 @@ class MeteringPoint:
     pv_capacity_kwp: Optional[float]
     battery_capacity_kwh: Optional[float]
     created_at: str
+    label: str = ""
 
     @property
     def is_consumption(self) -> bool:
@@ -89,6 +98,7 @@ class MeteringPoint:
             pv_capacity_kwp=row["pv_capacity_kwp"],
             battery_capacity_kwh=row["battery_capacity_kwh"],
             created_at=row["created_at"],
+            label=row["label"],
         )
 
 
@@ -171,8 +181,8 @@ def create(connection: sqlite3.Connection, metering_point: MeteringPoint) -> int
         """
         INSERT INTO metering_point
             (designation, direction, site_id, leg_id,
-             pv_capacity_kwp, battery_capacity_kwh, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             pv_capacity_kwp, battery_capacity_kwh, created_at, label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             metering_point.designation,
@@ -182,6 +192,7 @@ def create(connection: sqlite3.Connection, metering_point: MeteringPoint) -> int
             metering_point.pv_capacity_kwp,
             metering_point.battery_capacity_kwh,
             datetime.now(timezone.utc).isoformat(),
+            metering_point.label.strip(),
         ),
     )
     connection.commit()
@@ -209,7 +220,7 @@ def update(connection: sqlite3.Connection, metering_point: MeteringPoint) -> Non
         """
         UPDATE metering_point SET
             designation = ?, direction = ?, site_id = ?, leg_id = ?,
-            pv_capacity_kwp = ?, battery_capacity_kwh = ?
+            pv_capacity_kwp = ?, battery_capacity_kwh = ?, label = ?
         WHERE id = ?
         """,
         (
@@ -219,6 +230,7 @@ def update(connection: sqlite3.Connection, metering_point: MeteringPoint) -> Non
             metering_point.leg_id,
             metering_point.pv_capacity_kwp,
             metering_point.battery_capacity_kwh,
+            metering_point.label.strip(),
             metering_point.id,
         ),
     )

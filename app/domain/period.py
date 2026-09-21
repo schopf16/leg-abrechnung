@@ -80,6 +80,25 @@ def quarter_of(moment: datetime) -> tuple[int, int]:
     return moment.year, (moment.month - 1) // 3 + 1
 
 
+def last_completed_quarter(today: Optional[date] = None) -> tuple[int, int]:
+    """The most recent quarter that has already ended.
+
+    The sensible default when starting a billing run: a quarter still
+    running cannot be billed, and the one before it is almost always what
+    is meant. Independent of what is in the database -- a billing run is
+    started *before* its readings arrive, not after.
+
+    Args:
+        today: Day to measure from, defaulting to today.
+
+    Returns:
+        A `(year, quarter)` tuple.
+    """
+    reference = today or date.today()
+    year, quarter = reference.year, (reference.month - 1) // 3 + 1
+    return (year - 1, 4) if quarter == 1 else (year, quarter - 1)
+
+
 def list_available_periods(connection: sqlite3.Connection) -> dict[int, set[int]]:
     """Determine which (year, quarter) combinations actually have readings.
 

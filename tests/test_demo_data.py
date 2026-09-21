@@ -17,12 +17,45 @@ from app.models import settings as settings_repo
 from app.models import substation_area as substation_area_repo
 
 
-def test_create_demo_data_creates_five_persons_and_seven_metering_points(db):
-    """The generator creates 4 showcase persons + 1 move fixture, and 7 metering points."""
+def test_create_demo_data_creates_six_persons_and_thirteen_metering_points(db):
+    """4 showcase persons + 1 move fixture + 1 Verwaltung, and 13 metering points.
+
+    The Verwaltung holds six of those metering points across two
+    properties -- the case that proves a participant with several sites
+    still receives exactly one bill.
+    """
     summary = create_demo_data(db)
-    assert len(summary.person_ids) == 5
-    assert len(summary.metering_point_ids) == 7
+    assert len(summary.person_ids) == 6
+    assert len(summary.metering_point_ids) == 13
     assert summary.reading_count > 0
+
+
+def test_the_demo_verwaltung_holds_two_properties_but_gets_one_bill(db):
+    """The Verwaltung fixture exists and is shaped as the showcase needs.
+
+    Six metering points across two sites, both directions present, and
+    exactly one billing item -- one customer, one netted amount.
+    """
+    from app.domain.billing import create_or_replace_billing_run
+    from app.models import assignment as assignment_repo
+
+    create_demo_data(db)
+    verwaltung = next(p for p in person_repo.list_all(db) if "Verwaltungs AG" in p.company)
+
+    metering_points = {mp.id: mp for mp in metering_point_repo.list_all(db)}
+    held = [
+        metering_points[a.metering_point_id]
+        for a in assignment_repo.list_all(db)
+        if a.person_id == verwaltung.id
+    ]
+    assert len(held) == 6
+    assert len({mp.site_id for mp in held}) == 2
+    assert any(mp.is_feed_in for mp in held) and any(mp.is_consumption for mp in held)
+    assert sum(1 for mp in held if mp.label) == 5, "einer bleibt absichtlich unbenannt"
+
+    leg = leg_repo.list_all(db)[0]
+    _, items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
+    assert sum(1 for i in items if i.person_id == verwaltung.id) == 1
 
 
 def test_create_demo_data_configures_valid_demo_qr_iban(db):

@@ -2,7 +2,10 @@
 per-person billing document (see `app.pdf.person_bill_pdf`).
 """
 
+from dataclasses import dataclass
+
 from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
@@ -132,64 +135,245 @@ def draw_intro_text(canvas: Canvas, text: str, top_y: float) -> float:
     return top_y - 10 * mm
 
 
-def draw_monthly_table(
-    canvas: Canvas,
-    top_y: float,
-    section_title: str,
-    rows: list[tuple[str, str, str, str]],
-    subtotal_label: str,
-    subtotal_value: str,
-) -> float:
-    """Draw a per-month energy table (Monat | kWh | Rp./kWh | Betrag) with a subtotal.
+#: Y-coordinate a continuation page starts its content at. Such a page
+#: carries no letterhead or recipient block, so it starts higher than
+#: page one does.
+CONTINUATION_TOP_Y = PAGE_HEIGHT - 25 * mm
+
+#: Lowest y a table line may be drawn at: the page's bottom margin, *not*
+#: `CONTENT_BOTTOM_Y`. Keeping tables out of the QR-bill's area would cost
+#: a whole page on the most ordinary bill there is -- one metering point
+#: and a fee line -- for a payment slip that is then placed on the next
+#: page anyway. Which page the QR-bill lands on is decided once, by the
+#: caller, after all content is drawn (see `app.pdf.person_bill_pdf`).
+TABLE_BOTTOM_Y = 25 * mm
+
+_COL_KWH_X = PAGE_WIDTH - 95 * mm
+_COL_PRICE_X = PAGE_WIDTH - 60 * mm
+_COL_AMOUNT_X = PAGE_WIDTH - _RIGHT_MARGIN
+
+#: Vertical space each line style occupies, and how it is drawn: font,
+#: size and indent from the left margin. `group` reserves more than it
+#: draws, which is the blank line that separates one site from the next.
+_LINE_STYLES = {
+    "group": ("Helvetica-Bold", 10, 0, 22),
+    "subgroup": ("Helvetica-Oblique", 9, 8, 13),
+    "row": ("Helvetica", 9, 18, 13),
+    "total": ("Helvetica-Bold", 9, 8, 15),
+}
+
+#: Blank space above a group heading, separating it from the block before
+#: it. Not applied to the first group, which already sits below the
+#: column rule -- a leading gap there buys nothing and costs the most
+#: ordinary bill (one site, two metering points) a second page.
+_GROUP_LEAD = 9
+
+
+@dataclass(frozen=True)
+class TableLine:
+    """One drawable line of a billing table.
+
+    Attributes:
+        label: Left-hand text.
+        kwh: Quantity column, or `""` to leave it blank.
+        price: Rate column, or `""`.
+        amount: Amount column, or `""`. A *display* figure only -- see
+            the module docstring of `app.domain.billing` for why rounding
+            never happens at this layer.
+        style: One of `"group"` (a site heading), `"subgroup"` (Bezug /
+            Einspeisung within a site), `"row"` (one metering point) or
+            `"total"` (a subtotal line).
+    """
+
+    label: str
+    kwh: str = ""
+    price: str = ""
+    amount: str = ""
+    style: str = "row"
+
+
+#: Space kept clear between the left-hand label and the kWh column, wide
+#: enough for the longest quantity this app prints.
+_LABEL_GUTTER = 45
+
+
+def _fit(text: str, font: str, size: float, max_width: float) -> str:
+    """Shorten text with an ellipsis until it fits a given width.
+
+    `label` on a metering point is free text (see
+    `app.models.metering_point`), and a perfectly reasonable one --
+    "Wohnung 3. Obergeschoss links" beside a 33-character designation --
+    already overruns the label column and collides with the kWh figures.
+    reportlab draws happily past any boundary, so the column has to
+    enforce its own.
+
+    Args:
+        text: Text to draw.
+        font: Font name it will be drawn in.
+        size: Font size in points.
+        max_width: Available width in points.
+
+    Returns:
+        `text`, or a shortened version ending in a single-character
+        ellipsis that fits.
+    """
+    if stringWidth(text, font, size) <= max_width:
+        return text
+    ellipsis = "…"
+    shortened = text
+    while shortened and stringWidth(shortened + ellipsis, font, size) > max_width:
+        shortened = shortened[:-1]
+    return (shortened.rstrip() + ellipsis) if shortened else ellipsis
+
+
+def _draw_table_header(canvas: Canvas, y: float, section_title: str, label_header: str) -> float:
+    """Draw a table's title and column headers.
 
     Args:
         canvas: Target canvas.
-        top_y: Y-coordinate (points from page bottom) of the section's top edge.
-        section_title: Section heading, e.g. "consumption" or "Vergütung (Produktion)".
-        rows: `(month_label, kwh_text, price_text, amount_text)` tuples,
-            one per calendar month of the billing period.
-        subtotal_label: Label for the subtotal row, e.g. "Zwischensumme consumption".
-        subtotal_value: Formatted subtotal amount, e.g. "123.45 CHF". This
-            is a *display* figure only -- see the module docstring of
-            `app.domain.billing` for why rounding never happens here.
+        y: Y-coordinate to start at.
+        section_title: Heading above the columns.
+        label_header: Header of the left-hand column.
 
     Returns:
-        The y-coordinate directly below the section.
+        The y-coordinate of the first content line.
     """
-    col_month_x = _LEFT_MARGIN
-    col_kwh_x = PAGE_WIDTH - 95 * mm
-    col_price_x = PAGE_WIDTH - 60 * mm
-    col_amount_x = PAGE_WIDTH - _RIGHT_MARGIN
-
-    y = top_y
     canvas.setFont("Helvetica-Bold", 11)
     canvas.drawString(_LEFT_MARGIN, y, section_title)
     y -= 8 * mm
 
     canvas.setFont("Helvetica-Bold", 9)
-    canvas.drawString(col_month_x, y, "Monat")
-    canvas.drawRightString(col_kwh_x, y, "kWh")
-    canvas.drawRightString(col_price_x, y, "Rp./kWh")
-    canvas.drawRightString(col_amount_x, y, "Betrag (CHF)")
+    canvas.drawString(_LEFT_MARGIN, y, label_header)
+    canvas.drawRightString(_COL_KWH_X, y, "kWh")
+    canvas.drawRightString(_COL_PRICE_X, y, "Rp./kWh")
+    canvas.drawRightString(_COL_AMOUNT_X, y, "Betrag (CHF)")
     y -= 6
     canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
-    y -= 12
+    return y - 12
 
-    canvas.setFont("Helvetica", 9)
-    for month_label, kwh_text, price_text, amount_text in rows:
-        canvas.drawString(col_month_x, y, month_label)
-        canvas.drawRightString(col_kwh_x, y, kwh_text)
-        canvas.drawRightString(col_price_x, y, price_text)
-        canvas.drawRightString(col_amount_x, y, amount_text)
-        y -= 14
 
+def draw_billing_table(
+    canvas: Canvas,
+    top_y: float,
+    section_title: str,
+    lines: list[TableLine],
+    *,
+    label_header: str = "Position",
+) -> float:
+    """Draw a billing table, breaking onto further pages when it runs long.
+
+    The page break is the reason this exists. A document used to hold at
+    most two energy lines, so drawing straight down the page was always
+    safe; itemising per metering point removed that guarantee. A
+    participant with a dozen metering points would otherwise have run off
+    the bottom of the page and straight through the area reserved for the
+    QR-bill (`CONTENT_BOTTOM_Y`) -- silently, because nothing in
+    reportlab complains about drawing outside the page.
+
+    A `group` or `subgroup` line is never left stranded as the last line
+    of a page: it is only drawn where its following line fits too.
+
+    Args:
+        canvas: Target canvas.
+        top_y: Y-coordinate (points from page bottom) of the section's top edge.
+        section_title: Section heading, e.g. "Lokal geteilter Strom".
+        lines: The lines to draw, in order.
+        label_header: Header of the left-hand column.
+
+    Returns:
+        The y-coordinate directly below the section, on whichever page it
+        ended up finishing.
+    """
+    y = _draw_table_header(canvas, top_y, section_title, label_header)
+    current_group: "TableLine | None" = None
+    current_subgroup: "TableLine | None" = None
+
+    for index, line in enumerate(lines):
+        font, size, indent, height = _LINE_STYLES[line.style]
+        # A group's height includes its lead-in gap, which the first group
+        # of a table does not get: directly under the column rule it buys
+        # nothing, and it costs the most ordinary bill there is -- one
+        # site, two metering points -- a whole second page.
+        lead = _GROUP_LEAD if line.style == "group" and index > 0 else 0
+        needed = (height - _GROUP_LEAD + lead) if line.style == "group" else height
+        if line.style in ("group", "subgroup") and index + 1 < len(lines):
+            needed += _LINE_STYLES[lines[index + 1].style][3]
+        if y - needed < TABLE_BOTTOM_Y:
+            canvas.showPage()
+            y = _draw_table_header(canvas, CONTINUATION_TOP_Y, f"{section_title} (Fortsetzung)", label_header)
+            # Carry the site (and the Bezug/Einspeisung section) over to
+            # the new page. Without this, a participant with enough
+            # metering points to fill a page finds the rest of them
+            # listed under no address at all -- which is precisely the
+            # reader this itemisation exists for.
+            if line.style not in ("group", "subgroup"):
+                for carried in (current_group, current_subgroup):
+                    if carried is None:
+                        continue
+                    c_font, c_size, c_indent, c_height = _LINE_STYLES[carried.style]
+                    canvas.setFont(c_font, c_size)
+                    canvas.drawString(
+                        _LEFT_MARGIN + c_indent,
+                        y,
+                        _fit(
+                            f"{carried.label} (Fortsetzung)",
+                            c_font,
+                            c_size,
+                            _COL_KWH_X - _LABEL_GUTTER - _LEFT_MARGIN - c_indent,
+                        ),
+                    )
+                    y -= c_height - (_GROUP_LEAD if carried.style == "group" else 0)
+
+        if line.style == "group":
+            current_group, current_subgroup = line, None
+        elif line.style == "subgroup":
+            current_subgroup = line
+        elif line.style == "total":
+            current_group, current_subgroup = None, None
+
+        y -= lead
+        canvas.setFont(font, size)
+        canvas.drawString(
+            _LEFT_MARGIN + indent,
+            y,
+            _fit(line.label, font, size, _COL_KWH_X - _LABEL_GUTTER - _LEFT_MARGIN - indent),
+        )
+        if line.kwh:
+            canvas.drawRightString(_COL_KWH_X, y, line.kwh)
+        if line.price:
+            canvas.drawRightString(_COL_PRICE_X, y, line.price)
+        if line.amount:
+            canvas.drawRightString(_COL_AMOUNT_X, y, line.amount)
+        y -= height - _GROUP_LEAD if line.style == "group" else height
+
+    if y - 8 < TABLE_BOTTOM_Y:
+        canvas.showPage()
+        y = CONTINUATION_TOP_Y
     y -= 4
     canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
-    y -= 14
-    canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(col_month_x, y, subtotal_label)
-    canvas.drawRightString(col_amount_x, y, subtotal_value)
-    return y - 12 * mm
+    return y - 8 * mm
+
+
+def ensure_space(canvas: Canvas, y: float, needed_mm: float) -> float:
+    """Start a new page if the next block would not fit on this one.
+
+    For blocks drawn in one piece, which therefore cannot break the way
+    `draw_billing_table` does -- the net settlement in particular. All
+    page geometry lives in this module, so callers reason in millimetres
+    of content and never in page coordinates.
+
+    Args:
+        canvas: Target canvas.
+        y: Current y-coordinate.
+        needed_mm: Height the block about to be drawn needs, in millimetres.
+
+    Returns:
+        `y` unchanged, or the top of a freshly started page.
+    """
+    if y - needed_mm * mm < TABLE_BOTTOM_Y:
+        canvas.showPage()
+        return CONTINUATION_TOP_Y
+    return y
 
 
 def draw_net_settlement(canvas: Canvas, top_y: float, label: str, value: str, note: str) -> float:

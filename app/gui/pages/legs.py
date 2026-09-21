@@ -106,7 +106,12 @@ def _mix_badge(mix) -> str:
         LEG is one-sided (or empty).
     """
     symbol = "🔴" if mix.is_one_sided else "🟢"
-    return f"{symbol} {mix.producer_count} Produzent : {mix.consumer_count} Konsument"
+    # Metering points, not persons: these two numbers sit beside the
+    # metering point count and have to add up against it.
+    text = f"{symbol} {mix.producer_metering_points} Produzent : {mix.consumer_metering_points} Konsument"
+    if mix.unassigned_metering_points:
+        text += f"  ⚠ {mix.unassigned_metering_points} ohne Zuordnung"
+    return text
 
 
 def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> dict:

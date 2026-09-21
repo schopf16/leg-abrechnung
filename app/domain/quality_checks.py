@@ -18,6 +18,7 @@ from app.domain import participant_mix
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.period import quarter_bounds
 from app.models import bank_transaction as bank_transaction_repo
+from app.models import billing_cycle as billing_cycle_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -46,7 +47,7 @@ class QualityWarning:
     Attributes:
         category: One of "assignment_overlap", "assignment_gap",
             "reading_gap", "leg_not_assigned", "onboarding_overdue",
-            "bank_transaction_unresolved",
+            "bank_transaction_unresolved", "billing_cycle_open",
             "substation_area_upgrade_potential" or
             "substation_area_one_sided".
         message: Human-readable (German) description.
@@ -86,14 +87,39 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
     return warnings
 
 
-def check_reading_completeness(
-    connection: sqlite3.Connection, year: int, quarter: int
-) -> list[QualityWarning]:
-    """Find days within a quarter where a MeteringPoint has fewer than 96 readings.
+@dataclass(frozen=True)
+class ReadingGap:
+    """One day on which a metering point reported the wrong number of readings.
 
-    Only checks days on which the MeteringPoint was actually assigned to a
-    Person (an unassigned MeteringPoint with no readings is not a data gap, it
-    is simply out of service).
+    The structured form of what `check_reading_completeness` phrases as a
+    German sentence. It exists because the billing control points need to
+    aggregate these -- "how many metering points are affected, and which
+    of them reported nothing at all" -- and parsing that back out of a
+    message string would be a poor way to learn it.
+
+    Attributes:
+        metering_point_id: The metering point concerned.
+        designation: Its grid-operator id, for naming it to the user.
+        day: The calendar day with the wrong count.
+        count: How many readings that day actually has.
+        expected: How many it should have (96 quarter-hours).
+    """
+
+    metering_point_id: int
+    designation: str
+    day: date
+    count: int
+    expected: int
+
+
+def find_reading_gaps(connection: sqlite3.Connection, year: int, quarter: int) -> list[ReadingGap]:
+    """Find every metering-point/day in a quarter with an unexpected reading count.
+
+    Only days on which the metering point was actually assigned to a
+    person count: an unassigned metering point with no readings is not a
+    data gap, it is simply out of service. A day reporting 0 readings is
+    reported like any other wrong count -- zero kWh is a statement, no
+    data is not.
 
     Args:
         connection: Open SQLite connection.
@@ -101,11 +127,10 @@ def check_reading_completeness(
         quarter: Quarter number, 1 to 4.
 
     Returns:
-        A `QualityWarning` per MeteringPoint/day combination with an
-        unexpected reading count.
+        One `ReadingGap` per affected metering point and day.
     """
     start, end = quarter_bounds(year, quarter)
-    warnings = []
+    gaps: list[ReadingGap] = []
 
     for metering_point in metering_point_repo.list_all(connection):
         assignments = assignment_repo.list_for_metering_point(connection, metering_point.id)
@@ -128,19 +153,83 @@ def check_reading_completeness(
             if any(z.covers(moment) for z in assignments):
                 count = counts_by_day.get(current_day.isoformat(), 0)
                 if count != _EXPECTED_READINGS_PER_DAY:
-                    warnings.append(
-                        QualityWarning(
-                            category="reading_gap",
-                            message=(
-                                f"Messpunkt {metering_point.designation}: "
-                                f"{current_day.isoformat()} hat "
-                                f"{count}/{_EXPECTED_READINGS_PER_DAY} Messwerten."
-                            ),
-                            link=f"/metering-points/{metering_point.id}",
+                    gaps.append(
+                        ReadingGap(
+                            metering_point_id=metering_point.id,
+                            designation=metering_point.designation,
+                            day=current_day,
+                            count=count,
+                            expected=_EXPECTED_READINGS_PER_DAY,
                         )
                     )
             current_day += timedelta(days=1)
 
+    return gaps
+
+
+def check_reading_completeness(
+    connection: sqlite3.Connection, year: int, quarter: int
+) -> list[QualityWarning]:
+    """Find days within a quarter where a MeteringPoint has fewer than 96 readings.
+
+    A thin German-language wrapper over `find_reading_gaps`, which does
+    the actual work and is what `app.domain.billing_checks` builds on.
+
+    Args:
+        connection: Open SQLite connection.
+        year: Calendar year of the quarter to check.
+        quarter: Quarter number, 1 to 4.
+
+    Returns:
+        A `QualityWarning` per MeteringPoint/day combination with an
+        unexpected reading count.
+    """
+    return [
+        QualityWarning(
+            category="reading_gap",
+            message=(
+                f"Messpunkt {gap.designation}: "
+                f"{gap.day.isoformat()} hat {gap.count}/{gap.expected} Messwerten."
+            ),
+            link=f"/metering-points/{gap.metering_point_id}",
+        )
+        for gap in find_reading_gaps(connection, year, quarter)
+    ]
+
+
+def check_open_billing_cycle(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Surface a billing quarter that was started but never finished.
+
+    A billing run spans weeks and half a dozen steps, so the one that
+    stalls is the one nobody is looking at. It belongs on the dashboard
+    next to the overdue Aufnahmen, and shares their threshold
+    (`LegSettings.onboarding_overdue_days`) rather than introducing a
+    second knob for the same idea.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        A `QualityWarning` per unfinished cycle, naming the step it is
+        sitting on. Cycles younger than the threshold are left alone --
+        a quarter in progress is not a problem.
+    """
+    threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
+    warnings: list[QualityWarning] = []
+    for cycle in billing_cycle_repo.list_in_progress(connection):
+        if not cycle.is_overdue(threshold_days):
+            continue
+        _, step_label = cycle.current_step
+        warnings.append(
+            QualityWarning(
+                category="billing_cycle_open",
+                message=(
+                    f"Rechnungslauf {cycle.label} hängt seit {cycle.days_open()} "
+                    f'Tagen bei Schritt "{step_label}".'
+                ),
+                link="/billing",
+            )
+        )
     return warnings
 
 

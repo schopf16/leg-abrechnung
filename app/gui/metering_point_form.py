@@ -164,6 +164,14 @@ def open_metering_point_form(
                 value=existing.battery_capacity_kwh if existing else None,
                 step=0.1,
             ).classes("flex-grow")
+        label_input = ui.input(
+            "Bezeichnung (optional)",
+            value=existing.label if existing else "",
+        ).classes("w-full")
+        label_input.props(
+            'hint="Erscheint auf der Abrechnung neben der Messpunktbezeichnung, '
+            'z. B. Allgemeinstrom oder Whg. 3. OG"'
+        )
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
@@ -194,6 +202,7 @@ def open_metering_point_form(
                             pv_capacity_kwp=pv_leistung.value,
                             battery_capacity_kwh=batteriespeicher.value,
                             created_at=existing.created_at,
+                            label=label_input.value or "",
                         )
                         metering_point_repo.update(connection, saved)
                     else:
@@ -206,6 +215,7 @@ def open_metering_point_form(
                             pv_capacity_kwp=pv_leistung.value,
                             battery_capacity_kwh=batteriespeicher.value,
                             created_at="",
+                            label=label_input.value or "",
                         )
                         new_id = metering_point_repo.create(connection, saved)
                         saved.id = new_id

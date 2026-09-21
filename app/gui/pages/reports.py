@@ -6,6 +6,7 @@ from app.db.connection import connection_scope
 from app.domain.billing import compute_billing_items, verify_sum_balance
 from app.domain.distribution import LegNotAssignedError, compute_quarter_distribution
 from app.domain.period import list_available_periods
+from app.domain.statistics import quarter_energy_totals
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
@@ -25,6 +26,58 @@ CATEGORY_LABELS = {
     "leg_not_assigned": "Messpunkt ohne LEG",
     "onboarding_overdue": "Aufnahme überfällig",
 }
+
+
+def _quarter_stock_row(total) -> dict:
+    """Build one row of the per-quarter data overview.
+
+    Args:
+        total: The `app.domain.statistics.QuarterEnergy` to describe.
+
+    Returns:
+        A row dict matching the overview table's columns.
+    """
+    imported = total.last_import_at
+    if imported:
+        imported = imported.replace("T", " ")[:16]
+    elif total.import_sources == ["demo"]:
+        imported = "Demodaten"
+    else:
+        imported = "-"
+
+    def thousands(value: float, decimals: int = 1) -> str:
+        return f"{value:,.{decimals}f}".replace(",", "'")
+
+    return {
+        "period": f"Q{total.quarter} {total.year}",
+        "consumption": thousands(total.consumption_kwh),
+        "feed_in": thousands(total.feed_in_kwh),
+        "metering_points": (f"{total.metering_points_with_readings}/{total.metering_points_expected}"),
+        "readings": thousands(total.reading_count, 0),
+        "imported": imported,
+        "note": f"⚠ {total.note}" if total.note else "✓",
+    }
+
+
+def _persons_with_energy(distribution) -> int:
+    """Count participants who actually shared energy this quarter.
+
+    The distribution covers everyone with an assignment, including those
+    whose meters moved nothing (see
+    `app.domain.distribution._seed_participants`), so the plain length of
+    `person_results` is a participant count, not an activity one.
+
+    Args:
+        distribution: A `app.domain.distribution.DistributionResult`.
+
+    Returns:
+        How many of its persons have non-zero consumption or production.
+    """
+    return sum(
+        1
+        for result in distribution.person_results.values()
+        if result.consumed_local_kwh > 0 or result.produced_local_kwh > 0
+    )
 
 
 def _type_label(item) -> str:
@@ -76,6 +129,54 @@ def reports_page() -> None:
             return
 
         leg_options = {leg.id: leg.name for leg in legs}
+
+        ui.label("Datenbestand je Quartal").classes("text-lg font-bold mt-4")
+        ui.label(
+            "Plausibilisierung des Imports: stimmen die kWh je Richtung grob, "
+            "und haben alle zugeordneten Messpunkte Daten geliefert? Eine "
+            "Differenz bei „Messpunkte“ heisst, dass ein Messpunkt zwar "
+            "zugeordnet ist, im Quartal aber keine Messwerte hat."
+        ).classes("text-caption text-grey-6")
+
+        with ui.row().classes("items-end gap-2 mt-1"):
+            stock_leg_select = ui.select(
+                {None: "alle LEGs", **leg_options}, label="Bereich", value=None
+            ).classes("w-64")
+
+        stock_column = ui.column().classes("w-full mt-2")
+
+        def refresh_stock() -> None:
+            """Rebuild the per-quarter data overview for the chosen scope.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                totals = quarter_energy_totals(connection, stock_leg_select.value)
+
+            stock_column.clear()
+            with stock_column:
+                if not totals:
+                    ui.label("Keine Messdaten in diesem Bereich.").classes("text-grey-7")
+                    return
+                ui.table(
+                    columns=[
+                        {"name": "period", "label": "Quartal", "field": "period", "align": "left"},
+                        {"name": "consumption", "label": "Bezug (kWh)", "field": "consumption"},
+                        {"name": "feed_in", "label": "Einspeisung (kWh)", "field": "feed_in"},
+                        {"name": "metering_points", "label": "Messpunkte", "field": "metering_points"},
+                        {"name": "readings", "label": "Messwerte", "field": "readings"},
+                        {"name": "imported", "label": "Letzter Import", "field": "imported"},
+                        {"name": "note", "label": "Hinweis", "field": "note", "align": "left"},
+                    ],
+                    rows=[_quarter_stock_row(total) for total in totals],
+                    row_key="period",
+                ).classes("w-full")
+
+        stock_leg_select.on_value_change(lambda _: refresh_stock())
+        refresh_stock()
+
+        ui.label("Quartalsübersicht je Person").classes("text-lg font-bold mt-6")
 
         with ui.row().classes("items-end gap-2"):
             leg_select = ui.select(leg_options, label="LEG", value=None).classes("w-64")
@@ -133,7 +234,8 @@ def reports_page() -> None:
                         ui.label(f"{leg_options[leg_id]} -- Q{quarter} {year}").classes("text-lg font-bold")
                         ui.label(
                             f"{distribution.interval_count} Intervalle, "
-                            f"{len(distribution.person_results)} Personen mit lokalem Anteil."
+                            f"{_persons_with_energy(distribution)} von "
+                            f"{len(distribution.person_results)} Teilnehmenden mit lokalem Anteil."
                         )
                         if distribution.unassigned_kwh:
                             ui.label(f"⚠ {distribution.unassigned_kwh} kWh ohne zugeordnete Person.").classes(

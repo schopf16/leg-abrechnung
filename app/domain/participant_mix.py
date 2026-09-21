@@ -83,48 +83,75 @@ def _moment(reference_date: Optional[date]) -> datetime:
 class ParticipantMix:
     """The Producer:Consumer participant balance for a substation area or LEG.
 
+    Two different things are counted here, and confusing them is what
+    made the overview disagree with itself: the **metering points** are
+    what a reader adds up against the "Messpunkte" column, while the
+    **persons** are what a membership threshold is about -- seven meters
+    are not seven members. The overviews show the metering points; only
+    `LegSettings.leg_founding_min_persons` uses the person counts.
+
     Attributes:
-        producer_count: Distinct persons counted as Producer (see module
-            docstring).
-        consumer_count: Distinct persons counted as Consumer.
+        producer_count: Distinct persons on the feed-in side (see module
+            docstring). A person with two feed-in meters counts once.
+        consumer_count: Distinct persons on the consumption side.
+        producer_metering_points: Feed-in metering points in scope.
+        consumer_metering_points: Consumption metering points in scope.
+        unassigned_metering_points: Of those, how many have no current or
+            upcoming assignment. They are counted in the two numbers
+            above -- they exist and they have a direction -- but they are
+            reported separately, because a metering point nobody is
+            assigned to produces energy with no recipient at billing
+            time (see `app.domain.billing_checks`).
     """
 
     producer_count: int
     consumer_count: int
+    producer_metering_points: int = 0
+    consumer_metering_points: int = 0
+    unassigned_metering_points: int = 0
 
     @property
     def is_one_sided(self) -> bool:
         """Whether one side is completely empty.
 
+        Judged on the metering points, not the persons: whether energy
+        can be shared locally depends on there being meters of both
+        directions, regardless of how many people hold them.
+
         Returns:
-            `True` if there are no Producer, or no Consumer, at all
-            (a substation area/LEG with neither is not "one-sided", it is
+            `True` if there are no feed-in, or no consumption, metering
+            points at all (a scope with neither is not "one-sided", it is
             simply empty -- also `True` in that case, since it equally
             cannot function as its own LEG).
         """
-        return self.producer_count == 0 or self.consumer_count == 0
+        return self.producer_metering_points == 0 or self.consumer_metering_points == 0
 
     @property
     def ratio(self) -> str:
         """The ratio as a simple `"<Producer>:<Consumer>"` string.
 
+        Metering points, so the two numbers add up to the metering point
+        count shown beside them.
+
         Returns:
-            E.g. `"3:5"`.
+            E.g. `"9:26"`.
         """
-        return f"{self.producer_count}:{self.consumer_count}"
+        return f"{self.producer_metering_points}:{self.consumer_metering_points}"
 
     @property
     def total_persons(self) -> int:
         """The simple sum of `producer_count` and `consumer_count`.
 
         A true prosumer is counted on both sides (see the module
-        docstring), so this is not a deduplicated headcount -- it is
-        exactly the two numbers shown together in `ratio` added up,
-        matching how an administrator reads that badge. Used to gate the
+        docstring), so this is not a deduplicated headcount. Note this is
+        **not** what `ratio` shows: that counts metering points, so the
+        overview adds up against the "Messpunkte" column beside it. This
+        is the people, and it exists for one purpose -- gating the
         LEG-upgrade suggestion on `LegSettings.leg_founding_min_persons`
-        (see `leg_should_split`/`find_upgrade_candidates`): a substation area
-        with both sides present but too few people overall is not worth
-        splitting off into its own LEG.
+        (see `leg_should_split`/`find_upgrade_candidates`). A substation
+        area with both sides present but too few *people* is not worth
+        splitting off into its own LEG; seven meters are not seven
+        members.
 
         Returns:
             `producer_count + consumer_count`.
@@ -139,13 +166,13 @@ class ParticipantMix:
             `None` if both sides are present, or if the scope has no
             participants at all yet (nothing to warn about).
         """
-        if self.producer_count and self.consumer_count:
+        if self.producer_metering_points and self.consumer_metering_points:
             return None
-        if self.producer_count == 0 and self.consumer_count == 0:
+        if self.producer_metering_points == 0 and self.consumer_metering_points == 0:
             return None
         return (
             "Nur Konsumenten -- niemand liefert lokal geteilten Strom."
-            if self.producer_count == 0
+            if self.producer_metering_points == 0
             else "Nur Produzenten -- niemand bezieht lokal geteilten Strom."
         )
 
@@ -169,23 +196,71 @@ def compute_participant_mix(
     Returns:
         The computed `ParticipantMix`.
     """
-    moment = _moment(reference_date)
     site_ids_set = set(site_ids)
+    metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.site_id in site_ids_set]
+    return _mix_of(connection, metering_points, reference_date)
+
+
+def _mix_of(
+    connection: sqlite3.Connection, metering_points: list, reference_date: Optional[date] = None
+) -> ParticipantMix:
+    """Compute the mix over an explicit set of metering points.
+
+    The single place both counts are derived, so they can never be taken
+    over different sets: the metering points are counted by their own
+    `direction`, the persons from the assignments those metering points
+    carry.
+
+    A metering point with no current or upcoming assignment still counts
+    towards its direction -- it is part of the LEG and it has one -- but
+    contributes no person, and is tallied in
+    `unassigned_metering_points`. Dropping it from the direction counts
+    is what used to make the two numbers fall short of the metering point
+    count beside them, with nothing saying why.
+
+    Args:
+        connection: Open SQLite connection.
+        metering_points: The metering points in scope.
+        reference_date: Reference date for which assignments count as
+            relevant, `None` for today.
+
+    Returns:
+        The computed `ParticipantMix`.
+    """
+    moment = _moment(reference_date)
 
     producer_ids: set[int] = set()
     consumer_ids: set[int] = set()
-    for metering_point in metering_point_repo.list_all(connection):
-        if metering_point.site_id not in site_ids_set:
-            continue
-        for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
-            if not assignment.is_current_or_upcoming(moment):
-                continue
-            if metering_point.direction == DIRECTION_FEED_IN:
-                producer_ids.add(assignment.person_id)
-            elif metering_point.direction == DIRECTION_CONSUMPTION:
-                consumer_ids.add(assignment.person_id)
+    producer_metering_points = 0
+    consumer_metering_points = 0
+    unassigned = 0
 
-    return ParticipantMix(producer_count=len(producer_ids), consumer_count=len(consumer_ids))
+    for metering_point in metering_points:
+        is_feed_in = metering_point.direction == DIRECTION_FEED_IN
+        if is_feed_in:
+            producer_metering_points += 1
+        elif metering_point.direction == DIRECTION_CONSUMPTION:
+            consumer_metering_points += 1
+        else:
+            continue
+
+        person_ids = {
+            assignment.person_id
+            for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id)
+            if assignment.is_current_or_upcoming(moment)
+        }
+        if not person_ids:
+            unassigned += 1
+            continue
+        (producer_ids if is_feed_in else consumer_ids).update(person_ids)
+
+    return ParticipantMix(
+        producer_count=len(producer_ids),
+        consumer_count=len(consumer_ids),
+        producer_metering_points=producer_metering_points,
+        consumer_metering_points=consumer_metering_points,
+        unassigned_metering_points=unassigned,
+    )
 
 
 def compute_participant_mix_for_substation_area(
@@ -216,11 +291,18 @@ def compute_participant_mix_for_leg(
         reference_date: Reference date, `None` for today.
 
     Returns:
-        The `ParticipantMix` for every site with at least one
-        MeteringPoint assigned to this LEG.
+        The `ParticipantMix` over the metering points that belong to this
+        LEG.
+
+    Scoped by `leg_id`, not by the sites those metering points sit at:
+    LEG membership is a property of the MeteringPoint (see
+    `app.models.leg`), and two metering points at one address can belong
+    to different LEGs. Going via the sites pulled a neighbour's meter
+    into this LEG's figures and made them disagree with the metering
+    point count shown beside them.
     """
-    site_ids = sorted({mp.site_id for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id})
-    return compute_participant_mix(connection, site_ids, reference_date)
+    metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
+    return _mix_of(connection, metering_points, reference_date)
 
 
 def leg_should_split(

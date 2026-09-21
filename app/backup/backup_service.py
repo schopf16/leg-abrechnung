@@ -34,19 +34,56 @@ class BackupValidationError(Exception):
     """Raised when a file selected for restore is not a usable LEG backup."""
 
 
+@dataclass(frozen=True)
+class BackupContents:
+    """How much master data a backup holds.
+
+    A filename and a size say nothing about which backup is which. These
+    three numbers do: they are what changes as the community grows, so
+    they are what tells two snapshots apart at a glance.
+
+    Attributes:
+        legs: Number of LEGs.
+        persons: Number of persons.
+        metering_points: Number of metering points.
+    """
+
+    legs: int
+    persons: int
+    metering_points: int
+
+
 @dataclass
 class BackupFileInfo:
     """Metadata about one backup file for display in the UI.
 
     Attributes:
         path: Filesystem path of the backup file.
-        created_at: Timestamp the backup was written, from the filesystem.
+        created_at: When the backup was taken, read from its own filename
+            (see `create_backup`), falling back to the file's
+            modification time for anything not named that way. The
+            filename is preferred because copying a backup around
+            rewrites the modification time while the name keeps saying
+            when the snapshot was actually made.
         size_bytes: File size in bytes.
+        contents: What is inside, or `None` if the counts could not be
+            read -- a backup from an older schema names its tables
+            differently. `None` is shown as such rather than as zeroes,
+            which would read like an empty database. A file can be
+            perfectly restorable and still have no counts.
+        problem: Why this file cannot be restored, or `None` if it can.
     """
 
     path: Path
     created_at: datetime
     size_bytes: int
+    contents: Optional[BackupContents] = None
+    problem: Optional[str] = None
+
+    @property
+    def is_usable(self) -> bool:
+        """Whether this file could be restored."""
+        return self.problem is None
 
 
 @dataclass
@@ -128,29 +165,95 @@ def mirror_backup(backup_path: Path, extra_dir: Path) -> Optional[str]:
 
 
 def list_backups(backups_dir: Path = BACKUPS_DIR) -> list[BackupFileInfo]:
-    """List all backup files, most recent first.
+    """List every file in the backups folder, most recent first.
+
+    Deliberately not filtered by filename. Whether a file can be restored
+    is a question about its contents, and asking the filename instead hid
+    real backups: a copy saved under a describing name -- exactly what one
+    does before something risky -- was simply absent from the list, with
+    nothing saying why. Every file is opened and asked directly; the ones
+    that turn out not to be LEG databases stay in the list carrying the
+    reason, so "why is my file not here" cannot arise either.
 
     Args:
         backups_dir: Directory backups are stored in.
 
     Returns:
-        Backup file metadata, sorted by filename (== chronologically,
-        since filenames are timestamp-prefixed) descending.
+        Backup file metadata, newest first.
     """
     backups_dir.mkdir(parents=True, exist_ok=True)
     infos = []
-    for path in sorted(
-        backups_dir.glob(f"{_BACKUP_FILENAME_PREFIX}*{_BACKUP_FILENAME_SUFFIX}"), reverse=True
-    ):
+    for path in backups_dir.iterdir():
+        if not path.is_file():
+            continue
         stat = path.stat()
+        problem = check_backup_file(path)
         infos.append(
             BackupFileInfo(
                 path=path,
-                created_at=datetime.fromtimestamp(stat.st_mtime),
+                created_at=_created_at_of(path) or datetime.fromtimestamp(stat.st_mtime),
                 size_bytes=stat.st_size,
+                contents=read_backup_contents(path) if problem is None else None,
+                problem=problem,
             )
         )
+    # By when the snapshot was taken, not by filename: with names no
+    # longer dictated, the name says nothing about the order.
+    infos.sort(key=lambda info: info.created_at, reverse=True)
     return infos
+
+
+def _created_at_of(path: Path) -> Optional[datetime]:
+    """Read the timestamp `create_backup` put into a backup's filename.
+
+    Args:
+        path: The backup file.
+
+    Returns:
+        The moment the snapshot was taken, or `None` if the name does not
+        carry one (a file put here by hand, or renamed).
+    """
+    if not (path.name.startswith(_BACKUP_FILENAME_PREFIX) and path.suffix == _BACKUP_FILENAME_SUFFIX):
+        return None
+    stem = path.name[len(_BACKUP_FILENAME_PREFIX) : -len(_BACKUP_FILENAME_SUFFIX)]
+    try:
+        return datetime.strptime(stem, "%Y%m%d_%H%M%S_%f")
+    except ValueError:
+        return None
+
+
+def read_backup_contents(path: Path) -> Optional[BackupContents]:
+    """Count the master data inside a backup, without touching it.
+
+    Opened strictly read-only and never migrated: a backup is evidence of
+    a past state, and reading it must not change what it says. A file
+    from an older schema simply has no answer here -- reporting zeroes
+    would be worse than reporting nothing, since an empty community and
+    an unreadable file are very different things.
+
+    Args:
+        path: The backup file.
+
+    Returns:
+        Its `BackupContents`, or `None` if it cannot be read.
+    """
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        # Written out rather than looped over a list of table names: a
+        # table name cannot be a bound parameter, so the loop meant
+        # building SQL by string formatting, and no reader should have to
+        # check whether those names are trustworthy.
+        legs = connection.execute("SELECT COUNT(*) FROM leg").fetchone()[0]
+        persons = connection.execute("SELECT COUNT(*) FROM person").fetchone()[0]
+        metering_points = connection.execute("SELECT COUNT(*) FROM metering_point").fetchone()[0]
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+    return BackupContents(legs=legs, persons=persons, metering_points=metering_points)
 
 
 def _validate_backup_file(path: Path) -> None:
@@ -171,7 +274,7 @@ def _validate_backup_file(path: Path) -> None:
         raise BackupValidationError(f"Datei nicht gefunden: {path}")
 
     try:
-        connection = sqlite3.connect(str(path))
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     except sqlite3.Error as exc:
         raise BackupValidationError(f"Datei ist keine gültige SQLite-Datenbank: {exc}") from exc
 
@@ -192,6 +295,27 @@ def _validate_backup_file(path: Path) -> None:
             )
     finally:
         connection.close()
+
+
+def check_backup_file(path: Path) -> Optional[str]:
+    """Ask whether a file could be restored, without raising.
+
+    The same question `restore_backup` asks, phrased for a list rather
+    than for a failure: a file either is a LEG database this app can read
+    back, or there is a reason it is not, and that reason is worth
+    showing beside it.
+
+    Args:
+        path: Candidate backup file.
+
+    Returns:
+        `None` if the file is usable, else a short German explanation.
+    """
+    try:
+        _validate_backup_file(path)
+    except BackupValidationError as exc:
+        return str(exc)
+    return None
 
 
 def _read_schema_version(path: Path) -> int:

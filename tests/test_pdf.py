@@ -15,6 +15,7 @@ from app.models import leg as leg_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
+from app.pdf.export_service import _load_metering_point_info
 from app.pdf.person_bill_pdf import generate_person_bill_pdf
 from app.pdf.qr_bill_render import build_qr_bill
 from app.pdf.qr_reference import generate_qrr_reference
@@ -83,6 +84,22 @@ def _billing_context(db):
     for item in items:
         item.due_date = due_date
     return run, items, distribution, leg, settings
+
+
+def _metering_point_info(db):
+    """Resolve the metering point/site data a billing document prints.
+
+    The real caller is `export_billing_run_documents`, which builds this
+    once per run; tests calling `generate_person_bill_pdf` directly reuse
+    the same loader so they exercise the same data the export does.
+
+    Args:
+        db: Database connection fixture.
+
+    Returns:
+        `MeteringPointInfo` keyed by metering point id.
+    """
+    return _load_metering_point_info(db)
 
 
 def test_generate_qrr_reference_is_unique_per_item():
@@ -258,7 +275,16 @@ def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(
     person_result = distribution.person_results[invoice_item.person_id]
 
     output_path = tmp_path / "prosumer.pdf"
-    generate_person_bill_pdf(run, invoice_item, person_result, person, leg, settings, output_path)
+    generate_person_bill_pdf(
+        run,
+        invoice_item,
+        person_result,
+        person,
+        leg,
+        settings,
+        output_path,
+        metering_point_info=_metering_point_info(db),
+    )
 
     _assert_is_pdf(output_path)
     assert _page_count(output_path) == 2
@@ -274,7 +300,16 @@ def test_generate_person_bill_pdf_for_credit_item_omits_payment_slip(db, tmp_pat
     person_result = distribution.person_results[credit_item.person_id]
 
     output_path = tmp_path / "credit.pdf"
-    generate_person_bill_pdf(run, credit_item, person_result, person, leg, settings, output_path)
+    generate_person_bill_pdf(
+        run,
+        credit_item,
+        person_result,
+        person,
+        leg,
+        settings,
+        output_path,
+        metering_point_info=_metering_point_info(db),
+    )
 
     _assert_is_pdf(output_path)
     # No QR-bill section means no forced page break for its reserved area --
@@ -290,7 +325,16 @@ def test_generate_person_bill_pdf_for_pure_consumer_has_payable_qr_bill(db, tmp_
     person_result = distribution.person_results[consumer_item.person_id]
 
     output_path = tmp_path / "consumer.pdf"
-    generate_person_bill_pdf(run, consumer_item, person_result, person, leg, settings, output_path)
+    generate_person_bill_pdf(
+        run,
+        consumer_item,
+        person_result,
+        person,
+        leg,
+        settings,
+        output_path,
+        metering_point_info=_metering_point_info(db),
+    )
 
     _assert_is_pdf(output_path)
 
@@ -315,7 +359,16 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
     consumer_item.paper_invoice_rappen = 0
 
     output_path = tmp_path / "consumer_no_fees.pdf"
-    generate_person_bill_pdf(run, consumer_item, person_result, person, leg, settings, output_path)
+    generate_person_bill_pdf(
+        run,
+        consumer_item,
+        person_result,
+        person,
+        leg,
+        settings,
+        output_path,
+        metering_point_info=_metering_point_info(db),
+    )
 
     _assert_is_pdf(output_path)
     assert _page_count(output_path) == 1
@@ -330,7 +383,16 @@ def test_generate_person_bill_pdf_shows_admin_fee_section_when_person_pays_paper
     person_result = distribution.person_results[item.person_id]
 
     output_path = tmp_path / "beat.pdf"
-    generate_person_bill_pdf(run, item, person_result, beat, leg, settings, output_path)
+    generate_person_bill_pdf(
+        run,
+        item,
+        person_result,
+        beat,
+        leg,
+        settings,
+        output_path,
+        metering_point_info=_metering_point_info(db),
+    )
 
     _assert_is_pdf(output_path)
     assert item.paper_invoice_rappen > 0

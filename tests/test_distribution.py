@@ -219,7 +219,13 @@ def test_zero_consumption_yields_zero_sharing(db):
     result = compute_quarter_distribution(db, leg_id, YEAR, QUARTER)
 
     assert result.total_produced_local_kwh() == 0.0
-    assert result.person_results == {}
+    # The producer still took part -- they held an assigned metering point
+    # all quarter -- so they appear with zero, not at all. Their bill has
+    # to list that meter, or they cannot tell it was considered.
+    assert set(result.person_results) == {producer}
+    (totals,) = result.person_results[producer].by_metering_point.values()
+    assert totals.metering_point_id == production_mp
+    assert totals.produced_local_kwh == 0.0
 
 
 def test_production_surplus_limits_sharing_to_consumption(db):

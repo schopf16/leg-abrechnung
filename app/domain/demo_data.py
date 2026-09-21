@@ -354,6 +354,29 @@ def _create_demo_sites(connection: sqlite3.Connection, substation_area: Substati
             substation_area_id=substation_area.id,
             created_at="",
         ),
+        # The two properties of the demo Verwaltung. Deliberately on
+        # different streets, so a bill covering both shows the address
+        # ordering (Lindenweg before Parkstrasse) as well as the grouping.
+        "lindenweg7": Site(
+            id=None,
+            street="Lindenweg",
+            house_number="7",
+            postal_code="3001",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=substation_area.id,
+            created_at="",
+        ),
+        "parkstrasse12": Site(
+            id=None,
+            street="Parkstrasse",
+            house_number="12",
+            postal_code="3001",
+            municipality="Bern",
+            address_detail="",
+            substation_area_id=substation_area.id,
+            created_at="",
+        ),
     }
     created = {}
     for handle, site in definitions.items():
@@ -428,6 +451,7 @@ def _create_demo_metering_points(
             pv_capacity_kwp=None,
             battery_capacity_kwh=None,
             created_at="",
+            label="Büro",
         ),
         "carla_bezug_2": MeteringPoint(
             id=None,
@@ -438,12 +462,84 @@ def _create_demo_metering_points(
             pv_capacity_kwp=None,
             battery_capacity_kwh=None,
             created_at="",
+            label="Werkstatt",
         ),
         "bergstrasse4_bezug": MeteringPoint(
             id=None,
             designation="CH1000000000000000000000007",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["bergstrasse4"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+        ),
+        # Lindenweg 7: three flats plus the common supply and a PV roof.
+        # The labels are the whole point -- a Verwaltung allocating this
+        # bill internally cannot do anything with "CH10000...".
+        "lindenweg7_allgemein": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000008",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=sites["lindenweg7"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+            label="Allgemeinstrom",
+        ),
+        "lindenweg7_whg1": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000009",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=sites["lindenweg7"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+            label="Whg. 1. OG",
+        ),
+        "lindenweg7_whg2": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000010",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=sites["lindenweg7"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+            label="Whg. 2. OG",
+        ),
+        "lindenweg7_pv": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000011",
+            direction=DIRECTION_FEED_IN,
+            site_id=sites["lindenweg7"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=18.5,
+            battery_capacity_kwh=None,
+            created_at="",
+            label="PV Dach",
+        ),
+        # Parkstrasse 12: consumption only, so the second block on the
+        # bill has just one section -- and one metering point is left
+        # unlabelled on purpose, which is what most of them look like.
+        "parkstrasse12_allgemein": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000012",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=sites["parkstrasse12"].id,
+            leg_id=leg.id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+            label="Allgemeinstrom",
+        ),
+        "parkstrasse12_whg_eg": MeteringPoint(
+            id=None,
+            designation="CH1000000000000000000000013",
+            direction=DIRECTION_CONSUMPTION,
+            site_id=sites["parkstrasse12"].id,
             leg_id=leg.id,
             pv_capacity_kwp=None,
             battery_capacity_kwh=None,
@@ -548,6 +644,26 @@ def _create_demo_persons(connection: sqlite3.Connection) -> dict[str, Person]:
             active=True,
             created_at="",
         ),
+        "verwaltung": Person(
+            id=None,
+            salutation="Frau",
+            company="Hauswerk Verwaltungs AG (Demo)",
+            first_name="Nadia",
+            last_name="Verwalterin",
+            contact_email="nadia.verwalterin@example.ch",
+            contact_phone="",
+            billing_street="Marktgasse",
+            billing_house_number="20",
+            billing_postal_code="3001",
+            billing_city="Bern",
+            billing_country="CH",
+            iban="CH9300762011623852957",
+            customer_number=None,
+            bkw_customer_number=None,
+            paper_invoice=False,
+            active=True,
+            created_at="",
+        ),
         "erika": Person(
             id=None,
             salutation="Frau",
@@ -607,6 +723,14 @@ def _create_demo_assignments(
         ("beat_einspeisung", "beat"),
         ("carla_bezug_1", "carla"),
         ("carla_bezug_2", "carla"),
+        # One customer, six metering points, two properties -- the whole
+        # point of the Verwaltung case: it still yields ONE bill.
+        ("lindenweg7_allgemein", "verwaltung"),
+        ("lindenweg7_whg1", "verwaltung"),
+        ("lindenweg7_whg2", "verwaltung"),
+        ("lindenweg7_pv", "verwaltung"),
+        ("parkstrasse12_allgemein", "verwaltung"),
+        ("parkstrasse12_whg_eg", "verwaltung"),
     ]
     for metering_point_handle, person_handle in static_assignments:
         assignment_repo.create(
@@ -655,6 +779,15 @@ _METERING_POINT_SCALES = {
     "carla_bezug_1": 0.8,
     "carla_bezug_2": 1.5,
     "bergstrasse4_bezug": 1.1,
+    "lindenweg7_allgemein": 0.6,
+    "lindenweg7_whg1": 1.2,
+    "lindenweg7_whg2": 0.9,
+    # Deliberately smaller than the five consumption meters combined, so
+    # the Verwaltung ends up owing money: its bill then also shows the
+    # QR payment slip, which a credit note omits entirely.
+    "lindenweg7_pv": 2.0,
+    "parkstrasse12_allgemein": 0.5,
+    "parkstrasse12_whg_eg": 1.4,
 }
 
 
