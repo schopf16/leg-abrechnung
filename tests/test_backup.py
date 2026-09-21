@@ -374,3 +374,24 @@ def test_listing_never_writes_beside_the_files_it_inspects(tmp_path):
     list_backups(backups_dir)
 
     assert sorted(p.name for p in backups_dir.iterdir()) == before
+
+
+def test_a_backup_whose_name_contains_a_hash_is_still_recognised(tmp_path):
+    """ "Backup #3 vor Umbau.sqlite3" is a name people really use.
+
+    The file is opened through a `file:` URI, and an unencoded "#" ends
+    the URI's path -- SQLite then opened something else entirely and the
+    list declared a perfectly good backup to be no LEG database at all.
+    Harmless while only `leg_abrechnung_*.sqlite3` was listed; reachable
+    the moment any filename could appear.
+    """
+    db_path = tmp_path / "live.sqlite3"
+    backups_dir = tmp_path / "backups"
+    _make_live_db(db_path)
+    create_backup(db_path, backups_dir).rename(backups_dir / "Backup #3 vor Umbau.sqlite3")
+
+    (info,) = list_backups(backups_dir)
+
+    assert info.is_usable, info.problem
+    assert info.contents is not None
+    assert info.contents.persons == 1

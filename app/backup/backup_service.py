@@ -203,6 +203,24 @@ def list_backups(backups_dir: Path = BACKUPS_DIR) -> list[BackupFileInfo]:
     return infos
 
 
+def _read_only_uri(path: Path) -> str:
+    """Build a read-only SQLite URI for a path, whatever it is called.
+
+    `Path.as_uri()` percent-encodes, which matters here: since the list
+    stopped filtering by filename, any name can reach this code, and an
+    unencoded "#" ends the URI's path. A perfectly good backup called
+    "Backup #3 vor Umbau.sqlite3" then opened as something else entirely
+    and was reported as not being a LEG database at all.
+
+    Args:
+        path: The file to open.
+
+    Returns:
+        A `file:` URI requesting read-only access.
+    """
+    return f"{path.resolve().as_uri()}?mode=ro"
+
+
 def _created_at_of(path: Path) -> Optional[datetime]:
     """Read the timestamp `create_backup` put into a backup's filename.
 
@@ -238,7 +256,7 @@ def read_backup_contents(path: Path) -> Optional[BackupContents]:
         Its `BackupContents`, or `None` if it cannot be read.
     """
     try:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection = sqlite3.connect(_read_only_uri(path), uri=True)
     except sqlite3.Error:
         return None
     try:
@@ -274,7 +292,7 @@ def _validate_backup_file(path: Path) -> None:
         raise BackupValidationError(f"Datei nicht gefunden: {path}")
 
     try:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection = sqlite3.connect(_read_only_uri(path), uri=True)
     except sqlite3.Error as exc:
         raise BackupValidationError(f"Datei ist keine gültige SQLite-Datenbank: {exc}") from exc
 
