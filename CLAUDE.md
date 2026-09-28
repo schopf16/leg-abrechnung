@@ -588,6 +588,30 @@ Note also that `tests/conftest.py` has an autouse fixture pointing
 renders a page opens the real `data/leg_abrechnung.sqlite3` with actual
 members' data in it.
 
+### The repository is public, and that is a deliberate trade
+
+`schopf16/leg-abrechnung` is **public**, so that the free GitHub tooling
+(CodeQL, secret scanning, Dependabot, Actions) is available without paying
+for it. The consequence has to be present before **every** commit: whatever
+is committed is world-readable, immediately and permanently -- a later
+`git rm` does not remove it from the history, and the history is what
+people clone.
+
+So nothing that identifies a member ever goes in: no name, address, IBAN,
+email or customer number, not in code, not in a test fixture, not in a
+commit message, not in a PR description. `.gitignore` covers `data/`,
+`backups/`, `logs/`, `output/`, `*.sqlite3`, `config.local.*` and `.env`,
+which is the mechanism -- but the check before committing is the habit.
+Test data is invented (`example.invalid` addresses, `Muster`/`Beispiel`
+names); real figures quoted in a commit message stay aggregate ("26 von 29
+Messpunkten"), never per person.
+
+Licensed **GPL-3.0-or-later** (see `LICENSE` and README section 10): others
+may use and adapt it, and anyone distributing a modified version has to
+publish their source too, so improvements can find their way back. GPL-2
+was ruled out because `svglib` is LGPL-3.0 and incompatible with it; every
+other dependency is MIT or BSD.
+
 ### Security review is Claude's job, not GitHub's
 
 On GitHub this repository runs **CodeQL** (default setup), **secret
