@@ -232,3 +232,31 @@ def test_the_austritte_page_hides_a_finished_offboarding_that_is_settled():
     ]
     assert not any("Daniel Erledigt" in text for text in texts)
     assert "Person noch aktiv" not in texts
+
+
+def test_the_two_destructive_buttons_do_not_read_alike():
+    """A card can carry both, and they destroy very different things.
+
+    Reported from first use: "Löschen" (discard the tracking) sat beside
+    "Person entfernen" (remove the person), both red, and the only thing
+    telling them apart was the confirmation text -- which is read after the
+    click, not before it. Each label now names its own object.
+    """
+    from app.gui.pages import offboardings as offboardings_module
+
+    with connection_scope() as connection:
+        _complete_offboarding(connection, _person(connection, "Wyder"))
+
+    client = Client(ui.page("/probe-offboarding-labels")(lambda: None), request=None)
+    with client:
+        offboardings_module.offboardings_page()
+
+    labels = {
+        element._props.get("label")
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Button" and element._props.get("label")
+    }
+
+    assert "Austritt verwerfen" in labels
+    assert "Person entfernen" in labels
+    assert "Löschen" not in labels, "zwei rote Knöpfe dürfen nicht beide nur „löschen“ heissen"

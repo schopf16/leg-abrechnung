@@ -137,7 +137,13 @@ def open_person_form(
         # belongs here is the answer to "is this person a member", plus
         # where to change it.
         ui.label("Genossenschaft").classes("text-body1 font-bold")
-        cooperative = CooperativeEditor(existing.id if existing else None)
+        cooperative = CooperativeEditor(
+            existing.id if existing else None,
+            # A membership deleted or corrected in here is written at once,
+            # so the list behind this dialog is stale from that moment --
+            # even if the dialog is closed with Abbrechen.
+            on_changed=(lambda: on_saved(existing)) if (on_saved and existing) else None,
+        )
 
         ui.separator().classes("my-2")
         ui.label("Zweite Person (optional)").classes("text-body1 font-bold")

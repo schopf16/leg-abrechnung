@@ -262,9 +262,9 @@ def onboardings_page() -> None:
                         ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
                             "dense flat"
                         )
-                        ui.button("Löschen", on_click=lambda o=onboarding, p=person: on_delete(o, p)).props(
-                            "dense flat color=negative"
-                        )
+                        ui.button(
+                            "Aufnahme verwerfen", on_click=lambda o=onboarding, p=person: on_delete(o, p)
+                        ).props("dense flat color=negative")
 
         def refresh() -> None:
             """Reload the onboarding list according to the current filters.
@@ -326,10 +326,10 @@ def onboardings_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'Aufnahmeprozess von "{person.display_name}" wirklich löschen?')
-                ui.label(
-                    "Nur die Nachverfolgung wird entfernt -- die Person selbst bleibt bestehen."
-                ).classes("text-caption text-grey-7")
+                ui.label(f'Aufnahme von "{person.display_name}" wirklich verwerfen?')
+                ui.label("Nur die Nachverfolgung verschwindet -- die Person selbst bleibt bestehen.").classes(
+                    "text-caption text-grey-7"
+                )
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
@@ -341,7 +341,7 @@ def onboardings_page() -> None:
                         safe_notify("Gelöscht.", type="warning")
                         refresh()
 
-                    ui.button("Löschen", on_click=do_delete, color="negative")
+                    ui.button("Verwerfen", on_click=do_delete, color="negative")
             confirm.open()
 
         def on_start() -> None:
