@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from app.domain.period import month_bounds, quarter_bounds, trailing_months
+from app.models.metering_point import DIRECTION_FEED_IN
 
 
 @dataclass
@@ -360,3 +361,124 @@ def _assigned_metering_point_count(
         (last_day, start.date().isoformat(), leg_id, leg_id),
     ).fetchone()
     return row["n"] or 0
+
+
+#: Upper bound above which a hand-entered capacity is treated as a typo
+#: rather than a value. Not a physical claim: the largest real figure in
+#: this deployment is 25 kWp, and somebody entering 18.5 as 18500 must not
+#: be able to triple the reported total. Applies to kWp and to kWh alike.
+CAPACITY_PLAUSIBLE_MAX = 1000.0
+
+
+@dataclass
+class InstalledCapacity:
+    """Installed PV power and battery capacity, summed over plausible values.
+
+    Purely informational -- nothing bills from this, and no check gates on
+    it. What it must not do is look complete when it is not: a capacity is
+    typed in by hand per metering point (see
+    `app.gui.metering_point_form`), so a bare sum invites being read as the
+    LEG's total when in truth several meters carry no figure at all. Hence
+    the counts alongside each sum.
+
+    Attributes:
+        pv_kwp: Sum of plausible `pv_capacity_kwp` values, in kWp. Note
+            this is power, not energy -- the energy actually fed in per
+            quarter is `QuarterEnergy.feed_in_kwh`.
+        pv_counted: How many metering points contributed to `pv_kwp`.
+        pv_expected: How many feed-in metering points exist in scope,
+            whether or not they carry a figure. `pv_counted` below this
+            means the sum is incomplete.
+        battery_kwh: Sum of plausible `battery_capacity_kwh` values.
+        battery_counted: How many metering points contributed to
+            `battery_kwh`. There is no "expected" counterpart: a metering
+            point without a battery is the normal case, not a gap.
+        implausible: Designations of metering points whose value was
+            discarded, so a dropped figure is never silent (same reasoning
+            as `QuarterEnergy.missing_metering_points`).
+    """
+
+    pv_kwp: float
+    pv_counted: int
+    pv_expected: int
+    battery_kwh: float
+    battery_counted: int
+    implausible: list[str]
+
+
+def _plausible_capacity(value: Optional[float]) -> bool:
+    """Whether a hand-entered capacity can be summed.
+
+    Args:
+        value: The stored value, possibly `None`.
+
+    Returns:
+        `True` for a value that is set, greater than zero and below
+        `CAPACITY_PLAUSIBLE_MAX`. Zero is excluded deliberately: a metering
+        point with no PV is recorded by leaving the field empty, so a zero
+        adds nothing and a negative is impossible in reality.
+    """
+    return value is not None and 0 < value < CAPACITY_PLAUSIBLE_MAX
+
+
+def installed_capacity_totals(
+    connection: sqlite3.Connection, leg_id: Optional[int] = None
+) -> InstalledCapacity:
+    """Sum the installed PV power and battery capacity on record.
+
+    Args:
+        connection: Open SQLite connection.
+        leg_id: Restrict to one LEG, or `None` for every metering point.
+
+    Returns:
+        The `InstalledCapacity`. A PV figure on a **consumption** metering
+        point is discarded: installed production belongs on the feed-in
+        side, and the field is editable on both. Battery capacity is
+        accepted on either side -- a storage unit sits behind the
+        connection, not behind one direction.
+    """
+    rows = connection.execute(
+        """
+        SELECT designation, direction, pv_capacity_kwp, battery_capacity_kwh
+        FROM metering_point
+        WHERE ? IS NULL OR leg_id = ?
+        """,
+        (leg_id, leg_id),
+    ).fetchall()
+
+    pv_kwp = 0.0
+    pv_counted = 0
+    pv_expected = 0
+    battery_kwh = 0.0
+    battery_counted = 0
+    implausible: list[str] = []
+
+    for row in rows:
+        is_feed_in = row["direction"] == DIRECTION_FEED_IN
+        if is_feed_in:
+            pv_expected += 1
+
+        pv_value = row["pv_capacity_kwp"]
+        if pv_value is not None:
+            if is_feed_in and _plausible_capacity(pv_value):
+                pv_kwp += pv_value
+                pv_counted += 1
+            else:
+                implausible.append(row["designation"])
+
+        battery_value = row["battery_capacity_kwh"]
+        if battery_value is not None:
+            if _plausible_capacity(battery_value):
+                battery_kwh += battery_value
+                battery_counted += 1
+            elif row["designation"] not in implausible:
+                implausible.append(row["designation"])
+
+    return InstalledCapacity(
+        pv_kwp=round(pv_kwp, 2),
+        pv_counted=pv_counted,
+        pv_expected=pv_expected,
+        battery_kwh=round(battery_kwh, 2),
+        battery_counted=battery_counted,
+        implausible=implausible,
+    )

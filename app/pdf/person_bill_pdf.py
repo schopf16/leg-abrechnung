@@ -40,6 +40,7 @@ from app.models.billing_run import BillingRun, BillingRunItem
 from app.models.leg import Leg
 from app.models.person import Person
 from app.models.settings import LegSettings
+from app.domain.salutation import letter_salutation
 from app.pdf.bill_breakdown import BillBreakdown, MeteringPointInfo, build_bill_breakdown
 from app.pdf.layout import (
     CONTENT_BOTTOM_Y,
@@ -197,7 +198,7 @@ def generate_person_bill_pdf(
     )
 
     y = draw_title(canvas, "Abrechnung")
-    y = draw_intro_text(canvas, "Sehr geehrte Kundin, sehr geehrter Kunde", y)
+    y = draw_intro_text(canvas, letter_salutation(person), y)
     y = draw_intro_text(
         canvas,
         f"Sie erhalten nachfolgend die Abrechnung des lokal geteilten Stroms für {period}.",

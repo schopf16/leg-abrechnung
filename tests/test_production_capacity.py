@@ -200,7 +200,7 @@ def _row_for(db, **overrides):
     from app.gui.pages.legs import _to_row
 
     leg_id = leg_repo.create(db, _leg(**overrides))
-    return _to_row(db, leg_repo.get(db, leg_id), min_persons=7, warn_percent=10.0)
+    return _to_row(db, leg_repo.get(db, leg_id), warn_percent=10.0)
 
 
 def test_the_row_appends_the_recording_date(db):

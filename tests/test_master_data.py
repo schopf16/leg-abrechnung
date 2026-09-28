@@ -161,8 +161,13 @@ def test_person_display_name_combines_company_and_contact(db):
     assert fetched.display_name == "Muster AG (Ansprech Person)"
 
 
-def test_person_address_block_lines_includes_salutation_only_with_a_name(db):
-    """The recipient address block shows salutation only alongside a personal name."""
+def test_person_address_block_lines_puts_the_salutation_on_the_name_line(db):
+    """The salutation goes in front of the name, not on a line of its own.
+
+    Swiss letter practice, and the only form that survives a second named
+    person: with "Frau" and "Herr" on separate lines nothing would say
+    which salutation belongs to which name.
+    """
     company_only = _make_person("")
     company_only.company = "Nur Firma AG"
     company_only.salutation = "Herr"
@@ -171,7 +176,11 @@ def test_person_address_block_lines_includes_salutation_only_with_a_name(db):
     with_contact = _make_person("Max Muster")
     with_contact.company = "Muster AG"
     with_contact.salutation = "Herr"
-    assert with_contact.address_block_lines == ["Muster AG", "Herr", "Max Muster"]
+    assert with_contact.address_block_lines == ["Muster AG", "Herr Max Muster"]
+
+    without_salutation = _make_person("Max Muster")
+    without_salutation.salutation = ""
+    assert without_salutation.address_block_lines == ["Max Muster"]
 
 
 def test_person_billing_street_with_number_combines_street_and_house_number(db):

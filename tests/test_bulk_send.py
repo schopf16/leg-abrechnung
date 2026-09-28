@@ -3,6 +3,7 @@ orchestration -- graph_client is mocked throughout, no real network calls
 and no real SMTP/Graph server involved)."""
 
 import asyncio
+from dataclasses import replace
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -19,6 +20,7 @@ from app.emailing.bulk_send import (
 )
 from app.emailing.graph_client import GraphApiError, GraphAuthError
 from app.models import billing_run as billing_run_repo
+from app.models import cooperative_membership as cooperative_membership_repo
 from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
@@ -26,6 +28,7 @@ from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models import assignment as assignment_repo
 from app.models.billing_run import BillingRun, BillingRunItem
+from app.models.cooperative_membership import CooperativeMembership
 from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
 from app.models.person import Person
@@ -239,7 +242,7 @@ def test_send_broadcast_email_sends_individually_and_logs(db):
     assert result.sent == ["Anna Test", "Beat Test"]
     assert mock_send.call_count == 2
     first_call_kwargs = mock_send.call_args_list[0].kwargs
-    assert first_call_kwargs["to_address"] == "anna@example.invalid"
+    assert first_call_kwargs["to_addresses"] == ["anna@example.invalid"]
     assert first_call_kwargs["subject"] == "Betreff Anna"
     assert first_call_kwargs["body"] == "Hallo Anna"
 
@@ -510,3 +513,154 @@ def test_resend_invoice_email_raises_if_no_pdf(db):
     run, item = _run_with_item(db, pdf_path=None)
     with pytest.raises(ValueError, match="PDF"):
         asyncio.run(resend_invoice_email(db, "config", run, item, "s", "b"))
+
+
+# --- Genossenschafter as a recipient group ------------------------------
+
+
+def _member(db, person_id: int, *, valid_from: date, valid_to=None, shares: int = 5) -> int:
+    """Make one person a Genossenschaft member for a period.
+
+    Args:
+        db: Database connection fixture.
+        person_id: The member.
+        valid_from: First day of the membership.
+        valid_to: Last day, or `None` while it runs.
+        shares: Share count.
+
+    Returns:
+        The membership period's id.
+    """
+    return cooperative_membership_repo.create(
+        db,
+        CooperativeMembership(
+            id=None,
+            person_id=person_id,
+            shares=shares,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            created_at="",
+        ),
+    )
+
+
+def test_list_cooperative_recipients_is_todays_roll(db):
+    """Members today, and only them -- not participants, not ex-members."""
+    member = _person(db, "Mitglied", "mitglied@example.invalid")
+    former = _person(db, "Ehemalig", "ehemalig@example.invalid")
+    _person(db, "Kundin", "kundin@example.invalid")
+
+    _member(db, member, valid_from=date.today() - timedelta(days=400))
+    _member(
+        db,
+        former,
+        valid_from=date.today() - timedelta(days=800),
+        valid_to=date.today() - timedelta(days=400),
+    )
+
+    recipients = bulk_send.list_cooperative_recipients(db)
+    assert [p.id for p in recipients] == [member]
+
+
+def test_list_cooperative_recipients_excludes_a_future_membership(db):
+    """Somebody who joins next month is not a member yet.
+
+    Deliberately stricter than `list_leg_recipients`, which counts a
+    pre-entered assignment -- see `app.models.cooperative_membership`.
+    """
+    joining = _person(db, "Kuenftig", "kuenftig@example.invalid")
+    _member(db, joining, valid_from=date.today() + timedelta(days=30))
+
+    assert bulk_send.list_cooperative_recipients(db) == []
+
+
+def test_list_cooperative_recipients_excludes_inactive_and_addressless(db):
+    """Same two exclusions as every other recipient list."""
+    deactivated = _person(db, "Inaktiv", "inaktiv@example.invalid")
+    without_email = _person(db, "OhneMail", "")
+    _member(db, deactivated, valid_from=date.today() - timedelta(days=10))
+    _member(db, without_email, valid_from=date.today() - timedelta(days=10))
+    person_repo.set_active(db, deactivated, False)
+
+    assert bulk_send.list_cooperative_recipients(db) == []
+
+
+# --- A couple's second address ------------------------------------------
+
+
+def test_a_broadcast_reaches_both_addresses_of_one_party(db):
+    """One send, two addresses -- and both are logged as reached."""
+    person_id = _person(db, "Anna", "anna@example.invalid")
+    person = person_repo.get(db, person_id)
+    person.second_first_name = "Beat"
+    person.second_last_name = "Beispiel"
+    person.second_contact_email = "beat@example.invalid"
+    person_repo.update(db, person)
+
+    with (
+        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as send,
+    ):
+        result = asyncio.run(
+            send_broadcast_email(
+                db,
+                "config",
+                [person_repo.get(db, person_id)],
+                "Betreff",
+                "Text",
+                scope="all",
+            )
+        )
+
+    assert send.await_count == 1, "ein Kunde, eine Nachricht"
+    assert send.await_args.kwargs["to_addresses"] == [
+        "anna@example.invalid",
+        "beat@example.invalid",
+    ]
+    assert result.errors == []
+
+    logged = email_log_repo.list_all(db)[0]
+    assert "beat@example.invalid" in logged.recipient_emails
+
+
+def test_the_invoice_skip_reason_only_skips_when_no_address_exists(db):
+    """One address of two is enough to send; none at all is a skip."""
+    with_second_only = Person(
+        id=1,
+        salutation="",
+        company="",
+        first_name="Anna",
+        last_name="Muster",
+        contact_email="",
+        contact_phone="",
+        billing_street="",
+        billing_house_number="",
+        billing_postal_code="",
+        billing_city="",
+        billing_country="CH",
+        iban="",
+        customer_number=1,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
+        second_contact_email="beat@example.invalid",
+    )
+    item = BillingRunItem(
+        id=1,
+        billing_run_id=1,
+        person_id=1,
+        consumed_kwh=1.0,
+        produced_kwh=0.0,
+        price_rp_per_kwh=10.0,
+        admin_fee_consumption_rappen=0,
+        paper_invoice_rappen=0,
+        net_amount_rappen=100,
+        pdf_path="/tmp/x.pdf",
+        created_at="",
+    )
+
+    assert bulk_send.invoice_skip_reason(with_second_only, item) is None
+
+    without_any = replace(with_second_only, second_contact_email="")
+    assert bulk_send.invoice_skip_reason(without_any, item) == "keine E-Mail-Adresse hinterlegt."

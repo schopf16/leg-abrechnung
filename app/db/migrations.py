@@ -1625,4 +1625,46 @@ Freundliche Grüsse';
             );
         """,
     ),
+    Migration(
+        version=50,
+        description="Three additions to person plus one new table. (1) note: a "
+        "free-text remark, like leg.note and substation_area.note already "
+        "have -- deliberately internal, never printed on a document or put "
+        "into an email. (2) second_salutation/second_first_name/"
+        "second_last_name/second_contact_email: a couple is one customer "
+        "with two named people, which the vZEV model requires (one netted "
+        "amount, one reference, one document -- see CLAUDE.md), but the "
+        "record could hold only one name. Both addresses receive that one "
+        "message; the one-recipient-per-message privacy rule is narrowed to "
+        "one message per contract party, not abandoned. (3) deactivated_at: "
+        "person.active said whether but never since when, so a deactivated "
+        "person showed 'Inaktiv' with no date on screen and on a printed "
+        "list. NULL for everyone deactivated before this migration -- "
+        "inventing a date would look like a recorded fact. (4) "
+        "cooperative_membership: the LEG is becoming a Genossenschaft, not "
+        "every participant will be a member, and 'who held how many shares "
+        "when' has to be answerable years later -- so a time-bounded "
+        "relation in the shape of assignment, not a column on person. "
+        "Gaps are legal here (leave and rejoin), unlike assignment, where "
+        "they are a warning; only overlaps are a contradiction.",
+        sql="""
+            ALTER TABLE person ADD COLUMN note TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN second_salutation TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN second_first_name TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN second_last_name TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN second_contact_email TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN deactivated_at TEXT;
+
+            CREATE TABLE cooperative_membership (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+                shares INTEGER NOT NULL DEFAULT 0 CHECK (shares >= 0),
+                valid_from TEXT NOT NULL,
+                valid_to TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_cooperative_membership_person
+                ON cooperative_membership(person_id);
+        """,
+    ),
 ]

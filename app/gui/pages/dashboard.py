@@ -15,11 +15,13 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
+from app.domain.statistics import installed_capacity_totals
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
     check_leg_production_capacity,
-    check_leg_upgrade_potential,
+    check_cooperative_members_without_shares,
+    check_offboarding_completed_but_active,
     check_onboarding_progress,
     check_open_billing_cycle,
     check_substation_area_one_sided,
@@ -37,6 +39,20 @@ from app.models import substation_area as substation_area_repo
 from app.models import web_registration as web_registration_repo
 
 
+def _format_capacity(value: float) -> str:
+    """Format a kWp/kWh figure the way a German reader writes it.
+
+    Args:
+        value: The figure.
+
+    Returns:
+        Two decimals with a comma, e.g. `"317,87"`. Matches
+        `app.domain.production_capacity.format_percent`'s convention, so
+        the same kind of number never appears two ways.
+    """
+    return f"{value:.2f}".replace(".", ",")
+
+
 def _load_overview(connection) -> dict:
     """Gather everything the dashboard shows in a single pass.
 
@@ -49,8 +65,10 @@ def _load_overview(connection) -> dict:
         path to jump straight to the object in question, or `None` if no
         detail page exists for it), "legs" (per-LEG summary rows),
         "open_registrations" (count of not-yet-fully-processed Web-Registrierungen)
-        and "open_onboardings" (count of in-progress onboarding trackers,
-        see `app.models.person_onboarding`) keys.
+        "open_onboardings" (count of in-progress onboarding trackers,
+        see `app.models.person_onboarding`) and "capacity" (the installed
+        PV/battery figures on record, see
+        `app.domain.statistics.installed_capacity_totals`) keys.
     """
     substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
@@ -86,6 +104,10 @@ def _load_overview(connection) -> dict:
         action_items.append((warning.message, warning.link))
     for warning in check_onboarding_progress(connection):
         action_items.append((warning.message, warning.link))
+    for warning in check_offboarding_completed_but_active(connection):
+        action_items.append((warning.message, warning.link))
+    for warning in check_cooperative_members_without_shares(connection):
+        action_items.append((warning.message, warning.link))
     for warning in check_open_billing_cycle(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_unresolved_bank_transactions(connection):
@@ -93,8 +115,6 @@ def _load_overview(connection) -> dict:
     for warning in check_substation_area_one_sided(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_leg_production_capacity(connection):
-        action_items.append((warning.message, warning.link))
-    for warning in check_leg_upgrade_potential(connection):
         action_items.append((warning.message, warning.link))
 
     leg_rows = []
@@ -122,6 +142,7 @@ def _load_overview(connection) -> dict:
         )
 
     return {
+        "capacity": installed_capacity_totals(connection),
         "counts": {
             "substation_areas": len(substation_areas),
             "sites": len(sites),
@@ -189,6 +210,29 @@ def dashboard_page() -> None:
                 with ui.card().classes("w-40"):
                     ui.label(str(counts[key])).classes("text-3xl font-bold")
                     ui.label(label)
+
+            # Two cards apart from the counting ones, because these are not
+            # complete by construction: a capacity is typed in by hand per
+            # metering point, so each card says how many it covers. A bare
+            # sum would be read as the LEG's total.
+            capacity = overview["capacity"]
+            with ui.card().classes("w-40"):
+                ui.label(_format_capacity(capacity.pv_kwp)).classes("text-3xl font-bold")
+                ui.label("PV-Leistung (kWp)")
+                ui.label(f"aus {capacity.pv_counted} von {capacity.pv_expected} Messpunkten").classes(
+                    "text-caption text-grey-6"
+                )
+            with ui.card().classes("w-40"):
+                ui.label(_format_capacity(capacity.battery_kwh)).classes("text-3xl font-bold")
+                ui.label("Batteriespeicher (kWh)")
+                ui.label(f"{capacity.battery_counted} Messpunkte mit Speicher").classes(
+                    "text-caption text-grey-6"
+                )
+            if capacity.implausible:
+                ui.label(
+                    f"⚠ {len(capacity.implausible)} unplausible Angabe(n) nicht mitgezählt: "
+                    + ", ".join(capacity.implausible)
+                ).classes("text-caption text-orange-9 w-full")
 
         # -- LEGs im Überblick: one line per LEG, most-asked-about facts. --
         if overview["legs"]:

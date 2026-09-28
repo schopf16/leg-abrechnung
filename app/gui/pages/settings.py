@@ -226,44 +226,6 @@ def settings_page() -> None:
 
         ui.separator().classes("my-6")
 
-        ui.label("LEG-Gründung").classes("text-lg font-bold")
-        ui.label(
-            "Ein Trafokreis braucht mindestens einen Produzenten und einen "
-            "Consumer, um lokal verteilen zu können -- das prüft die App "
-            "immer. Zusätzlich muss er insgesamt mindestens so viele "
-            "Personen (Produzenten- plus Konsumenten-Anzahl) haben, wie hier "
-            "hinterlegt, damit „Trafokreise“, „LEGs“ und die Übersicht "
-            "vorschlagen, ihn aus einer LEG mit mehreren Trafokreisen in "
-            "eine eigene, besser rabattierte LEG auszugliedern."
-        ).classes("text-body2 text-grey-8")
-        with ui.card().classes("w-full max-w-lg"):
-            leg_founding_min_persons = ui.number(
-                "Mindestanzahl Personen",
-                value=current.leg_founding_min_persons,
-                min=1,
-                step=1,
-                format="%.0f",
-            ).classes("w-full")
-            leg_gruendung_error = ui.label("").classes("text-negative")
-
-            def save_leg_founding_min_persons() -> None:
-                """Validate and persist the LEG-founding minimum person count.
-
-                Returns:
-                    None.
-                """
-                if leg_founding_min_persons.value is None or leg_founding_min_persons.value < 1:
-                    leg_gruendung_error.text = "Muss mindestens 1 sein."
-                    return
-                with connection_scope() as connection:
-                    settings = settings_repo.get_settings(connection)
-                    settings.leg_founding_min_persons = int(leg_founding_min_persons.value)
-                    settings_repo.update_settings(connection, settings)
-                leg_gruendung_error.text = ""
-                ui.notify("LEG-Gründung-Einstellung gespeichert.", type="positive")
-
-            ui.button("Speichern", on_click=save_leg_founding_min_persons).classes("mt-2")
-
         ui.separator().classes("my-6")
 
         ui.label("Produktionsleistung").classes("text-lg font-bold")

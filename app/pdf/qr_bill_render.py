@@ -29,6 +29,58 @@ class QrBillConfigurationError(Exception):
     """
 
 
+#: Maximum length of a name in the Swiss QR-bill standard. `qrbill` rejects
+#: anything longer with a `ValueError`, which used to surface as a
+#: "check the QR-IBAN and sender address" error -- a misleading message for
+#: a problem that has nothing to do with either.
+QR_NAME_MAX_LENGTH = 70
+
+
+def qr_debtor_name(person) -> str:
+    """The payer name to encode on the payment part, guaranteed to fit.
+
+    A couple's `display_name` holds both names ("Anna Muster und Beat
+    Beispiel"), which can exceed the standard's 70 characters. Rather than
+    let the whole document fail, the first named person is used alone: a
+    shortened name on the payment slip is recoverable, an invoice that
+    cannot be produced is not. The address block above still shows both
+    names, so the recipient is in no doubt who is meant, and the QRR
+    reference -- not the name -- is what identifies the payment.
+
+    Args:
+        person: The billed `app.models.person.Person`.
+
+    Returns:
+        `display_name` when it fits, otherwise the first named person's
+        name, hard-truncated as a last resort.
+    """
+    if len(person.display_name) <= QR_NAME_MAX_LENGTH:
+        return person.display_name
+    first = person.company or person.full_name
+    return first[:QR_NAME_MAX_LENGTH]
+
+
+def qr_debtor_name_note(person) -> str | None:
+    """A German note if this person's payment-part name had to be shortened.
+
+    Args:
+        person: The billed `app.models.person.Person`.
+
+    Returns:
+        A message naming what was printed instead, or `None` if the full
+        name fitted. Reported through `app.pdf.export_service.ExportResult.
+        errors` so a shortened name is never a silent change.
+    """
+    used = qr_debtor_name(person)
+    if used == person.display_name:
+        return None
+    return (
+        f"{person.display_name}: der Name ist für die QR-Rechnung zu lang "
+        f"({len(person.display_name)} von höchstens {QR_NAME_MAX_LENGTH} Zeichen). "
+        f"Auf dem Einzahlungsschein steht „{used}“; die Anschrift nennt weiterhin beide."
+    )
+
+
 def build_qr_bill(
     settings: LegSettings,
     leg: Leg,
@@ -69,7 +121,7 @@ def build_qr_bill(
                 "country": settings.address_country or "CH",
             },
             debtor={
-                "name": person.display_name,
+                "name": qr_debtor_name(person),
                 "street": person.billing_street_with_number,
                 "pcode": person.billing_postal_code,
                 "city": person.billing_city,

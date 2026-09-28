@@ -166,12 +166,17 @@ def load_matches(connection, registrations: list[WebRegistration]) -> dict[int, 
     """
     persons_by_email: dict[str, Person] = {}
     for person in person_repo.list_all(connection):
-        key = email_key(person.contact_email)
-        # An empty address is not an identity, and several persons may
-        # legally share one -- keep the first rather than letting
-        # `list_all` order silently decide which one a dialog names.
-        if key and key not in persons_by_email:
-            persons_by_email[key] = person
+        # Every address the person holds, not just the first: a couple has
+        # two (see `app.models.person`), and a registration arriving from
+        # the partner's address has to find the record that already exists
+        # rather than open a second one for the same household.
+        for address in person.contact_emails:
+            key = email_key(address)
+            # An empty address is not an identity, and several persons may
+            # legally share one -- keep the first rather than letting
+            # `list_all` order silently decide which one a dialog names.
+            if key and key not in persons_by_email:
+                persons_by_email[key] = person
 
     sites_by_address = {
         site_key(s.street, s.house_number, s.postal_code): s for s in site_repo.list_all(connection)

@@ -220,189 +220,6 @@ def test_hint_nur_consumers(db):
     assert "Nur Konsumenten" in mix.hint
 
 
-def test_upgrade_candidate_found_when_mixed_leg_and_substation_area_now_workable(db):
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    _assignment(db, person_id, consumption_id, date(2026, 1, 1))
-    _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
-
-    candidates = participant_mix.find_upgrade_candidates(db)
-
-    matching = [c for c in candidates if c.substation_area.id == substation_area_id]
-    assert len(matching) == 1
-    assert matching[0].mixed_legs[0].id == mixed_leg_id
-    assert matching[0].person_count == 1
-
-
-def test_no_upgrade_candidate_for_an_already_dedicated_leg(db):
-    substation_area_id = _substation_area(db, "TK1")
-    site_id = _site(db, substation_area_id)
-    dedicated_leg_id = _leg(db, "Dedizierte LEG")
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_FEED_IN)
-    _assignment(db, person_id, consumption_id, date(2026, 1, 1))
-    _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
-
-    candidates = participant_mix.find_upgrade_candidates(db)
-
-    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
-
-
-def test_upgrade_candidate_hidden_below_min_persons(db):
-    """A substation area with both sides present but too few people overall is
-    not suggested -- the same setup that produces a candidate with
-    `min_persons=0` (the default) produces none once the threshold
-    exceeds the 2 people actually present."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    _assignment(db, person_id, consumption_id, date(2026, 1, 1))
-    _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
-
-    candidates = participant_mix.find_upgrade_candidates(db, min_persons=3)
-
-    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
-
-    candidates = participant_mix.find_upgrade_candidates(db, min_persons=2)
-
-    assert len([c for c in candidates if c.substation_area.id == substation_area_id]) == 1
-
-
-def test_no_upgrade_candidate_for_a_still_one_sided_substation_area(db):
-    """Even in a mixed LEG, a substation area with only one side present is not
-    an upgrade candidate -- it genuinely cannot stand alone yet."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-
-    person_id = _person(db)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
-    _assignment(db, other_person_id, other_mp_id, date(2026, 1, 1))
-
-    candidates = participant_mix.find_upgrade_candidates(db)
-
-    assert [c for c in candidates if c.substation_area.id == substation_area_id] == []
-
-
-def test_leg_should_split_when_every_substation_area_is_independently_green(db):
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    other_person_id = _person(db, "Andere")
-    other_consumption_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    other_feed_in_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    for pid, mp_id in (
-        (person_id, consumption_id),
-        (person_id, feed_in_id),
-        (other_person_id, other_consumption_id),
-        (other_person_id, other_feed_in_id),
-    ):
-        _assignment(db, pid, mp_id, date(2026, 1, 1))
-
-    assert participant_mix.leg_should_split(db, mixed_leg_id) is True
-
-
-def test_leg_should_not_split_when_one_substation_area_would_be_one_sided_alone(db):
-    """Splitting would strand this substation area's participants -- the LEG
-    stays better off shared, even though it is mixed."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    # This substation area only has a producer -- would be one-sided alone.
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
-        _assignment(db, pid, mp_id, date(2026, 1, 1))
-
-    assert participant_mix.leg_should_split(db, mixed_leg_id) is False
-
-
-def test_leg_should_not_split_below_min_persons(db):
-    """Every substation area is independently non-one-sided (would split under
-    the default `min_persons=0`), but each only has 2 people -- raising
-    the threshold above that turns the recommendation off again."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site(db, substation_area_id)
-    other_site_id = _site(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db, "Gemischte LEG")
-
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    other_person_id = _person(db, "Andere")
-    other_consumption_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_CONSUMPTION)
-    other_feed_in_id = _metering_point(db, other_site_id, mixed_leg_id, DIRECTION_FEED_IN)
-    for pid, mp_id in (
-        (person_id, consumption_id),
-        (person_id, feed_in_id),
-        (other_person_id, other_consumption_id),
-        (other_person_id, other_feed_in_id),
-    ):
-        _assignment(db, pid, mp_id, date(2026, 1, 1))
-
-    assert participant_mix.leg_should_split(db, mixed_leg_id, min_persons=2) is True
-    assert participant_mix.leg_should_split(db, mixed_leg_id, min_persons=3) is False
-
-
-def test_leg_should_not_split_when_not_mixed(db):
-    substation_area_id = _substation_area(db, "TK1")
-    site_id = _site(db, substation_area_id)
-    dedicated_leg_id = _leg(db, "Dedizierte LEG")
-    person_id = _person(db)
-    consumption_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_CONSUMPTION)
-    feed_in_id = _metering_point(db, site_id, dedicated_leg_id, DIRECTION_FEED_IN)
-    _assignment(db, person_id, consumption_id, date(2026, 1, 1))
-    _assignment(db, person_id, feed_in_id, date(2026, 1, 1))
-
-    assert participant_mix.leg_should_split(db, dedicated_leg_id) is False
-
-
-# --- The overview has to agree with itself ------------------------------
-#
-# Reported from real data: a LEG showing 35 metering points but "8
-# Produzent : 25 Konsument" -- two metering points counted in neither.
-# Two separate causes, both of which made the badge read lower than the
-# count beside it.
-
-
 def test_the_two_sides_add_up_to_the_metering_point_count(db):
     """What a reader checks first: 9 + 26 has to be the 35 shown beside it."""
     leg_id = _leg(db, "LEG")
@@ -479,12 +296,11 @@ def test_a_leg_counts_its_own_metering_points_not_its_neighbours(db):
     )
 
 
-def test_the_founding_threshold_still_counts_people(db):
+def test_the_person_count_still_counts_people(db):
     """Seven meters are not seven members.
 
-    The overview changed to metering points; the threshold that decides
-    whether a substation area is worth its own LEG must not follow, or a
-    single person with eight meters would look like a community.
+    The overview counts metering points; `total_persons` must not follow,
+    or one person with eight meters would look like a community.
     """
     area_id = _substation_area(db, "TRA")
     site_id = _site(db, area_id)
@@ -499,4 +315,3 @@ def test_the_founding_threshold_still_counts_people(db):
 
     assert mix.producer_metering_points + mix.consumer_metering_points == 8
     assert mix.total_persons == 2, "eine Person, auf beiden Seiten gezählt"
-    assert not participant_mix.leg_should_split(db, leg_id, min_persons=7)

@@ -15,6 +15,7 @@ from app.config import GraphConfig
 from app.emailing import graph_client
 from app.emailing.templates import person_placeholder_values, render_template
 from app.models import billing_run as billing_run_repo
+from app.models import cooperative_membership as cooperative_membership_repo
 from app.models import email_log as email_log_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
@@ -37,7 +38,7 @@ def list_broadcast_recipients(connection) -> list[Person]:
         recipients before actually sending, see `app.gui.pages.
         email_dispatch`.
     """
-    return [p for p in person_repo.list_all(connection) if p.active and p.contact_email.strip()]
+    return [p for p in person_repo.list_all(connection) if p.active and p.contact_emails]
 
 
 def list_leg_recipients(connection, leg_id: int) -> list[Person]:
@@ -67,9 +68,30 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
     recipients = []
     for person_id in person_ids:
         person = person_repo.get(connection, person_id)
-        if person is not None and person.contact_email.strip():
+        if person is not None and person.contact_emails:
             recipients.append(person)
     return recipients
+
+
+def list_cooperative_recipients(connection) -> list[Person]:
+    """List today's Genossenschaft members with an email address.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        Active persons who hold a Genossenschaft membership **today** and
+        have at least one email address, in `person_repo.list_all`'s order.
+        Strictly today: someone whose membership starts next month is not a
+        member yet, unlike a pre-entered Assignment in
+        `list_leg_recipients` -- see `app.models.cooperative_membership`
+        for why the two differ. Purely a starting suggestion, same caveat as
+        `list_broadcast_recipients`.
+    """
+    member_ids = cooperative_membership_repo.member_person_ids(connection)
+    return [
+        p for p in person_repo.list_all(connection) if p.id in member_ids and p.active and p.contact_emails
+    ]
 
 
 @dataclass
@@ -150,14 +172,14 @@ async def send_broadcast_email(
             await graph_client.send_email(
                 config,
                 access_token,
-                to_address=person.contact_email,
+                to_addresses=person.contact_emails,
                 to_name=person.display_name,
                 subject=rendered_subject,
                 body=rendered_body,
                 attachments=attachments,
             )
             result.sent.append(person.display_name)
-            sent_emails.append(person.contact_email)
+            sent_emails.extend(person.contact_emails)
         except graph_client.GraphAuthError:
             if on_progress:
                 on_progress(index + 1, total)
@@ -282,7 +304,7 @@ async def resend_invoice_email(
     person = person_repo.get(connection, item.person_id)
     if person is None:
         raise ValueError(f"Person #{item.person_id} existiert nicht mehr.")
-    if not person.contact_email.strip():
+    if not person.contact_emails:
         raise ValueError(f"{person.display_name} hat keine E-Mail-Adresse hinterlegt.")
     if not item.pdf_path:
         raise ValueError("Für diese Position wurde noch kein PDF erzeugt.")
@@ -316,7 +338,7 @@ def invoice_skip_reason(person: Optional[Person], item: BillingRunItem) -> Optio
         return "Person existiert nicht mehr."
     if person.paper_invoice:
         return "bevorzugt Papierrechnung."
-    if not person.contact_email.strip():
+    if not person.contact_emails:
         return "keine E-Mail-Adresse hinterlegt."
     if not item.pdf_path:
         return "PDF noch nicht erzeugt."
@@ -367,7 +389,7 @@ async def _send_one_invoice_email(
     await graph_client.send_email(
         config,
         access_token,
-        to_address=person.contact_email,
+        to_addresses=person.contact_emails,
         to_name=person.display_name,
         subject=render_template(subject, values),
         body=render_template(body, values),

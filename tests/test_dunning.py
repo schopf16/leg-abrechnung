@@ -228,7 +228,7 @@ def test_send_dunning_sends_email_with_pdf_attachment_and_advances_level(db, tmp
     assert pdf_path.exists()
     mock_send.assert_called_once()
     _, kwargs = mock_send.call_args
-    assert kwargs["to_address"] == person.contact_email
+    assert kwargs["to_addresses"] == person.contact_emails
     assert kwargs["attachments"][0].path == pdf_path
 
     updated_item = billing_run_repo.get_item(db, item.id)
@@ -329,3 +329,62 @@ def test_send_dunning_skips_qr_bill_for_an_item_already_fully_covered(db, tmp_pa
 
     assert mock_build.call_count == 1
     assert mock_build.call_args.args[3] == Decimal("50.00")
+
+
+def test_send_dunning_reaches_a_person_who_only_has_a_partner_address(db, tmp_path, monkeypatch):
+    """The gate in front of the send has to ask what the send asks.
+
+    Regression test for a real defect found in review: `send_dunning`
+    decided whether to email at all from `contact_email` alone, while the
+    send below it already used both addresses. Somebody reachable only at
+    their partner's address therefore got **no** dunning email -- silently,
+    with no error anywhere -- and was escalated to the next level all the
+    same. A member could have been put through the Ausschluss-Prüfung
+    without ever being written to.
+    """
+    monkeypatch.setattr(dunning, "OUTPUT_DIR", tmp_path)
+    person = _person(db)
+    person.contact_email = ""
+    person.second_first_name = "Beat"
+    person.second_last_name = "Beispiel"
+    person.second_contact_email = "beat@example.invalid"
+    person_repo.update(db, person)
+    person = person_repo.get(db, person.id)
+    assert person.contact_emails == ["beat@example.invalid"]
+
+    settings = settings_repo.get_settings(db)
+    settings.address_street, settings.address_zip, settings.address_city = "Weg 1", "3000", "Bern"
+    settings.qr_iban = "CH4431999123000889012"
+    settings_repo.update_settings(db, settings)
+    _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
+    candidate = dunning.list_due_dunnings(db)[0]
+
+    with (
+        patch.object(dunning.graph_client, "get_access_token", AsyncMock(return_value="tok")),
+        patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send,
+    ):
+        asyncio.run(dunning.send_dunning(db, config=object(), candidate=candidate))
+
+    mock_send.assert_called_once()
+    assert mock_send.call_args.kwargs["to_addresses"] == ["beat@example.invalid"]
+
+
+def test_send_dunning_still_skips_someone_with_no_address_at_all(db, tmp_path, monkeypatch):
+    """The other half of the same gate: no address means no email, PDF only."""
+    monkeypatch.setattr(dunning, "OUTPUT_DIR", tmp_path)
+    person = _person(db)
+    person.contact_email = ""
+    person_repo.update(db, person)
+
+    settings = settings_repo.get_settings(db)
+    settings.address_street, settings.address_zip, settings.address_city = "Weg 1", "3000", "Bern"
+    settings.qr_iban = "CH4431999123000889012"
+    settings_repo.update_settings(db, settings)
+    _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
+    candidate = dunning.list_due_dunnings(db)[0]
+
+    with patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send:
+        pdf_path = asyncio.run(dunning.send_dunning(db, config=None, candidate=candidate))
+
+    assert pdf_path.exists(), "der Beleg zum Ausdrucken muss trotzdem entstehen"
+    mock_send.assert_not_called()

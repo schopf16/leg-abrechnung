@@ -57,12 +57,14 @@ class LegSettings:
         onboarding_overdue_days: Number of days a person's current
             onboarding step (see `app.models.person_onboarding`) may stay
             open before it is flagged as overdue in the quality checks.
-        leg_founding_min_persons: Minimum `app.domain.participant_mix.
-            ParticipantMix.total_persons` (Producer- plus Consumer-count)
-            a substation area must reach, in addition to already having both a
-            Producer and a Consumer, before the app suggests splitting it
-            off its current multi-substation-area LEG into its own, better-
-            discounted one. Default 7.
+        leg_founding_min_persons: **Retired, read by nothing.** Was the
+            minimum number of people a substation area had to reach before
+            the app suggested splitting it off into its own LEG. That
+            recommendation was removed because presence of both sides is
+            not viability -- see `app.domain.participant_mix`. The column
+            and this field stay because old migrations are never rewritten
+            (see CLAUDE.md) and dropping a column to look tidy is not worth
+            the risk; the settings form no longer offers it.
         production_capacity_warn_percent: Below this percentage a LEG's
             recorded production capacity (see `app.models.leg.Leg.
             production_capacity_percent`) is flagged as getting tight, so

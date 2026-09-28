@@ -10,18 +10,72 @@ A Person can be a company (`company` set), a natural person (`first_name`/
 `last_name` set, `company` empty), or a company with a named contact person
 (all three set) -- see `Person.display_name` and `Person.address_block_lines`
 for how these combine for display.
+
+A couple is **one** Person carrying two names (`second_first_name`/
+`second_last_name`), not two records. That follows straight from the vZEV
+model (see CLAUDE.md): one customer, one netted amount, one reference
+number, one document -- two records would mean two invoices for one
+household and a distribution key to argue about. Both partners are contract
+parties, so both are addressed (`named_persons`, and
+`app.domain.salutation.letter_salutation`) and both email addresses receive
+the same message (`contact_emails`). Exactly two, deliberately: a third
+name would need a sub-table rather than a third set of columns.
 """
 
 import random
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 #: Selectable values for `Person.salutation` (salutation of the natural person
 #: -- the standalone individual, or the named contact at a company), used
 #: on billing documents. Empty string means "no salutation known".
 SALUTATION_OPTIONS = ["Herr", "Frau", "Familie"]
+
+
+@dataclass(frozen=True)
+class NamedPerson:
+    """One named human on a Person record -- the first or the second.
+
+    Exists so callers that address people (the PDF's salutation, the email
+    placeholders) can loop over `Person.named_persons` instead of knowing
+    which set of columns holds which partner.
+
+    Attributes:
+        salutation: One of `SALUTATION_OPTIONS`, or `""` if unknown. An
+            empty salutation is a valid state, not a defect -- see
+            `app.domain.salutation`.
+        first_name: First name, possibly `""`.
+        last_name: Last name, possibly `""`.
+    """
+
+    salutation: str
+    first_name: str
+    last_name: str
+
+    @property
+    def full_name(self) -> str:
+        """`"Vorname Nachname"`, with either part omitted if empty.
+
+        Returns:
+            The full name, or `""` if both parts are empty.
+        """
+        return " ".join(p for p in (self.first_name, self.last_name) if p)
+
+    @property
+    def addressed_name(self) -> str:
+        """`"Frau Anna Muster"` -- salutation and name on one line.
+
+        Swiss letter practice puts the salutation on the name line, not on
+        a line of its own; with two people in one address block a separate
+        salutation line could not be matched to its name at all.
+
+        Returns:
+            Salutation and full name joined, either part omitted if empty.
+        """
+        return " ".join(p for p in (self.salutation, self.full_name) if p)
+
 
 #: Digit range for `generate_customer_number` -- always exactly 6 digits.
 _CUSTOMER_NUMBER_MIN = 100_000
@@ -67,6 +121,21 @@ class Person:
             deleting when billing history exists (see `delete`) -- an
             inactive person is kept for accounting/statistics but hidden
             from selection for new assignments.
+        deactivated_at: The day `active` was last set to `False`, or `None`
+            while active. `None` also for everyone deactivated before
+            migration 50 introduced the column: that date was never
+            recorded, and inventing one would print as though it were a
+            fact.
+        note: Free-text internal remark. Deliberately never printed on a
+            document, put into an email or written to a CSV export -- a
+            note like "zahlt immer zu spät" is for the administrator.
+        second_salutation: Salutation of the second named person, or `""`.
+        second_first_name: First name of the second named person, or `""`
+            if this record names only one person.
+        second_last_name: Last name of the second named person, or `""`.
+        second_contact_email: Email address of the second named person, or
+            `""`. Both addresses receive every message (see
+            `contact_emails`).
         created_at: ISO-8601 creation timestamp.
     """
 
@@ -88,6 +157,12 @@ class Person:
     paper_invoice: bool
     active: bool
     created_at: str
+    deactivated_at: Optional[date] = None
+    note: str = ""
+    second_salutation: str = ""
+    second_first_name: str = ""
+    second_last_name: str = ""
+    second_contact_email: str = ""
 
     @property
     def full_name(self) -> str:
@@ -108,25 +183,92 @@ class Person:
         return " ".join(p for p in (self.billing_street, self.billing_house_number) if p)
 
     @property
+    def second_full_name(self) -> str:
+        """`"Vorname Nachname"` of the second named person.
+
+        Returns:
+            The second person's full name, or `""` if this record names
+            only one person.
+        """
+        return " ".join(p for p in (self.second_first_name, self.second_last_name) if p)
+
+    @property
+    def has_second_person(self) -> bool:
+        """Whether a second person is named on this record.
+
+        A second salutation or email address alone does not make one:
+        without a name there is nobody to address.
+
+        Returns:
+            `True` if `second_full_name` is non-empty.
+        """
+        return bool(self.second_full_name)
+
+    @property
+    def named_persons(self) -> list[NamedPerson]:
+        """The humans named on this record, first one first.
+
+        Returns:
+            One `NamedPerson` per named human -- empty for a company with
+            no named contact, one normally, two for a couple.
+        """
+        people = []
+        if self.full_name:
+            people.append(NamedPerson(self.salutation, self.first_name, self.last_name))
+        if self.has_second_person:
+            people.append(NamedPerson(self.second_salutation, self.second_first_name, self.second_last_name))
+        return people
+
+    @property
+    def contact_emails(self) -> list[str]:
+        """Every email address this Person can be reached at, first one first.
+
+        Both partners of a couple are contract parties, so both receive
+        every message. `app.emailing.graph_client.send_email` puts them in
+        one message's recipient field: one message per contract party,
+        which keeps the privacy rule (nobody sees a stranger's address)
+        while making a half-sent broadcast impossible.
+
+        Returns:
+            The non-empty, whitespace-stripped addresses without
+            duplicates -- possibly an empty list.
+        """
+        addresses: list[str] = []
+        for value in (self.contact_email, self.second_contact_email):
+            cleaned = value.strip()
+            if cleaned and cleaned not in addresses:
+                addresses.append(cleaned)
+        return addresses
+
+    @property
     def display_name(self) -> str:
         """Single-line display name, for lists, search, dropdowns and exports.
 
+        A couple appears as `"Anna Muster und Beat Beispiel"`, and that
+        flows everywhere a person is named -- lists, document filenames,
+        CSV, logs. That is intended: the customer is the couple.
+
         Returns:
             `"Firma (Vorname Nachname)"` if both are set, just the company
-            name or just the personal name if only one is, or `""` if
+            name or just the personal name(s) if only one is, or `""` if
             neither `company` nor a personal name is set.
         """
-        if self.company and self.full_name:
-            return f"{self.company} ({self.full_name})"
-        return self.company or self.full_name
+        names = " und ".join(p for p in (self.full_name, self.second_full_name) if p)
+        if self.company and names:
+            return f"{self.company} ({names})"
+        return self.company or names
 
     @property
     def address_block_lines(self) -> list[str]:
-        """Recipient address block lines (company, salutation, personal name).
+        """Recipient address block lines (company, then one line per person).
 
-        Standard Swiss business-letter order: company name first, then the
-        named contact's salutation and name (if any). Street/city are
-        appended by the caller (see `app.pdf.layout.draw_recipient_block`).
+        Standard Swiss business-letter order: company name first, then each
+        named person on their own line with the salutation in front of the
+        name -- "Frau Anna Muster", not "Frau" above "Anna Muster". The
+        salutation used to occupy a line of its own; with two people that
+        is unreadable, because nothing says which salutation belongs to
+        which name. Street/city are appended by the caller (see
+        `app.pdf.layout.draw_recipient_block`).
 
         Returns:
             Non-empty lines to print, in order.
@@ -134,10 +276,7 @@ class Person:
         lines = []
         if self.company:
             lines.append(self.company)
-        if self.full_name:
-            if self.salutation:
-                lines.append(self.salutation)
-            lines.append(self.full_name)
+        lines.extend(person.addressed_name for person in self.named_persons)
         return lines
 
     @property
@@ -182,6 +321,12 @@ class Person:
             paper_invoice=bool(row["paper_invoice"]),
             active=bool(row["active"]),
             created_at=row["created_at"],
+            deactivated_at=(date.fromisoformat(row["deactivated_at"]) if row["deactivated_at"] else None),
+            note=row["note"],
+            second_salutation=row["second_salutation"],
+            second_first_name=row["second_first_name"],
+            second_last_name=row["second_last_name"],
+            second_contact_email=row["second_contact_email"],
         )
 
 
@@ -289,8 +434,9 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
             (salutation, company, first_name, last_name, contact_email, contact_phone,
              billing_street, billing_house_number, billing_postal_code,
              billing_city, billing_country, iban, customer_number, bkw_customer_number,
-             paper_invoice, active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             paper_invoice, active, created_at, note,
+             second_salutation, second_first_name, second_last_name, second_contact_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             person.salutation,
@@ -310,6 +456,11 @@ def create(connection: sqlite3.Connection, person: Person) -> int:
             person.paper_invoice,
             True,
             datetime.now(timezone.utc).isoformat(),
+            person.note,
+            person.second_salutation,
+            person.second_first_name,
+            person.second_last_name,
+            person.second_contact_email,
         ),
     )
     connection.commit()
@@ -340,7 +491,9 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
             salutation = ?, company = ?, first_name = ?, last_name = ?, contact_email = ?,
             contact_phone = ?, billing_street = ?, billing_house_number = ?,
             billing_postal_code = ?, billing_city = ?, billing_country = ?, iban = ?,
-            bkw_customer_number = ?, paper_invoice = ?
+            bkw_customer_number = ?, paper_invoice = ?, note = ?,
+            second_salutation = ?, second_first_name = ?, second_last_name = ?,
+            second_contact_email = ?
         WHERE id = ?
         """,
         (
@@ -358,6 +511,11 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
             person.iban,
             person.bkw_customer_number,
             person.paper_invoice,
+            person.note,
+            person.second_salutation,
+            person.second_first_name,
+            person.second_last_name,
+            person.second_contact_email,
             person.id,
         ),
     )
@@ -365,7 +523,12 @@ def update(connection: sqlite3.Connection, person: Person) -> None:
 
 
 def set_active(connection: sqlite3.Connection, person_id: int, active: bool) -> None:
-    """Activate or deactivate a Person, without touching any other field.
+    """Activate or deactivate a Person, stamping `deactivated_at` along with it.
+
+    Deactivating records today's date; reactivating clears it again, so the
+    field never describes someone who is active. It is the date behind
+    "Inaktiv seit ...", not a history -- a person deactivated, reactivated
+    and deactivated again keeps only the latest date.
 
     Args:
         connection: Open SQLite connection.
@@ -375,7 +538,10 @@ def set_active(connection: sqlite3.Connection, person_id: int, active: bool) -> 
     Returns:
         None.
     """
-    connection.execute("UPDATE person SET active = ? WHERE id = ?", (active, person_id))
+    connection.execute(
+        "UPDATE person SET active = ?, deactivated_at = ? WHERE id = ?",
+        (active, None if active else date.today().isoformat(), person_id),
+    )
     connection.commit()
 
 

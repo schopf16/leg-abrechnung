@@ -52,7 +52,15 @@ CI" below (ruff, bandit, pip-audit); there is no typecheck step. `.venv` is a lo
   and CSV export lists.
 - `app/emailing/` — Microsoft Graph API client (not SMTP — Basic Auth is
   disabled for Exchange Online), template placeholder substitution, and
-  send orchestration for broadcasts/invoices.
+  send orchestration for broadcasts/invoices. One `sendMail` call per
+  **contract party**, never CC/BCC: that is the privacy mechanism for bulk
+  sends. A couple is one party with two addresses, and those two do share
+  one message's `toRecipients` — what the rule forbids is two *different*
+  parties in one message. It also means one outcome per party, so an
+  invoice is never half sent.
+- `app/domain/salutation.py` — the one `letter_salutation(person)` both the
+  PDF and the email templates use, so a document and the mail announcing
+  it cannot greet the same person differently.
 - `app/db/` — `migrations.py` (schema history) + `schema.py`
   (`initialize_database`, applies pending migrations in order) +
   `connection.py` (`connection_scope()` context manager).
@@ -172,6 +180,52 @@ each an optional date field filled in as a real-world step completes,
 shape for any future multi-step, manually-confirmed real-world process
 instead of inventing a new tracker shape.
 
+A finished offboarding is not a finished job. Completing the last step
+offers to remove the person, but the offer comes once, and the finished
+tracker used to drop off the Austritte worklist while the person stayed
+active — counted on the dashboard, offered for new assignments, still on
+the broadcast list. That is how a fully offboarded member was found still
+listed weeks later, by eye. So `check_offboarding_completed_but_active`
+puts them on the dashboard, and the Austritte page keeps the card visible
+(badged "Person noch aktiv", removal one click away) until it is settled.
+Deliberately *not* folded into `person_offboarding.list_in_progress`: the
+Debitoren page reads that as "Austritt läuft", which this is not.
+Deactivating now stamps `Person.deactivated_at`, so a list can say "Inaktiv
+seit 13.09.2026" — `None` for anyone deactivated before migration 50, and
+no date is invented, because a made-up one prints as though it were
+recorded.
+
+### Genossenschaft membership: dated, like an Assignment
+
+`app/models/cooperative_membership.py` is `Assignment`'s shape applied to
+membership: one row per period, `shares`, `valid_from`/`valid_to`,
+`covers()`. A share count is *not* a column on `person`, because a
+cooperative has to answer "who held how many shares when" years later —
+changing the count closes the running row and opens a new one. Two
+deliberate differences from `Assignment`: a **gap is legitimate** here
+(leaving and rejoining), so `find_warnings` reports only overlaps; and
+membership is judged **strictly on today** (`covers(date.today())`), not
+`is_current_or_upcoming`, because mailing "die Genossenschafter" must not
+reach somebody who has not joined. Zero shares is allowed — the membership
+is a fact while the paperwork lags — but
+`check_cooperative_members_without_shares` makes sure it is not forgotten.
+The members' list is the Personen list with "Nur Genossenschafter" on and
+printed; there is no page of its own.
+
+**Where it is edited follows the icons, and that is not negotiable.** The
+eye opens a view, the pencil opens an edit dialog. Joining, leaving and
+buying shares are changes, so the controls live in
+`app.gui.person_form` (`CooperativeEditor` in `app.gui.cooperative_form`)
+and the detail page only renders `render_cooperative_history` -- no
+buttons at all. The first build had it the other way round and the
+administrator could not find it, which is the correct verdict on it.
+Three plain controls (member yes/no, how many shares, from when) produce
+the period bookkeeping: a changed count closes the running period the day
+before and opens the next, a cleared checkbox sets `valid_to` to the given
+day, and a correction **on** the start day overwrites that period instead
+of creating a zero-length one. A date before the running period is refused
+rather than silently producing an overlap.
+
 ### Language: English code, German UI
 
 Identifiers, file names, the database schema, docstrings and comments are
@@ -209,6 +263,11 @@ Glossary (German domain term → code name):
 | Produktionsleistung (% der Anschlussleistung, min. 5%) | `production_capacity_percent` |
 | Produzent / Konsument (Messrichtung, nicht Person) | `producer_count` / `consumer_count` |
 | Bezeichnung (frei, z. B. „Whg. 3. OG") | `MeteringPoint.label` |
+| Genossenschaft / Genossenschafter | `CooperativeMembership` / member |
+| Anteile | `shares` |
+| Bemerkung (intern, Person) | `Person.note` |
+| Zweite Person (Paar) | `second_first_name`, `named_persons` |
+| Briefanrede | `letter_salutation` / `{briefanrede}` |
 | LEG, BKW, Rappen, QR-Rechnung | unchanged (proper nouns) |
 
 ### Domain model core
@@ -247,11 +306,62 @@ no longer uses for the producer side, and the one place the word must
 stay. The German UI says "Produzent"/"Konsument" (BKW's own words on
 their LEG pages); only the identifiers are English.
 
+The module used to go one step further and **recommend** moving people out
+of a pooled LEG into a dedicated one, once a Trafokreis had both sides and
+enough people. That is gone, along with `find_upgrade_candidates`,
+`leg_should_split` and `check_leg_upgrade_potential`, because presence is
+not viability: a Trafokreis with seven feed-in meters and one consumption
+meter passed the test, and following the advice would leave the producers
+with nobody to share with. A real administrator had parked a 34 kWp
+producer in the pooled LEG for exactly that reason and was told to undo it.
+
+A ratio threshold would have been the obvious repair; it was deliberately
+**not** built, because the decision turns on economics, on what the
+participants will agree to, and on what BKW confirms per location — none of
+which is in this database. What the LEG detail page shows instead is the
+one fact that is: per metering point, whether its Trafokreis already has a
+LEG of its own (🟢 with that LEG's name — switch the row over) or would
+need one founded first (🟠). Shown only on a LEG that spans several
+Trafokreise, since on a dedicated one the answer is itself. The green dot
+has a second use nobody planned: it appears exactly when a migration was
+left half done and a meter stayed behind. `leg_settings.
+leg_founding_min_persons` survives as an unread column — old migrations are
+never rewritten — and no longer appears in the settings form.
+
+Kept, because it is a fact and not advice: `check_substation_area_one_sided`
+("nur Produzenten"/"nur Konsumenten" — nothing can be shared there at all).
+
 ### One customer, one document — the vZEV model
 
 A participant is **one** customer of the LEG: one netted amount, one
 reference number, one payment, one receivables account, one dunning
-notice — however many sites and metering points they hold. This is the
+notice — however many sites and metering points they hold, **and however
+many people they are**. A couple is one `Person` carrying two names
+(`second_first_name`/`second_last_name`, migration 50), not two records:
+two records would mean two invoices for one household and a distribution
+key to argue about. Exactly two, deliberately — a third name would need a
+sub-table, not a third set of columns.
+
+Both partners are contract parties, so both are named on the address block
+(one line each, salutation in front of the name), both are greeted by
+`app.domain.salutation.letter_salutation`, and both email addresses go into
+the one message addressed to them (`Person.contact_emails`). The greeting is
+"Guten Tag …" on purpose: German adjective inflection has to agree with
+gender, and every earlier mechanism got that wrong — the PDF printed a fixed
+"Sehr geehrte Kundin, sehr geehrter Kunde" naming nobody, and the email
+templates let "Sehr geehrte {anrede} {nachname}" render as "Sehr geehrte
+Herr Muster". "Guten Tag" carries no adjective, so one rule covers one
+person or two, any salutations, and none at all. **An empty salutation is a
+valid state, not a defect.** Use `{briefanrede}` in a template; the older
+`{anrede}`/`{nachname}` remain only because they are in the
+administrator's saved texts.
+
+One boundary this exposed: the Swiss QR-bill limits the payer name to 70
+characters, and `qrbill` raises for a longer one — which used to surface as
+"check the QR-IBAN and sender address" and cost the whole document. A
+couple's name that overruns falls back to the first person
+(`app.pdf.qr_bill_render.qr_debtor_name`) and says so in
+`ExportResult.errors`. The address block still names both. This is the
 model the administrator is themselves billed under as a vZEV operator:
 the grid operator pays out one surplus or sends one invoice, and who owes
 what inside the building is the operator's own problem. A property

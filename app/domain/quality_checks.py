@@ -21,7 +21,9 @@ from app.models import bank_transaction as bank_transaction_repo
 from app.models import billing_cycle as billing_cycle_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
+from app.models import cooperative_membership as cooperative_membership_repo
 from app.models import person as person_repo
+from app.models import person_offboarding as person_offboarding_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
@@ -267,6 +269,87 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
     return warnings
 
 
+def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag people whose offboarding is finished while they are still active.
+
+    Completing the last step offers to remove the person (see
+    `app.gui.offboarding_form.open_remove_person_dialog`), but that offer
+    comes once. Declined, dismissed, or -- for anyone offboarded before the
+    offer existed -- never shown, the person stays active forever: counted
+    on this dashboard, offered for new assignments, and still on the
+    broadcast list. Meanwhile the finished tracker drops out of the
+    Austritte worklist, so nothing mentions them again.
+
+    That is how a real administrator found a fully offboarded member still
+    listed under Personen weeks later, by eye rather than by warning. This
+    is the warning.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One `QualityWarning` per person with a completed offboarding who is
+        still active. Empty once each has been removed or deactivated.
+    """
+    warnings: list[QualityWarning] = []
+    for offboarding in person_offboarding_repo.list_all(connection):
+        if not offboarding.is_complete:
+            continue
+        person = person_repo.get(connection, offboarding.person_id)
+        if person is None or not person.active:
+            continue
+        warnings.append(
+            QualityWarning(
+                category="offboarding_completed_but_active",
+                message=(
+                    f'Austritt von "{person.display_name}" ist abgeschlossen, '
+                    "die Person ist aber noch aktiv -- unter „Austritte“ entfernen "
+                    "oder deaktivieren."
+                ),
+                link=f"/persons/{person.id}",
+            )
+        )
+    return warnings
+
+
+def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag today's Genossenschaft members holding zero shares.
+
+    Zero shares is deliberately allowed at the model level: the membership
+    is a fact from the day it is resolved, even while the share
+    subscription is still on paper (see
+    `app.models.cooperative_membership`). Allowed, but not forgettable --
+    without this, a member whose shares were never entered stays at zero
+    indefinitely, and the members' list prints as if that were their
+    holding.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One `QualityWarning` per member with zero shares today. Empty if
+        every member's shares are recorded.
+    """
+    today = date.today()
+    warnings: list[QualityWarning] = []
+    for membership in cooperative_membership_repo.list_all(connection):
+        if membership.shares > 0 or not membership.covers(today):
+            continue
+        person = person_repo.get(connection, membership.person_id)
+        person_name = person.display_name if person else f"Person #{membership.person_id}"
+        warnings.append(
+            QualityWarning(
+                category="cooperative_member_without_shares",
+                message=(
+                    f'Genossenschaftsmitglied "{person_name}" hat 0 Anteile '
+                    "erfasst -- Anzahl auf der Personen-Detailseite nachtragen."
+                ),
+                link=f"/persons/{person.id}" if person is not None else None,
+            )
+        )
+    return warnings
+
+
 def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag interested persons stuck too long on their current onboarding step.
 
@@ -458,39 +541,6 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                     link="/legs",
                 )
             )
-    return warnings
-
-
-def check_leg_upgrade_potential(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag substation areas that could now split off into their own, better-
-    discounted LEG (see `app.domain.participant_mix.find_upgrade_candidates`).
-
-    Gated on `LegSettings.leg_founding_min_persons` -- a substation area with
-    both a Producer and a Consumer but too few people overall is not
-    flagged, see that setting's docstring.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per substation area with newly-viable upgrade potential.
-    """
-    min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
-    warnings: list[QualityWarning] = []
-    for candidate in participant_mix.find_upgrade_candidates(connection, min_persons=min_persons):
-        leg_names = ", ".join(f"„{leg.name}“" for leg in candidate.mixed_legs)
-        warnings.append(
-            QualityWarning(
-                category="substation_area_upgrade_potential",
-                message=(
-                    f"Trafokreis „{candidate.substation_area.name}“ hat jetzt sowohl "
-                    f"Produzenten als auch Konsumenten ({candidate.mix.ratio}) -- "
-                    f"{candidate.person_count} Person(en) in {leg_names} könnten "
-                    "in ein eigenes LEG wechseln."
-                ),
-                link="/substation-areas",
-            )
-        )
     return warnings
 
 

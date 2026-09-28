@@ -13,16 +13,31 @@ hint in the UI.
 import re
 from typing import Callable
 
+from app.domain.salutation import letter_salutation
 from app.models.person import Person
 
 #: Placeholder name -> value extractor, available in every email text.
+#:
+#: `{briefanrede}` is the one to greet people with: it produces a complete,
+#: correctly formed salutation for one person or for a couple (see
+#: `app.domain.salutation`). The older parts -- `{anrede}`, `{vorname}`,
+#: `{nachname}` -- remain because they are in the administrator's stored
+#: templates, and they refer to the **first** named person. Note that
+#: building a greeting out of them cannot be made correct: "Sehr geehrte
+#: {anrede} {nachname}" reads "Sehr geehrte Herr Muster" for every man, and
+#: for a couple there is no single inflection that works at all.
 PERSON_PLACEHOLDERS: dict[str, Callable[[Person], str]] = {
+    "briefanrede": letter_salutation,
     "anrede": lambda p: p.salutation,
     "vorname": lambda p: p.first_name,
     "nachname": lambda p: p.last_name,
+    "anrede2": lambda p: p.second_salutation,
+    "vorname2": lambda p: p.second_first_name,
+    "nachname2": lambda p: p.second_last_name,
+    "name": lambda p: p.display_name,
     "firma": lambda p: p.company,
     "kundennummer": lambda p: p.formatted_customer_number,
-    "email": lambda p: p.contact_email,
+    "email": lambda p: ", ".join(p.contact_emails),
 }
 
 _PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
@@ -111,25 +126,46 @@ def validate_person_placeholders(template: str, recipients: list[Person]) -> lis
     return problems
 
 
-def find_invalid_email_addresses(recipients: list[Person]) -> list[Person]:
-    """Find recipients whose `contact_email` is not even plausibly valid.
+def _is_plausible_address(email: str) -> bool:
+    """Whether an address is plausible enough to hand to Graph.
 
-    `Person.contact_email` has no format validation at the model level, so
-    a garbage value would otherwise only surface as a Graph API failure
-    at send time. This is a lightweight plausibility check only (contains
-    "@", a "." somewhere after it) -- not full RFC 5322 validation.
+    Args:
+        email: The address to check.
+
+    Returns:
+        `True` if it contains an "@" with something before it and a "."
+        somewhere after it. A lightweight check only -- not full RFC 5322
+        validation.
+    """
+    at_index = email.find("@")
+    return at_index > 0 and "." in email[at_index + 1 :]
+
+
+def find_invalid_email_addresses(recipients: list[Person]) -> list[Person]:
+    """Find recipients with an email address that is not even plausibly valid.
+
+    `Person`'s address fields have no format validation at the model level,
+    so a garbage value would otherwise only surface as a Graph API failure
+    at send time.
+
+    **Every** address of a person is checked, not just the first: a couple
+    holds two, and the message goes to both in one send (see
+    `app.emailing.graph_client.send_email`), so one bad address among two
+    would take the whole message down. Reporting it is the point -- a
+    person with one good and one broken address must not look fine.
 
     Args:
         recipients: Persons to check.
 
     Returns:
-        The persons whose email address fails the plausibility check, in
-        `recipients` order. Empty if none.
+        The persons with at least one implausible address, in `recipients`
+        order, and also those with no address at all -- the question this
+        answers is whether a message can go out to them, and for both
+        answers it cannot.
     """
-    invalid = []
-    for person in recipients:
-        email = person.contact_email.strip()
-        at_index = email.find("@")
-        if at_index <= 0 or "." not in email[at_index + 1 :]:
-            invalid.append(person)
-    return invalid
+    return [
+        person
+        for person in recipients
+        if not person.contact_emails
+        or any(not _is_plausible_address(address) for address in person.contact_emails)
+    ]

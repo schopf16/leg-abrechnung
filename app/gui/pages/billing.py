@@ -684,7 +684,7 @@ def billing_page() -> None:
                         for person in invalid_emails:
                             ui.label(
                                 f"⚠ {person.display_name}: E-Mail-Adresse ungültig "
-                                f"({person.contact_email or '-'})"
+                                f"({', '.join(person.contact_emails) or '-'})"
                             ).classes("text-negative text-body2")
 
                 subject_input.on_value_change(lambda _: refresh_info())

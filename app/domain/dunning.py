@@ -252,14 +252,14 @@ async def send_dunning(connection, config: Optional[GraphConfig], candidate: Dun
     )
     generate_dunning_pdf(connection, candidate, body, settings, pdf_path)
 
-    if person.contact_email.strip() and not person.paper_invoice:
+    if person.contact_emails and not person.paper_invoice:
         if config is None:
             raise ValueError("Graph-Konfiguration fehlt, E-Mail-Versand nicht möglich.")
         access_token = await graph_client.get_access_token(config)
         await graph_client.send_email(
             config,
             access_token,
-            to_address=person.contact_email,
+            to_addresses=person.contact_emails,
             to_name=person.display_name,
             subject=subject,
             body=body,

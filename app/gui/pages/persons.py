@@ -16,7 +16,9 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
+from app.domain.salutation import letter_salutation
 from app.gui.navigation import page_frame
+from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form
@@ -32,6 +34,7 @@ from app.gui.sorting import (
     sort_description,
     text_key,
 )
+from app.models import cooperative_membership as cooperative_membership_repo
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -94,6 +97,9 @@ PRINT_COLUMNS = [
     ("Telefon", "phone"),
     ("Rechnungsadresse", "address"),
     ("IBAN", "iban"),
+    ("Genossenschafter", "cooperative"),
+    ("Anteile", "shares"),
+    ("Bemerkung", "note"),
     ("Status", "status"),
 ]
 
@@ -135,11 +141,31 @@ SORT_OPTIONS = [
 ]
 
 
-def _print_row(person: Person) -> dict:
+def _status_text(person: Person) -> str:
+    """The Aktiv/Inaktiv text, with the deactivation date when there is one.
+
+    Args:
+        person: Person to describe.
+
+    Returns:
+        `"Aktiv"`, `"Inaktiv seit 13.09.2026"`, or plain `"Inaktiv"` for
+        someone deactivated before migration 50 recorded the date. Never
+        invents one -- on a printed list a made-up date reads like a fact.
+    """
+    if person.active:
+        return "Aktiv"
+    if person.deactivated_at is None:
+        return "Inaktiv"
+    return f"Inaktiv seit {person.deactivated_at.strftime('%d.%m.%Y')}"
+
+
+def _print_row(person: Person, membership) -> dict:
     """Convert a `Person` into a row dict for the printed table.
 
     Args:
         person: Person to convert.
+        membership: The person's `CooperativeMembership` in force today, or
+            `None` if they are not a member.
 
     Returns:
         A dict with the fields required by `PRINT_COLUMNS`.
@@ -147,13 +173,19 @@ def _print_row(person: Person) -> dict:
     return {
         "customer_number": person.formatted_customer_number,
         "name": person.display_name,
-        "email": person.contact_email,
+        "email": ", ".join(person.contact_emails),
         "phone": person.contact_phone,
         "address": (
             f"{person.billing_street_with_number}, {person.billing_postal_code} {person.billing_city}"
         ),
         "iban": format_iban(person.iban) if person.iban else "",
-        "status": "Aktiv" if person.active else "Inaktiv",
+        "cooperative": "ja" if membership else "nein",
+        # Blank rather than "0" for a non-member: zero shares is a real and
+        # different state (a member whose shares are not recorded yet, see
+        # `app.models.cooperative_membership`).
+        "shares": str(membership.shares) if membership else "",
+        "note": person.note,
+        "status": _status_text(person),
     }
 
 
@@ -175,8 +207,12 @@ def _search_text_for_person(connection, person: Person) -> str:
         person.company,
         person.first_name,
         person.last_name,
+        person.second_first_name,
+        person.second_last_name,
         person.contact_email,
+        person.second_contact_email,
         person.contact_phone,
+        person.note,
         person.billing_street,
         person.billing_house_number,
         person.billing_postal_code,
@@ -218,7 +254,9 @@ def persons_page() -> None:
                 render_print_button(
                     heading="Personen",
                     get_columns=lambda: PRINT_COLUMNS,
-                    get_rows=lambda: [_print_row(p) for p in visible_persons],
+                    get_rows=lambda: [
+                        _print_row(p, memberships_by_person.get(p.id)) for p in visible_persons
+                    ],
                     get_filter_description=lambda: _filter_description(),
                     # Named on its own line: a printout is read away from
                     # the screen, where the order is not self-evident.
@@ -233,12 +271,19 @@ def persons_page() -> None:
                 .props("debounce=300 clearable")
             )
             show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
+            # The members' list the cooperative needs is this list, filtered
+            # and printed -- not a page of its own.
+            only_cooperative_switch = ui.switch("Nur Genossenschafter")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_entries: list[tuple[Person, str]] = []
         visible_persons: list[Person] = []
+        #: `{person_id: CooperativeMembership}` for everyone who is a member
+        #: today -- loaded once per refresh, read by the card, the filter and
+        #: the printout, so all three agree.
+        memberships_by_person: dict[int, object] = {}
 
         def _filter_description() -> str | None:
             """Build a short description of the currently active search/filter.
@@ -251,6 +296,11 @@ def persons_page() -> None:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
             if show_inactive_switch.value:
                 parts.append("inkl. deaktivierte Personen")
+            if only_cooperative_switch.value:
+                shares = sum(
+                    m.shares for p in visible_persons if (m := memberships_by_person.get(p.id)) is not None
+                )
+                parts.append(f"nur Genossenschafter ({len(visible_persons)}, {shares} Anteile)")
             return ", ".join(parts) if parts else None
 
         def render_card(person: Person) -> None:
@@ -268,7 +318,13 @@ def persons_page() -> None:
                         with ui.row().classes("items-center gap-2"):
                             ui.label(person.display_name).classes("font-bold")
                             if not person.active:
-                                ui.badge("Inaktiv", color="grey")
+                                ui.badge(_status_text(person), color="grey")
+                            membership = memberships_by_person.get(person.id)
+                            if membership is not None:
+                                ui.badge(
+                                    f"Genossenschafter ({membership.shares} Anteile)",
+                                    color="primary",
+                                )
                         _customer_number_row(person)
                         if person.bkw_customer_number is not None:
                             ui.label(f"BKW-Kunden-Nr. {person.bkw_customer_number}").classes(
@@ -276,6 +332,8 @@ def persons_page() -> None:
                             )
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(person.contact_email or "-")
+                        if person.second_contact_email:
+                            ui.label(person.second_contact_email)
                         ui.label(person.contact_phone or "-").classes("text-grey-7")
                     with ui.column().classes("gap-0 min-w-[220px]"):
                         ui.label(person.billing_street_with_number or "-")
@@ -296,6 +354,8 @@ def persons_page() -> None:
                             ui.button(icon="restore", on_click=lambda: on_reactivate(person)).props(
                                 "dense flat color=primary"
                             ).tooltip("Wieder aktivieren")
+                if person.note:
+                    ui.label(person.note).classes("text-caption text-grey-7 w-full whitespace-pre-wrap")
 
         def apply_filter() -> None:
             """Filter the currently loaded persons by search text and active state.
@@ -311,7 +371,9 @@ def persons_page() -> None:
             visible_persons = [
                 person
                 for person, search_text in all_entries
-                if (person.active or show_inactive_switch.value) and (not needle or needle in search_text)
+                if (person.active or show_inactive_switch.value)
+                and (not only_cooperative_switch.value or person.id in memberships_by_person)
+                and (not needle or needle in search_text)
             ]
             visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select)
             list_container.clear()
@@ -325,14 +387,23 @@ def persons_page() -> None:
             Returns:
                 None.
             """
-            nonlocal all_entries
+            nonlocal all_entries, memberships_by_person
             with connection_scope() as connection:
                 persons = person_repo.list_all(connection)
                 all_entries = [(p, _search_text_for_person(connection, p)) for p in persons]
+                # Today's roll, strictly -- see `app.models.
+                # cooperative_membership` on why a membership starting next
+                # month does not count yet.
+                memberships_by_person = {
+                    m.person_id: m
+                    for m in cooperative_membership_repo.list_all(connection)
+                    if m.covers(date.today())
+                }
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
         show_inactive_switch.on_value_change(lambda _: apply_filter())
+        only_cooperative_switch.on_value_change(lambda _: apply_filter())
 
         def on_view(person: Person) -> None:
             """Card view-button handler: navigate to the person's detail page.
@@ -443,7 +514,7 @@ def person_detail_page(person_id: int) -> None:
         ui.label(person.display_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             if not person.active:
-                ui.label("Status: Inaktiv (deaktiviert)").classes("text-negative")
+                ui.label(f"Status: {_status_text(person)}").classes("text-negative")
             _customer_number_row(person, label="Kunden-Nr.:", classes="")
             if person.bkw_customer_number is not None:
                 ui.label(f"BKW-Kundennummer: {person.bkw_customer_number}")
@@ -451,8 +522,13 @@ def person_detail_page(person_id: int) -> None:
                 ui.label(f"Firma: {person.company}")
             ui.label(f"Anrede: {person.salutation or '-'}")
             ui.label(f"Vorname/Nachname: {person.full_name or '-'}")
+            if person.has_second_person:
+                ui.label(f"Zweite Person: {person.second_salutation} {person.second_full_name}".strip())
             ui.label(f"E-Mail: {person.contact_email or '-'}")
+            if person.second_contact_email:
+                ui.label(f"E-Mail zweite Person: {person.second_contact_email}")
             ui.label(f"Telefon: {person.contact_phone or '-'}")
+            ui.label(f"Briefanrede: {letter_salutation(person)}").classes("text-caption text-grey-6")
             ui.label(
                 "Rechnungsadresse: "
                 f"{person.billing_street_with_number}, "
@@ -461,6 +537,14 @@ def person_detail_page(person_id: int) -> None:
             )
             ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
             ui.label(f"Papierrechnung: {'ja' if person.paper_invoice else 'nein'}")
+            if person.note:
+                ui.separator()
+                ui.label("Bemerkung (intern)").classes("text-caption text-grey-6")
+                ui.label(person.note).classes("whitespace-pre-wrap")
+
+        ui.label("Genossenschaft").classes("text-lg font-bold mt-6")
+        with ui.card().classes("w-full max-w-2xl"):
+            render_cooperative_history(person.id)
 
         with connection_scope() as connection:
             onboarding = person_onboarding_repo.get_by_person(connection, person_id)
