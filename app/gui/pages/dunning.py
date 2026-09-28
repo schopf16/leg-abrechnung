@@ -184,7 +184,7 @@ def dunning_page() -> None:
             subject, body = dunning.render_dunning_text(settings, candidate)
             channel = (
                 "E-Mail (mit PDF-Anhang)"
-                if candidate.person.contact_email.strip() and not candidate.person.paper_invoice
+                if candidate.person.contact_emails and not candidate.person.paper_invoice
                 else "nur PDF (zum Ausdrucken/Selbstversand -- keine E-Mail-Adresse oder Papierrechnung bevorzugt)"
             )
 
@@ -206,7 +206,7 @@ def dunning_page() -> None:
                 async def do_send() -> None:
                     send_button.disable()
                     config = None
-                    if candidate.person.contact_email.strip() and not candidate.person.paper_invoice:
+                    if candidate.person.contact_emails and not candidate.person.paper_invoice:
                         try:
                             config = get_graph_config()
                         except ConfigError as exc:

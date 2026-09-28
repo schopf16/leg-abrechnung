@@ -353,7 +353,10 @@ def onboardings_page() -> None:
             with connection_scope() as connection:
                 all_persons = person_repo.list_all(connection)
                 already_tracked = {o.person_id for o in person_onboarding_repo.list_all(connection)}
-            available_persons = [p for p in all_persons if p.id not in already_tracked]
+            # Active only: a deactivated person has left, and starting a
+            # process for them is never what is meant. Somebody who really
+            # comes back is reactivated first.
+            available_persons = [p for p in all_persons if p.id not in already_tracked and p.active]
             if not available_persons:
                 ui.notify("Alle Personen werden bereits nachverfolgt.", type="warning")
                 return

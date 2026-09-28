@@ -15,7 +15,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.navigation import page_frame
-from app.gui.offboarding_form import open_offboarding_form
+from app.gui.offboarding_form import open_offboarding_form, open_remove_person_dialog
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import (
@@ -171,7 +171,16 @@ def offboardings_page() -> None:
             Returns:
                 A human-readable summary, or `None` if no filter is active.
             """
-            return "inkl. abgeschlossene" if show_complete_switch.value else None
+            if show_complete_switch.value:
+                return "inkl. abgeschlossene"
+            needs_removal = sum(
+                1
+                for o in visible_offboardings
+                if o.is_complete and (p := persons.get(o.person_id)) is not None and p.active
+            )
+            if needs_removal:
+                return f"offene Austritte, inkl. {needs_removal} mit noch aktiver Person"
+            return None
 
         def render_card(offboarding: PersonOffboarding, person: Person) -> None:
             """Render one offboarding tracker as a card.
@@ -189,7 +198,12 @@ def offboardings_page() -> None:
                         with ui.row().classes("items-center gap-2"):
                             ui.link(person.display_name, f"/persons/{person.id}").classes("font-bold")
                             ui.badge(REASON_OPTIONS.get(offboarding.reason, offboarding.reason))
-                            if offboarding.is_complete:
+                            if offboarding.is_complete and person.active:
+                                # Not green: the steps are done but the
+                                # consequence is not, and that is exactly
+                                # the state that used to go unnoticed.
+                                ui.badge("Person noch aktiv", color="orange")
+                            elif offboarding.is_complete:
                                 ui.badge("Abgeschlossen", color="positive")
                         if not offboarding.is_complete:
                             _, step_label = offboarding.current_step
@@ -202,6 +216,11 @@ def offboardings_page() -> None:
                                 text += f" ({value.isoformat()})"
                             ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
                     with ui.row().classes("gap-1 ml-auto"):
+                        if offboarding.is_complete and person.active:
+                            ui.button(
+                                "Person entfernen",
+                                on_click=lambda p=person: open_remove_person_dialog(p, on_done=refresh),
+                            ).props("dense outline color=negative")
                         ui.button("Bearbeiten", on_click=lambda o=offboarding, p=person: on_edit(o, p)).props(
                             "dense flat"
                         )
@@ -217,12 +236,23 @@ def offboardings_page() -> None:
             """
             nonlocal visible_offboardings, persons
             with connection_scope() as connection:
-                offboardings = (
-                    person_offboarding_repo.list_all(connection)
-                    if show_complete_switch.value
-                    else person_offboarding_repo.list_in_progress(connection)
-                )
+                all_offboardings = person_offboarding_repo.list_all(connection)
                 persons = {p.id: p for p in person_repo.list_all(connection)}
+                if show_complete_switch.value:
+                    offboardings = all_offboardings
+                else:
+                    # A finished process whose person is still active is not
+                    # finished business: hiding it is how one stayed active
+                    # for weeks with nothing on any list saying so. Kept out
+                    # of `person_offboarding.list_in_progress` on purpose --
+                    # the Debitoren page reads that as "Austritt läuft",
+                    # which this is not.
+                    offboardings = [
+                        o
+                        for o in all_offboardings
+                        if not o.is_complete
+                        or (persons.get(o.person_id) is not None and persons[o.person_id].active)
+                    ]
             visible_offboardings = apply_sort(offboardings, sort_options(persons), sort_select)
             list_container.clear()
             with list_container:
@@ -287,7 +317,10 @@ def offboardings_page() -> None:
             with connection_scope() as connection:
                 all_persons = person_repo.list_all(connection)
                 already_tracked = {o.person_id for o in person_offboarding_repo.list_all(connection)}
-            available_persons = [p for p in all_persons if p.id not in already_tracked]
+            # Active only: a deactivated person has left, and starting a
+            # process for them is never what is meant. Somebody who really
+            # comes back is reactivated first.
+            available_persons = [p for p in all_persons if p.id not in already_tracked and p.active]
             if not available_persons:
                 ui.notify("Für alle Personen läuft bereits ein Austrittsprozess.", type="warning")
                 return

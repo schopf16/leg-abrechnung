@@ -19,13 +19,16 @@ A LEG whose metering points span more than one substation area is shown as "Nich
 Preisoptimiert" here (see `app.domain.leg_composition`), its substation areas
 listed one per line -- the grid operator (BKW) only grants the full
 same-substation-area discount within one substation area. No separate warning
-banner repeats this above the list; it is visible enough per card. If
-every one of those substation areas would also work fine as its own LEG (see
-`app.domain.participant_mix.leg_should_split`), the line is highlighted
-instead as "🌟 Aufteilen empfehlenswert". A more targeted hint -- which
-specific substation area has newly become viable, and how many people could
-move -- is shown above the list (see `app.domain.participant_mix.
-find_upgrade_candidates`) and, per affected MeteringPoint, as a coloured star
+banner repeats this above the list; it is visible enough per card.
+
+The app used to go further and recommend which people to move into a new,
+dedicated LEG. It no longer does, and `app.domain.participant_mix` says why:
+both sides being present says nothing about whether a dedicated LEG would
+actually work for them. What the detail page shows instead is the one fact
+this database holds -- per metering point, whether its substation area
+already has a LEG of its own (🟢, so the row can simply be switched over) or
+would need one founded first (🟠). Sorting that list by substation area is
+how the administrator decides, and that sort already exists
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
 """
 
@@ -37,8 +40,6 @@ from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.participant_mix import (
     compute_participant_mix_for_leg,
-    find_upgrade_candidates,
-    leg_should_split,
 )
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
@@ -114,14 +115,12 @@ def _mix_badge(mix) -> str:
     return text
 
 
-def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> dict:
+def _to_row(connection, leg: Leg, *, warn_percent: float) -> dict:
     """Convert a `Leg` into a row dict backing both the card and the printout.
 
     Args:
         connection: Open SQLite connection.
         leg: LEG to convert.
-        min_persons: `LegSettings.leg_founding_min_persons`, passed
-            through to `leg_should_split`.
         warn_percent: `LegSettings.production_capacity_warn_percent`, the
             point below which the production capacity counts as tight.
 
@@ -132,28 +131,23 @@ def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> d
     composition = compute_leg_composition(connection, leg.id)
     substation_area_names_list = [t.name for t in composition.substation_areas]
     substation_area_names = ", ".join(substation_area_names_list) or "-"
-    should_split = leg_should_split(connection, leg.id, min_persons=min_persons)
     # Rank and status text come out of one branch chain on purpose: the
     # "Preisoptimierung (Handlungsbedarf zuerst)" order must never claim
-    # something the text next to it contradicts.
+    # something the text next to it contradicts. All three are statements
+    # about how this LEG is composed -- no recommendation, see the module
+    # docstring.
     if not composition.substation_areas:
         substation_areas_status = "-"
         # A LEG with no metering points yet has nothing to optimise. Last,
         # not with the optimised ones -- "✓ Preisoptimiert" would be a
         # claim about a LEG that has not been configured at all.
-        optimisation_rank = 3
-    elif should_split:
-        substation_areas_status = (
-            f"🌟 Aufteilen empfehlenswert ({len(substation_area_names_list)} Trafokreise) -- "
-            "besserer BKW-Rabatt möglich"
-        )
-        optimisation_rank = 0
+        optimisation_rank = 2
     elif composition.is_mixed:
         substation_areas_status = f"Nicht Preisoptimiert ({len(substation_area_names_list)} Trafokreise)"
-        optimisation_rank = 1
+        optimisation_rank = 0
     else:
         substation_areas_status = "✓ Preisoptimiert"
-        optimisation_rank = 2
+        optimisation_rank = 1
     headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
     mix = compute_participant_mix_for_leg(connection, leg.id)
     search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
@@ -184,7 +178,6 @@ def _to_row(connection, leg: Leg, *, min_persons: int, warn_percent: float) -> d
         ),
         "production_capacity_status": headroom.status,
         "note": leg.note,
-        "should_split": should_split,
         "optimisation_rank": optimisation_rank,
         "_search": search_text,
     }
@@ -227,8 +220,6 @@ def legs_page() -> None:
             )
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
-        warnings_column = ui.column().classes("w-full")
-
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         all_rows: list[dict] = []
@@ -260,9 +251,7 @@ def legs_page() -> None:
                         ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
                             "dense flat color=negative"
                         )
-                with ui.column().classes(
-                    "w-full gap-0" + (" bg-amber-3 rounded px-2 py-1" if row["should_split"] else "")
-                ):
+                with ui.column().classes("w-full gap-0"):
                     ui.label(row["substation_areas_status"]).classes("text-body2")
                     for substation_area_name in row["substation_areas_list"]:
                         ui.label(substation_area_name).classes("text-body2 text-grey-7 ml-4")
@@ -295,42 +284,10 @@ def legs_page() -> None:
             nonlocal all_rows
             with connection_scope() as connection:
                 settings = settings_repo.get_settings(connection)
-                min_persons = settings.leg_founding_min_persons
                 warn_percent = settings.production_capacity_warn_percent
                 legs = leg_repo.list_all(connection)
-                all_rows = [
-                    _to_row(connection, leg, min_persons=min_persons, warn_percent=warn_percent)
-                    for leg in legs
-                ]
-
-                # Aggregated per LEG, naming each candidate substation area
-                # individually -- a LEG can be the "too spread out" target
-                # of more than one substation area's upgrade candidacy (see
-                # app.domain.participant_mix.UpgradeCandidate), and the
-                # point of this hint is to say exactly *which* substation area
-                # to found a new LEG for, not just that "some" people could
-                # move.
-                upgrade_info_by_leg: dict[int, list[tuple[str, int]]] = {}
-                for candidate in find_upgrade_candidates(connection, min_persons=min_persons):
-                    for mixed_leg in candidate.mixed_legs:
-                        upgrade_info_by_leg.setdefault(mixed_leg.id, []).append(
-                            (candidate.substation_area.name, candidate.person_count)
-                        )
-
-                mixed_warnings = []
-                for leg in legs:
-                    for substation_area_name, person_count in upgrade_info_by_leg.get(leg.id, []):
-                        mixed_warnings.append(
-                            f"⭐ Trafokreis „{substation_area_name}“ hat genug Produzenten und "
-                            f"Consumer für eine eigene LEG -- {person_count} Person(en) "
-                            f"aus „{leg.name}“ könnten dorthin wechseln."
-                        )
+                all_rows = [_to_row(connection, leg, warn_percent=warn_percent) for leg in legs]
             apply_filter()
-
-            warnings_column.clear()
-            with warnings_column:
-                for message in mixed_warnings:
-                    ui.label(message).classes("text-warning text-body2")
 
         search_input.on_value_change(lambda _: apply_filter())
 
@@ -544,22 +501,66 @@ def legs_page() -> None:
         refresh()
 
 
-def _metering_point_row_for_leg(
-    mp, sites: dict, substation_areas: dict, upgrade_substation_area_ids: set[int]
-) -> dict:
+def _dedicated_leg_names(connection, *, exclude_leg_id: int) -> dict[int, str]:
+    """Map each substation area to the LEG that covers it alone, if any.
+
+    A LEG "belongs to" a substation area when its metering points sit in
+    that one substation area and nowhere else -- which is exactly the
+    arrangement BKW grants the full discount for (see
+    `app.domain.leg_composition`).
+
+    Args:
+        connection: Open SQLite connection.
+        exclude_leg_id: The LEG being looked at. Excluded so a
+            single-substation-area LEG does not report itself as the
+            destination for its own metering points.
+
+    Returns:
+        `{substation_area_id: leg_name}`. A substation area absent from
+        this mapping has no dedicated LEG yet -- one would have to be
+        founded before its metering points could move.
+    """
+    names: dict[int, str] = {}
+    for leg in leg_repo.list_all(connection):
+        if leg.id == exclude_leg_id:
+            continue
+        composition = compute_leg_composition(connection, leg.id)
+        if len(composition.substation_areas) == 1:
+            names[composition.substation_areas[0].id] = leg.name
+    return names
+
+
+def _leg_spans_several_substation_areas(leg_id: int) -> bool:
+    """Whether one LEG spans more than one substation area.
+
+    Opens its own connection because the caller (`leg_detail_page`) needs
+    the answer while building the page's layout, before its own
+    `refresh_table` connection exists.
+
+    Args:
+        leg_id: The LEG to check.
+
+    Returns:
+        `True` if this LEG covers several substation areas.
+    """
+    with connection_scope() as connection:
+        return compute_leg_composition(connection, leg_id).is_mixed
+
+
+def _metering_point_row_for_leg(mp, sites: dict, substation_areas: dict, dedicated_leg_names: dict) -> dict:
     """Convert one MeteringPoint of a LEG into a row dict for the detail table.
 
     Args:
         mp: MeteringPoint to convert.
         sites: Preloaded `{site_id: site}` lookup.
         substation areas: Preloaded `{substation_area_id: substation area}` lookup.
-        upgrade_substation_area_ids: substation area ids that are upgrade candidates
-            for this specific LEG (see `app.domain.participant_mix.
-            find_upgrade_candidates` -- filtered by the caller to
-            candidates whose `mixed_legs` includes this LEG). A MeteringPoint
-            on one of these substation areas is marked with a star: it is one
-            of the ones an administrator should move into a new, dedicated
-            LEG for that substation area.
+        dedicated_leg_names: `{substation_area_id: leg_name}` for every
+            substation area that already has a LEG of its own (see
+            `leg_detail_page`). Decides this row's marker: 🟢 with that
+            name means the metering point can be switched straight over,
+            🟠 means such a LEG would have to be founded first. Purely a
+            statement of fact -- whether moving it is a good idea is the
+            administrator's call, see the module docstring.
 
     Returns:
         A dict with the fields required by `leg_detail_page`'s table.
@@ -578,8 +579,12 @@ def _metering_point_row_for_leg(
         "_site_street": site.street if site else "",
         "_site_house_number": site.house_number if site else "",
         "substation_area": substation_area.name if substation_area else "-",
-        "is_upgrade_candidate": substation_area is not None
-        and substation_area.id in upgrade_substation_area_ids,
+        # Empty for a site with no substation area recorded: the question
+        # "does this substation area have its own LEG" does not arise.
+        "dedicated_leg": (
+            dedicated_leg_names.get(substation_area.id, "") if substation_area is not None else ""
+        ),
+        "has_substation_area": substation_area is not None,
         "leg_id": mp.leg_id,
     }
 
@@ -604,6 +609,17 @@ DETAIL_SORT_OPTIONS = [
         "direction",
         "Messrichtung",
         lambda row: (text_key(row["direction"]), text_key(row["designation"])),
+    ),
+    SortOption(
+        "dedicated_leg",
+        "Eigenes LEG vorhanden",
+        # Rows still needing a LEG founded first come last: the ones that
+        # can be switched over right now are the ones worth looking at.
+        lambda row: (
+            not row["dedicated_leg"],
+            text_key(row["substation_area"]),
+            text_key(row["designation"]),
+        ),
     ),
 ]
 
@@ -703,7 +719,18 @@ def leg_detail_page(leg_id: int) -> None:
         ).classes("text-body2 " + status_classes(headroom.status))
 
         count_label = ui.label("").classes("text-body2 text-grey-7 mt-2")
-        upgrade_hint_column = ui.column().classes("w-full gap-0")
+
+        # Only meaningful on a LEG spanning several substation areas. On a
+        # single-substation-area LEG the "own LEG" for that substation area
+        # is this one, so every row would be green and say nothing.
+        show_dedicated_column = _leg_spans_several_substation_areas(leg_id)
+        if show_dedicated_column:
+            ui.label(
+                "🟢 Für diesen Trafokreis besteht schon ein eigenes LEG -- der Messpunkt "
+                "kann direkt dorthin umgestellt werden.    "
+                "🟠 Für diesen Trafokreis gibt es noch kein eigenes LEG -- es müsste "
+                "zuerst gegründet werden."
+            ).classes("text-caption text-grey-7 w-full")
 
         detail_sort_select = render_sort_select(DETAIL_SORT_OPTIONS, lambda: refresh_table())
 
@@ -718,19 +745,36 @@ def leg_detail_page(leg_id: int) -> None:
                     "field": "substation_area",
                     "align": "left",
                 },
+                *(
+                    [
+                        {
+                            "name": "dedicated_leg",
+                            "label": "Eigenes LEG",
+                            "field": "dedicated_leg",
+                            "align": "left",
+                        }
+                    ]
+                    if show_dedicated_column
+                    else []
+                ),
                 {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ],
             rows=[],
             row_key="id",
         ).classes("w-full mt-2")
-        table.add_slot(
-            "body-cell-substation_area",
-            r"""
-            <q-td :props="props" :class="props.row.is_upgrade_candidate ? 'text-amber-9' : ''">
-                <span v-if="props.row.is_upgrade_candidate">⭐ </span>{{ props.value }}
-            </q-td>
-            """,
-        )
+        if show_dedicated_column:
+            # The dot carries the state, the LEG name beside it saves a
+            # lookup for whoever is about to switch the row over.
+            table.add_slot(
+                "body-cell-dedicated_leg",
+                r"""
+                <q-td :props="props">
+                    <span v-if="!props.row.has_substation_area" class="text-grey-6">–</span>
+                    <span v-else-if="props.value">🟢 {{ props.value }}</span>
+                    <span v-else>🟠 noch keines</span>
+                </q-td>
+                """,
+            )
         table.add_slot(
             "body-cell-actions",
             r"""
@@ -743,31 +787,21 @@ def leg_detail_page(leg_id: int) -> None:
 
         def refresh_table() -> None:
             """Reload this LEG's metering points (a row disappears once its LEG
-            is changed away from this one) and the upgrade-candidate hint.
+            is changed away from this one).
 
             Returns:
                 None.
             """
             with connection_scope() as inner_connection:
-                min_persons = settings_repo.get_settings(inner_connection).leg_founding_min_persons
                 sites = {s.id: s for s in site_repo.list_all(inner_connection)}
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
                 metering_points = [
                     mp for mp in metering_point_repo.list_all(inner_connection) if mp.leg_id == leg_id
                 ]
-                # Which substation area(e), among the ones this LEG spans, could
-                # now be split off into their own -- named explicitly
-                # rather than just hinting that "some" metering points should
-                # move, see the module docstring.
-                upgrade_candidates = [
-                    c
-                    for c in find_upgrade_candidates(inner_connection, min_persons=min_persons)
-                    if any(mixed.id == leg_id for mixed in c.mixed_legs)
-                ]
-                upgrade_substation_area_ids = {c.substation_area.id for c in upgrade_candidates}
+                dedicated = _dedicated_leg_names(inner_connection, exclude_leg_id=leg_id)
                 table.rows = apply_sort(
                     [
-                        _metering_point_row_for_leg(mp, sites, substation_areas, upgrade_substation_area_ids)
+                        _metering_point_row_for_leg(mp, sites, substation_areas, dedicated)
                         for mp in metering_points
                     ],
                     DETAIL_SORT_OPTIONS,
@@ -775,15 +809,6 @@ def leg_detail_page(leg_id: int) -> None:
                 )
             table.update()
             count_label.text = f"{len(table.rows)} Messpunkt(e)"
-
-            upgrade_hint_column.clear()
-            with upgrade_hint_column:
-                for candidate in upgrade_candidates:
-                    ui.label(
-                        f"⭐ Trafokreis „{candidate.substation_area.name}“ hat genug Produzenten und "
-                        f"Consumer für eine eigene LEG -- {candidate.person_count} Person(en) auf "
-                        "den unten markierten Messpunkten könnten dorthin wechseln."
-                    ).classes("text-body2 text-amber-9")
 
         def on_change_leg(event) -> None:
             """Table row action handler: open the "LEG ändern" dialog.

@@ -140,24 +140,32 @@ async def send_email(
     config: GraphConfig,
     access_token: str,
     *,
-    to_address: str,
+    to_addresses: Sequence[str],
     to_name: str,
     subject: str,
     body: str,
     attachments: Sequence[Attachment] = (),
 ) -> None:
-    """Send one plain-text email to exactly one recipient.
+    """Send one plain-text email to exactly one contract party.
 
-    Deliberately always exactly one entry in `toRecipients` and never any
-    CC/BCC -- that is the whole privacy mechanism for bulk sends (see
-    `app.emailing` module docstring): call this once per recipient rather
-    than once with many addresses.
+    Deliberately never any CC/BCC, and never two different parties in one
+    message -- that is the whole privacy mechanism for bulk sends (see
+    `app.emailing` module docstring): call this once per party rather than
+    once with everybody's addresses.
+
+    `to_addresses` may hold more than one address only because one party
+    can: a couple is one `Person` with two addresses (see
+    `Person.contact_emails`), both of whom are parties to the same
+    contract. They see each other's address, which they already know.
 
     Args:
         config: Graph API credentials.
         access_token: Bearer token from `get_access_token`.
-        to_address: Recipient's email address.
-        to_name: Recipient's display name.
+        to_addresses: The party's email addresses -- normally one, two for
+            a couple. All of them appear in `toRecipients` of this single
+            message.
+        to_name: The party's display name, used for every address (a
+            couple's `Person.display_name` names both people).
         subject: Email subject.
         body: Plain-text email body.
         attachments: Files to attach (any type -- an invoice PDF, see
@@ -175,14 +183,19 @@ async def send_email(
     Raises:
         GraphAuthError: If the access token is invalid/expired, or the
             app registration lacks permission to send as this mailbox.
-        GraphApiError: For any other failure (including exhausting the
-            429-retry budget, or an attachment over
-            `MAX_INLINE_ATTACHMENT_BYTES`).
+        GraphApiError: For any other failure (including an empty
+            `to_addresses`, exhausting the 429-retry budget, or an
+            attachment over `MAX_INLINE_ATTACHMENT_BYTES`).
     """
+    if not to_addresses:
+        # A GraphApiError rather than a ValueError on purpose: callers
+        # (app.emailing.bulk_send) catch Graph* per recipient, so this
+        # becomes a clean per-party skip instead of aborting the batch.
+        raise GraphApiError(f"Keine E-Mail-Adresse für {to_name or 'diesen Empfänger'} hinterlegt.")
     message: dict = {
         "subject": subject,
         "body": {"contentType": "Text", "content": body},
-        "toRecipients": [{"emailAddress": {"address": to_address, "name": to_name}}],
+        "toRecipients": [{"emailAddress": {"address": address, "name": to_name}} for address in to_addresses],
     }
     if attachments:
         payload_attachments = []
@@ -220,6 +233,10 @@ async def send_email(
             )
         message["attachments"] = payload_attachments
 
+    # Named once for the error messages below: a couple's message carries
+    # two addresses, and a failure has to say which party it was about.
+    recipient_label = ", ".join(to_addresses)
+
     url = _SEND_MAIL_URL_TEMPLATE.format(sender_address=config.sender_address)
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"message": message, "saveToSentItems": "true"}
@@ -237,7 +254,7 @@ async def send_email(
             return
         if response.status_code in (401, 403):
             raise GraphAuthError(
-                f"Microsoft Graph hat den Versand an {to_address} verweigert "
+                f"Microsoft Graph hat den Versand an {recipient_label} verweigert "
                 f"(Status {response.status_code}) -- Zugangsdaten oder Postfach-"
                 f"Berechtigung für {config.sender_address} prüfen."
             )
@@ -248,7 +265,7 @@ async def send_email(
 
         raise GraphApiError(
             f"Microsoft Graph antwortete mit Status {response.status_code} "
-            f"beim Versand an {to_address}: {response.text[:200]}"
+            f"beim Versand an {recipient_label}: {response.text[:200]}"
         )
 
 

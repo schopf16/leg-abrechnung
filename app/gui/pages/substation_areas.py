@@ -16,12 +16,11 @@ checked live as the administrator types.
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.participant_mix import compute_participant_mix_for_substation_area, find_upgrade_candidates
+from app.domain.participant_mix import compute_participant_mix_for_substation_area
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import SortOption, apply_sort, render_sort_select, sort_description, text_key
-from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
@@ -84,7 +83,6 @@ def _to_row(
     connection,
     substation_area: SubstationArea,
     site_ids: set[int],
-    upgrade_substation_area_ids: set[int],
 ) -> dict:
     """Convert a `substation area` into a row dict backing both the card and the printout.
 
@@ -93,18 +91,17 @@ def _to_row(
         substation area: substation area to convert.
         site_ids: This substation area's own site ids (preloaded by the
             caller to avoid re-querying every site per row).
-        upgrade_substation_area_ids: substation area ids with LEG-upgrade potential
-            (see `app.domain.participant_mix.find_upgrade_candidates`),
-            preloaded once for the whole list.
 
     Returns:
         A dict with the fields required by `PRINT_COLUMNS` and `render_card`,
         plus a hidden `_search` key used for client-side filtering.
     """
     mix = compute_participant_mix_for_substation_area(connection, substation_area.id)
+    # No "Potential für eigenes LEG" hint any more: both sides being present
+    # says nothing about whether a dedicated LEG would work, and saying so
+    # sent a producer where there was nobody to share with. See
+    # `app.domain.participant_mix`.
     producer_consumer = _mix_badge(mix)
-    if substation_area.id in upgrade_substation_area_ids:
-        producer_consumer += " ⭐ Potential für eigenes LEG"
 
     search_text = " ".join(
         [substation_area.name, substation_area.bkw_designation or "", substation_area.note or ""]
@@ -216,17 +213,12 @@ def substation_areas_page() -> None:
             """
             nonlocal all_rows
             with connection_scope() as connection:
-                min_persons = settings_repo.get_settings(connection).leg_founding_min_persons
                 sites = site_repo.list_all(connection)
-                upgrade_substation_area_ids = {
-                    c.substation_area.id for c in find_upgrade_candidates(connection, min_persons=min_persons)
-                }
                 all_rows = [
                     _to_row(
                         connection,
                         substation_area,
                         {s.id for s in sites if s.substation_area_id == substation_area.id},
-                        upgrade_substation_area_ids,
                     )
                     for substation_area in substation_area_repo.list_all(connection)
                 ]

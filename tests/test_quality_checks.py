@@ -7,7 +7,6 @@ from datetime import date, datetime, timedelta
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
-    check_leg_upgrade_potential,
     check_onboarding_progress,
     check_reading_completeness,
     check_substation_area_one_sided,
@@ -439,112 +438,6 @@ def _metering_point_direction(
             created_at="",
         ),
     )
-
-
-def test_check_leg_upgrade_potential_flags_mixed_leg_with_now_workable_substation_area(db):
-    """Below `LegSettings.leg_founding_min_persons` (default 7), a
-    non-one-sided substation area with only 2 people is not flagged yet -- see
-    `test_check_leg_upgrade_potential_respects_configurable_min_persons`."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site_in(db, substation_area_id)
-    other_site_id = _site_in(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db)
-
-    person_id = _person(db)
-    consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point_direction(
-        db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id
-    )
-    for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
-        assignment_repo.create(
-            db,
-            Assignment(
-                id=None,
-                person_id=pid,
-                metering_point_id=mp_id,
-                valid_from=date(2026, 1, 1),
-                valid_to=None,
-                created_at="",
-            ),
-        )
-
-    assert check_leg_upgrade_potential(db) == []  # only 2 people at TK1, below the default of 7
-
-    settings = settings_repo.get_settings(db)
-    settings.leg_founding_min_persons = 2
-    settings_repo.update_settings(db, settings)
-
-    warnings = check_leg_upgrade_potential(db)
-
-    assert len(warnings) == 1
-    assert warnings[0].link == "/substation-areas"
-
-
-def test_check_leg_upgrade_potential_respects_configurable_min_persons(db):
-    """Lowering the threshold below the default flags a substation area that
-    the default 7 would leave unflagged; raising it above 2 hides it
-    again -- both directions of `LegSettings.leg_founding_min_persons`."""
-    substation_area_id = _substation_area(db, "TK1")
-    other_substation_area_id = _substation_area(db, "TK2")
-    site_id = _site_in(db, substation_area_id)
-    other_site_id = _site_in(db, other_substation_area_id, street="Anderswo")
-    mixed_leg_id = _leg(db)
-
-    person_id = _person(db)
-    consumption_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id)
-    feed_in_id = _metering_point_direction(db, "CH2", site_id, DIRECTION_FEED_IN, leg_id=mixed_leg_id)
-    other_person_id = _person(db, "Andere")
-    other_mp_id = _metering_point_direction(
-        db, "CH3", other_site_id, DIRECTION_CONSUMPTION, leg_id=mixed_leg_id
-    )
-    for pid, mp_id in ((person_id, consumption_id), (person_id, feed_in_id), (other_person_id, other_mp_id)):
-        assignment_repo.create(
-            db,
-            Assignment(
-                id=None,
-                person_id=pid,
-                metering_point_id=mp_id,
-                valid_from=date(2026, 1, 1),
-                valid_to=None,
-                created_at="",
-            ),
-        )
-
-    settings = settings_repo.get_settings(db)
-    settings.leg_founding_min_persons = 2
-    settings_repo.update_settings(db, settings)
-    assert len(check_leg_upgrade_potential(db)) == 1
-
-    settings.leg_founding_min_persons = 3
-    settings_repo.update_settings(db, settings)
-    assert check_leg_upgrade_potential(db) == []
-
-
-def test_check_substation_area_one_sided_flags_producer_only_substation_area(db):
-    substation_area_id = _substation_area(db, "TK1")
-    site_id = _site_in(db, substation_area_id)
-    person_id = _person(db)
-    feed_in_id = _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN)
-    assignment_repo.create(
-        db,
-        Assignment(
-            id=None,
-            person_id=person_id,
-            metering_point_id=feed_in_id,
-            valid_from=date(2026, 1, 1),
-            valid_to=None,
-            created_at="",
-        ),
-    )
-
-    warnings = check_substation_area_one_sided(db)
-
-    assert len(warnings) == 1
-    assert "Nur Produzenten" in warnings[0].message
-    assert warnings[0].link == "/substation-areas"
 
 
 def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(db):

@@ -6,6 +6,7 @@ import re
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from app.domain.billing import create_or_replace_billing_run
 from app.domain.demo_data import SUMMER_QUARTER, create_demo_data
@@ -16,6 +17,7 @@ from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
 from app.pdf.export_service import _load_metering_point_info
+from app.pdf import person_bill_pdf
 from app.pdf.person_bill_pdf import generate_person_bill_pdf
 from app.pdf.qr_bill_render import build_qr_bill
 from app.pdf.qr_reference import generate_qrr_reference
@@ -487,3 +489,87 @@ def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_re
     second_due_dates = {item.id: item.due_date for item in billing_run_repo.list_items(db, run.id)}
 
     assert second_due_dates == first_due_dates
+
+
+# --- The personal salutation --------------------------------------------
+#
+# The document used to open with a fixed "Sehr geehrte Kundin, sehr
+# geehrter Kunde", which names nobody and is wrong for a couple twice over.
+# There is no PDF text extractor in this project's dependencies, so the
+# check sits at the seam: what the page actually hands to the drawing
+# routine.
+
+
+def _intro_lines_of(db, tmp_path, context, person) -> list[str]:
+    """Generate one person's bill and capture the intro lines it draws.
+
+    Args:
+        db: Database connection fixture.
+        tmp_path: Temporary output directory.
+        context: The tuple `_billing_context` returned. Passed in rather
+            than built here: it calls `create_demo_data`, which cannot run
+            twice against one database.
+        person: The person to bill (already persisted).
+
+    Returns:
+        The texts passed to `draw_intro_text`, in order.
+    """
+    run, items, distribution, leg, settings = context
+    item = next(i for i in items if i.person_id == person.id)
+    person_result = distribution.person_results[item.person_id]
+
+    captured: list[str] = []
+    real = person_bill_pdf.draw_intro_text
+
+    def spy(canvas, text, y):
+        captured.append(text)
+        return real(canvas, text, y)
+
+    with patch.object(person_bill_pdf, "draw_intro_text", spy):
+        generate_person_bill_pdf(
+            run,
+            item,
+            person_result,
+            person,
+            leg,
+            settings,
+            tmp_path / "anrede.pdf",
+            metering_point_info=_metering_point_info(db),
+        )
+    return captured
+
+
+def test_the_bill_opens_with_a_personal_salutation(db, tmp_path):
+    """One named person is greeted by name, not as "Kundin oder Kunde"."""
+    context = _billing_context(db)
+    person = person_repo.get(db, context[1][0].person_id)
+    person.salutation = "Frau"
+    person.first_name = "Anna"
+    person.last_name = "Muster"
+    person.company = ""
+    person_repo.update(db, person)
+
+    lines = _intro_lines_of(db, tmp_path, context, person_repo.get(db, person.id))
+
+    assert lines[0] == "Guten Tag Frau Muster"
+    assert not any("Sehr geehrte Kundin" in line for line in lines)
+
+
+def test_the_bill_greets_both_people_of_a_couple(db, tmp_path):
+    """Both are contract parties, so both are named."""
+    context = _billing_context(db)
+    person = person_repo.get(db, context[1][0].person_id)
+    person.salutation = "Frau"
+    person.first_name = "Anna"
+    person.last_name = "Muster"
+    person.company = ""
+    person.second_salutation = "Herr"
+    person.second_first_name = "Beat"
+    person.second_last_name = "Beispiel"
+    person_repo.update(db, person)
+
+    updated = person_repo.get(db, person.id)
+    lines = _intro_lines_of(db, tmp_path, context, updated)
+
+    assert lines[0] == "Guten Tag Frau Muster, guten Tag Herr Beispiel"
+    assert updated.address_block_lines == ["Frau Anna Muster", "Herr Beat Beispiel"]

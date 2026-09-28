@@ -25,6 +25,7 @@ from app.models.billing_run import BillingRun
 from app.paths import OUTPUT_DIR
 from app.pdf.bill_breakdown import MeteringPointInfo
 from app.pdf.csv_export import generate_invoice_list_csv, generate_payout_list_csv
+from app.pdf.qr_bill_render import qr_debtor_name_note
 from app.pdf.person_bill_pdf import PAYMENT_TERM, generate_person_bill_pdf
 from app.pdf.qr_bill_render import QrBillConfigurationError
 
@@ -217,6 +218,12 @@ def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun
 
         billing_run_repo.set_item_pdf_path(connection, item.id, str(path))
         result.document_paths.append(path)
+
+        # Reported after the document was written, because it is a remark
+        # about a document that exists, not a failure to produce one.
+        shortened = qr_debtor_name_note(person)
+        if shortened:
+            result.errors.append(shortened)
 
     if any(item.is_owed_to_leg for item in items):
         invoice_list_path = output_dir / f"Rechnungsliste_Q{run.period_quarter}_{run.period_year}.csv"

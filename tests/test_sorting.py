@@ -470,8 +470,9 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
             "legs",
             [
                 {"name": "LEG Ittigen", "metering_points_count": 3, "optimisation_rank": 0},
-                # A LEG that was created but never configured.
-                {"name": "LEG Bühler", "metering_points_count": 0, "optimisation_rank": 3},
+                # A LEG that was created but never configured -- last in
+                # the Preisoptimierung order, which now has three ranks.
+                {"name": "LEG Bühler", "metering_points_count": 0, "optimisation_rank": 2},
             ],
             legs.SORT_OPTIONS,
         ),
@@ -484,14 +485,20 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
                     "_site_street": "Fischrain",
                     "_site_house_number": "68",
                     "substation_area": "TK-1",
+                    "dedicated_leg": "LEG-Ittigen-TK1",
+                    "has_substation_area": True,
                 },
-                # The site behind this metering point could not be resolved.
+                # The site behind this metering point could not be
+                # resolved, so it has no substation area and therefore no
+                # answer to the dedicated-LEG question either.
                 {
                     "designation": "CH200",
                     "direction": "Einspeisung",
                     "_site_street": "",
                     "_site_house_number": "",
                     "substation_area": "-",
+                    "dedicated_leg": "",
+                    "has_substation_area": False,
                 },
             ],
             legs.DETAIL_SORT_OPTIONS,

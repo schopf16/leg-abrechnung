@@ -3,6 +3,12 @@
 Used both by the persons page itself and by the Web-Registrierungen page
 (to prefill a new Person from a reviewed registration without having to
 re-type its data) -- see `open_person_form`'s `prefill` argument.
+
+The "Zweite Person" block holds a couple's second name and email address on
+the same record, because a couple is one customer with one invoice -- see
+`app.models.person`. It repeats the first person's field order and widths on
+purpose: it is the same thing, entered the same way, not a different kind of
+data.
 """
 
 from typing import Callable, Optional
@@ -11,6 +17,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import normalize_iban, validate_iban
+from app.gui.cooperative_form import CooperativeEditor
 from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
 from app.models.person import SALUTATION_OPTIONS, Person
@@ -122,6 +129,42 @@ def open_person_form(
             ).classes("w-24")
 
         ui.separator().classes("my-2")
+        # Read-only on purpose, but shown here because this dialog is where
+        # the administrator looks for every other fact about a person -- and
+        # did look, without finding it. A membership is a sequence of dated
+        # periods, not a field, so it is maintained on the detail page
+        # (see `app.gui.pages.persons._render_cooperative_section`); what
+        # belongs here is the answer to "is this person a member", plus
+        # where to change it.
+        ui.label("Genossenschaft").classes("text-body1 font-bold")
+        cooperative = CooperativeEditor(existing.id if existing else None)
+
+        ui.separator().classes("my-2")
+        ui.label("Zweite Person (optional)").classes("text-body1 font-bold")
+        ui.label(
+            "Für ein Paar oder eine Partnerschaft: beide Namen stehen auf "
+            "der Anschrift und in der Anrede, abgerechnet wird weiterhin "
+            "einmal -- ein Kunde, ein Beleg."
+        ).classes("text-caption text-grey-6")
+        with ui.row().classes("w-full gap-2"):
+            second_salutation = ui.select(
+                ["", *SALUTATION_OPTIONS],
+                label="Anrede",
+                value=existing.second_salutation if existing else "",
+            ).classes("w-32")
+            second_first_name = ui.input(
+                "Vorname", value=existing.second_first_name if existing else ""
+            ).classes("flex-grow")
+            second_last_name = ui.input(
+                "Nachname", value=existing.second_last_name if existing else ""
+            ).classes("flex-grow")
+        second_email = ui.input(
+            "E-Mail der zweiten Person (optional)",
+            value=existing.second_contact_email if existing else "",
+        ).classes("w-full")
+        second_email.props('hint="Erhält jede Nachricht zusammen mit der ersten Adresse"')
+
+        ui.separator().classes("my-2")
         ui.label("Weitere Angaben").classes("text-body1 font-bold")
         with ui.row().classes("w-full gap-2"):
             email = ui.input("E-Mail", value=_initial(existing, "contact_email", prefill, "email")).classes(
@@ -155,6 +198,12 @@ def open_person_form(
             "Papierrechnung (statt elektronisch, kostenpflichtig)",
             value=existing.paper_invoice if existing else False,
         )
+        note = (
+            ui.textarea("Bemerkung (optional)", value=existing.note if existing else "")
+            .classes("w-full")
+            .props("rows=3")
+        )
+        note.props('hint="Nur intern -- erscheint auf keinem Beleg und in keiner E-Mail"')
         if existing:
             ui.label(
                 f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
@@ -182,6 +231,10 @@ def open_person_form(
                 iban_error.text = iban_problem
                 error_label.text = iban_problem
                 return
+            cooperative_problem = cooperative.validate()
+            if cooperative_problem:
+                error_label.text = cooperative_problem
+                return
             iban_normalized = normalize_iban(iban.value)
             bkw_customer_number_value = (
                 int(bkw_customer_number.value) if bkw_customer_number.value is not None else None
@@ -207,6 +260,12 @@ def open_person_form(
                         paper_invoice=paper_invoice.value,
                         active=existing.active,
                         created_at=existing.created_at,
+                        deactivated_at=existing.deactivated_at,
+                        note=note.value.strip(),
+                        second_salutation=second_salutation.value or "",
+                        second_first_name=second_first_name.value.strip(),
+                        second_last_name=second_last_name.value.strip(),
+                        second_contact_email=second_email.value.strip(),
                     )
                     person_repo.update(connection, saved)
                 else:
@@ -229,15 +288,27 @@ def open_person_form(
                         paper_invoice=paper_invoice.value,
                         active=True,
                         created_at="",
+                        note=note.value.strip(),
+                        second_salutation=second_salutation.value or "",
+                        second_first_name=second_first_name.value.strip(),
+                        second_last_name=second_last_name.value.strip(),
+                        second_contact_email=second_email.value.strip(),
                     )
                     new_id = person_repo.create(connection, saved)
                     saved.id = new_id
+            # Applied after the person is saved, because a membership needs
+            # a person to hang on -- for a new one the id only exists now.
+            cooperative_warnings: list[str] = []
+            cooperative.apply(saved.id, on_warning=cooperative_warnings.append)
+
             dialog.close()
             # Notify before any caller-side refresh(): a caller that shows
             # this dialog from a card-based list (e.g. Web-Registrierungen)
             # may clear/rebuild that list inside on_saved(), which can tear
             # down this dialog's own UI context first -- see app.gui.safe_notify.
             safe_notify("Gespeichert.", type="positive")
+            for message in cooperative_warnings:
+                safe_notify(message, type="warning")
             if on_saved:
                 on_saved(saved)
 

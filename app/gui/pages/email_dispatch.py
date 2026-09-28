@@ -166,6 +166,32 @@ def _validation_warnings(
     return unknown, invalid_emails, missing
 
 
+#: The recipient groups a broadcast can be addressed to, and the labels the
+#: send page and the history both read from -- one mapping, so a logged
+#: scope can never be described differently from the one that was chosen.
+#: `email_broadcast_log.scope` stores these keys (English since migration
+#: 43); "cooperative" needs no migration, the column has no CHECK.
+_SCOPE_LABELS = {
+    "all": "Alle Personen",
+    "leg": "Personen einer LEG",
+    "cooperative": "Genossenschaftsmitglieder",
+}
+
+
+def _addresses(person: Person) -> str:
+    """Every address of one person, for display in the recipient list.
+
+    Args:
+        person: The person whose addresses to show.
+
+    Returns:
+        The addresses separated by ", " -- a couple has two, and the
+        administrator has to see both before pressing send, because both go
+        into the same message (see `app.emailing.graph_client.send_email`).
+    """
+    return ", ".join(person.contact_emails)
+
+
 @ui.page("/email-dispatch")
 def email_dispatch_page() -> None:
     """Render the E-Mail-Versand assistant and sent-history page.
@@ -195,7 +221,7 @@ def email_dispatch_page() -> None:
         with ui.stepper().props("vertical").classes("w-full") as stepper:
             with ui.step("scope", title="Empfänger-Art wählen"):
                 scope_select = ui.select(
-                    {"all": "Alle Personen", "leg": "Personen einer LEG"},
+                    _SCOPE_LABELS,
                     label="Empfänger-Art",
                     value=None,
                 ).classes("w-full max-w-sm")
@@ -218,6 +244,8 @@ def email_dispatch_page() -> None:
                     with connection_scope() as inner_connection:
                         if scope_select.value == "all":
                             recipients = bulk_send.list_broadcast_recipients(inner_connection)
+                        elif scope_select.value == "cooperative":
+                            recipients = bulk_send.list_cooperative_recipients(inner_connection)
                         else:
                             recipients = bulk_send.list_leg_recipients(inner_connection, leg_select.value)
                     refresh_recipients_step()
@@ -269,18 +297,20 @@ def email_dispatch_page() -> None:
                     with connection_scope() as inner_connection:
                         already_ids = {p.id for p in recipients}
                         add_options = {
-                            p.id: f"{p.display_name} ({p.contact_email})"
+                            p.id: f"{p.display_name} ({_addresses(p)})"
                             for p in person_repo.list_all(inner_connection)
-                            if p.id not in already_ids and p.contact_email.strip()
+                            # Active only: the suggested lists exclude a
+                            # deactivated person, so offering them here
+                            # anyway is how somebody who has left still
+                            # receives the broadcast.
+                            if p.id not in already_ids and p.active and p.contact_emails
                         }
                     with recipients_container:
                         if not recipients:
                             ui.label("Keine Empfänger.").classes("text-grey-6")
                         for person in list(recipients):
                             with ui.row().classes("w-full items-center gap-2"):
-                                ui.label(f"{person.display_name} ({person.contact_email})").classes(
-                                    "flex-grow"
-                                )
+                                ui.label(f"{person.display_name} ({_addresses(person)})").classes("flex-grow")
                                 ui.button(icon="close", on_click=lambda p=person: remove_recipient(p)).props(
                                     "dense flat size=sm"
                                 )
@@ -506,7 +536,7 @@ def email_dispatch_page() -> None:
                             with ui.row().classes("items-center gap-2"):
                                 ui.label(
                                     f"⚠ {person.display_name}: E-Mail-Adresse "
-                                    f"ungültig ({person.contact_email or '-'})"
+                                    f"ungültig ({', '.join(person.contact_emails) or '-'})"
                                 ).classes("text-negative text-body2")
                                 ui.button("Bearbeiten", on_click=lambda p=person: fix_person(p)).props(
                                     "dense flat"
@@ -674,12 +704,16 @@ def email_dispatch_page() -> None:
                 if not entries:
                     ui.label("Noch keine Versände.").classes("text-grey-6")
                 for entry in entries:
-                    scope_label = (
-                        leg_names.get(entry.leg_id, "?") if entry.scope == "leg" else "Alle Personen"
-                    )
+                    # Named per scope rather than "everything that is not a
+                    # LEG is everyone": a broadcast to the Genossenschaft
+                    # went to a subset, and the history has to say so.
+                    if entry.scope == "leg":
+                        scope_label = leg_names.get(entry.leg_id, "?")
+                    else:
+                        scope_label = _SCOPE_LABELS.get(entry.scope, entry.scope)
                     title = (
                         f"{entry.sent_at[:16].replace('T', ' ')} -- {scope_label} -- "
-                        f"„{entry.subject}“ ({entry.recipient_count} Empfänger)"
+                        f"„{entry.subject}“ ({entry.recipient_count} Adressen)"
                     )
                     with ui.expansion(title).classes("w-full"):
                         if entry.attachment_filenames:

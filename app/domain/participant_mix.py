@@ -6,17 +6,26 @@ Local sharing needs both sides: a substation area/LEG with only Producer
 (nobody feeds in, nothing to share) makes no sense to run as its own LEG,
 independent of any BKW discount-rate question. This module answers "does
 this substation area/LEG have both sides at all", expressed as a simple
-Producer:Consumer participant-count ratio, and -- built on top of that --
-"could this substation area now split off into its own LEG" once it has both
-sides but its participants are still folded into a larger, multi-
-substation area LEG (a lower-BKW-discount arrangement, see
-`app.domain.leg_composition`). That second question also requires the
-substation area to have at least `LegSettings.leg_founding_min_persons`
-people overall (`ParticipantMix.total_persons`, default 7) -- both
-sides being present is necessary but not sufficient: a substation area with
-just one Producer and one Consumer is rarely worth founding a dedicated
-LEG over, so `leg_should_split`/`find_upgrade_candidates` take this as an
-explicit `min_persons` parameter rather than hardcoding it.
+Producer:Consumer participant-count ratio.
+
+**What this module deliberately no longer does** is recommend moving people
+out of a pooled LEG into a dedicated one. It used to: both sides present
+plus a minimum headcount produced a "could now split off" suggestion. That
+test was wrong, because presence is not viability. A substation area with
+seven feed-in meters and one consumption meter passed it, and acting on the
+advice would have left the producers with almost nobody to share with --
+the opposite of what they joined for. A real administrator had deliberately
+parked a 34 kWp producer in the pooled LEG for exactly that reason and was
+told to undo it.
+
+A ratio threshold would have been the obvious repair. It was not built,
+because the decision is not the app's to make: it turns on economics, on
+what the participants are willing to do, and on what BKW confirms per
+location -- none of which is in this database. The app now states the one
+fact it does hold, per metering point, on the LEG detail page: whether that
+substation area already has a LEG of its own or would need one founded (see
+`app.gui.pages.legs`). The judgement stays with the administrator, who
+sorts that list by substation area and decides.
 
 Terms used here, deliberately simple (an earlier, more legally-precise
 model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
@@ -56,15 +65,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Optional
 
-from app.domain.leg_composition import compute_leg_composition
-from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import site as site_repo
-from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
-from app.models.leg import Leg
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
-from app.models.substation_area import SubstationArea
 
 
 def _moment(reference_date: Optional[date]) -> datetime:
@@ -86,9 +90,8 @@ class ParticipantMix:
     Two different things are counted here, and confusing them is what
     made the overview disagree with itself: the **metering points** are
     what a reader adds up against the "Messpunkte" column, while the
-    **persons** are what a membership threshold is about -- seven meters
-    are not seven members. The overviews show the metering points; only
-    `LegSettings.leg_founding_min_persons` uses the person counts.
+    **persons** answer "how many people is this". The overviews show the
+    metering points.
 
     Attributes:
         producer_count: Distinct persons on the feed-in side (see module
@@ -145,13 +148,8 @@ class ParticipantMix:
         A true prosumer is counted on both sides (see the module
         docstring), so this is not a deduplicated headcount. Note this is
         **not** what `ratio` shows: that counts metering points, so the
-        overview adds up against the "Messpunkte" column beside it. This
-        is the people, and it exists for one purpose -- gating the
-        LEG-upgrade suggestion on `LegSettings.leg_founding_min_persons`
-        (see `leg_should_split`/`find_upgrade_candidates`). A substation
-        area with both sides present but too few *people* is not worth
-        splitting off into its own LEG; seven meters are not seven
-        members.
+        overview adds up against the "Messpunkte" column beside it. This is
+        the people -- seven meters are not seven members.
 
         Returns:
             `producer_count + consumer_count`.
@@ -303,146 +301,3 @@ def compute_participant_mix_for_leg(
     """
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     return _mix_of(connection, metering_points, reference_date)
-
-
-def leg_should_split(
-    connection: sqlite3.Connection,
-    leg_id: int,
-    reference_date: Optional[date] = None,
-    *,
-    min_persons: int = 0,
-) -> bool:
-    """Whether a mixed LEG's substation areas would each work fine standalone.
-
-    If every substation area a LEG spans would, on its own, already have both a
-    Producer and a Consumer (see `compute_participant_mix_for_substation_area`)
-    and enough people overall, splitting the LEG into one dedicated LEG
-    per substation area strands nobody -- and earns every one of them the
-    better single-substation area BKW discount instead of today's shared, lower
-    one (the app never computes or displays the actual rate, see
-    `app.domain.leg_composition`).
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: Primary key of the LEG.
-        reference_date: Reference date, `None` for today.
-        min_persons: Minimum `ParticipantMix.total_persons` each
-            substation area must reach on its own for the split to be
-            suggested -- pass `LegSettings.leg_founding_min_persons`
-            (default 0, i.e. no minimum, for callers that only care about
-            the plain both-sides-present question).
-
-    Returns:
-        `True` only if the LEG spans more than one substation area (see
-        `app.domain.leg_composition.compute_leg_composition`) AND *every*
-        one of those substation areas is independently non-one-sided and has
-        at least `min_persons` people -- deliberately requiring all of
-        them, not just one: if even a single substation area would be
-        one-sided or too small alone, splitting would strand its
-        participants, so the LEG stays better off shared for now.
-    """
-    composition = compute_leg_composition(connection, leg_id)
-    if not composition.is_mixed:
-        return False
-    for substation_area in composition.substation_areas:
-        mix = compute_participant_mix_for_substation_area(connection, substation_area.id, reference_date)
-        if mix.is_one_sided or mix.total_persons < min_persons:
-            return False
-    return True
-
-
-@dataclass
-class UpgradeCandidate:
-    """A substation area that could now form its own (better-discounted) LEG.
-
-    Attributes:
-        substation area: The substation area with a newly-workable Producer/Consumer mix.
-        mixed_legs: The LEGs currently used by this substation area's
-            participants that span more than one substation area -- these are
-            the ones a dedicated LEG would let them leave.
-        person_count: Distinct persons (via a current-or-upcoming
-            Assignment) at this substation area whose MeteringPoint currently
-            belongs to one of `mixed_legs`.
-        mix: The hypothetical solo-substation area `ParticipantMix` that shows
-            this is now viable.
-    """
-
-    substation_area: SubstationArea
-    mixed_legs: list[Leg]
-    person_count: int
-    mix: ParticipantMix
-
-
-def find_upgrade_candidates(
-    connection: sqlite3.Connection, reference_date: Optional[date] = None, *, min_persons: int = 0
-) -> list[UpgradeCandidate]:
-    """Find substation areas that now have both sides but are still split across
-    a multi-substation-area LEG.
-
-    Args:
-        connection: Open SQLite connection.
-        reference_date: Reference date, `None` for today.
-        min_persons: Minimum `ParticipantMix.total_persons` a substation area
-            must reach to be suggested -- pass `LegSettings.
-            leg_founding_min_persons` (default 0, i.e. no minimum). A
-            substation area with only, say, one Producer and one Consumer is
-            technically non-one-sided but rarely worth founding a
-            dedicated LEG over; this keeps the suggestion from firing
-            until there is a real number of people behind it.
-
-    Returns:
-        One `UpgradeCandidate` per substation area with a newly-workable
-        Producer/Consumer mix (both sides present, `total_persons >=
-        min_persons`) whose participants are (at least partly) still in
-        a mixed LEG. A substation area already fully moved into a dedicated
-        LEG of its own produces no candidate -- the recommendation is
-        already acted on.
-    """
-    moment = _moment(reference_date)
-    sites = site_repo.list_all(connection)
-    metering_points = metering_point_repo.list_all(connection)
-    legs_by_id = {leg.id: leg for leg in leg_repo.list_all(connection)}
-
-    candidates: list[UpgradeCandidate] = []
-    for substation_area in substation_area_repo.list_all(connection):
-        site_ids = {s.id for s in sites if s.substation_area_id == substation_area.id}
-        if not site_ids:
-            continue
-
-        mix = compute_participant_mix(connection, list(site_ids), reference_date)
-        if mix.is_one_sided or mix.total_persons < min_persons:
-            continue
-
-        leg_ids_here = {
-            mp.leg_id for mp in metering_points if mp.site_id in site_ids and mp.leg_id is not None
-        }
-        mixed_legs = sorted(
-            (
-                legs_by_id[leg_id]
-                for leg_id in leg_ids_here
-                if leg_id in legs_by_id and compute_leg_composition(connection, leg_id).is_mixed
-            ),
-            key=lambda leg: leg.name,
-        )
-        if not mixed_legs:
-            continue
-
-        mixed_leg_ids = {leg.id for leg in mixed_legs}
-        person_ids: set[int] = set()
-        for mp in metering_points:
-            if mp.site_id not in site_ids or mp.leg_id not in mixed_leg_ids:
-                continue
-            for assignment in assignment_repo.list_for_metering_point(connection, mp.id):
-                if assignment.is_current_or_upcoming(moment):
-                    person_ids.add(assignment.person_id)
-
-        candidates.append(
-            UpgradeCandidate(
-                substation_area=substation_area,
-                mixed_legs=mixed_legs,
-                person_count=len(person_ids),
-                mix=mix,
-            )
-        )
-
-    return candidates

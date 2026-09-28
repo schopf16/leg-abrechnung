@@ -99,7 +99,7 @@ def _send_with(attachments):
             send_email(
                 _CONFIG,
                 "token",
-                to_address="a@example.ch",
+                to_addresses=["a@example.ch"],
                 to_name="Anna",
                 subject="Betreff",
                 body="Text",
