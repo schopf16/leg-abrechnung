@@ -224,9 +224,14 @@ def offboardings_page() -> None:
                         ui.button("Bearbeiten", on_click=lambda o=offboarding, p=person: on_edit(o, p)).props(
                             "dense flat"
                         )
-                        ui.button("Löschen", on_click=lambda o=offboarding, p=person: on_delete(o, p)).props(
-                            "dense flat color=negative"
-                        )
+                        # "Austritt verwerfen", not "Löschen": the card can
+                        # also carry "Person entfernen", and two red buttons
+                        # reading alike put the only distinction in the
+                        # confirmation text, where nobody looks first. The
+                        # label now names what disappears.
+                        ui.button(
+                            "Austritt verwerfen", on_click=lambda o=offboarding, p=person: on_delete(o, p)
+                        ).props("dense flat color=negative")
 
         def refresh() -> None:
             """Reload the offboarding list according to the current filter.
@@ -289,10 +294,11 @@ def offboardings_page() -> None:
                 None.
             """
             with ui.dialog() as confirm, ui.card():
-                ui.label(f'Austrittsprozess von "{person.display_name}" wirklich löschen?')
+                ui.label(f'Austritt von "{person.display_name}" wirklich verwerfen?')
                 ui.label(
-                    "Nur die Nachverfolgung wird entfernt -- die Person, "
-                    "ihre Zuordnungen und ihr Saldo bleiben unverändert."
+                    "Nur die Nachverfolgung verschwindet -- die Person, ihre "
+                    "Zuordnungen und ihr Saldo bleiben unverändert. Zum "
+                    "Entfernen der Person selbst dient „Person entfernen“."
                 ).classes("text-caption text-grey-7")
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
@@ -304,7 +310,7 @@ def offboardings_page() -> None:
                         safe_notify("Gelöscht.", type="warning")
                         refresh()
 
-                    ui.button("Löschen", on_click=do_delete, color="negative")
+                    ui.button("Verwerfen", on_click=do_delete, color="negative")
             confirm.open()
 
         def on_start() -> None:

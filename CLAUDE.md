@@ -220,11 +220,23 @@ and the detail page only renders `render_cooperative_history` -- no
 buttons at all. The first build had it the other way round and the
 administrator could not find it, which is the correct verdict on it.
 Three plain controls (member yes/no, how many shares, from when) produce
-the period bookkeeping: a changed count closes the running period the day
-before and opens the next, a cleared checkbox sets `valid_to` to the given
-day, and a correction **on** the start day overwrites that period instead
-of creating a zero-length one. A date before the running period is refused
-rather than silently producing an overlap.
+the period bookkeeping, and the date means **one** thing in all three
+actions: the day the new state takes effect. A changed count closes the
+running period the day before and opens the next; a cleared checkbox does
+the same, ending the period the day *before* the exit takes effect; a
+correction **on** the start day overwrites that period instead of creating
+a zero-length one; and deactivating on the day membership began deletes it,
+because it would cover no day at all. A date before the running period is
+refused rather than silently producing an overlap.
+
+The exit used to be the odd one out, writing `valid_to` = the given day.
+`covers()` includes that day, so somebody removed today stayed a member for
+the rest of it -- badged in the list, in the filter, and on the members'
+mailing. The administrator found it within minutes of first use
+(aktivieren, 10 Anteile, deaktivieren). Corrections and deletions made in
+the dialog commit immediately, so the editor re-reads its state and tells
+the calling page -- otherwise the list keeps its badge even when the dialog
+is closed with Abbrechen.
 
 ### Language: English code, German UI
 

@@ -138,6 +138,32 @@ def _save(client: Client) -> None:
     raise AssertionError("Speichern hat keinen Click-Handler")
 
 
+def _edit(person_id: int, probe: str, *, member=None, shares=None, effective=None) -> None:
+    """Open the edit dialog, set the Genossenschaft controls and save.
+
+    One call per visit to the dialog, so a sequence of steps reads as the
+    sequence the administrator actually performs.
+
+    Args:
+        person_id: The person to edit.
+        probe: A unique probe route.
+        member: New value for the membership checkbox, or `None` to leave it.
+        shares: New share count, or `None` to leave it.
+        effective: Date the change takes effect (ISO), or `None` for today.
+
+    Returns:
+        None.
+    """
+    client = _open_edit(person_id, probe)
+    if member is not None:
+        _element(client, "Checkbox", "Genossenschaftsmitglied").value = member
+    if shares is not None:
+        _input(client, "Anzahl Anteile").value = shares
+    if effective is not None:
+        _input(client, "Änderung gültig ab").value = effective
+    _save(client)
+
+
 def test_the_controls_are_in_the_edit_dialog():
     """The pencil, not the eye -- the correction that prompted this design."""
     with connection_scope() as connection:
@@ -250,8 +276,14 @@ def test_buying_shares_keeps_the_previous_figure_answerable():
         assert coop_repo.shares_for_person(connection, person_id, date(2026, 8, 15)) == 12
 
 
-def test_leaving_closes_the_period_without_erasing_it():
-    """An exit is a date, not a deletion -- the membership still happened."""
+def test_leaving_closes_the_period_the_day_before_it_takes_effect():
+    """An exit is a date, not a deletion -- the membership still happened.
+
+    The date is the first day of *not* being a member, the same reading the
+    join and the share change use, so the period ends the day before.
+    Ending it *on* the date left somebody counted as a member for the rest
+    of that day -- which is what the administrator reported.
+    """
     with connection_scope() as connection:
         person_id = _person(connection)
         coop_repo.create(
@@ -274,10 +306,10 @@ def test_leaving_closes_the_period_without_erasing_it():
     with connection_scope() as connection:
         periods = coop_repo.list_for_person(connection, person_id)
         assert len(periods) == 1, "der Zeitraum bleibt bestehen"
-        assert periods[0].valid_to == date(2026, 6, 30), "das Datum ist der letzte Tag"
-        assert coop_repo.shares_for_person(connection, person_id, date(2026, 6, 30)) == 8
-        assert coop_repo.current_for_person(connection, person_id, date(2026, 7, 1)) is None
-        assert person_id not in coop_repo.member_person_ids(connection, date(2026, 7, 1))
+        assert periods[0].valid_to == date(2026, 6, 29), "der Tag davor"
+        assert coop_repo.shares_for_person(connection, person_id, date(2026, 6, 29)) == 8
+        assert coop_repo.current_for_person(connection, person_id, date(2026, 6, 30)) is None
+        assert person_id not in coop_repo.member_person_ids(connection, date(2026, 6, 30))
 
 
 def test_correcting_on_the_start_day_does_not_open_a_second_period():
@@ -379,3 +411,64 @@ def test_a_new_person_says_the_membership_comes_after_saving():
         if element.__class__.__name__ == "Label" and getattr(element, "text", None)
     ]
     assert any("Nach dem Speichern" in text for text in texts)
+
+
+def test_the_administrators_own_three_steps(db):
+    """Aktivieren, 10 Anteile geben, deaktivieren -- alles am selben Tag.
+
+    Reported from real use: after these three steps the person was still
+    badged as a Genossenschafter. The exit wrote `valid_to = heute`, and
+    `covers()` counts that day, so they stayed a member for the rest of it
+    -- while the administrator had just removed them.
+
+    The date means the same thing in all three actions now: the day the new
+    state takes effect. Ending a membership on the day it began leaves it
+    covering no day at all, so there was none.
+    """
+    with connection_scope() as connection:
+        person_id = _person(connection)
+
+    _edit(person_id, "/probe-three-steps-1", member=True)
+    _edit(person_id, "/probe-three-steps-2", member=True, shares=10)
+
+    with connection_scope() as connection:
+        periods = coop_repo.list_for_person(connection, person_id)
+        assert len(periods) == 1, "derselbe Tag ist eine Korrektur, kein zweiter Zeitraum"
+        assert periods[0].shares == 10
+
+    _edit(person_id, "/probe-three-steps-3", member=False)
+
+    with connection_scope() as connection:
+        assert coop_repo.list_for_person(connection, person_id) == []
+        assert coop_repo.current_for_person(connection, person_id) is None
+        assert person_id not in coop_repo.member_person_ids(connection)
+
+
+def test_the_badge_disappears_from_the_list_after_deactivating(db):
+    """What the administrator actually looked at: the card in the Personen list."""
+    from app.gui.pages import persons as persons_module
+
+    with connection_scope() as connection:
+        person_id = _person(connection)
+
+    _edit(person_id, "/probe-badge-on", member=True, shares=10)
+    client = Client(ui.page("/probe-badge-list-on")(lambda: None), request=None)
+    with client:
+        persons_module.persons_page()
+    badges = [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Badge" and getattr(element, "text", None)
+    ]
+    assert any("Genossenschafter" in text for text in badges), "erst da"
+
+    _edit(person_id, "/probe-badge-off", member=False)
+    client = Client(ui.page("/probe-badge-list-off")(lambda: None), request=None)
+    with client:
+        persons_module.persons_page()
+    badges = [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Badge" and getattr(element, "text", None)
+    ]
+    assert not any("Genossenschafter" in text for text in badges), "und dann weg"

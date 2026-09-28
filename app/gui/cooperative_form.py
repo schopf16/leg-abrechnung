@@ -87,16 +87,20 @@ class CooperativeEditor:
             a membership cannot hang on a person who does not exist yet.
     """
 
-    def __init__(self, person_id: Optional[int]) -> None:
+    def __init__(self, person_id: Optional[int], *, on_changed: Optional[Callable[[], None]] = None) -> None:
         """Render the controls for one person.
 
         Args:
             person_id: The person being edited, or `None` when creating.
+            on_changed: Called after a correction or deletion made here,
+                which commits immediately -- so the calling page can drop
+                its now-stale badge even if the dialog is then cancelled.
 
         Returns:
             None.
         """
         self.person_id = person_id
+        self._on_changed = on_changed
         self._current: Optional[CooperativeMembership] = None
         self._history_column: Optional[ui.column] = None
 
@@ -129,14 +133,36 @@ class CooperativeEditor:
             )
         self.shares.bind_visibility_from(self.is_member, "value")
         ui.label(
-            "Eine Änderung beendet den laufenden Zeitraum und eröffnet ab "
-            "diesem Datum einen neuen -- die frühere Anzahl bleibt damit "
-            "belegt. Beim Austritt ist das Datum der letzte Tag der "
-            "Mitgliedschaft."
+            "Das Datum ist der Tag, ab dem der neue Stand gilt -- für den "
+            "Beitritt, für eine geänderte Anzahl und für den Austritt "
+            "gleichermassen. Der bisherige Zeitraum endet am Tag davor und "
+            "bleibt im Verlauf stehen, damit die frühere Anzahl belegt ist."
         ).classes("text-caption text-grey-6")
 
         self._history_column = ui.column().classes("w-full gap-0")
         self._render_history()
+
+    def _resync(self) -> None:
+        """Re-read the membership after an in-dialog correction or deletion.
+
+        Both write to the database straight away, so without this the
+        checkbox would still be ticked over a period that no longer exists
+        and `apply()` would act on a row it read before the change. The
+        calling page is told as well, because its list still shows the old
+        badge -- and the administrator may well close this dialog with
+        Abbrechen, which never saves anything and so never refreshed it.
+
+        Returns:
+            None.
+        """
+        with connection_scope() as connection:
+            self._current = cooperative_membership_repo.current_for_person(connection, self.person_id)
+        if self.is_member is not None:
+            self.is_member.value = self._current is not None
+            self.shares.value = self._current.shares if self._current else 0
+        self._render_history()
+        if self._on_changed:
+            self._on_changed()
 
     def _render_history(self) -> None:
         """(Re-)render the period list with its correction buttons.
@@ -229,7 +255,7 @@ class CooperativeEditor:
                 dialog.close()
                 for warning in warnings:
                     safe_notify(warning.message, type="warning")
-                self._render_history()
+                self._resync()
 
             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                 ui.button("Abbrechen", on_click=dialog.close).props("flat")
@@ -258,7 +284,7 @@ class CooperativeEditor:
                     with connection_scope() as connection:
                         cooperative_membership_repo.delete(connection, membership.id)
                     confirm.close()
-                    self._render_history()
+                    self._resync()
 
                 ui.button("Löschen", on_click=do_delete, color="negative")
         confirm.open()
@@ -303,11 +329,21 @@ class CooperativeEditor:
 
         if not wants_member:
             if current is not None:
-                # The date is the last day of membership, so the period
-                # ends on it rather than the day before.
-                current.valid_to = effective
                 with connection_scope() as connection:
-                    cooperative_membership_repo.update(connection, current)
+                    if effective <= current.valid_from:
+                        # Ending it on or before the day it began leaves a
+                        # membership covering no day at all, so there was
+                        # none -- most likely a mis-click being undone.
+                        cooperative_membership_repo.delete(connection, current.id)
+                    else:
+                        # The day the exit takes effect is the first day of
+                        # *not* being a member, so the period ends the day
+                        # before -- the same reading of this date as the
+                        # share change below. Ending it *on* the date left
+                        # somebody still counted as a member for the rest of
+                        # that day, which is not what removing them means.
+                        current.valid_to = effective - timedelta(days=1)
+                        cooperative_membership_repo.update(connection, current)
             return
 
         if current is None:

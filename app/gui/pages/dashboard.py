@@ -39,6 +39,13 @@ from app.models import substation_area as substation_area_repo
 from app.models import web_registration as web_registration_repo
 
 
+#: Every Kennzahlen tile on the overview uses exactly these classes, so a
+#: new one cannot quietly come out a different size than the rest.
+#: `justify-center` centres the shorter tiles inside the band the row's
+#: `items-stretch` gives them.
+_TILE_CLASSES = "w-40 justify-center"
+
+
 def _format_capacity(value: float) -> str:
     """Format a kWp/kWh figure the way a German reader writes it.
 
@@ -197,8 +204,14 @@ def dashboard_page() -> None:
                 ui.label("✓ Keine offenen Punkte.").classes("text-body2")
 
         # -- Kennzahlen: what the data currently looks like. --
+        capacity = overview["capacity"]
         ui.label("Kennzahlen").classes("text-lg font-bold mt-4")
-        with ui.row().classes("gap-4 flex-wrap"):
+        # `items-stretch` rather than a fixed height: the two capacity tiles
+        # carry a third line the counting ones do not, and a hard-coded
+        # height would either clip a caption that wraps or need revisiting
+        # every time one is reworded. Stretching makes the row settle on its
+        # tallest tile by itself.
+        with ui.row().classes("gap-4 flex-wrap items-stretch"):
             for label, key in (
                 ("Trafokreise", "substation_areas"),
                 ("Standorte", "sites"),
@@ -207,7 +220,7 @@ def dashboard_page() -> None:
                 ("Personen", "persons"),
                 ("Abrechnungsläufe", "runs"),
             ):
-                with ui.card().classes("w-40"):
+                with ui.card().classes(_TILE_CLASSES):
                     ui.label(str(counts[key])).classes("text-3xl font-bold")
                     ui.label(label)
 
@@ -215,24 +228,23 @@ def dashboard_page() -> None:
             # complete by construction: a capacity is typed in by hand per
             # metering point, so each card says how many it covers. A bare
             # sum would be read as the LEG's total.
-            capacity = overview["capacity"]
-            with ui.card().classes("w-40"):
+            with ui.card().classes(_TILE_CLASSES):
                 ui.label(_format_capacity(capacity.pv_kwp)).classes("text-3xl font-bold")
                 ui.label("PV-Leistung (kWp)")
                 ui.label(f"aus {capacity.pv_counted} von {capacity.pv_expected} Messpunkten").classes(
                     "text-caption text-grey-6"
                 )
-            with ui.card().classes("w-40"):
+            with ui.card().classes(_TILE_CLASSES):
                 ui.label(_format_capacity(capacity.battery_kwh)).classes("text-3xl font-bold")
                 ui.label("Batteriespeicher (kWh)")
                 ui.label(f"{capacity.battery_counted} Messpunkte mit Speicher").classes(
                     "text-caption text-grey-6"
                 )
-            if capacity.implausible:
-                ui.label(
-                    f"⚠ {len(capacity.implausible)} unplausible Angabe(n) nicht mitgezählt: "
-                    + ", ".join(capacity.implausible)
-                ).classes("text-caption text-orange-9 w-full")
+        if capacity.implausible:
+            ui.label(
+                f"⚠ {len(capacity.implausible)} unplausible Angabe(n) nicht mitgezählt: "
+                + ", ".join(capacity.implausible)
+            ).classes("text-caption text-orange-9 w-full mt-1")
 
         # -- LEGs im Überblick: one line per LEG, most-asked-about facts. --
         if overview["legs"]:
