@@ -413,3 +413,33 @@ sendet die Änderungen an GitHub.
 Modultrennung ist bewusst strikt: die Domänenlogik kennt weder SQL noch
 NiceGUI-Details, die GUI kennt keine SQL-Details, der Import kennt nichts
 über das Dateiformat hinaus die Schnittstelle `ParsedReading`.
+
+## 10. Lizenz
+
+Copyright (C) 2026 Michael Anderegg
+
+Dieses Programm steht unter der **GNU General Public License, Version 3**
+(GPL-3.0-or-later); der vollständige Text liegt in [`LICENSE`](LICENSE).
+
+Was das praktisch heisst:
+
+- **Sie dürfen es benutzen, weitergeben und verändern** — privat wie
+  geschäftlich, ohne Gebühr und ohne zu fragen.
+- **Wer eine veränderte Fassung weitergibt, muss deren Quellcode ebenfalls
+  unter der GPL offenlegen.** Verbesserungen bleiben damit für alle
+  verfügbar, statt in einer geschlossenen Abspaltung zu verschwinden — das
+  ist der Grund für die Wahl dieser Lizenz.
+- **Solange Sie nichts weitergeben, ändert sich für Sie nichts.** Eine
+  Anpassung für den eigenen Gebrauch dürfen Sie behalten.
+- **Ohne Gewährleistung und ohne Haftung** (Abschnitte 15 und 16 der
+  Lizenz). Die Software rechnet mit echtem Geld; prüfen Sie, was sie
+  ausgibt.
+
+Die Wahl fiel auf GPL-3.0 und nicht auf eine der GPL-2-Varianten, weil eine
+Abhängigkeit (`svglib`, für die Einbettung des QR-Codes) unter LGPL-3.0
+steht und mit GPL-2.0 nicht vereinbar wäre. Alle übrigen Abhängigkeiten
+stehen unter MIT oder BSD und sind mit der GPL-3.0 verträglich.
+
+Beiträge sind willkommen — ein Pull Request auf
+<https://github.com/schopf16/leg-abrechnung> genügt. Was Sie beitragen,
+steht damit ebenfalls unter der GPL-3.0.
