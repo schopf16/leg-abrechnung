@@ -675,3 +675,114 @@ def test_every_option_also_sorts_descending_without_raising(page, rows, options)
     for option in options:
         ordered = apply_sort(rows, options, _FakeControl(option.key, descending=True))
         assert len(ordered) == len(rows), f"{page} / {option.key}"
+
+
+# --- Sorting persons by salutation --------------------------------------
+#
+# Added because the administrator wanted to find the records that have no
+# salutation. The order therefore puts the missing ones **first**: last
+# would mean scrolling past everybody who is fine, which defeats the
+# purpose of having the order at all.
+
+
+def _person_with(salutation: str = "", **overrides):
+    """Build an unpersisted Person for sort-key checks.
+
+    Args:
+        salutation: The first person's salutation.
+        **overrides: Any other Person field.
+
+    Returns:
+        The `Person`.
+    """
+    from app.models.person import Person
+
+    fields = dict(
+        id=1,
+        salutation=salutation,
+        company="",
+        first_name="Anna",
+        last_name="Muster",
+        contact_email="",
+        contact_phone="",
+        billing_street="",
+        billing_house_number="",
+        billing_postal_code="",
+        billing_city="",
+        billing_country="CH",
+        iban="",
+        customer_number=1,
+        bkw_customer_number=None,
+        paper_invoice=False,
+        active=True,
+        created_at="",
+    )
+    fields.update(overrides)
+    return Person(**fields)
+
+
+def _salutation_order(people):
+    """Sort people by the Anrede option and return their names.
+
+    Args:
+        people: The persons to order.
+
+    Returns:
+        The display names, in the order the option produces.
+    """
+    from app.gui.pages import persons
+
+    option = next(o for o in persons.SORT_OPTIONS if o.key == "salutation")
+    return [p.display_name for p in sorted(people, key=option.sort_key)]
+
+
+def test_persons_without_a_salutation_come_first():
+    """The reason this order exists."""
+    with_one = _person_with("Frau", last_name="Bekannt")
+    without = _person_with("", last_name="Ohne")
+
+    assert _salutation_order([with_one, without]) == ["Anna Ohne", "Anna Bekannt"]
+
+
+def test_a_company_without_a_contact_person_is_not_treated_as_missing():
+    """It legitimately has no salutation, and burying the real gaps in
+    those would make the order useless."""
+    company = _person_with("", company="Hauswartung AG", first_name="", last_name="")
+    gap = _person_with("", last_name="Ohne")
+    fine = _person_with("Herr", last_name="Bekannt")
+
+    order = _salutation_order([company, fine, gap])
+
+    assert order[0] == "Anna Ohne", order
+    assert order.index("Hauswartung AG") > 0
+
+
+def test_a_couple_counts_as_missing_when_either_half_has_none():
+    """The letter greets both, so both need one."""
+    half = _person_with(
+        "Frau",
+        last_name="Halb",
+        second_first_name="Beat",
+        second_last_name="Halb",
+        second_salutation="",
+    )
+    complete = _person_with(
+        "Frau",
+        last_name="Ganz",
+        second_first_name="Beat",
+        second_last_name="Ganz",
+        second_salutation="Herr",
+    )
+
+    assert _salutation_order([complete, half])[0].startswith("Anna Halb")
+
+
+def test_the_rest_is_ordered_by_salutation_then_name():
+    """Below the gaps, a plain alphabetical order by Anrede."""
+    people = [
+        _person_with("Herr", last_name="Zwei"),
+        _person_with("Familie", last_name="Eins"),
+        _person_with("Frau", last_name="Drei"),
+    ]
+
+    assert _salutation_order(people) == ["Anna Eins", "Anna Drei", "Anna Zwei"]

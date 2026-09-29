@@ -321,6 +321,10 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
     but takes none out of it. The likely cause is a consumption assignment
     that was never entered, at the same address as the feed-in meter.
 
+    Reported per **connection**, not per person, and the message names the
+    location: a property management can hold several, and "which one is
+    missing its meter" is the only part of this that is actual work.
+
     What this does **not** claim is that BKW forbids the arrangement. The
     administrator suspects they do not support it, and that may well be
     right, but it is not something this database can establish -- same
@@ -337,15 +341,17 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
     """
     warnings: list[QualityWarning] = []
     roles = participant_mix.compute_participant_roles(connection)
-    for person_id in sorted(roles.feed_in_only_person_ids):
+    for person_id, site_id in roles.feed_in_only:
         person = person_repo.get(connection, person_id)
         person_name = person.display_name if person else f"Person #{person_id}"
+        site = site_repo.get(connection, site_id)
+        where = f" am Standort {site.full_address}" if site is not None else ""
         warnings.append(
             QualityWarning(
                 category="feed_in_without_consumption",
                 message=(
-                    f'"{person_name}" speist in die LEG ein, hat aber keine '
-                    "Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
+                    f'"{person_name}" speist{where} in die LEG ein, hat dort '
+                    "aber keine Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
                 ),
                 link=f"/persons/{person.id}" if person is not None else None,
             )

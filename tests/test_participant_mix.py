@@ -317,89 +317,137 @@ def test_the_person_count_still_counts_people(db):
     assert mix.total_persons == 2, "eine Person, auf beiden Seiten gezählt"
 
 
-# --- Headcount by side, for the overview tiles --------------------------
+# --- Connections by side, for the overview tiles ------------------------
 #
-# `ParticipantMix` counts somebody with both directions on both sides,
-# because it answers "does this scope have both sides at all". The tiles
-# answer a different question -- how many people of each kind -- so these
-# counts must not overlap, and they must add up.
+# The unit is a **connection**: one party at one location. Counting people
+# instead was wrong in both directions -- a property management with two
+# buildings collapsed into one Prosumer, and a Mehrfamilienhaus would have
+# collapsed its tenants into its site. The administrator found it by
+# adding the tiles up against the metering-point count and coming out two
+# short.
 
 
-def test_a_person_with_both_directions_counts_only_as_a_prosumer(db):
-    """The whole point: the two tiles add up to a real headcount."""
-    area_id = _substation_area(db, "TRA")
-    site_id = _site(db, area_id)
+def test_one_party_at_two_locations_is_two_connections(db):
+    """The case that exposed the unit.
+
+    One company, two buildings, each with PV and a supply -- rechnerisch
+    one person, but two Prosumer. Counting people reported one and left
+    two metering points unaccounted for.
+    """
     leg_id = _leg(db, "LEG")
+    area_id = _substation_area(db, "TRA")
+    company = _person(db, "Verwaltung")
+    for street in ("Erstweg", "Zweitweg"):
+        site_id = _site(db, area_id, street=street)
+        for direction in (DIRECTION_FEED_IN, DIRECTION_CONSUMPTION):
+            mp = _metering_point(db, site_id, leg_id, direction)
+            _assignment(db, company, mp, date(2025, 1, 1))
 
-    both = _person(db, "Beides")
-    only_draws = _person(db, "NurBezug")
-    for person_id, direction in (
-        (both, DIRECTION_FEED_IN),
-        (both, DIRECTION_CONSUMPTION),
-        (only_draws, DIRECTION_CONSUMPTION),
-    ):
-        mp = _metering_point(db, site_id, leg_id, direction)
-        _assignment(db, person_id, mp, date(2025, 1, 1))
+    roles = participant_mix.compute_participant_roles(db)
+
+    assert roles.prosumers == 2, "zwei Liegenschaften sind zwei Anschlüsse"
+    assert roles.consumers == 0
+    assert roles.total == 2
+
+
+def test_several_parties_at_one_location_stay_separate(db):
+    """A Mehrfamilienhaus is not one Prosumer.
+
+    Whoever holds the PV on the roof is the Prosumer; every tenant is a
+    Konsumer in their own right. Counting sites would have merged them.
+    """
+    leg_id = _leg(db, "LEG")
+    site_id = _site(db, _substation_area(db, "TRA"))
+    owner = _person(db, "Eigentuemerin")
+    _assignment(db, owner, _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN), date(2025, 1, 1))
+    _assignment(db, owner, _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION), date(2025, 1, 1))
+    for name in ("Mieter1", "Mieter2"):
+        tenant = _person(db, name)
+        mp = _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)
+        _assignment(db, tenant, mp, date(2025, 1, 1))
 
     roles = participant_mix.compute_participant_roles(db)
 
     assert roles.prosumers == 1
-    assert roles.consumers == 1
-    assert roles.total == 2, "jede Person genau einmal"
-    assert roles.feed_in_only_person_ids == set()
+    assert roles.consumers == 2, "jede Partei zählt für sich"
+    assert roles.total == 3
 
 
-def test_somebody_who_only_feeds_in_is_counted_as_a_prosumer_and_named(db):
-    """The administrator's model: whoever feeds in also draws at that address.
+def test_the_two_sides_account_for_every_metering_point(db):
+    """The arithmetic the administrator actually performs.
 
-    Somebody with no consumption assignment is therefore not a third kind
-    but a gap in the data -- counted with the Prosumer so the tiles stay
-    complete, and named so the gap can be closed.
+    Connections with both directions hold two meters, the gaps and the
+    consumption-only ones hold one each -- and together that has to be
+    every metering point in the database. This is the check that failed
+    before, by exactly two.
     """
-    area_id = _substation_area(db, "TRA")
-    site_id = _site(db, area_id)
     leg_id = _leg(db, "LEG")
+    area_id = _substation_area(db, "TRA")
+    company = _person(db, "Verwaltung")
+    for street in ("Erstweg", "Zweitweg"):
+        site_id = _site(db, area_id, street=street)
+        for direction in (DIRECTION_FEED_IN, DIRECTION_CONSUMPTION):
+            _assignment(db, company, _metering_point(db, site_id, leg_id, direction), date(2025, 1, 1))
+    lone = _person(db, "NurEinspeisung")
+    lone_site = _site(db, area_id, street="Solarweg")
+    _assignment(db, lone, _metering_point(db, lone_site, leg_id, DIRECTION_FEED_IN), date(2025, 1, 1))
+    drawer = _person(db, "NurBezug")
+    drawer_site = _site(db, area_id, street="Wohnweg")
+    _assignment(db, drawer, _metering_point(db, drawer_site, leg_id, DIRECTION_CONSUMPTION), date(2025, 1, 1))
+
+    roles = participant_mix.compute_participant_roles(db)
+    both = roles.prosumers - len(roles.feed_in_only)
+    expected = both * 2 + len(roles.feed_in_only) + roles.consumers
+    actual = len(metering_point_repo.list_all(db))
+
+    assert expected == actual == 6
+
+
+def test_a_connection_that_only_feeds_in_is_a_prosumer_and_is_named(db):
+    """The administrator's model: whoever feeds in also draws there.
+
+    Such a connection is not a third kind but a gap, counted with the
+    Prosumer so the tiles stay complete, and named with its **location**
+    so the missing meter can be found -- a party may hold several.
+    """
+    leg_id = _leg(db, "LEG")
+    site_id = _site(db, _substation_area(db, "TRA"))
     person_id = _person(db, "NurEinspeisung")
-    mp = _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN)
-    _assignment(db, person_id, mp, date(2025, 1, 1))
+    _assignment(db, person_id, _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN), date(2025, 1, 1))
 
     roles = participant_mix.compute_participant_roles(db)
 
     assert roles.prosumers == 1
     assert roles.consumers == 0
-    assert roles.feed_in_only_person_ids == {person_id}
+    assert roles.feed_in_only == [(person_id, site_id)]
 
 
-def test_two_feed_in_meters_are_still_one_prosumer(db):
-    """Counted per person, not per metering point."""
-    area_id = _substation_area(db, "TRA")
-    site_id = _site(db, area_id)
+def test_two_feed_in_meters_at_one_location_are_still_one_connection(db):
+    """Two arrays on one roof do not make two Prosumer."""
     leg_id = _leg(db, "LEG")
+    site_id = _site(db, _substation_area(db, "TRA"))
     person_id = _person(db, "ZweiAnlagen")
     for direction in (DIRECTION_FEED_IN, DIRECTION_FEED_IN, DIRECTION_CONSUMPTION):
-        mp = _metering_point(db, site_id, leg_id, direction)
-        _assignment(db, person_id, mp, date(2025, 1, 1))
+        _assignment(db, person_id, _metering_point(db, site_id, leg_id, direction), date(2025, 1, 1))
 
     roles = participant_mix.compute_participant_roles(db)
 
     assert roles.prosumers == 1
     assert roles.total == 1
+    assert roles.feed_in_only == []
 
 
 def test_a_person_without_any_assignment_is_in_neither_count(db):
     """Somebody merely recorded is not yet taking part."""
     _person(db, "Ohne")
 
-    roles = participant_mix.compute_participant_roles(db)
-
-    assert roles.total == 0
+    assert participant_mix.compute_participant_roles(db).total == 0
 
 
 def test_an_ended_assignment_no_longer_counts(db):
     """Same reference rule as the rest of this module."""
-    area_id = _substation_area(db, "TRA")
-    site_id = _site(db, area_id)
     leg_id = _leg(db, "LEG")
+    site_id = _site(db, _substation_area(db, "TRA"))
     person_id = _person(db, "Ausgezogen")
     mp = _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)
     _assignment(db, person_id, mp, date(2024, 1, 1), date(2024, 12, 31))
@@ -409,26 +457,43 @@ def test_an_ended_assignment_no_longer_counts(db):
     assert roles.total == 0
 
 
-def test_the_tiles_show_both_counts():
-    """Rendered, not just computed -- the numbers have to reach the page."""
+def test_the_tiles_show_both_counts_and_admit_the_gaps():
+    """Rendered, not just computed -- and the caption has to stay true.
+
+    "Anschlüsse mit Einspeisung und Bezug" describes the intended state;
+    while a few of them have no Bezug, the tile says so itself rather than
+    quietly folding them in.
+    """
     from nicegui import Client, ui
 
     from app.db.connection import connection_scope
     from app.gui.pages import dashboard as dashboard_module
 
     with connection_scope() as connection:
-        area_id = _substation_area(connection, "TRA")
-        site_id = _site(connection, area_id)
         leg_id = _leg(connection, "LEG")
+        area_id = _substation_area(connection, "TRA")
         both = _person(connection, "Beides")
-        draws = _person(connection, "NurBezug")
-        for person_id, direction in (
-            (both, DIRECTION_FEED_IN),
-            (both, DIRECTION_CONSUMPTION),
-            (draws, DIRECTION_CONSUMPTION),
-        ):
-            mp = _metering_point(connection, site_id, leg_id, direction)
-            _assignment(connection, person_id, mp, date(2025, 1, 1))
+        both_site = _site(connection, area_id, street="Beidesweg")
+        for direction in (DIRECTION_FEED_IN, DIRECTION_CONSUMPTION):
+            _assignment(
+                connection, both, _metering_point(connection, both_site, leg_id, direction), date(2025, 1, 1)
+            )
+        lone = _person(connection, "NurEinspeisung")
+        lone_site = _site(connection, area_id, street="Solarweg")
+        _assignment(
+            connection,
+            lone,
+            _metering_point(connection, lone_site, leg_id, DIRECTION_FEED_IN),
+            date(2025, 1, 1),
+        )
+        drawer = _person(connection, "NurBezug")
+        drawer_site = _site(connection, area_id, street="Wohnweg")
+        _assignment(
+            connection,
+            drawer,
+            _metering_point(connection, drawer_site, leg_id, DIRECTION_CONSUMPTION),
+            date(2025, 1, 1),
+        )
 
     client = Client(ui.page("/probe-roles")(lambda: None), request=None)
     with client:
@@ -441,6 +506,6 @@ def test_the_tiles_show_both_counts():
     ]
     assert "Prosumer" in texts
     assert "Konsumer" in texts
-    # Both tiles read 1 here; the captions are what says which is which.
-    assert "speisen ein" in texts
-    assert "beziehen nur" in texts
+    assert "Anschlüsse mit Einspeisung und Bezug" in texts
+    assert "Anschlüsse nur mit Bezug" in texts
+    assert "davon 1 ohne Bezug" in texts

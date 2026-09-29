@@ -92,6 +92,7 @@ def _customer_number_row(
 #: `(label, field)` pairs for the printed table.
 PRINT_COLUMNS = [
     ("Kunden-Nr.", "customer_number"),
+    ("Anrede", "salutation"),
     ("Name", "name"),
     ("E-Mail", "email"),
     ("Telefon", "phone"),
@@ -138,7 +139,39 @@ SORT_OPTIONS = [
         "Status (aktive zuerst)",
         lambda person: (not person.active, person_name_key(person)),
     ),
+    # Missing ones first, which is the whole reason this order exists: the
+    # administrator sorts by Anrede to find the records that have none,
+    # and putting them last would mean scrolling past everyone who is
+    # fine. Named like "Status (aktive zuerst)" so the direction is not a
+    # surprise.
+    SortOption(
+        "salutation",
+        "Anrede (fehlende zuerst)",
+        lambda person: (
+            not _missing_salutation(person),
+            text_key(person.salutation),
+            person_name_key(person),
+        ),
+    ),
 ]
+
+
+def _missing_salutation(person: Person) -> bool:
+    """Whether a named person on this record has no salutation.
+
+    A company with no contact person legitimately has none -- flagging
+    those would bury the real gaps in noise -- so only records that
+    actually name somebody are considered. For a couple, either name
+    missing its salutation counts: the letter greets both.
+
+    Args:
+        person: Person to check.
+
+    Returns:
+        `True` if at least one named person carries no salutation.
+    """
+    named = person.named_persons
+    return bool(named) and any(not one.salutation for one in named)
 
 
 def _status_text(person: Person) -> str:
@@ -172,6 +205,9 @@ def _print_row(person: Person, membership) -> dict:
     """
     return {
         "customer_number": person.formatted_customer_number,
+        # Both salutations for a couple, so a printed list shows which half
+        # of a pair is missing one.
+        "salutation": " / ".join(one.salutation or "?" for one in person.named_persons),
         "name": person.display_name,
         "email": ", ".join(person.contact_emails),
         "phone": person.contact_phone,
@@ -325,6 +361,11 @@ def persons_page() -> None:
                                     f"Genossenschafter ({membership.shares} Anteile)",
                                     color="primary",
                                 )
+                        # Only shown when it is missing: the card would
+                        # otherwise carry "Anrede: Frau" for nearly everyone,
+                        # and the one case worth seeing would disappear in it.
+                        if _missing_salutation(person):
+                            ui.label("Anrede fehlt").classes("text-caption text-orange-9")
                         _customer_number_row(person)
                         if person.bkw_customer_number is not None:
                             ui.label(f"BKW-Kunden-Nr. {person.bkw_customer_number}").classes(
