@@ -305,41 +305,51 @@ def compute_participant_mix_for_leg(
 
 @dataclass
 class ParticipantRoles:
-    """How many people are on each side, counted once each.
+    """How many **connections** are on each side, counted once each.
 
-    `ParticipantMix` answers "does this scope have both sides", and counts
-    somebody with both directions on **both** sides -- deliberately, because
-    the question there is whether a supply side and a demand side exist at
-    all. This answers a different question: how many people are there of
-    each kind. So the two numbers here do not overlap and they add up.
+    A connection is one party at one location -- a `(person_id, site_id)`
+    pair. That unit, rather than the person, is what "Prosumer" and
+    "Konsumer" actually describe, and both halves of it matter:
 
-    The split follows the administrator's own model of the LEG: whoever
-    feeds in also draws power at the same address, so the feed-in side *is*
-    the Prosumer side. Somebody who only feeds in is not a third kind but a
-    gap in the data -- a consumption assignment that was never entered (see
-    `feed_in_only_person_ids`, which names them rather than letting them
-    quietly inflate the Prosumer count).
+      - A property management with two buildings is one person and **two**
+        connections. Counting people made it one Prosumer, and the
+        arithmetic stopped adding up against the metering points.
+      - A Mehrfamilienhaus is one site with several parties. Counting
+        sites would collapse them into one, when in truth whoever holds
+        the PV on the roof is the Prosumer and every tenant is a Konsumer
+        in their own right.
+
+    This is a different question from `ParticipantMix`, which counts a
+    both-directions participant on **both** sides on purpose -- there the
+    question is whether a supply and a demand side exist at all. Here the
+    two numbers are disjoint and add up.
+
+    Which side a connection falls on follows the administrator's model of
+    the LEG: whoever feeds in also draws at that address, so the feed-in
+    side *is* the Prosumer side. A connection that only feeds in is not a
+    third kind but a gap -- a consumption assignment that was never
+    entered. `feed_in_only` names those instead of letting them quietly
+    inflate the Prosumer count.
 
     Attributes:
-        prosumers: People with at least one feed-in metering point,
+        prosumers: Connections with at least one feed-in metering point,
             whether or not they also draw.
-        consumers: People who draw and do **not** feed in. Disjoint from
-            `prosumers` by construction.
-        feed_in_only_person_ids: Of the prosumers, those with no
-            consumption assignment at all.
+        consumers: Connections that draw and do **not** feed in. Disjoint
+            from `prosumers` by construction.
+        feed_in_only: Of the prosumers, the `(person_id, site_id)` pairs
+            with no consumption assignment at all.
     """
 
     prosumers: int
     consumers: int
-    feed_in_only_person_ids: set[int]
+    feed_in_only: list[tuple[int, int]]
 
     @property
     def total(self) -> int:
-        """Everyone taking part, each counted once.
+        """Every connection taking part, each counted once.
 
         Returns:
-            `prosumers + consumers` -- which, unlike
-            `ParticipantMix.total_persons`, really is a headcount.
+            `prosumers + consumers`.
         """
         return self.prosumers + self.consumers
 
@@ -347,36 +357,36 @@ class ParticipantRoles:
 def compute_participant_roles(
     connection: sqlite3.Connection, reference_date: Optional[date] = None
 ) -> ParticipantRoles:
-    """Count the deployment's people by side, without counting anyone twice.
+    """Count the deployment's connections by side, without double counting.
 
     Args:
         connection: Open SQLite connection.
         reference_date: Reference date for which assignments count as
             relevant, `None` for today. Uses
             `Assignment.is_current_or_upcoming`, like the rest of this
-            module: somebody whose assignment starts next quarter already
-            belongs here.
+            module: a connection whose assignment starts next quarter
+            already belongs here.
 
     Returns:
         The `ParticipantRoles` over every metering point in the database.
     """
     moment = _moment(reference_date)
-    feed_in_ids: set[int] = set()
-    consumption_ids: set[int] = set()
+    feed_in: set[tuple[int, int]] = set()
+    consumption: set[tuple[int, int]] = set()
 
     for metering_point in metering_point_repo.list_all(connection):
         if metering_point.direction == DIRECTION_FEED_IN:
-            side = feed_in_ids
+            side = feed_in
         elif metering_point.direction == DIRECTION_CONSUMPTION:
-            side = consumption_ids
+            side = consumption
         else:
             continue
         for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
             if assignment.is_current_or_upcoming(moment):
-                side.add(assignment.person_id)
+                side.add((assignment.person_id, metering_point.site_id))
 
     return ParticipantRoles(
-        prosumers=len(feed_in_ids),
-        consumers=len(consumption_ids - feed_in_ids),
-        feed_in_only_person_ids=feed_in_ids - consumption_ids,
+        prosumers=len(feed_in),
+        consumers=len(consumption - feed_in),
+        feed_in_only=sorted(feed_in - consumption),
     )

@@ -239,11 +239,21 @@ def dashboard_page() -> None:
             with ui.card().classes(_TILE_CLASSES):
                 ui.label(str(roles.prosumers)).classes("text-3xl font-bold")
                 ui.label("Prosumer")
-                ui.label("speisen ein").classes("text-caption text-grey-6")
+                ui.label("Anschlüsse mit Einspeisung und Bezug").classes("text-caption text-grey-6")
+                # The caption describes the intended state. Until the gaps
+                # are closed a few of these have no Bezug at all, and a
+                # tile that quietly included them would not survive the
+                # next time somebody adds the numbers up -- which is how
+                # this counting unit came to be questioned in the first
+                # place. `check_feed_in_without_consumption` names them.
+                if roles.feed_in_only:
+                    ui.label(f"davon {len(roles.feed_in_only)} ohne Bezug").classes(
+                        "text-caption text-orange-9"
+                    )
             with ui.card().classes(_TILE_CLASSES):
                 ui.label(str(roles.consumers)).classes("text-3xl font-bold")
                 ui.label("Konsumer")
-                ui.label("beziehen nur").classes("text-caption text-grey-6")
+                ui.label("Anschlüsse nur mit Bezug").classes("text-caption text-grey-6")
 
             # Two cards apart from the counting ones, because these are not
             # complete by construction: a capacity is typed in by hand per
