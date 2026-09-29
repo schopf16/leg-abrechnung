@@ -301,3 +301,82 @@ def compute_participant_mix_for_leg(
     """
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     return _mix_of(connection, metering_points, reference_date)
+
+
+@dataclass
+class ParticipantRoles:
+    """How many people are on each side, counted once each.
+
+    `ParticipantMix` answers "does this scope have both sides", and counts
+    somebody with both directions on **both** sides -- deliberately, because
+    the question there is whether a supply side and a demand side exist at
+    all. This answers a different question: how many people are there of
+    each kind. So the two numbers here do not overlap and they add up.
+
+    The split follows the administrator's own model of the LEG: whoever
+    feeds in also draws power at the same address, so the feed-in side *is*
+    the Prosumer side. Somebody who only feeds in is not a third kind but a
+    gap in the data -- a consumption assignment that was never entered (see
+    `feed_in_only_person_ids`, which names them rather than letting them
+    quietly inflate the Prosumer count).
+
+    Attributes:
+        prosumers: People with at least one feed-in metering point,
+            whether or not they also draw.
+        consumers: People who draw and do **not** feed in. Disjoint from
+            `prosumers` by construction.
+        feed_in_only_person_ids: Of the prosumers, those with no
+            consumption assignment at all.
+    """
+
+    prosumers: int
+    consumers: int
+    feed_in_only_person_ids: set[int]
+
+    @property
+    def total(self) -> int:
+        """Everyone taking part, each counted once.
+
+        Returns:
+            `prosumers + consumers` -- which, unlike
+            `ParticipantMix.total_persons`, really is a headcount.
+        """
+        return self.prosumers + self.consumers
+
+
+def compute_participant_roles(
+    connection: sqlite3.Connection, reference_date: Optional[date] = None
+) -> ParticipantRoles:
+    """Count the deployment's people by side, without counting anyone twice.
+
+    Args:
+        connection: Open SQLite connection.
+        reference_date: Reference date for which assignments count as
+            relevant, `None` for today. Uses
+            `Assignment.is_current_or_upcoming`, like the rest of this
+            module: somebody whose assignment starts next quarter already
+            belongs here.
+
+    Returns:
+        The `ParticipantRoles` over every metering point in the database.
+    """
+    moment = _moment(reference_date)
+    feed_in_ids: set[int] = set()
+    consumption_ids: set[int] = set()
+
+    for metering_point in metering_point_repo.list_all(connection):
+        if metering_point.direction == DIRECTION_FEED_IN:
+            side = feed_in_ids
+        elif metering_point.direction == DIRECTION_CONSUMPTION:
+            side = consumption_ids
+        else:
+            continue
+        for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
+            if assignment.is_current_or_upcoming(moment):
+                side.add(assignment.person_id)
+
+    return ParticipantRoles(
+        prosumers=len(feed_in_ids),
+        consumers=len(consumption_ids - feed_in_ids),
+        feed_in_only_person_ids=feed_in_ids - consumption_ids,
+    )

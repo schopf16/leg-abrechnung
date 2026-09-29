@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from app.domain.quality_checks import (
     check_assignment_consistency,
+    check_feed_in_without_consumption,
     check_leg_assignment,
     check_onboarding_progress,
     check_reading_completeness,
@@ -611,3 +612,92 @@ def test_an_unrecorded_leg_is_never_reported_as_stale(db):
     _metering_point_direction(db, "CH-X", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
 
     assert check_leg_production_capacity(db) == []
+
+
+# --- Feeding in without drawing -----------------------------------------
+
+
+def _assign(db, person_id: int, metering_point_id: int) -> None:
+    """Give one person an open-ended assignment to one metering point.
+
+    Args:
+        db: Database connection fixture.
+        person_id: The person.
+        metering_point_id: The metering point.
+
+    Returns:
+        None.
+    """
+    assignment_repo.create(
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date(2025, 1, 1),
+            valid_to=None,
+            created_at="",
+        ),
+    )
+
+
+def test_feeding_in_without_drawing_is_reported(db):
+    """Somebody puts power into the LEG and takes none out of it.
+
+    The likely cause is a consumption assignment that was never entered.
+    Reported rather than blocked, and without claiming BKW forbids the
+    arrangement -- that is not something this database can establish.
+    """
+    site_id = _site_in(db, _substation_area(db, "TK1"))
+    leg_id = _leg(db)
+    person_id = _person(db, "NurEinspeisung")
+    _assign(db, person_id, _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=leg_id))
+
+    warnings = check_feed_in_without_consumption(db)
+
+    assert len(warnings) == 1
+    assert "NurEinspeisung" in warnings[0].message
+    assert warnings[0].link == f"/persons/{person_id}"
+
+
+def test_drawing_without_feeding_in_is_never_reported(db):
+    """The normal case: most participants have no PV at all.
+
+    Deliberately one-directional -- flagging this would put a warning on
+    the majority of the membership and train the administrator to ignore
+    the list.
+    """
+    site_id = _site_in(db, _substation_area(db, "TK1"))
+    leg_id = _leg(db)
+    person_id = _person(db, "NurBezug")
+    _assign(
+        db, person_id, _metering_point_direction(db, "CH1", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
+    )
+
+    assert check_feed_in_without_consumption(db) == []
+
+
+def test_a_person_with_both_directions_is_not_reported(db):
+    """The arrangement the administrator expects of everyone who feeds in."""
+    site_id = _site_in(db, _substation_area(db, "TK1"))
+    leg_id = _leg(db)
+    person_id = _person(db, "Beides")
+    for index, direction in enumerate((DIRECTION_FEED_IN, DIRECTION_CONSUMPTION)):
+        _assign(db, person_id, _metering_point_direction(db, f"CH{index}", site_id, direction, leg_id=leg_id))
+
+    assert check_feed_in_without_consumption(db) == []
+
+
+def test_the_warning_stops_once_the_assignment_is_added(db):
+    """Closing the gap has to silence it, or nobody will act on it twice."""
+    site_id = _site_in(db, _substation_area(db, "TK1"))
+    leg_id = _leg(db)
+    person_id = _person(db, "Nachgetragen")
+    _assign(db, person_id, _metering_point_direction(db, "CH1", site_id, DIRECTION_FEED_IN, leg_id=leg_id))
+    assert len(check_feed_in_without_consumption(db)) == 1
+
+    _assign(
+        db, person_id, _metering_point_direction(db, "CH2", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
+    )
+
+    assert check_feed_in_without_consumption(db) == []

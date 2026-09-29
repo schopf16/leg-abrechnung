@@ -312,6 +312,47 @@ def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> li
     return warnings
 
 
+def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag people who feed into the LEG but draw nothing from it.
+
+    Deliberately one-directional. Drawing without feeding in is the normal
+    case -- most participants have no PV at all -- and is never flagged.
+    The reverse is the odd one: somebody who puts power into the community
+    but takes none out of it. The likely cause is a consumption assignment
+    that was never entered, at the same address as the feed-in meter.
+
+    What this does **not** claim is that BKW forbids the arrangement. The
+    administrator suspects they do not support it, and that may well be
+    right, but it is not something this database can establish -- same
+    reasoning as the discount tier, which is deliberately not stored (see
+    CLAUDE.md). So the message states the finding and asks, rather than
+    asserting a rule.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One `QualityWarning` per person with a feed-in assignment and no
+        consumption assignment.
+    """
+    warnings: list[QualityWarning] = []
+    roles = participant_mix.compute_participant_roles(connection)
+    for person_id in sorted(roles.feed_in_only_person_ids):
+        person = person_repo.get(connection, person_id)
+        person_name = person.display_name if person else f"Person #{person_id}"
+        warnings.append(
+            QualityWarning(
+                category="feed_in_without_consumption",
+                message=(
+                    f'"{person_name}" speist in die LEG ein, hat aber keine '
+                    "Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
+                ),
+                link=f"/persons/{person.id}" if person is not None else None,
+            )
+        )
+    return warnings
+
+
 def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag today's Genossenschaft members holding zero shares.
 

@@ -343,6 +343,25 @@ never rewritten — and no longer appears in the settings form.
 Kept, because it is a fact and not advice: `check_substation_area_one_sided`
 ("nur Produzenten"/"nur Konsumenten" — nothing can be shared there at all).
 
+`compute_participant_roles` answers a different question from
+`ParticipantMix` and must not be confused with it: how many **people** of
+each kind, counted once each, for the overview tiles. `ParticipantMix`
+counts somebody with both directions on both sides on purpose (the question
+there is whether a supply and a demand side exist at all); the roles do not
+overlap and add up to a real headcount.
+
+The split follows the administrator'''s model of the LEG: whoever feeds in
+also draws at that address, so the feed-in side **is** the Prosumer side --
+which is why the tile reads "Prosumer" for everyone who feeds in, including
+the few with no consumption assignment. Those are not a third kind but a
+gap, and `check_feed_in_without_consumption` names them. Deliberately
+one-directional: drawing without feeding in is the normal case (no PV), and
+warning about it would put a notice on most of the membership and train the
+administrator to ignore the list. The message asks rather than asserts --
+whether BKW supports feeding in without drawing is not something this
+database can establish, the same reasoning that keeps the discount tier
+out.
+
 ### One customer, one document — the vZEV model
 
 A participant is **one** customer of the LEG: one netted amount, one
