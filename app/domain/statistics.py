@@ -13,8 +13,17 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from app.domain.period import month_bounds, quarter_bounds, trailing_months
-from app.models.metering_point import DIRECTION_FEED_IN
+from app.domain.period import (
+    GRANULARITY_QUARTER_HOUR,
+    INTERVAL_MINUTES,
+    bucket_key,
+    bucket_key_of,
+    buckets_in,
+    month_bounds,
+    quarter_bounds,
+    trailing_months,
+)
+from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
 
 @dataclass
@@ -482,3 +491,298 @@ def installed_capacity_totals(
         battery_counted=battery_counted,
         implausible=implausible,
     )
+
+
+@dataclass
+class EnergyBucket:
+    """One point on the energy chart's x-axis.
+
+    Attributes:
+        start: The bucket's first moment, as `buckets_in` produced it.
+        consumption_kwh: Everything drawn in this bucket.
+        feed_in_kwh: Everything fed in.
+        shared_kwh: How much of the feed-in actually found a taker inside
+            the LEG -- `min(P, C)` **per 15-minute interval**, then summed.
+            See `energy_series` for why that distinction is the whole
+            point of the number.
+    """
+
+    start: datetime
+    consumption_kwh: float
+    feed_in_kwh: float
+    shared_kwh: float
+
+    @property
+    def self_consumption_share(self) -> Optional[float]:
+        """How much of the local production was used locally, 0 to 1.
+
+        Returns:
+            `shared_kwh / feed_in_kwh`, or `None` when nothing was fed in
+            -- a bucket at night has no share, which is a different
+            statement from "a share of zero" and must not be drawn as one.
+        """
+        if self.feed_in_kwh <= 0:
+            return None
+        return self.shared_kwh / self.feed_in_kwh
+
+    @property
+    def local_coverage_share(self) -> Optional[float]:
+        """How much of the consumption was covered locally, 0 to 1.
+
+        Returns:
+            `shared_kwh / consumption_kwh`, or `None` when nothing was
+            drawn.
+        """
+        if self.consumption_kwh <= 0:
+            return None
+        return self.shared_kwh / self.consumption_kwh
+
+    def value_for(self, granularity_key: str) -> tuple[float, float, float]:
+        """The three figures in the unit that resolution is drawn in.
+
+        At the app's own 15-minute resolution a bucket holds exactly one
+        interval, so the natural reading is power: the load curve everyone
+        recognises. Anything coarser is an amount of energy.
+
+        Args:
+            granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
+
+        Returns:
+            `(consumption, feed_in, shared)` in kW at quarter-hour
+            resolution and in kWh otherwise.
+        """
+        values = (self.consumption_kwh, self.feed_in_kwh, self.shared_kwh)
+        if granularity_key != GRANULARITY_QUARTER_HOUR:
+            return values
+        factor = 60 / INTERVAL_MINUTES
+        return tuple(round(value * factor, 3) for value in values)
+
+
+def energy_unit(granularity_key: str) -> str:
+    """The unit the energy chart's y-axis carries at one resolution.
+
+    Args:
+        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
+
+    Returns:
+        `"kW"` at quarter-hour resolution, `"kWh"` otherwise.
+    """
+    return "kW" if granularity_key == GRANULARITY_QUARTER_HOUR else "kWh"
+
+
+def energy_series(
+    connection: sqlite3.Connection,
+    granularity_key: str,
+    window: tuple[datetime, datetime],
+    leg_id: Optional[int] = None,
+) -> list[EnergyBucket]:
+    """Consumption, feed-in and locally shared energy over one window.
+
+    **The shared figure is formed per 15-minute interval and only then
+    summed, and getting that backwards is the expensive mistake here.**
+    `min(daily P, daily C)` would claim energy was shared when production
+    happened at noon and consumption in the evening -- a number that looks
+    entirely plausible and is simply false. The rule is the one
+    `app.domain.distribution` bills on (`S(t) = min(P(t), C(t))`, see its
+    module docstring); if that ever changes, this has to change with it,
+    or the chart and the invoices will tell different stories about the
+    same quarter.
+
+    Like the distribution, this counts **every** reading of the LEG,
+    assigned or not: whether energy could be attributed to somebody
+    decides who pays for it, not whether it was shared.
+
+    Args:
+        connection: Open SQLite connection.
+        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
+        window: `(start, end_exclusive)` from `period.window_for`.
+        leg_id: Restrict to one LEG, or `None` for all of them. With
+            `None` the shared figure is the sum over the LEGs computed
+            separately -- energy is only ever shared *within* one LEG, so
+            pooling every reading first would invent sharing between
+            neighbours who have nothing to do with each other.
+
+    Returns:
+        One `EnergyBucket` per bucket in the window, oldest first --
+        including the empty ones, so the axis keeps its shape.
+    """
+    start, end = window
+    rows = connection.execute(
+        """
+        SELECT r.timestamp AS ts,
+               mp.leg_id AS leg_id,
+               SUM(CASE WHEN r.direction = ? THEN r.kwh ELSE 0 END) AS consumption,
+               SUM(CASE WHEN r.direction <> ? THEN r.kwh ELSE 0 END) AS feed_in
+        FROM readings r
+        JOIN metering_point mp ON mp.id = r.metering_point_id
+        WHERE r.timestamp >= ? AND r.timestamp < ?
+          AND (? IS NULL OR mp.leg_id = ?)
+        GROUP BY r.timestamp, mp.leg_id
+        """,
+        (
+            DIRECTION_CONSUMPTION,
+            DIRECTION_CONSUMPTION,
+            start.isoformat(),
+            end.isoformat(),
+            leg_id,
+            leg_id,
+        ),
+    ).fetchall()
+
+    totals: dict[str, list[float]] = {}
+    for row in rows:
+        key = bucket_key(granularity_key, row["ts"])
+        consumption = row["consumption"] or 0.0
+        feed_in = row["feed_in"] or 0.0
+        # min() per interval and per LEG, before anything is summed.
+        shared = min(consumption, feed_in)
+        bucket = totals.setdefault(key, [0.0, 0.0, 0.0])
+        bucket[0] += consumption
+        bucket[1] += feed_in
+        bucket[2] += shared
+
+    series = []
+    for bucket_start in buckets_in(granularity_key, window):
+        consumption, feed_in, shared = totals.get(
+            bucket_key_of(granularity_key, bucket_start), (0.0, 0.0, 0.0)
+        )
+        series.append(
+            EnergyBucket(
+                start=bucket_start,
+                consumption_kwh=round(consumption, 3),
+                feed_in_kwh=round(feed_in, 3),
+                shared_kwh=round(shared, 3),
+            )
+        )
+    return series
+
+
+@dataclass
+class ReceivablesBucket:
+    """One point on the receivables chart.
+
+    Every figure covers the **whole LEG**. Nothing here is ever broken
+    down per person, and that is a decision rather than an omission: the
+    administrator asked for it explicitly on data-protection grounds. A
+    single member's balance is a matter for that member's own detail page,
+    not for a chart anybody glancing at the screen can read.
+
+    Attributes:
+        start: The bucket's first moment.
+        invoiced_rappen: Net amount billed in this bucket, from the
+            billing runs created in it.
+        received_rappen: Money that actually arrived in this bucket.
+        open_rappen: Everything invoiced up to the end of this bucket
+            minus everything received up to then -- the running mountain
+            of receivables, which is meant to come down.
+    """
+
+    start: datetime
+    invoiced_rappen: int
+    received_rappen: int
+    open_rappen: int
+
+    @property
+    def invoiced_chf(self) -> float:
+        """`invoiced_rappen` in francs, for the chart's axis."""
+        return round(self.invoiced_rappen / 100, 2)
+
+    @property
+    def received_chf(self) -> float:
+        """`received_rappen` in francs."""
+        return round(self.received_rappen / 100, 2)
+
+    @property
+    def open_chf(self) -> float:
+        """`open_rappen` in francs."""
+        return round(self.open_rappen / 100, 2)
+
+
+def receivables_series(
+    connection: sqlite3.Connection,
+    granularity_key: str,
+    window: tuple[datetime, datetime],
+) -> list[ReceivablesBucket]:
+    """Invoiced, received and still-open amounts over one window.
+
+    `open_rappen` is **cumulative from the beginning of time**, not just
+    within the window: an outstanding amount does not stop existing
+    because the chart starts later. So the line begins at whatever was
+    already open when the window opens, and every bucket adds that
+    bucket's invoices and subtracts its payments.
+
+    Amounts are read as `app.models.account_entry` stores them and are
+    **not** negated here. That module's sign convention is that an
+    incoming payment is stored negative, because it reduces a debt; the
+    single negation in this app happens where a person's balance is
+    displayed, and adding a second one is how a sign bug gets in.
+
+    Args:
+        connection: Open SQLite connection.
+        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
+        window: `(start, end_exclusive)` from `period.window_for`.
+
+    Returns:
+        One `ReceivablesBucket` per bucket in the window, oldest first.
+    """
+    start, end = window
+
+    invoiced_rows = connection.execute(
+        """
+        SELECT br.created_at AS at, SUM(i.net_amount_rappen) AS total
+        FROM billing_run_items i
+        JOIN billing_runs br ON br.id = i.billing_run_id
+        WHERE br.created_at < ?
+        GROUP BY br.created_at
+        """,
+        (end.isoformat(),),
+    ).fetchall()
+    received_rows = connection.execute(
+        """
+        SELECT booked_at AS at, SUM(amount_rappen) AS total
+        FROM account_entries
+        WHERE booked_at < ?
+        GROUP BY booked_at
+        """,
+        (end.isoformat(),),
+    ).fetchall()
+
+    invoiced_by_bucket: dict[str, int] = {}
+    received_by_bucket: dict[str, int] = {}
+    # Everything that happened before the window still counts towards the
+    # open amount the window starts at.
+    # Both tables already carry the same sign convention -- an invoice is
+    # positive, an incoming payment negative -- so the open amount is
+    # simply their sum and nothing needs negating to compute it. The one
+    # place a sign is flipped is `received_rappen` below, which reports
+    # "money that arrived" and would otherwise read as a negative number
+    # on a chart.
+    carried = 0
+    window_start = start.isoformat()
+    for rows, per_bucket in ((invoiced_rows, invoiced_by_bucket), (received_rows, received_by_bucket)):
+        for row in rows:
+            amount = int(row["total"] or 0)
+            if row["at"] < window_start:
+                carried += amount
+                continue
+            key = bucket_key(granularity_key, row["at"])
+            per_bucket[key] = per_bucket.get(key, 0) + amount
+
+    series = []
+    running = carried
+    for bucket_start in buckets_in(granularity_key, window):
+        key = bucket_key_of(granularity_key, bucket_start)
+        invoiced = invoiced_by_bucket.get(key, 0)
+        # Stored negative for an incoming payment, so what arrived is the
+        # negation of the booked amount -- read, not rewritten.
+        received = -received_by_bucket.get(key, 0)
+        running += invoiced - received
+        series.append(
+            ReceivablesBucket(
+                start=bucket_start,
+                invoiced_rappen=invoiced,
+                received_rappen=received,
+                open_rappen=running,
+            )
+        )
+    return series
