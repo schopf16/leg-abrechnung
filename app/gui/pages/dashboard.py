@@ -15,12 +15,14 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
+from app.domain.participant_mix import compute_participant_roles
 from app.domain.statistics import installed_capacity_totals
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_leg_assignment,
     check_leg_production_capacity,
     check_cooperative_members_without_shares,
+    check_feed_in_without_consumption,
     check_offboarding_completed_but_active,
     check_onboarding_progress,
     check_open_billing_cycle,
@@ -73,9 +75,11 @@ def _load_overview(connection) -> dict:
         detail page exists for it), "legs" (per-LEG summary rows),
         "open_registrations" (count of not-yet-fully-processed Web-Registrierungen)
         "open_onboardings" (count of in-progress onboarding trackers,
-        see `app.models.person_onboarding`) and "capacity" (the installed
+        see `app.models.person_onboarding`), "capacity" (the installed
         PV/battery figures on record, see
-        `app.domain.statistics.installed_capacity_totals`) keys.
+        `app.domain.statistics.installed_capacity_totals`) and "roles"
+        (how many Prosumer and Konsumer, see
+        `app.domain.participant_mix.compute_participant_roles`) keys.
     """
     substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
@@ -115,6 +119,8 @@ def _load_overview(connection) -> dict:
         action_items.append((warning.message, warning.link))
     for warning in check_cooperative_members_without_shares(connection):
         action_items.append((warning.message, warning.link))
+    for warning in check_feed_in_without_consumption(connection):
+        action_items.append((warning.message, warning.link))
     for warning in check_open_billing_cycle(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_unresolved_bank_transactions(connection):
@@ -149,6 +155,7 @@ def _load_overview(connection) -> dict:
         )
 
     return {
+        "roles": compute_participant_roles(connection),
         "capacity": installed_capacity_totals(connection),
         "counts": {
             "substation_areas": len(substation_areas),
@@ -205,6 +212,7 @@ def dashboard_page() -> None:
 
         # -- Kennzahlen: what the data currently looks like. --
         capacity = overview["capacity"]
+        roles = overview["roles"]
         ui.label("Kennzahlen").classes("text-lg font-bold mt-4")
         # `items-stretch` rather than a fixed height: the two capacity tiles
         # carry a third line the counting ones do not, and a hard-coded
@@ -223,6 +231,19 @@ def dashboard_page() -> None:
                 with ui.card().classes(_TILE_CLASSES):
                     ui.label(str(counts[key])).classes("text-3xl font-bold")
                     ui.label(label)
+
+            # People, counted once each: somebody who feeds in and draws
+            # is a Prosumer and appears here only there. The two therefore
+            # add up, unlike the "9:26" ratio on the LEG pages, which counts
+            # metering points and is answering a different question.
+            with ui.card().classes(_TILE_CLASSES):
+                ui.label(str(roles.prosumers)).classes("text-3xl font-bold")
+                ui.label("Prosumer")
+                ui.label("speisen ein").classes("text-caption text-grey-6")
+            with ui.card().classes(_TILE_CLASSES):
+                ui.label(str(roles.consumers)).classes("text-3xl font-bold")
+                ui.label("Konsumer")
+                ui.label("beziehen nur").classes("text-caption text-grey-6")
 
             # Two cards apart from the counting ones, because these are not
             # complete by construction: a capacity is typed in by hand per

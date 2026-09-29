@@ -315,3 +315,132 @@ def test_the_person_count_still_counts_people(db):
 
     assert mix.producer_metering_points + mix.consumer_metering_points == 8
     assert mix.total_persons == 2, "eine Person, auf beiden Seiten gezählt"
+
+
+# --- Headcount by side, for the overview tiles --------------------------
+#
+# `ParticipantMix` counts somebody with both directions on both sides,
+# because it answers "does this scope have both sides at all". The tiles
+# answer a different question -- how many people of each kind -- so these
+# counts must not overlap, and they must add up.
+
+
+def test_a_person_with_both_directions_counts_only_as_a_prosumer(db):
+    """The whole point: the two tiles add up to a real headcount."""
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    leg_id = _leg(db, "LEG")
+
+    both = _person(db, "Beides")
+    only_draws = _person(db, "NurBezug")
+    for person_id, direction in (
+        (both, DIRECTION_FEED_IN),
+        (both, DIRECTION_CONSUMPTION),
+        (only_draws, DIRECTION_CONSUMPTION),
+    ):
+        mp = _metering_point(db, site_id, leg_id, direction)
+        _assignment(db, person_id, mp, date(2025, 1, 1))
+
+    roles = participant_mix.compute_participant_roles(db)
+
+    assert roles.prosumers == 1
+    assert roles.consumers == 1
+    assert roles.total == 2, "jede Person genau einmal"
+    assert roles.feed_in_only_person_ids == set()
+
+
+def test_somebody_who_only_feeds_in_is_counted_as_a_prosumer_and_named(db):
+    """The administrator's model: whoever feeds in also draws at that address.
+
+    Somebody with no consumption assignment is therefore not a third kind
+    but a gap in the data -- counted with the Prosumer so the tiles stay
+    complete, and named so the gap can be closed.
+    """
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    leg_id = _leg(db, "LEG")
+    person_id = _person(db, "NurEinspeisung")
+    mp = _metering_point(db, site_id, leg_id, DIRECTION_FEED_IN)
+    _assignment(db, person_id, mp, date(2025, 1, 1))
+
+    roles = participant_mix.compute_participant_roles(db)
+
+    assert roles.prosumers == 1
+    assert roles.consumers == 0
+    assert roles.feed_in_only_person_ids == {person_id}
+
+
+def test_two_feed_in_meters_are_still_one_prosumer(db):
+    """Counted per person, not per metering point."""
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    leg_id = _leg(db, "LEG")
+    person_id = _person(db, "ZweiAnlagen")
+    for direction in (DIRECTION_FEED_IN, DIRECTION_FEED_IN, DIRECTION_CONSUMPTION):
+        mp = _metering_point(db, site_id, leg_id, direction)
+        _assignment(db, person_id, mp, date(2025, 1, 1))
+
+    roles = participant_mix.compute_participant_roles(db)
+
+    assert roles.prosumers == 1
+    assert roles.total == 1
+
+
+def test_a_person_without_any_assignment_is_in_neither_count(db):
+    """Somebody merely recorded is not yet taking part."""
+    _person(db, "Ohne")
+
+    roles = participant_mix.compute_participant_roles(db)
+
+    assert roles.total == 0
+
+
+def test_an_ended_assignment_no_longer_counts(db):
+    """Same reference rule as the rest of this module."""
+    area_id = _substation_area(db, "TRA")
+    site_id = _site(db, area_id)
+    leg_id = _leg(db, "LEG")
+    person_id = _person(db, "Ausgezogen")
+    mp = _metering_point(db, site_id, leg_id, DIRECTION_CONSUMPTION)
+    _assignment(db, person_id, mp, date(2024, 1, 1), date(2024, 12, 31))
+
+    roles = participant_mix.compute_participant_roles(db, reference_date=date(2026, 1, 1))
+
+    assert roles.total == 0
+
+
+def test_the_tiles_show_both_counts():
+    """Rendered, not just computed -- the numbers have to reach the page."""
+    from nicegui import Client, ui
+
+    from app.db.connection import connection_scope
+    from app.gui.pages import dashboard as dashboard_module
+
+    with connection_scope() as connection:
+        area_id = _substation_area(connection, "TRA")
+        site_id = _site(connection, area_id)
+        leg_id = _leg(connection, "LEG")
+        both = _person(connection, "Beides")
+        draws = _person(connection, "NurBezug")
+        for person_id, direction in (
+            (both, DIRECTION_FEED_IN),
+            (both, DIRECTION_CONSUMPTION),
+            (draws, DIRECTION_CONSUMPTION),
+        ):
+            mp = _metering_point(connection, site_id, leg_id, direction)
+            _assignment(connection, person_id, mp, date(2025, 1, 1))
+
+    client = Client(ui.page("/probe-roles")(lambda: None), request=None)
+    with client:
+        dashboard_module.dashboard_page()
+
+    texts = [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Label" and getattr(element, "text", None)
+    ]
+    assert "Prosumer" in texts
+    assert "Konsumer" in texts
+    # Both tiles read 1 here; the captions are what says which is which.
+    assert "speisen ein" in texts
+    assert "beziehen nur" in texts
