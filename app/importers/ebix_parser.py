@@ -18,8 +18,8 @@ file arrives:
 2. Rewrite `_extract_time_series` (and, if the namespace differs, the
    `_NAMESPACES` map) to match.
 3. Update `tests/fixtures/sample_ebix.xml` and re-run
-   `tests/test_ebix_parser.py` -- the test only asserts on the resulting
-   `ParsedReading` list, so it keeps working unchanged.
+   `tests/test_import.py` -- its EBIX tests only assert on the resulting
+   `ParsedReading` list, so they keep working unchanged.
 
 OBIS codes used to determine direction (Swiss convention):
     1.8.0 (and 1.8.x sub-registers) = Wirkenergie Bezug (consumption)  -> "consumption"

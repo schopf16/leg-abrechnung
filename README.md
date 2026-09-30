@@ -336,7 +336,7 @@ automatisierte Tests abgesichert. Zum Ausführen:
 
 ---
 
-## 8. Code auf GitHub sichern
+## 8. Was nie auf GitHub landet
 
 Der Code liegt in einem **öffentlichen** GitHub-Repository. Damit dabei
 niemals versehentlich persönliche Daten (Datenbank, PDFs, Adressen, IBANs)
@@ -352,17 +352,10 @@ und werden nie mitversioniert:
   E-Mail-Versand (Abschnitt 5)
 - `.venv/` — die lokale Python-Umgebung
 
-**Einmalig einrichten** (in der Kommandozeile im Projektordner):
-
-```
-git remote add origin https://github.com/<ihr-benutzername>/<repo-name>.git
-```
-
-**Danach zum Sichern:** Doppelklick auf **`scripts\git_sync.bat`**. Das
-Skript fügt nur Code-Dateien hinzu, prüft vorab automatisch, ob versehentlich
-eine Datenbank- oder Konfigurationsdatei mit dabei wäre (und bricht in
-diesem Fall ab, ohne etwas zu senden), fragt nach einer Commit-Nachricht und
-sendet die Änderungen an GitHub.
+Diese Liste ist der Grund, weshalb das Repository öffentlich sein kann:
+alles, was eine Person identifiziert, bleibt auf Ihrem Rechner. Ihre Daten
+sind daher **nicht** durch GitHub gesichert — dafür ist das Backup in
+Abschnitt 6 zuständig.
 
 ---
 
