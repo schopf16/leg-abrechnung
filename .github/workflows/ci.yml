@@ -36,8 +36,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.txt
-      - run: python -m pytest -q
+      # requirements-dev.txt, not requirements.txt: it includes it and adds
+      # pytest-xdist, which is what makes -n auto work.
+      - run: pip install -r requirements-dev.txt
+      # -n auto splits the suite across the runner's cores. It is passed
+      # here rather than put in pytest.ini's addopts on purpose: while
+      # working you run a single file, where xdist's process startup costs
+      # more than it saves and swallows pdb and print. A full run wants it,
+      # a targeted one does not.
+      - run: python -m pytest -n auto
 
   security:
     name: Bandit + pip-audit
