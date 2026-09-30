@@ -1,4 +1,13 @@
-"""Tests for the demo data generator."""
+"""Tests for the demo data generator.
+
+
+The generator itself is what these tests are about, so this module opts out
+of the session template `tests/conftest.py` serves everywhere else: there,
+`create_demo_data` is replaced by a file restore, which is exactly what
+must not happen here. A restore would make every assertion below a
+statement about the cache rather than about the code that fills it -- and
+it could not raise `DemoDataAlreadyExists` at all.
+"""
 
 import pytest
 
@@ -15,6 +24,9 @@ from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import substation_area as substation_area_repo
+
+#: Every test in this module needs the real generator, not the template.
+pytestmark = pytest.mark.real_demo_data
 
 
 def test_create_demo_data_creates_six_persons_and_thirteen_metering_points(db):

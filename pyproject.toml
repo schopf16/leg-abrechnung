@@ -30,6 +30,3 @@ ignore = [
 [tool.bandit]
 exclude_dirs = [".venv", "tests", "backups", "data", "logs", "output"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
