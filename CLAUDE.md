@@ -19,10 +19,10 @@ no cloud, no network dependency for normal operation. See `README.md`
 # Run the app (native desktop window)
 .venv\Scripts\python.exe run.py          # or double-click start.bat
 
-# Run the full test suite
-.venv\Scripts\python.exe -m pytest
+# Run the full test suite (across the machine's cores)
+.venv\Scripts\python.exe -m pytest -n auto
 
-# Run a single test file / test
+# Run a single test file / test -- no -n here, see "Tooling and CI"
 .venv\Scripts\python.exe -m pytest tests/test_billing.py
 .venv\Scripts\python.exe -m pytest tests/test_billing.py::test_name -v
 ```
@@ -540,8 +540,12 @@ logic.
 
 ### Tooling and CI
 
-`requirements-dev.txt` adds ruff, bandit and pip-audit on top of
-`requirements.txt`; `pyproject.toml` holds their configuration.
+`requirements-dev.txt` adds ruff, bandit, pip-audit and pytest-xdist on top
+of `requirements.txt`; `pyproject.toml` holds their configuration. `pytest`
+itself is in `requirements.txt` because `start.bat` installs only that one,
+but its parallel runner is not: xdist pulls in execnet, and the
+administrator's virtualenv has no reason to carry a remote-execution
+library. `pytest -n auto` therefore needs the dev file installed.
 `.github/workflows/ci.yml` runs on every push/PR: `ruff check`, the pytest
 suite, `bandit -ll` (medium severity and up) and `pip-audit`. Keep all four
 green locally before pushing:
@@ -556,14 +560,45 @@ green locally before pushing:
 Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
 
-**Run the whole suite before a commit, not after every edit.** It takes
-four to six minutes, and roughly half of that is `create_demo_data`
-rebuilding 229'632 readings, once per test, 54 times over. While working,
-run the test files the change actually touches
+**Run the whole suite before a commit, not after every edit**, and run it
+as `pytest -n auto`. Two rounds of work got it from 8:27 to about 2:20:
+
+- `create_demo_data` rebuilding 229'632 readings, once per test, 54 times
+  over, was roughly half the runtime. `tests/conftest.py` now builds it
+  once per session into a template and restores that with SQLite's
+  `backup()` for each test; `real_demo_data` marks the few tests that want
+  the genuine article. 8:27 → 5:53.
+- `pytest-xdist` then splits what is left across the cores, roughly 5:53
+  → 2:20. Less than the core count would suggest, because each worker is
+  its own pytest session and so builds the template for itself — the two
+  optimisations overlap, and that is the price of the first one.
+
+**Treat a single timing as noise.** Four full runs on the same machine
+(4 physical cores, 8 logical) came out 2:03, 2:16, 2:28 and 2:45, and the
+spread within one worker count was as wide as the difference between four
+workers and eight. A run that looks slow is not evidence of a regression;
+measure twice before believing it, which is advice this file earned by
+getting it wrong once. `-n auto` resolves to eight here rather than four
+because it means *physical* cores only when `psutil` is installed and
+falls back to `os.cpu_count()` otherwise — pinning `psutil` to change that
+would buy nothing measurable and add a compiled dependency to a desktop
+app.
+
+`-n auto` is deliberately **not** in `pytest.ini`'s `addopts`. On the one
+file you are actually working on, xdist's process startup costs more than
+it saves, and it swallows `pdb` and `print`. Full run parallel, targeted
+run plain. While working, run the test files the change actually touches
 (`pytest tests/test_billing.py -q`) plus a render check when a page
 changed; save the full suite and the four gates for the point where the
-work is claimed to be done. Waiting six minutes to learn that a one-line
-edit compiles is not verification, it is ceremony.
+work is claimed to be done. Waiting for all 905 tests to learn that a
+one-line edit compiles is not verification, it is ceremony.
+
+Tests must therefore stay **order- and process-independent**: xdist hands
+each worker an arbitrary slice. Nothing may rely on another test having
+run first, and a name registered globally -- a NiceGUI probe route
+(`ui.page("/probe-...")`) above all -- has to be unique across the whole
+suite, not merely within its file, because two files that never shared a
+process before now can.
 
 **A page rendering is not evidence that it works.** Rendering every route
 proves only that each page *builds*, never that a click does anything.

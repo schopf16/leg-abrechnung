@@ -4,3 +4,10 @@
 ruff==0.16.9
 bandit==1.9.4
 pip-audit==2.10.1
+# Runs the suite across the cores (`pytest -n auto`). Deliberately not in
+# requirements.txt, which start.bat installs into the administrator's own
+# virtualenv: xdist pulls in execnet, whose purpose is bootstrapping Python
+# into other interpreters, and an offline desktop app holding members'
+# personal data has no reason to carry that. CI's test job installs this
+# file for the same reason it installs ruff -- it is tooling, not runtime.
+pytest-xdist==3.8.0
