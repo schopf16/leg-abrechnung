@@ -9,6 +9,12 @@ One trap this file exists to avoid: the arrows can look verified when they
 are not. Every day carries the same axis labels ("00:00" ... "23:45"), so
 a chart whose window never moved is indistinguishable from one that moved
 correctly -- unless the *window* is what gets asserted.
+
+Every lookup here is scoped to the **Energie** panel. The scoping stays
+useful now that each theme has a page of its own: it is what keeps these
+tests pointed at the chart they are about if a page ever grows a second
+one, and it made the split from one page into four a change of the
+rendered function and nothing else.
 """
 
 from datetime import datetime
@@ -33,46 +39,71 @@ def _page() -> Client:
 
     client = Client(ui.page("/probe-statistics")(lambda: None), request=None)
     with client:
-        statistics_module.statistics_page()
+        statistics_module.statistics_energy_page()
     return client
 
 
-def _select(client: Client, label: str):
-    """Find one select by its label.
+def _panel(client: Client, heading: str = "Energie"):
+    """Find one thematic card by its heading.
+
+    Args:
+        client: The rendered client.
+        heading: The panel's German heading.
+
+    Returns:
+        The card element, to search inside.
+    """
+    for element in client.elements.values():
+        if element.__class__.__name__ != "Card":
+            continue
+        labels = [
+            child.text
+            for child in element.descendants()
+            if child.__class__.__name__ == "Label" and getattr(child, "text", None)
+        ]
+        if labels and labels[0] == heading:
+            return element
+    raise AssertionError(f"Karte {heading!r} nicht gefunden")
+
+
+def _select(client: Client, label: str, heading: str = "Energie"):
+    """Find one select by its label, inside one panel.
 
     Args:
         client: The rendered client.
         label: The German field label.
+        heading: Which panel to look in.
 
     Returns:
         The matching select element.
     """
     matches = [
         element
-        for element in client.elements.values()
+        for element in _panel(client, heading).descendants()
         if element.__class__.__name__ == "Select" and element._props.get("label") == label
     ]
-    assert len(matches) == 1, f"Auswahlfeld {label!r} nicht eindeutig: {len(matches)}"
+    assert len(matches) == 1, f"Auswahlfeld {label!r} in {heading!r} nicht eindeutig: {len(matches)}"
     return matches[0]
 
 
-def _button(client: Client, name: str):
-    """Find one button by its icon or label.
+def _button(client: Client, name: str, heading: str = "Energie"):
+    """Find one button by its icon or label, inside one panel.
 
     Args:
         client: The rendered client.
         name: The icon name or the button caption.
+        heading: Which panel to look in.
 
     Returns:
         The matching button element.
     """
     matches = [
         element
-        for element in client.elements.values()
+        for element in _panel(client, heading).descendants()
         if element.__class__.__name__ == "Button"
         and name in (element._props.get("icon"), element._props.get("label"))
     ]
-    assert len(matches) == 1, f"Knopf {name!r} nicht eindeutig: {len(matches)}"
+    assert len(matches) == 1, f"Knopf {name!r} in {heading!r} nicht eindeutig: {len(matches)}"
     return matches[0]
 
 
@@ -92,26 +123,30 @@ def _press(button) -> None:
     raise AssertionError("der Knopf hat keinen Click-Handler -- er tut nichts")
 
 
-def _window_label(client: Client):
-    """The label naming the window currently shown.
+def _window_label(client: Client, heading: str = "Energie"):
+    """The label naming the window currently shown in one panel.
 
     Args:
         client: The rendered client.
+        heading: Which panel to look in.
 
     Returns:
         The label element.
     """
     matches = [
         element
-        for element in client.elements.values()
+        for element in _panel(client, heading).descendants()
         if element.__class__.__name__ == "Label" and "min-w-[180px]" in " ".join(element._classes)
     ]
-    assert len(matches) == 1, "genau eine Fensterbeschriftung erwartet"
+    assert len(matches) == 1, f"genau eine Fensterbeschriftung in {heading!r} erwartet"
     return matches[0]
 
 
 def _energy_chart(client: Client):
-    """The energy chart, which is the first one on the page.
+    """The chart inside the Energie panel.
+
+    Found through its panel rather than by position: the page holds five
+    charts now, and "the first one" would be a guess about their order.
 
     Args:
         client: The rendered client.
@@ -119,8 +154,8 @@ def _energy_chart(client: Client):
     Returns:
         The chart element.
     """
-    charts = [e for e in client.elements.values() if e.__class__.__name__ == "EChart"]
-    assert charts, "die Seite muss ein Energie-Diagramm haben"
+    charts = [e for e in _panel(client).descendants() if e.__class__.__name__ == "EChart"]
+    assert len(charts) == 1, f"genau ein Energie-Diagramm erwartet, {len(charts)} gefunden"
     return charts[0]
 
 
@@ -307,7 +342,7 @@ def test_the_leg_filter_reaches_the_chart():
 
     client = Client(ui.page("/probe-statistics-filter")(lambda: None), request=None)
     with client:
-        statistics_module.statistics_page()
+        statistics_module.statistics_energy_page()
 
     chart = _energy_chart(client)
     _select(client, "Auflösung").value = period.GRANULARITY_MONTH
@@ -326,7 +361,7 @@ def test_a_database_without_readings_says_why_the_chart_is_empty():
 
     client = Client(ui.page("/probe-statistics-empty")(lambda: None), request=None)
     with client:
-        statistics_module.statistics_page()
+        statistics_module.statistics_energy_page()
 
     texts = [
         element.text

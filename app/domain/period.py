@@ -507,3 +507,34 @@ _WEEKDAYS_LONG_DE = [
     "Samstag",
     "Sonntag",
 ]
+
+
+def shift_window_one_year(window: tuple[datetime, datetime]) -> tuple[datetime, datetime]:
+    """The same window, one year earlier.
+
+    Used for the previous-year comparison line. Shifting the window rather
+    than re-deriving it from a shifted anchor keeps the bucket count
+    identical, so the two series line up point for point on one axis --
+    which is the only way the comparison means anything.
+
+    A 29 February lands on the 28th, and the week windows will not start on
+    the same weekday a year apart. Both are accepted: the comparison is
+    "roughly this time last year", and pretending otherwise would need a
+    52-week calendar the readings do not have.
+
+    Args:
+        window: `(start, end_exclusive)` from `window_for`.
+
+    Returns:
+        The window moved back one year.
+    """
+
+    def back(moment: datetime) -> datetime:
+        try:
+            return moment.replace(year=moment.year - 1)
+        except ValueError:
+            # 29 February in a year that has none.
+            return moment.replace(year=moment.year - 1, day=28)
+
+    start, end = window
+    return back(start), back(end)

@@ -45,7 +45,15 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/reports", "Auswertungen"),
         ],
     ),
-    ("Statistik", [("/statistics", "Statistik")]),
+    (
+        "Statistik",
+        [
+            ("/statistics/energy", "Energie"),
+            ("/statistics/growth", "Wachstum"),
+            ("/statistics/receivables", "Debitorenverlauf"),
+            ("/statistics/distribution", "Verteilung"),
+        ],
+    ),
     (
         "Kommunikation",
         [

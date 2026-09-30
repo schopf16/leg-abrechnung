@@ -23,7 +23,10 @@ from app.domain.period import (
     quarter_bounds,
     trailing_months,
 )
+from app.models import person_onboarding as person_onboarding_repo
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
+from app.models.person_onboarding import STEPS as ONBOARDING_STEPS
+from app.sort_keys import text_key
 
 
 @dataclass
@@ -786,3 +789,118 @@ def receivables_series(
             )
         )
     return series
+
+
+@dataclass
+class FunnelStep:
+    """One step of the onboarding pipeline and how many people wait at it.
+
+    Attributes:
+        label: The step's German name, from
+            `app.models.person_onboarding.STEPS`.
+        waiting: How many in-progress onboardings have this step as their
+            current one -- people whose previous steps are all dated and
+            who are waiting on this one.
+    """
+
+    label: str
+    waiting: int
+
+
+def onboarding_funnel(connection: sqlite3.Connection) -> tuple[list[FunnelStep], int]:
+    """Where the membership pipeline is stuck, step by step.
+
+    A count per step rather than a cumulative funnel: the question worth
+    answering is "what is holding people up", and that is the step they
+    are sitting on, not how many got past it. In this deployment it puts
+    61 of 88 open onboardings on "Bestätigung durch die BKW" -- a number
+    that was in the database all along and nowhere on a screen.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        `(steps, completed)`: one `FunnelStep` per step in
+        `person_onboarding.STEPS` order, and how many onboardings are
+        finished.
+    """
+    trackers = person_onboarding_repo.list_all(connection)
+    waiting: dict[str, int] = {label: 0 for _, label in ONBOARDING_STEPS}
+    completed = 0
+    for tracker in trackers:
+        if tracker.is_complete:
+            completed += 1
+            continue
+        _, label = tracker.current_step
+        waiting[label] = waiting.get(label, 0) + 1
+    return [FunnelStep(label=label, waiting=waiting[label]) for _, label in ONBOARDING_STEPS], completed
+
+
+@dataclass
+class LegDistribution:
+    """One LEG's share of the deployment.
+
+    Attributes:
+        leg_id: The LEG.
+        name: Its name.
+        feed_in_metering_points: Feed-in meters assigned to it.
+        consumption_metering_points: Consumption meters assigned to it.
+        pv_kwp: Installed PV power on record for it, in kWp.
+    """
+
+    leg_id: int
+    name: str
+    feed_in_metering_points: int
+    consumption_metering_points: int
+    pv_kwp: float
+
+    @property
+    def metering_points(self) -> int:
+        """Both directions together.
+
+        Returns:
+            The LEG's total metering point count.
+        """
+        return self.feed_in_metering_points + self.consumption_metering_points
+
+
+def distribution_by_leg(connection: sqlite3.Connection) -> list[LegDistribution]:
+    """How the metering points and the installed power sit across the LEGs.
+
+    Scoped by `metering_point.leg_id`, never by the sites those meters sit
+    at: LEG membership is a property of the metering point, and two meters
+    at one address can belong to different LEGs (see
+    `app.domain.participant_mix.compute_participant_mix_for_leg`, where
+    going via the sites once pulled a neighbour's meter into a LEG's
+    figures).
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One `LegDistribution` per LEG, largest first -- the order that
+        makes an imbalance visible at a glance.
+    """
+    rows = connection.execute(
+        """
+        SELECT l.id AS leg_id, l.name AS name,
+               SUM(CASE WHEN mp.direction = ? THEN 1 ELSE 0 END) AS feed_in,
+               SUM(CASE WHEN mp.direction = ? THEN 1 ELSE 0 END) AS consumption
+        FROM leg l
+        LEFT JOIN metering_point mp ON mp.leg_id = l.id
+        GROUP BY l.id
+        """,
+        (DIRECTION_FEED_IN, DIRECTION_CONSUMPTION),
+    ).fetchall()
+
+    distributions = [
+        LegDistribution(
+            leg_id=row["leg_id"],
+            name=row["name"],
+            feed_in_metering_points=row["feed_in"] or 0,
+            consumption_metering_points=row["consumption"] or 0,
+            pv_kwp=installed_capacity_totals(connection, row["leg_id"]).pv_kwp,
+        )
+        for row in rows
+    ]
+    return sorted(distributions, key=lambda d: (-d.metering_points, text_key(d.name)))
