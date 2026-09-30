@@ -9,6 +9,8 @@ this part of the app feel dead in the first place.
 
 from datetime import date
 
+import re
+
 import pytest
 from nicegui import Client, ui
 
@@ -244,12 +246,23 @@ def test_every_metering_point_lands_in_exactly_one_leg(db):
 # --- The panels on screen -----------------------------------------------
 
 
-#: The four views, by the name of the page function that renders each.
+#: The five views, by the name of the page function that renders each.
 _VIEWS = {
     "energy": "statistics_energy_page",
     "growth": "statistics_growth_page",
     "receivables": "statistics_receivables_page",
     "distribution": "statistics_distribution_page",
+    "balance": "statistics_balance_page",
+}
+
+#: Every view's own heading. A view must show its own and no other, so the
+#: set is written once here rather than repeated in each test that needs it.
+_HEADINGS = {
+    "energy": "Energie",
+    "growth": "Personen",
+    "receivables": "Debitoren und Rechnungen",
+    "distribution": "Verteilung auf die LEGs",
+    "balance": "Ausgewogenheit der LEGs",
 }
 
 
@@ -286,25 +299,18 @@ def _texts(client: Client) -> list[str]:
     ]
 
 
-@pytest.mark.parametrize(
-    "view, heading",
-    [
-        ("energy", "Energie"),
-        ("growth", "Personen"),
-        ("receivables", "Debitoren und Rechnungen"),
-        ("distribution", "Verteilung auf die LEGs"),
-    ],
-)
-def test_each_view_shows_its_own_theme_and_nothing_else(view, heading):
-    """One theme per page -- that is the point of having four.
+@pytest.mark.parametrize("view", sorted(_VIEWS))
+def test_each_view_shows_its_own_theme_and_nothing_else(view):
+    """One theme per page -- that is the point of having five.
 
-    Four charts on one page meant the one you wanted was never the one in
-    front of you.
+    Several charts on one page meant the one you wanted was never the one
+    in front of you. Parametrized over `_VIEWS` rather than a list of its
+    own, so a sixth view cannot be added without this noticing.
     """
     texts = _texts(_render(view))
 
-    assert heading in texts
-    others = {"Energie", "Personen", "Debitoren und Rechnungen", "Verteilung auf die LEGs"} - {heading}
+    assert _HEADINGS[view] in texts
+    others = set(_HEADINGS.values()) - {_HEADINGS[view]}
     assert not (others & set(texts)), f"{view} zeigt fremde Themen: {others & set(texts)}"
 
 
@@ -396,13 +402,15 @@ def test_the_energy_view_offers_every_resolution():
     assert {"quarter_hour", "hour", "day", "month", "year"} <= _offered_resolutions(_render("energy"))
 
 
-@pytest.mark.parametrize("view", ["growth", "distribution"])
+@pytest.mark.parametrize("view", ["growth", "distribution", "balance"])
 def test_a_view_without_a_time_series_has_no_time_axis(view):
     """Controls that would do nothing do not belong on the screen.
 
-    The funnel and the per-LEG distribution are snapshots of now; arrows
-    to page through windows would be four widgets promising something
-    they cannot deliver.
+    The funnel, the per-LEG distribution and the balance are snapshots of
+    now; arrows to page through windows would be widgets promising
+    something they cannot deliver. The balance goes further and sums its
+    energy over *every* imported reading, which is why it says so on the
+    page instead of implying a window it does not have.
     """
     client = _render(view)
     arrows = [
@@ -518,3 +526,180 @@ def test_the_pies_carry_no_slice_labels():
         assert chart.options["tooltip"]["formatter"] == "{b}: {c} ({d}%)", (
             "der Name muss beim Überfahren erscheinen, wenn er nicht am Stück steht"
         )
+
+
+# --- The Ausgewogenheit view --------------------------------------------
+#
+# Asked for as "which LEGs have a good distribution and which a bad one".
+# What it shows instead is the facts that answer that, ordered so both
+# extremes are at the ends -- no threshold, no colour, no verdict. The app
+# once recommended moving people between LEGs and that was removed on
+# purpose; a cutoff for "good" would be the same advice wearing a
+# percentage sign, and the tests below pin that it is absent.
+
+
+def _balance_table(client: Client):
+    """The one table on the Ausgewogenheit view.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The table element.
+    """
+    tables = [e for e in client.elements.values() if e.__class__.__name__ == "Table"]
+    assert len(tables) == 1, f"eine Tabelle erwartet, {len(tables)} gefunden"
+    return tables[0]
+
+
+def test_the_chart_compares_the_two_sides_of_each_leg():
+    """Two grouped series, which is the shape the question has.
+
+    Stacked bars would answer "how big is this LEG", which is the
+    Verteilung view's question, not this one.
+    """
+    with connection_scope() as connection:
+        leg_id = _leg(connection, "LEG Eins")
+        _meter(connection, leg_id, DIRECTION_FEED_IN, "01")
+        _meter(connection, leg_id, DIRECTION_FEED_IN, "02")
+        _meter(connection, leg_id, DIRECTION_CONSUMPTION, "03")
+
+    charts = [e for e in _render("balance").elements.values() if e.__class__.__name__ == "EChart"]
+
+    assert len(charts) == 1
+    series = charts[0].options["series"]
+    assert [s["name"] for s in series] == ["Produzenten", "Konsumenten"]
+    assert all(s["type"] == "bar" for s in series)
+    assert "stack" not in series[0], "gruppiert, nicht gestapelt"
+    assert series[0]["data"] == [2]
+    assert series[1]["data"] == [1]
+
+
+def test_the_production_heavy_leg_leads_and_the_consumption_heavy_one_trails():
+    """The whole answer to the question, and it is an ordering, not a label.
+
+    Both ends of one continuum are visible at once, so nothing has to
+    decide where "good" stops.
+    """
+    with connection_scope() as connection:
+        heavy = _leg(connection, "LEG Produktionslastig")
+        light = _leg(connection, "LEG Bezugslastig")
+        for suffix in ("11", "12", "13"):
+            _meter(connection, heavy, DIRECTION_FEED_IN, suffix)
+        _meter(connection, heavy, DIRECTION_CONSUMPTION, "14")
+        _meter(connection, light, DIRECTION_FEED_IN, "21")
+        for suffix in ("22", "23", "24"):
+            _meter(connection, light, DIRECTION_CONSUMPTION, suffix)
+
+    rows = _balance_table(_render("balance")).rows
+
+    assert [row["name"] for row in rows] == ["LEG Produktionslastig", "LEG Bezugslastig"]
+    assert rows[0]["ratio"] == "3,0"
+    assert rows[1]["ratio"] == "0,3"
+
+
+def test_the_chart_reads_top_down_in_the_same_order_as_the_table():
+    """An ECharts category axis puts index 0 at the *bottom*.
+
+    Without reversing, the chart would read bottom-up while the table
+    reads top-down, and the two would look like different orderings of the
+    same data.
+    """
+    with connection_scope() as connection:
+        heavy = _leg(connection, "LEG Oben")
+        light = _leg(connection, "LEG Unten")
+        for suffix in ("31", "32"):
+            _meter(connection, heavy, DIRECTION_FEED_IN, suffix)
+        _meter(connection, heavy, DIRECTION_CONSUMPTION, "33")
+        _meter(connection, light, DIRECTION_CONSUMPTION, "34")
+        _meter(connection, light, DIRECTION_FEED_IN, "35")
+
+    client = _render("balance")
+    chart = next(e for e in client.elements.values() if e.__class__.__name__ == "EChart")
+    table_order = [row["name"] for row in _balance_table(client).rows]
+
+    assert chart.options["yAxis"]["data"] == list(reversed(table_order))
+
+
+def test_a_one_sided_leg_says_so_instead_of_printing_a_quotient():
+    """ "nur Produzenten" is a fact; "0,0" would be a number that means it.
+
+    With one direction absent nothing can be shared in that LEG at all,
+    whatever anybody's economics look like -- which is exactly why this
+    statement survived the removal of the LEG recommendations.
+    """
+    with connection_scope() as connection:
+        producers = _leg(connection, "LEG A Nur Produktion")
+        consumers = _leg(connection, "LEG B Nur Bezug")
+        _meter(connection, producers, DIRECTION_FEED_IN, "41")
+        _meter(connection, consumers, DIRECTION_CONSUMPTION, "42")
+
+    by_name = {row["name"]: row for row in _balance_table(_render("balance")).rows}
+
+    assert by_name["LEG A Nur Produktion"]["ratio"] == "nur Produzenten"
+    assert by_name["LEG B Nur Bezug"]["ratio"] == "nur Konsumenten"
+
+
+def test_the_energy_columns_are_dashes_rather_than_zero_without_readings():
+    """A fresh deployment has no readings, and 0 % would be a claim.
+
+    "Nothing was produced" and "what was produced found no taker" are
+    different statements about a LEG's mix, and only the second is a
+    problem. Printing zero for the first asserts the second.
+    """
+    with connection_scope() as connection:
+        leg_id = _leg(connection, "LEG Ohne Messwerte")
+        _meter(connection, leg_id, DIRECTION_FEED_IN, "51")
+        _meter(connection, leg_id, DIRECTION_CONSUMPTION, "52")
+
+    client = _render("balance")
+    row = _balance_table(client).rows[0]
+
+    assert row["shared"] == "—"
+    assert row["coverage"] == "—"
+    assert "Noch keine Messdaten importiert — nur die Messpunkte sind auswertbar." in _texts(client)
+
+
+def test_the_view_grades_nothing():
+    """No verdict word anywhere on the page.
+
+    Pinned because it is a decision, not an omission: the administrator
+    asked for good-versus-bad and then chose facts over a threshold, and
+    the next person to read the request would reasonably add one.
+    """
+    with connection_scope() as connection:
+        leg_id = _leg(connection, "LEG Eins")
+        for suffix in ("61", "62", "63", "64")[:3]:
+            _meter(connection, leg_id, DIRECTION_FEED_IN, suffix)
+        _meter(connection, leg_id, DIRECTION_CONSUMPTION, "64")
+
+    page_text = " ".join(_texts(_render("balance"))).lower()
+
+    # Whole words, not substrings: "gut" also sits inside "Gutschriften",
+    # and a test that fails on an unrelated word gets deleted rather than
+    # read.
+    for verdict in ("gut", "gute", "schlecht", "schlechte", "ungünstig", "empfehlung", "sollte"):
+        assert not re.search(rf"{verdict}", page_text), f"Wertung auf der Seite: {verdict}"
+
+
+def test_an_empty_deployment_says_why_rather_than_drawing_nothing():
+    """No LEG at all is a different blank from a LEG with no meters."""
+    assert "Noch keine LEG erfasst." in _texts(_render("balance"))
+
+
+def test_a_leg_without_metering_points_is_listed_last_and_named():
+    """It is neither end of the scale, and hiding it hides a half-done job.
+
+    A LEG somebody created and never assigned anything to looks exactly
+    like one that does not exist, which is how it stays forgotten.
+    """
+    with connection_scope() as connection:
+        populated = _leg(connection, "LEG Mit Messpunkten")
+        _leg(connection, "LEG Leer")
+        _meter(connection, populated, DIRECTION_FEED_IN, "71")
+        _meter(connection, populated, DIRECTION_CONSUMPTION, "72")
+
+    rows = _balance_table(_render("balance")).rows
+
+    assert rows[-1]["name"] == "LEG Leer"
+    assert rows[-1]["ratio"] == "keine Messpunkte"

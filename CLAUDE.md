@@ -386,6 +386,40 @@ never rewritten — and no longer appears in the settings form.
 Kept, because it is a fact and not advice: `check_substation_area_one_sided`
 ("nur Produzenten"/"nur Konsumenten" — nothing can be shared there at all).
 
+The same question came back as "which LEGs have a good distribution and
+which a bad one", and the answer built for it is
+`app.domain.statistics.leg_balance` behind `/statistics/balance`. It reports
+and **grades nothing**: the administrator was offered a threshold in
+`LegSettings` (the pattern `production_capacity_warn_percent` already sets)
+and chose facts instead, so there is no cutoff, no colour and no verdict
+word — `test_the_view_grades_nothing` pins that, because the next person to
+read the request would reasonably add one.
+
+What stands in for the verdict is the **ordering**: feed-in meters per
+consumption meter, descending, so one continuum runs from production-heavy
+through balanced to consumption-heavy and both extremes are where the eye
+lands first. A LEG with no consumption meters has no quotient and leads; an
+empty LEG is neither end and is pushed past every populated one, named
+rather than hidden, since a LEG nobody assigned anything to otherwise looks
+exactly like one that does not exist.
+
+The meter counts are only a **proxy** and the view says so by carrying the
+real figure beside them: `shared_kwh / feed_in_kwh`, how much of what was
+fed in actually found a taker. Nine feed-in meters beside twenty-six
+consumption meters says nothing about whether the sun shone while anybody
+was drawing. That figure needs an import, so today it reads "—" —
+deliberately not "0 %", because "nothing was produced" and "what was
+produced found no taker" are different statements and only the second is a
+problem. `shared_energy_by_leg` forms it per 15-minute interval **and per
+LEG** before summing anything, the same rule the invoices use; both halves
+have their own test in `tests/test_leg_balance.py`, because each produces a
+plausible-looking wrong number on its own.
+
+`leg_balance` takes its meter counts from `distribution_by_leg` rather than
+counting again, so the Verteilung view ("how big is each LEG") and the
+Ausgewogenheit view ("is each LEG matched") cannot disagree about the same
+LEG's size.
+
 `compute_participant_roles` answers a different question from
 `ParticipantMix` and must not be confused with it: how many **people** of
 each kind, counted once each, for the overview tiles. `ParticipantMix`
