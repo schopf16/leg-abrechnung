@@ -191,3 +191,43 @@ def test_an_unknown_resolution_is_refused_rather_than_guessed():
     ):
         with pytest.raises(KeyError):
             call()
+
+
+# --- The previous-year comparison window --------------------------------
+
+
+def test_the_prior_year_window_has_the_same_bucket_count():
+    """The two series have to line up point for point on one axis.
+
+    Re-deriving the window from a shifted anchor could land a different
+    number of days -- a 90-day quarter against a 92-day one -- and the
+    comparison line would then be drawn against the wrong dates.
+    """
+    for granularity in GRANULARITIES:
+        window = period.window_for(granularity.key, datetime(2026, 7, 15))
+        prior = period.shift_window_one_year(window)
+
+        assert len(period.buckets_in(granularity.key, prior)) == len(
+            period.buckets_in(granularity.key, window)
+        ), granularity.label
+
+
+def test_the_prior_year_window_really_is_a_year_back():
+    """And keeps the same position within the year."""
+    window = period.window_for(GRANULARITY_QUARTER_HOUR, datetime(2026, 7, 15, 9))
+    start, end = period.shift_window_one_year(window)
+
+    assert start == datetime(2025, 7, 15)
+    assert end == datetime(2025, 7, 16)
+
+
+def test_a_leap_day_falls_back_to_the_28th():
+    """2025 has no 29 February, and an exception would be the worse answer.
+
+    The comparison means "roughly this time last year"; refusing to draw it
+    on one day of the leap cycle would be precision nobody asked for.
+    """
+    window = period.window_for(GRANULARITY_QUARTER_HOUR, datetime(2024, 2, 29, 12))
+    start, _ = period.shift_window_one_year(window)
+
+    assert start == datetime(2023, 2, 28)

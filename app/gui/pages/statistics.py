@@ -1,19 +1,32 @@
-"""Statistik page: what the deployment looks like, and how the energy flows.
+"""Statistik: four pages, one per theme -- Energie, Wachstum,
+Debitorenverlauf, Verteilung.
 
-The energy chart is drawn on the shared time axis (`app.gui.time_axis`),
-so the resolution is the reader's choice -- from a quarter-hour load curve
-up to a decade -- and the window follows it.
+Four routes rather than four cards on one page. They started as cards, and
+that was still one page to scroll: a chart is worth a screen, and four of
+them stacked means the one you want is never the one in front of you. The
+side navigation's Statistik group lists them, so picking a theme is a click
+rather than a scroll. No `ui.tabs` -- the project uses none, and the
+navigation already does this job everywhere else.
 
-Beside consumption and feed-in it shows the figure the LEG actually exists
-for: **how much of the production found a taker inside the community**.
+The energy panel is drawn on the shared time axis
+(`app.gui.time_axis`), so the resolution is the reader's choice, from a
+quarter-hour load curve up to a decade, and the window follows it. Beside
+consumption and feed-in it shows the figure the LEG actually exists for:
+**how much of the production found a taker inside the community**.
 `app.domain.distribution` has always computed it, per 15-minute interval,
-and then folded it straight into quarterly per-person totals; as a curve
-it is the answer to "is this working", which the numbers alone never gave.
+and then folded it straight into quarterly per-person totals; as a curve it
+answers "is this working", which the numbers alone never did.
 
-A chart with nothing in it says **why** it is empty rather than showing a
-white rectangle. Three of this page's sources are empty until somebody
-imports readings or runs a billing, and an unexplained blank is exactly
-what made this page feel like "da ist nicht viel los".
+A chart with nothing in it says **why** in one grey line rather than
+showing a white rectangle, and nothing more: an unexplained blank is what
+made this page feel empty, and a paragraph above every chart is what made
+it feel like more text than picture.
+
+The Debitoren panel reports the **LEG's own account only** -- invoiced,
+received, and the open amount that should be coming down. Never a single
+person's balance: the administrator ruled that out on data-protection
+grounds, and the reasoning holds. A statistics page is read over somebody's
+shoulder; a person's detail page is not.
 """
 
 from datetime import datetime
@@ -28,11 +41,15 @@ from app.domain.period import (
     GRANULARITY_QUARTER_HOUR,
     GRANULARITY_YEAR,
     MONTH_NAMES_DE,
+    shift_window_one_year,
 )
 from app.domain.statistics import (
+    distribution_by_leg,
     energy_series,
     energy_unit,
     monthly_growth_counts,
+    onboarding_funnel,
+    receivables_series,
 )
 from app.gui.navigation import page_frame
 from app.gui.time_axis import render_time_axis
@@ -41,8 +58,8 @@ from app.models import leg as leg_repo
 _MONTHS_SHOWN = 12
 
 #: Resolutions the energy chart offers, finest first. All five: the
-#: quarter-hour load curve is the one view that shows *why* a day shared
-#: as little as it did, and the decade is where a LEG's growth shows.
+#: quarter-hour load curve is the one view that shows *why* a day shared as
+#: little as it did, and the decade is where a LEG's growth shows.
 _ENERGY_GRANULARITIES = [
     GRANULARITY_QUARTER_HOUR,
     GRANULARITY_HOUR,
@@ -51,21 +68,13 @@ _ENERGY_GRANULARITIES = [
     GRANULARITY_YEAR,
 ]
 
+#: Resolutions the receivables chart offers. No quarter-hour or hour:
+#: invoices and payments do not happen at that resolution, and offering it
+#: would only produce a flat line with 96 points.
+_MONEY_GRANULARITIES = [GRANULARITY_DAY, GRANULARITY_MONTH, GRANULARITY_YEAR]
 
-def _empty_note(message: str) -> None:
-    """Say in one line that a chart has nothing to draw.
-
-    One grey line, no link, no explanation of what to do about it: this
-    page is meant to be read as charts, and a paragraph above every empty
-    one is what made it feel like more text than picture.
-
-    Args:
-        message: Why there is nothing to draw.
-
-    Returns:
-        None.
-    """
-    ui.label(message).classes("text-body2 text-grey-6")
+#: Height every chart on this page is drawn at.
+_CHART_HEIGHT = "height: 360px"
 
 
 def _month_label(year: int, month: int) -> str:
@@ -81,73 +90,133 @@ def _month_label(year: int, month: int) -> str:
     return f"{MONTH_NAMES_DE[month][:3]} {year}"
 
 
-@ui.page("/statistics")
-def statistics_page() -> None:
-    """Render the Statistik page with energy-flow and growth charts.
+def _empty_note(message: str) -> None:
+    """Say in one line that a chart has nothing to draw.
+
+    One grey line, no link, no advice: this page is meant to be read as
+    charts, and a paragraph above every empty one is what made it feel like
+    more text than picture.
+
+    Args:
+        message: Why there is nothing to draw.
 
     Returns:
         None.
     """
-    with page_frame("/statistics", "Statistik"):
-        with connection_scope() as connection:
-            legs = leg_repo.list_all(connection)
-            latest_reading = connection.execute("SELECT MAX(timestamp) FROM readings").fetchone()[0]
-        has_readings = latest_reading is not None
-        leg_options = {None: "Alle LEGs", **{leg.id: leg.name for leg in legs}}
+    ui.label(message).classes("text-body2 text-grey-6")
 
-        ui.label("Energiefluss").classes("text-lg font-bold mt-4")
+
+def _panel(title: str):
+    """Open one theme's card.
+
+    The heading stays even though each theme now has a page of its own: it
+    is what the tests find a panel by, and it names the theme inside the
+    frame rather than only in the title bar.
+
+    Args:
+        title: The panel's German heading.
+
+    Returns:
+        The card's context manager, already holding the heading.
+    """
+    card = ui.card().classes("w-full")
+    with card:
+        ui.label(title).classes("text-lg font-bold")
+    return card
+
+
+def _render_energy_panel(legs, latest_reading) -> None:
+    """Draw the Energie panel: flow, shared energy and self-consumption.
+
+    Args:
+        legs: Every LEG, for the filter.
+        latest_reading: ISO timestamp of the newest reading, or `None`.
+
+    Returns:
+        None.
+    """
+    has_readings = latest_reading is not None
+    with _panel("Energie"):
         if not has_readings:
             _empty_note("Noch keine Messdaten importiert.")
 
-        leg_select = ui.select(leg_options, value=None, label="LEG").classes("w-64")
+        leg_select = ui.select(
+            {None: "Alle LEGs", **{leg.id: leg.name for leg in legs}}, value=None, label="LEG"
+        ).classes("w-64")
         # Opened on the newest reading rather than on today: an import
         # usually lands a completed quarter, so "now" is routinely a window
         # with nothing in it -- and an empty chart on arrival reads as a
         # broken page, not as an empty period.
-        energy_axis = render_time_axis(
+        axis = render_time_axis(
             _ENERGY_GRANULARITIES,
-            lambda: refresh_energy_chart(),
+            lambda: refresh(),
             anchor=datetime.fromisoformat(latest_reading) if latest_reading else None,
         )
-        energy_empty_note = ui.label("").classes("text-body2 text-orange-9")
-        energy_chart = ui.echart({}).classes("w-full").style("height: 380px")
+        empty_note = ui.label("").classes("text-body2 text-orange-9")
+        chart = ui.echart({}).classes("w-full").style(_CHART_HEIGHT)
 
-        def refresh_energy_chart() -> None:
-            """Reload the energy chart for the current LEG, window and resolution.
+        def refresh() -> None:
+            """Reload the chart for the current LEG, window and resolution.
 
             Returns:
                 None.
             """
             with connection_scope() as connection:
-                series = energy_series(
-                    connection, energy_axis.key, energy_axis.window, leg_id=leg_select.value
+                series = energy_series(connection, axis.key, axis.window, leg_id=leg_select.value)
+                # The same window a year earlier, bucket for bucket, so the
+                # two lines line up on one axis. Drawn only when there is
+                # something there: an empty comparison line would suggest
+                # last year was a bad year rather than an absent one.
+                prior = energy_series(
+                    connection,
+                    axis.key,
+                    shift_window_one_year(axis.window),
+                    leg_id=leg_select.value,
                 )
             # Readings exist, but not here: a different statement from
-            # "nothing imported yet", and the reader needs to be able to
-            # tell them apart before reaching for the arrows.
-            energy_empty_note.text = (
+            # "nothing imported yet", and the reader needs to tell them
+            # apart before reaching for the arrows.
+            empty_note.text = (
                 "Keine Messdaten in diesem Zeitraum."
                 if has_readings and not any(b.consumption_kwh or b.feed_in_kwh for b in series)
                 else ""
             )
-            unit = energy_unit(energy_axis.key)
-            values = [bucket.value_for(energy_axis.key) for bucket in series]
+            values = [bucket.value_for(axis.key) for bucket in series]
             shares = [
                 None
                 if bucket.self_consumption_share is None
                 else round(bucket.self_consumption_share * 100, 1)
                 for bucket in series
             ]
+            prior_values = [bucket.value_for(axis.key) for bucket in prior]
+            has_prior = any(bucket.consumption_kwh or bucket.feed_in_kwh for bucket in prior)
+            comparison = (
+                [
+                    {
+                        "name": "Bezug Vorjahr",
+                        "type": "line",
+                        "data": [v[0] for v in prior_values],
+                        "lineStyle": {"type": "dashed", "opacity": 0.5},
+                        "itemStyle": {"opacity": 0.4},
+                        "symbol": "none",
+                    }
+                ]
+                if has_prior
+                else []
+            )
+            legend = ["Bezug", "Einspeisung", "Lokal geteilt", "Eigenverbrauch"]
+            if has_prior:
+                legend.append("Bezug Vorjahr")
 
-            energy_chart.options.clear()
-            energy_chart.options.update(
+            chart.options.clear()
+            chart.options.update(
                 {
                     "tooltip": {"trigger": "axis"},
-                    "legend": {"data": ["Bezug", "Einspeisung", "Lokal geteilt", "Eigenverbrauch"]},
-                    "xAxis": {"type": "category", "data": energy_axis.axis_labels()},
+                    "legend": {"data": legend},
+                    "xAxis": {"type": "category", "data": axis.axis_labels()},
                     "yAxis": [
-                        {"type": "value", "name": unit},
-                        {"type": "value", "name": "%", "max": 100, "min": 0, "position": "right"},
+                        {"type": "value", "name": energy_unit(axis.key)},
+                        {"type": "value", "name": "%", "min": 0, "max": 100, "position": "right"},
                     ],
                     "series": [
                         {"name": "Bezug", "type": "bar", "data": [v[0] for v in values]},
@@ -163,17 +232,56 @@ def statistics_page() -> None:
                             "connectNulls": False,
                             "data": shares,
                         },
+                        *comparison,
                     ],
                 }
             )
-            energy_chart.update()
+            chart.update()
 
-        leg_select.on_value_change(lambda _: refresh_energy_chart())
-        refresh_energy_chart()
+        leg_select.on_value_change(lambda _: refresh())
+        refresh()
 
-        ui.label("Wachstum").classes("text-lg font-bold mt-6")
-        with connection_scope() as connection:
-            growth = monthly_growth_counts(connection, months=_MONTHS_SHOWN)
+
+def _render_people_panel() -> None:
+    """Draw the Personen panel: where the pipeline waits, and how it grew.
+
+    Returns:
+        None.
+    """
+    with connection_scope() as connection:
+        steps, completed = onboarding_funnel(connection)
+        growth = monthly_growth_counts(connection, months=_MONTHS_SHOWN)
+
+    with _panel("Personen"):
+        if not any(step.waiting for step in steps) and not completed:
+            _empty_note("Noch keine Aufnahmen erfasst.")
+        else:
+            # Horizontal bars, because the step names are long: upright
+            # they would be unreadable at any sensible chart height.
+            ui.echart(
+                {
+                    "tooltip": {"trigger": "axis"},
+                    "grid": {"left": 220, "top": 10, "bottom": 30},
+                    "xAxis": {"type": "value", "name": "Personen"},
+                    "yAxis": {
+                        "type": "category",
+                        # ECharts puts index 0 at the **bottom** of a
+                        # category axis, so the data runs bottom-up: the
+                        # finished ones lowest, then the steps in reverse,
+                        # which reads top-down as the process itself runs.
+                        "data": ["abgeschlossen"] + [step.label for step in reversed(steps)],
+                    },
+                    "series": [
+                        {
+                            "name": "Personen",
+                            "type": "bar",
+                            "data": [completed] + [step.waiting for step in reversed(steps)],
+                        }
+                    ],
+                }
+            ).classes("w-full").style(_CHART_HEIGHT)
+
+        ui.label("Wachstum").classes("text-body1 font-bold mt-4")
         ui.echart(
             {
                 "tooltip": {"trigger": "axis"},
@@ -188,4 +296,225 @@ def statistics_page() -> None:
                     {"name": "LEGs", "type": "line", "data": [g.legs for g in growth]},
                 ],
             }
-        ).classes("w-full").style("height: 350px")
+        ).classes("w-full").style(_CHART_HEIGHT)
+
+
+def _render_money_panel() -> None:
+    """Draw the Debitoren panel: invoiced, received, and what stays open.
+
+    Returns:
+        None.
+    """
+    with connection_scope() as connection:
+        has_runs = connection.execute("SELECT 1 FROM billing_runs LIMIT 1").fetchone() is not None
+
+    with _panel("Debitoren und Rechnungen"):
+        if not has_runs:
+            _empty_note("Noch kein Abrechnungslauf erstellt.")
+
+        axis = render_time_axis(_MONEY_GRANULARITIES, lambda: refresh(), default=GRANULARITY_MONTH)
+        chart = ui.echart({}).classes("w-full").style(_CHART_HEIGHT)
+
+        def refresh() -> None:
+            """Reload the receivables chart for the current window.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                series = receivables_series(connection, axis.key, axis.window)
+            chart.options.clear()
+            chart.options.update(
+                {
+                    "tooltip": {"trigger": "axis"},
+                    "legend": {"data": ["Verrechnet", "Eingegangen", "Offen"]},
+                    "xAxis": {"type": "category", "data": axis.axis_labels()},
+                    "yAxis": {"type": "value", "name": "CHF"},
+                    "series": [
+                        {"name": "Verrechnet", "type": "bar", "data": [b.invoiced_chf for b in series]},
+                        {"name": "Eingegangen", "type": "bar", "data": [b.received_chf for b in series]},
+                        # A line, because it is a running total rather than
+                        # something that happened in that bucket.
+                        {"name": "Offen", "type": "line", "data": [b.open_chf for b in series]},
+                    ],
+                }
+            )
+            chart.update()
+
+        refresh()
+
+
+def _render_distribution_panel() -> None:
+    """Draw the Verteilung view: how the deployment sits across the LEGs.
+
+    Two pies and a table, replacing a single chart that carried stacked
+    metering-point bars and a PV-capacity line on a second axis: three
+    quantities, two units, seven categories, and no clear question.
+
+    A pie is the right instrument for "which LEG is how big", because that
+    is a share of a whole. It is the wrong one for comparing similar
+    slices -- two LEGs hold 13 metering points each here, and no pie will
+    ever show that they are equal -- so the exact figures, including the
+    direction split a pie cannot express at all, sit in the table
+    underneath. Chart for the shape, table for the numbers.
+
+    Returns:
+        None.
+    """
+    with connection_scope() as connection:
+        distributions = distribution_by_leg(connection)
+
+    with _panel("Verteilung auf die LEGs"):
+        if not distributions:
+            _empty_note("Noch keine LEG erfasst.")
+            return
+
+        with_meters = [d for d in distributions if d.metering_points]
+        with_pv = [d for d in distributions if d.pv_kwp]
+
+        with ui.row().classes("w-full gap-4 items-stretch flex-wrap"):
+            _pie(
+                "Messpunkte",
+                [{"name": d.name, "value": d.metering_points} for d in with_meters],
+                "Noch keine Messpunkte zugewiesen.",
+            )
+            _pie(
+                "PV-Leistung (kWp)",
+                [{"name": d.name, "value": d.pv_kwp} for d in with_pv],
+                "Noch keine PV-Leistung erfasst.",
+            )
+
+        ui.table(
+            columns=[
+                {"name": "name", "label": "LEG", "field": "name", "align": "left"},
+                {"name": "consumption", "label": "Bezug", "field": "consumption", "align": "right"},
+                {"name": "feed_in", "label": "Einspeisung", "field": "feed_in", "align": "right"},
+                {"name": "total", "label": "Messpunkte", "field": "total", "align": "right"},
+                {"name": "pv", "label": "kWp", "field": "pv", "align": "right"},
+            ],
+            rows=[
+                {
+                    "name": d.name,
+                    "consumption": d.consumption_metering_points,
+                    "feed_in": d.feed_in_metering_points,
+                    "total": d.metering_points,
+                    "pv": _format_capacity(d.pv_kwp),
+                }
+                for d in distributions
+            ],
+            row_key="name",
+        ).classes("w-full mt-4").props("dense")
+
+
+def _pie(title: str, data: list[dict], empty_message: str) -> None:
+    """Draw one share-of-whole pie, or say why there is none.
+
+    Args:
+        title: The pie's German heading.
+        data: `{"name", "value"}` entries; empty draws the note instead.
+        empty_message: What to say when there is nothing to divide up.
+
+    Returns:
+        None.
+    """
+    with ui.column().classes("flex-grow min-w-[320px] gap-0"):
+        ui.label(title).classes("text-body1 font-bold")
+        if not data:
+            _empty_note(empty_message)
+            return
+        ui.echart(
+            {
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)"},
+                "series": [
+                    {
+                        "type": "pie",
+                        # A donut rather than a full circle: the hole stops
+                        # the eye trying to judge angles at the centre,
+                        # which is what a pie is worst at.
+                        "radius": ["40%", "72%"],
+                        "data": data,
+                        # No labels on the slices. LEG names are long
+                        # enough that ECharts truncated them to "LEG-Itti…",
+                        # which is worse than no label at all: it takes the
+                        # space and still says nothing. Hovering gives the
+                        # full name, value and share, and the table below
+                        # has every name spelled out.
+                        "label": {"show": False},
+                        "labelLine": {"show": False},
+                    }
+                ],
+            }
+        ).classes("w-full").style(_CHART_HEIGHT)
+
+
+def _format_capacity(value: float) -> str:
+    """Format a kWp figure the way a German reader writes it.
+
+    Args:
+        value: The figure.
+
+    Returns:
+        Two decimals with a comma, matching the overview's tiles.
+    """
+    return f"{value:.2f}".replace(".", ",")
+
+
+@ui.page("/statistics")
+def statistics_page() -> None:
+    """Send the old single-page route to the energy view.
+
+    Kept rather than deleted: it was the one Statistik route for the
+    app's whole life so far, and a dead link is a worse answer than a
+    redirect for something that costs one line.
+
+    Returns:
+        None.
+    """
+    ui.navigate.to("/statistics/energy")
+
+
+@ui.page("/statistics/energy")
+def statistics_energy_page() -> None:
+    """Render the Energie view: flow, shared energy, self-consumption.
+
+    Returns:
+        None.
+    """
+    with page_frame("/statistics/energy", "Statistik: Energie"):
+        with connection_scope() as connection:
+            legs = leg_repo.list_all(connection)
+            latest_reading = connection.execute("SELECT MAX(timestamp) FROM readings").fetchone()[0]
+        _render_energy_panel(legs, latest_reading)
+
+
+@ui.page("/statistics/growth")
+def statistics_growth_page() -> None:
+    """Render the Wachstum view: where the pipeline waits, and how it grew.
+
+    Returns:
+        None.
+    """
+    with page_frame("/statistics/growth", "Statistik: Wachstum"):
+        _render_people_panel()
+
+
+@ui.page("/statistics/receivables")
+def statistics_receivables_page() -> None:
+    """Render the Debitorenverlauf view: invoiced, received, still open.
+
+    Returns:
+        None.
+    """
+    with page_frame("/statistics/receivables", "Statistik: Debitorenverlauf"):
+        _render_money_panel()
+
+
+@ui.page("/statistics/distribution")
+def statistics_distribution_page() -> None:
+    """Render the Verteilung view: how the LEGs compare.
+
+    Returns:
+        None.
+    """
+    with page_frame("/statistics/distribution", "Statistik: Verteilung"):
+        _render_distribution_panel()
