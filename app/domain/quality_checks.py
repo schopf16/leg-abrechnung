@@ -28,6 +28,7 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
+from app.sort_keys import text_key
 from app.models import assignment as assignment_repo
 from app.domain.production_capacity import (
     REQUIRED_PERCENT,
@@ -610,7 +611,11 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
     warnings: list[QualityWarning] = []
     sites = site_repo.list_all(connection)
     metering_points = metering_point_repo.list_all(connection)
-    for substation_area in substation_area_repo.list_all(connection):
+    # text_key, not the repo's `ORDER BY name`: these warnings are read as a
+    # list on the dashboard, so they need the same order the Trafokreise page
+    # shows -- numbers as numbers, umlauts as their base letter.
+    areas = sorted(substation_area_repo.list_all(connection), key=lambda a: text_key(a.name))
+    for substation_area in areas:
         mix = participant_mix.compute_participant_mix_for_substation_area(connection, substation_area.id)
         if mix.hint is None:
             continue

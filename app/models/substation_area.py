@@ -27,7 +27,7 @@ class SubstationArea:
             avoid using the real BKW designation in the UI). Must be
             unique.
         bkw_designation: The official BKW substation area designation/number
-            (e.g. "TRA21359"), if known.
+            (e.g. "TRA45200"), if known.
         note: Free-text notes (optional).
         created_at: ISO-8601 creation timestamp.
     """
