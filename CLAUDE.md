@@ -149,12 +149,55 @@ aspirational.
 Sort in Python on already-loaded rows, not in the repo's `ORDER BY`:
 SQLite's BINARY/NOCASE collation mis-sorts umlauts — a non-leading one
 slips past its own initial group ("Bühler" after "Burri"), a leading one
-goes behind every "Z…" name ("Ärni" last of all). Build keys from `text_key`,
-`number_key`, `address_key` (house numbers numerically) and
-`person_name_key` (surname, falling back to the company name) rather than
-hand-rolling per page — a person or an address must come out in the same
+goes behind every "Z…" name ("Ärni" last of all) — and it compares numbers
+inside a name character by character, so "TRA19400" lands ahead of
+"TRA9365". BKW's Trafokreis designations run three to five digits, which
+put **all 34** of them in the wrong place, not some edge case. Build keys
+from `text_key`, `number_key`, `address_key` (house numbers numerically)
+and `person_name_key` (surname, falling back to the company name) rather
+than hand-rolling per page — a person or an address must come out in the same
 order on every page that lists it. Prefer negating a number in the key
-over `SortOption.reverse`, which also flips the text tiebreak. Person
+over `SortOption.reverse`, which also flips the text tiebreak.
+
+`text_key` is number-aware, via `natural_key`: it folds the text and then
+splits it into alternating text and integer parts, so a number inside a
+name sorts as a number on **every** list rather than only on the one whose
+order was complained about. The Trafokreis is a sort key on its own page,
+on the Standorte page and twice on the LEG detail page, so fixing one would
+have left the app with two orders for one name. `MeteringPoint.label` gets
+it for free ("Whg. 3. OG" before "Whg. 10. OG").
+
+Two properties of that key are load-bearing rather than incidental.
+`re.split` with a capturing group always yields an odd-length list starting
+and ending with a (possibly empty) text part, so **even positions are
+always a `str` and odd ones always a `numeric_part`** -- without that
+guarantee two keys can compare a number against a str and the page raises
+`TypeError` on one deployment's data. Any new branch that returns a key by
+hand has to go through `text_key` for the same reason;
+`person_name_key`'s missing-person case returns `text_key("", "")`, not a
+bare `("", "")`.
+
+And the numeric part is `(length, digits)`, deliberately **not** `int()`.
+Since Python 3.11 converting more than 4300 digits raises `ValueError`, and
+these keys are not built only from what the administrator typed:
+`app.importers.cloudflare_client` takes names and addresses straight from
+the leg-ittigen.ch web form, which caps nothing, and the Webanmeldungen
+inbox sorts them. `address_key` had this exposure on the house number
+before `natural_key` existed, so one submission could stop that page
+rendering. Comparing `(length, digits)` needs no conversion and is exactly
+as correct: with leading zeros stripped, more digits *is* a larger number,
+and equal-length runs compare the same way as text and as numbers.
+Stripping the zeros is why "TRA007" and "TRA7" tie, which `sorted` resolves
+by stability.
+
+A dropdown is the exception that still needs care: it has no "Sortierung"
+control, so the order it is built in is the only order there is. The
+Trafokreis select in `app/gui/site_form.py` and the one-sided-Trafokreis
+warnings in `app.domain.quality_checks` therefore sort explicitly instead
+of inheriting `substation_area.list_all`'s `ORDER BY name`.
+`tests/test_site_form.py` drives the dialog rather than the key function,
+because a unit test on `text_key` passes whether or not anybody calls it
+there. Person
 lists default to `"last_name"`/"Nachname"; a worklist may lead with its
 own urgency order (see `app/gui/pages/dunning.py`), and an inbox with
 newest-first (`web_registrations.py`). A list with only one sensible order

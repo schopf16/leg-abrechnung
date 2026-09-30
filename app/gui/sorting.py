@@ -14,8 +14,9 @@ no column headers to click. A select works for both shapes.
 
 Sorting happens in Python, on the rows a page has already loaded, rather
 than in each repo's `ORDER BY`. That keeps the option list next to the
-page that shows it, and it applies `fold_for_sort`, so umlauts sort as
-their base letter the way a German reader expects.
+page that shows it, and it applies `natural_key`, so umlauts sort as their
+base letter the way a German reader expects and a number inside a name is
+read as a number ("TRA9365" before "TRA11600").
 
 The key functions themselves live in `app.sort_keys`, which imports no
 NiceGUI, and are re-exported here: the PDF layer has to group a person's
@@ -31,6 +32,7 @@ from nicegui import ui
 from app.sort_keys import (
     address_key,
     fold_for_sort,
+    natural_key,
     number_key,
     person_name_key,
     text_key,
@@ -42,6 +44,7 @@ __all__ = [
     "address_key",
     "apply_sort",
     "fold_for_sort",
+    "natural_key",
     "number_key",
     "person_name_key",
     "render_sort_select",

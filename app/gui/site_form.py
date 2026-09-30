@@ -13,6 +13,7 @@ from app.db.connection import connection_scope
 from app.gui.safe_notify import safe_notify
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
+from app.sort_keys import text_key
 from app.models.site import Site
 
 #: site-shaped fields `open_site_form`'s `prefill` dict may set for
@@ -62,7 +63,13 @@ def open_site_form(
 
     with connection_scope() as connection:
         substation_areas = substation_area_repo.list_all(connection)
-    substation_area_options = {t.id: t.name for t in substation_areas}
+    # Sorted here rather than trusting the repo's `ORDER BY name`: that is
+    # SQLite's BINARY collation, which puts "TRA11600" ahead of "TRA9365"
+    # and every leading umlaut behind every "Z...". A dropdown has no
+    # "Sortierung" control to correct it with, so it has to arrive right.
+    substation_area_options = {
+        area.id: area.name for area in sorted(substation_areas, key=lambda a: text_key(a.name))
+    }
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
         ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes("text-lg font-bold")

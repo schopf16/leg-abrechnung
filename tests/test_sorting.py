@@ -16,6 +16,8 @@ field that its row builder does not produce is, and only
 
 from dataclasses import dataclass
 
+import sys
+
 import pytest
 
 from app.gui.sorting import (
@@ -23,6 +25,7 @@ from app.gui.sorting import (
     address_key,
     apply_sort,
     fold_for_sort,
+    natural_key,
     number_key,
     person_name_key,
     sort_description,
@@ -80,7 +83,116 @@ def test_umlauts_sort_as_their_base_letter():
     ]
 
 
+# -- natural_key -------------------------------------------------------------
+
+
+def test_numbers_inside_a_name_sort_as_numbers():
+    """The reported case: BKW's Trafokreis names run three to five digits.
+
+    Compared character by character, "1" beats "9", so every five-digit
+    circuit landed ahead of every four-digit one.
+    """
+    names = ["TRA19400", "TRA9365", "TRA365", "TRA45200"]
+
+    assert sorted(names, key=natural_key) == ["TRA365", "TRA9365", "TRA19400", "TRA45200"]
+
+
+def test_the_prefix_still_decides_before_the_number():
+    """A number is only consulted once the text before it is equal."""
+    assert natural_key("ARA11") < natural_key("TRA2")
+
+
+def test_a_number_in_the_middle_sorts_numerically_too():
+    """`MeteringPoint.label` is free text and reads like "Whg. 3. OG"."""
+    labels = ["Whg. 10. OG", "Whg. 3. OG", "Whg. 2. OG"]
+
+    assert sorted(labels, key=natural_key) == ["Whg. 2. OG", "Whg. 3. OG", "Whg. 10. OG"]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("TRA9365", ("tra", (4, "9365"), "")),
+        ("9365TRA", ("", (4, "9365"), "tra")),
+        ("Muster", ("muster",)),
+        ("", ("",)),
+        (None, ("",)),
+        ("a1b2", ("a", (1, "1"), "b", (1, "2"), "")),
+    ],
+)
+def test_natural_key_alternates_text_and_number_parts(text, expected):
+    """Even positions are text, odd ones numeric parts -- always.
+
+    That is the whole type guarantee: two keys can never compare a number
+    against a str, whatever the strings were. Pinned rather than trusted,
+    because losing it turns a sort into a TypeError on one page's data.
+    """
+    assert natural_key(text) == expected
+
+
+def test_a_very_long_run_of_digits_does_not_raise():
+    """`int()` would, and the input is not all typed by the administrator.
+
+    Since Python 3.11, converting more than `sys.get_int_max_str_digits()`
+    (4300) digits raises ValueError. Names and addresses arrive from the
+    leg-ittigen.ch web form via `app.importers.cloudflare_client`, which
+    imposes no length limit, and they are sorted in the Webanmeldungen
+    inbox -- so this was a way to stop a page rendering, not a curiosity.
+    """
+    long_digits = "9" * (sys.get_int_max_str_digits() + 700)
+
+    assert natural_key("Muster" + long_digits) > natural_key("Muster1")
+    assert address_key("Fischrain", long_digits) > address_key("Fischrain", "68")
+
+
+def test_a_longer_number_is_the_bigger_one():
+    """What makes comparing (length, digits) correct without converting.
+
+    With leading zeros stripped, more digits means a larger number, and two
+    runs of equal length compare the same way as text and as numbers.
+    """
+    assert natural_key("x9") < natural_key("x10")
+    assert natural_key("x11600") < natural_key("x11919")
+
+
+def test_any_two_strings_are_comparable():
+    """Including the shapes that mix digits and text differently."""
+    awkward = ["a1b2", "", "9", "a", "1a", "z9z9", None, "007", "7"]
+
+    sorted(awkward, key=natural_key)  # must not raise
+
+
+def test_leading_zeros_tie():
+    """Documented behaviour, not an accident -- see `numeric_part`.
+
+    Stripping them is what makes "longer means larger" true; two circuits
+    differing only in padding do not occur, and `sorted` is stable.
+    """
+    assert natural_key("TRA007") == natural_key("TRA7")
+
+
+def test_umlauts_still_fold_when_a_number_is_present():
+    """natural_key folds first and splits second, so both rules apply."""
+    assert natural_key("Bühler 2") < natural_key("Burri 10")
+
+
 # -- text_key / number_key ---------------------------------------------------
+
+
+def test_text_key_keeps_each_part_separate():
+    """A part's own text/number boundaries must not bleed into the next.
+
+    Flattened into one sequence, `("a", 1)` for "a1" and `("a", "1")` for
+    the two parts "a" and "1" would collide; nested, they cannot.
+    """
+    assert text_key("a", "1") != text_key("a1")
+
+
+def test_text_key_sorts_numbers_in_a_later_part_numerically():
+    """Every list gets this, not just the one that asked for it."""
+    rows = [("Muster", "TRA19400"), ("Muster", "TRA9365")]
+
+    assert sorted(rows, key=lambda r: text_key(*r))[0][1] == "TRA9365"
 
 
 def test_text_key_compares_part_by_part():
@@ -181,7 +293,19 @@ def test_company_without_a_contact_person_sorts_under_its_company_name():
 
 def test_missing_person_sorts_first_instead_of_crashing():
     """A row whose person was deleted must not break the page."""
-    assert person_name_key(None) == ("", "")
+    assert person_name_key(None) == text_key("", "")
+
+
+def test_a_missing_person_is_comparable_with_a_present_one():
+    """The two branches must produce the same *shape*, not just sort right.
+
+    A bare `("", "")` next to `text_key`'s nested tuples raises TypeError on
+    the first comparison, and it would do so only on a page that happens to
+    hold a row whose person is gone.
+    """
+    present = person_name_key(_FakePerson("Muster", "Adrian"))
+
+    assert person_name_key(None) < present
 
 
 # -- apply_sort / sort_description -------------------------------------------
