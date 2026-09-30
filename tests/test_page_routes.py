@@ -37,6 +37,7 @@ EXPECTED_ROUTES = [
     "/signatures",
     "/sites",
     "/statistics",
+    "/statistics/balance",
     "/statistics/distribution",
     "/statistics/energy",
     "/statistics/growth",

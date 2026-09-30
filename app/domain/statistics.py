@@ -904,3 +904,231 @@ def distribution_by_leg(connection: sqlite3.Connection) -> list[LegDistribution]
         for row in rows
     ]
     return sorted(distributions, key=lambda d: (-d.metering_points, text_key(d.name)))
+
+
+@dataclass
+class LegBalance:
+    """How well one LEG's producing and consuming sides match each other.
+
+    Two different kinds of answer sit side by side here, and the difference
+    matters more than it looks. The metering point counts are available the
+    moment a LEG exists, but they are only a *proxy*: nine feed-in meters
+    beside twenty-six consumption meters says nothing about whether the sun
+    shone while anybody was drawing. The energy figures are the real answer
+    and need an import first, which is why both are shown and neither is
+    dropped.
+
+    Nothing here grades a LEG. The app used to recommend moving people
+    between LEGs and that was removed on purpose (see
+    `app.domain.participant_mix`): whether a mix is acceptable turns on
+    economics, on what the participants agree to and on what BKW confirms
+    per location, none of which is in this database. So this reports the
+    ratio and the measured share and leaves the reading of them to the
+    administrator.
+
+    Attributes:
+        leg_id: The LEG.
+        name: Its name.
+        producer_metering_points: Feed-in meters assigned to it.
+        consumer_metering_points: Consumption meters assigned to it.
+        consumption_kwh: Everything drawn in the LEG, over every imported
+            reading.
+        feed_in_kwh: Everything fed in, likewise.
+        shared_kwh: Of that, how much actually found a taker in the same
+            15-minute interval.
+    """
+
+    leg_id: int
+    name: str
+    producer_metering_points: int
+    consumer_metering_points: int
+    consumption_kwh: float
+    feed_in_kwh: float
+    shared_kwh: float
+
+    @property
+    def metering_points(self) -> int:
+        """Both directions together.
+
+        Returns:
+            The LEG's total metering point count.
+        """
+        return self.producer_metering_points + self.consumer_metering_points
+
+    @property
+    def producers_per_consumer(self) -> Optional[float]:
+        """Feed-in meters per consumption meter.
+
+        The one number that orders the LEGs on a single continuum, from
+        production-heavy through balanced to consumption-heavy.
+
+        Returns:
+            The quotient, `None` when there are no consumption meters at
+            all -- a LEG with producers and no consumers has no ratio, it
+            has a missing side, which `one_sided_note` states instead.
+        """
+        if self.consumer_metering_points == 0:
+            return None
+        return self.producer_metering_points / self.consumer_metering_points
+
+    @property
+    def one_sided_note(self) -> Optional[str]:
+        """The German statement of a missing side, if one is missing.
+
+        A fact rather than a judgement, and the reason it survived the
+        removal of the LEG recommendations: with one direction absent,
+        nothing can be shared in this LEG at all, whatever anybody's
+        economics look like. Same wording as
+        `app.domain.quality_checks.check_substation_area_one_sided`.
+
+        Returns:
+            The note, or `None` when both sides are present or the LEG is
+            still empty.
+        """
+        if self.producer_metering_points and self.consumer_metering_points:
+            return None
+        if not self.metering_points:
+            return None
+        return "nur Konsumenten" if self.producer_metering_points == 0 else "nur Produzenten"
+
+    @property
+    def has_readings(self) -> bool:
+        """Whether any reading was imported for this LEG.
+
+        Returns:
+            `True` if either direction delivered anything.
+        """
+        return bool(self.consumption_kwh or self.feed_in_kwh)
+
+    @property
+    def shared_share_of_production(self) -> Optional[float]:
+        """What percentage of the fed-in energy found a local taker.
+
+        This is the measured answer to "is this LEG well matched". The
+        remainder went to BKW instead of to a neighbour.
+
+        Returns:
+            The percentage, or `None` when nothing was fed in -- not 0,
+            because "no production" and "production nobody took" are
+            different statements.
+        """
+        if not self.feed_in_kwh:
+            return None
+        return self.shared_kwh / self.feed_in_kwh * 100
+
+    @property
+    def local_coverage(self) -> Optional[float]:
+        """What percentage of the drawn energy came from inside the LEG.
+
+        The same measurement read from the other side: high here means the
+        participants really are supplying each other.
+
+        Returns:
+            The percentage, or `None` when nothing was drawn.
+        """
+        if not self.consumption_kwh:
+            return None
+        return self.shared_kwh / self.consumption_kwh * 100
+
+
+def shared_energy_by_leg(connection: sqlite3.Connection) -> dict[int, tuple[float, float, float]]:
+    """Total consumption, feed-in and shared energy per LEG, over all readings.
+
+    **The shared figure is formed per 15-minute interval and per LEG, and
+    only then summed** -- the same rule `energy_series` and
+    `app.domain.distribution` use, and for the same reason: `min(total P,
+    total C)` would claim energy was shared when production happened at noon
+    and consumption in the evening. Per LEG as well as per interval, because
+    energy is only ever shared *within* one LEG; pooling first would invent
+    sharing between neighbours who have nothing to do with each other.
+
+    Deliberately over every imported reading rather than a chosen window:
+    the Statistik views that carry no time axis are snapshots, and a window
+    control here would be a widget promising something the page does not do.
+    The page says which span the figures cover.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        `{leg_id: (consumption_kwh, feed_in_kwh, shared_kwh)}`, holding only
+        the LEGs that have readings.
+    """
+    rows = connection.execute(
+        """
+        SELECT mp.leg_id AS leg_id,
+               r.timestamp AS ts,
+               SUM(CASE WHEN r.direction = ? THEN r.kwh ELSE 0 END) AS consumption,
+               SUM(CASE WHEN r.direction <> ? THEN r.kwh ELSE 0 END) AS feed_in
+        FROM readings r
+        JOIN metering_point mp ON mp.id = r.metering_point_id
+        WHERE mp.leg_id IS NOT NULL
+        GROUP BY mp.leg_id, r.timestamp
+        """,
+        (DIRECTION_CONSUMPTION, DIRECTION_CONSUMPTION),
+    ).fetchall()
+
+    totals: dict[int, list[float]] = {}
+    for row in rows:
+        consumption = row["consumption"] or 0.0
+        feed_in = row["feed_in"] or 0.0
+        bucket = totals.setdefault(row["leg_id"], [0.0, 0.0, 0.0])
+        bucket[0] += consumption
+        bucket[1] += feed_in
+        # min() per interval and per LEG, before anything is summed.
+        bucket[2] += min(consumption, feed_in)
+    return {leg_id: (values[0], values[1], values[2]) for leg_id, values in totals.items()}
+
+
+def leg_balance(connection: sqlite3.Connection) -> list[LegBalance]:
+    """How the LEGs compare, from production-heavy to consumption-heavy.
+
+    The metering point counts come from `distribution_by_leg`, not from a
+    second query of their own, so the Verteilung and the Ausgewogenheit
+    views can never disagree about how many meters a LEG holds.
+
+    Sorted on one continuum -- feed-in meters per consumption meter,
+    descending -- so both extremes are where the eye lands first and the
+    balanced LEGs sit in the middle. A LEG with no consumption meters has no
+    quotient and leads; one with no feed-in meters trails; an entirely empty
+    LEG comes last of all, since it is neither.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One `LegBalance` per LEG.
+    """
+    energy = shared_energy_by_leg(connection)
+    balances = []
+    for distribution in distribution_by_leg(connection):
+        consumption_kwh, feed_in_kwh, shared_kwh = energy.get(distribution.leg_id, (0.0, 0.0, 0.0))
+        balances.append(
+            LegBalance(
+                leg_id=distribution.leg_id,
+                name=distribution.name,
+                producer_metering_points=distribution.feed_in_metering_points,
+                consumer_metering_points=distribution.consumption_metering_points,
+                consumption_kwh=consumption_kwh,
+                feed_in_kwh=feed_in_kwh,
+                shared_kwh=shared_kwh,
+            )
+        )
+
+    def order(balance: LegBalance) -> tuple:
+        """Rank one LEG on the production-heavy to consumption-heavy scale.
+
+        Args:
+            balance: The LEG.
+
+        Returns:
+            A sort key; empty LEGs are pushed past every populated one.
+        """
+        if not balance.metering_points:
+            return (1, 0.0, text_key(balance.name))
+        ratio = balance.producers_per_consumer
+        # No consumers means no quotient, and it is the extreme end of the
+        # very scale this sorts on -- so it leads rather than being special.
+        return (0, -float("inf") if ratio is None else -ratio, text_key(balance.name))
+
+    return sorted(balances, key=order)

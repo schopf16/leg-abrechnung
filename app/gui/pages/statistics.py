@@ -1,5 +1,5 @@
-"""Statistik: four pages, one per theme -- Energie, Wachstum,
-Debitorenverlauf, Verteilung.
+"""Statistik: five pages, one per theme -- Energie, Wachstum,
+Debitorenverlauf, Verteilung, Ausgewogenheit.
 
 Four routes rather than four cards on one page. They started as cards, and
 that was still one page to scroll: a chart is worth a screen, and four of
@@ -43,8 +43,10 @@ from app.domain.period import (
     MONTH_NAMES_DE,
     shift_window_one_year,
 )
+from app.domain.production_capacity import format_factor, format_percent
 from app.domain.statistics import (
     distribution_by_leg,
+    leg_balance,
     energy_series,
     energy_unit,
     monthly_growth_counts,
@@ -406,6 +408,129 @@ def _render_distribution_panel() -> None:
         ).classes("w-full mt-4").props("dense")
 
 
+def _render_balance_panel() -> None:
+    """Draw the Ausgewogenheit view: how each LEG's two sides compare.
+
+    Two readings of one question, in the order they become available. The
+    bars compare the meter counts, which exist as soon as a LEG does. The
+    table adds the measured share of production that actually found a taker,
+    which needs an import and is the figure that really answers "is this LEG
+    well matched" -- a meter count says nothing about whether the sun shone
+    while anybody was drawing.
+
+    The app states both and grades neither. It once recommended moving
+    people between LEGs, and that was removed because presence is not
+    viability (see `app.domain.participant_mix`); a threshold for "good"
+    would be the same mistake wearing a percentage sign, since the decision
+    turns on economics, on what the participants agree to and on what BKW
+    confirms per location. So the LEGs are ordered on one continuum, from
+    production-heavy to consumption-heavy, and both extremes are where the
+    eye lands first.
+
+    Returns:
+        None.
+    """
+    with connection_scope() as connection:
+        balances = leg_balance(connection)
+
+    with _panel("Ausgewogenheit der LEGs"):
+        if not balances:
+            _empty_note("Noch keine LEG erfasst.")
+            return
+
+        populated = [balance for balance in balances if balance.metering_points]
+        if not populated:
+            _empty_note("Noch keine Messpunkte einer LEG zugewiesen.")
+            return
+
+        # Reversed: an ECharts category axis puts index 0 at the bottom, so
+        # the list has to be turned around for the production-heavy LEG to
+        # appear at the top -- the same order the table below reads in.
+        for_chart = list(reversed(populated))
+        ui.echart(
+            {
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                "legend": {"data": ["Produzenten", "Konsumenten"]},
+                "grid": {"left": "3%", "right": "4%", "bottom": "3%", "containLabel": True},
+                "xAxis": {"type": "value", "name": "Messpunkte", "minInterval": 1},
+                "yAxis": {"type": "category", "data": [b.name for b in for_chart]},
+                "series": [
+                    {
+                        "name": "Produzenten",
+                        "type": "bar",
+                        "data": [b.producer_metering_points for b in for_chart],
+                    },
+                    {
+                        "name": "Konsumenten",
+                        "type": "bar",
+                        "data": [b.consumer_metering_points for b in for_chart],
+                    },
+                ],
+            }
+        ).classes("w-full").style(_CHART_HEIGHT)
+
+        ui.table(
+            columns=[
+                {"name": "name", "label": "LEG", "field": "name", "align": "left"},
+                {"name": "producers", "label": "Produzenten", "field": "producers", "align": "right"},
+                {"name": "consumers", "label": "Konsumenten", "field": "consumers", "align": "right"},
+                {"name": "ratio", "label": "Produzenten je Konsument", "field": "ratio", "align": "right"},
+                {"name": "shared", "label": "Geteilt von Produktion", "field": "shared", "align": "right"},
+                {"name": "coverage", "label": "Lokal gedeckter Bezug", "field": "coverage", "align": "right"},
+            ],
+            rows=[_balance_row(balance) for balance in balances],
+            row_key="name",
+        ).classes("w-full mt-4").props("dense")
+
+        if any(balance.has_readings for balance in balances):
+            _empty_note("Energiewerte über alle importierten Messwerte.")
+        else:
+            _empty_note("Noch keine Messdaten importiert — nur die Messpunkte sind auswertbar.")
+
+
+def _balance_row(balance) -> dict:
+    """Build one row of the Ausgewogenheit table.
+
+    Args:
+        balance: One `app.domain.statistics.LegBalance`.
+
+    Returns:
+        The row dict the table renders.
+    """
+    if not balance.metering_points:
+        ratio_text = "keine Messpunkte"
+    elif balance.one_sided_note:
+        # A missing side is the more useful statement than the quotient it
+        # produces -- "nur Konsumenten" says more than "0,0", and with no
+        # consumers there is no quotient to print at all.
+        ratio_text = balance.one_sided_note
+    else:
+        ratio_text = format_factor(balance.producers_per_consumer)
+
+    return {
+        "name": balance.name,
+        "producers": balance.producer_metering_points,
+        "consumers": balance.consumer_metering_points,
+        "ratio": ratio_text,
+        "shared": _optional_percent(balance.shared_share_of_production),
+        "coverage": _optional_percent(balance.local_coverage),
+    }
+
+
+def _optional_percent(value) -> str:
+    """Format a percentage that may not exist yet.
+
+    Args:
+        value: The percentage, or `None` when its denominator was zero.
+
+    Returns:
+        The German-formatted percentage, or an em dash. Deliberately not
+        "0 %": nothing fed in and nothing shared of what was fed in are
+        different statements, and printing a zero would assert the second.
+    """
+    return "—" if value is None else format_percent(value)
+
+
 def _pie(title: str, data: list[dict], empty_message: str) -> None:
     """Draw one share-of-whole pie, or say why there is none.
 
@@ -511,10 +636,26 @@ def statistics_receivables_page() -> None:
 
 @ui.page("/statistics/distribution")
 def statistics_distribution_page() -> None:
-    """Render the Verteilung view: how the LEGs compare.
+    """Render the Verteilung view: how big each LEG is.
 
     Returns:
         None.
     """
     with page_frame("/statistics/distribution", "Statistik: Verteilung"):
         _render_distribution_panel()
+
+
+@ui.page("/statistics/balance")
+def statistics_balance_page() -> None:
+    """Render the Ausgewogenheit view: how each LEG's two sides compare.
+
+    A page of its own rather than a fifth card on Verteilung: that view
+    answers how *big* each LEG is, this one whether each LEG is *matched*,
+    and stacking two charts made the one you wanted the one you had to
+    scroll past.
+
+    Returns:
+        None.
+    """
+    with page_frame("/statistics/balance", "Statistik: Ausgewogenheit"):
+        _render_balance_panel()
