@@ -12,6 +12,13 @@ than no tick.
 the promise the suggestion list makes, and it is exactly the kind of thing
 `2a33e40` broke for nine days while every page still rendered: the handlers
 are therefore driven directly rather than looked at.
+
+**The question belongs at the field.** The first build asked it in a card
+above the Standorte and Personen lists, where a line read as a name and
+"Meinten Sie: Untere Zollgasse?" with no sight of which field was meant or
+what stood in it. The administrator could not answer that, and was right.
+The lists now only mark a record; the hint is rendered beside the value it
+would replace, and the tests below check both halves.
 """
 
 from nicegui import Client, ui
@@ -23,9 +30,14 @@ from app.domain.address_check import (
     address_signature,
     find_address_issues,
 )
+from app.domain.address_check import issue_ids
 from app.domain.address_lookup import FIELD_LOCALITY, suggest_addresses
-from app.gui.address_hints import apply_suggestion
-from app.gui.address_input import SuggestionBox
+from app.gui.address_input import (
+    DISMISS_ADDRESS,
+    DISMISS_LOCALITY,
+    SuggestionBox,
+    store_dismissals,
+)
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models.person import Person
@@ -235,14 +247,54 @@ def test_a_persons_dismissal_works_the_same_way(address_register):
     assert _issues() == []
 
 
-# --- The click path on the suggestion list --------------------------------
+# --- The marker on the lists ----------------------------------------------
 
 
-def _fields(register):
-    """Build four inputs wired to a `SuggestionBox`.
+def test_an_affected_record_is_marked(address_register):
+    """The list says "look at this one" and nothing more.
+
+    It cannot say more honestly: a row has no room to show which field is
+    wrong and what stands in it, and a suggestion without its subject is
+    unanswerable.
+    """
+    bad = _site(locality="Grossgemeinde")
+    good = _site()
+
+    with connection_scope() as connection:
+        marked = issue_ids(connection, KIND_SITE)
+
+    assert bad in marked
+    assert good not in marked
+
+
+def test_persons_are_marked_separately_from_sites(address_register):
+    """Each list asks only about its own records."""
+    site_id = _site(locality="Grossgemeinde")
+    person_id = _person(street="Nirgendweg")
+
+    with connection_scope() as connection:
+        assert issue_ids(connection, KIND_SITE) == {site_id}
+        assert issue_ids(connection, KIND_PERSON) == {person_id}
+
+
+def test_nothing_is_marked_without_a_register():
+    """No register, no claim about anybody's address."""
+    _site(locality="Grossgemeinde")
+
+    with connection_scope() as connection:
+        assert issue_ids(connection, KIND_SITE) == set()
+
+
+# --- The dialog: suggestions and hints at the field ------------------------
+
+
+def _fields(register, *, with_hints: bool = False):
+    """Build the address inputs of a dialog, wired to a `SuggestionBox`.
 
     Args:
         register: Path of the test register.
+        with_hints: Whether to attach the hint containers, as the real
+            dialogs do.
 
     Returns:
         `(box, street, house_number, postal_code, locality)`.
@@ -251,9 +303,19 @@ def _fields(register):
     with client:
         street = ui.input("Adresse")
         house_number = ui.input("Hausnummer")
+        street_hint = ui.column() if with_hints else None
         postal_code = ui.input("PLZ")
         locality = ui.input("Ort")
-        box = SuggestionBox(street, postal_code, locality, house_number, path=register)
+        locality_hint = ui.column() if with_hints else None
+        box = SuggestionBox(
+            street,
+            postal_code,
+            locality,
+            house_number,
+            street_hint=street_hint,
+            locality_hint=locality_hint,
+            path=register,
+        )
     return box, street, house_number, postal_code, locality
 
 
@@ -270,11 +332,7 @@ def test_clicking_a_suggestion_fills_every_field(address_register):
 
 
 def test_without_a_click_the_typed_text_survives(address_register):
-    """The other half, and the reason this is an input and not a select.
-
-    An address the register does not know has to remain typeable, so
-    nothing may be written until a suggestion is actually chosen.
-    """
+    """The other half, and the reason this is an input and not a select."""
     box, street, house_number, postal_code, locality = _fields(address_register)
     street.value = "Eigenerweg"
     house_number.value = "77"
@@ -285,11 +343,44 @@ def test_without_a_click_the_typed_text_survives(address_register):
     assert (postal_code.value, locality.value) in ((None, None), ("", ""))
 
 
+def test_escape_clears_the_list_without_touching_the_text(address_register):
+    """The list floats over the form, so it has to be dismissable.
+
+    An inline list resized the dialog on every keystroke, which is exactly
+    when the administrator is reading what they type.
+    """
+    box, street, _, _, _ = _fields(address_register)
+    street.value = "Erstweg"
+    box.update()
+    assert box.suggestions
+
+    box.hide()
+
+    assert box.suggestions == []
+    assert street.value == "Erstweg"
+
+
+def test_a_postal_code_already_in_the_form_ranks_the_suggestions(address_register):
+    """Typing a street with the postal code filled in offered six streets
+    from other cantons above the one that fitted.
+
+    Ranked rather than filtered: a street really can sit behind a different
+    postal code, and that case is what `verify` reports -- hiding it would
+    make the correction unreachable.
+    """
+    box, street, _, postal_code, _ = _fields(address_register)
+    postal_code.value = "3065"
+    street.value = "Drittweg"
+
+    box.update()
+
+    assert box.suggestions[0].postal_code == "3065"
+
+
 def test_a_locality_suggestion_leaves_the_street_alone(address_register):
     """Picking "3048 Musterdorf" must not wipe a street already typed."""
-    box, street, house_number, postal_code, locality = _fields(address_register)
+    box, street, _, postal_code, locality = _fields(address_register)
     street.value = "Eigenerweg"
-    box.update_locality(postal_code)
     postal_code.value = "3048"
     box.update_locality(postal_code)
 
@@ -299,74 +390,115 @@ def test_a_locality_suggestion_leaves_the_street_alone(address_register):
     assert (postal_code.value, locality.value) == ("3048", "Musterdorf")
 
 
-def test_the_number_field_narrows_the_suggestions(address_register):
-    """Typing the number in its own field has to work like typing it inline."""
-    box, street, house_number, _, _ = _fields(address_register)
-    street.value = "Erstweg"
-    house_number.value = "31"
+def test_the_hint_appears_for_the_value_in_the_field(address_register):
+    """Beside the value it would replace, which is the whole correction."""
+    box, street, house_number, postal_code, locality = _fields(address_register, with_hints=True)
+    street.value, house_number.value = "Erstweg", "4"
+    postal_code.value, locality.value = "3048", "Grossgemeinde"
 
-    box.update()
+    findings = box.findings()
 
-    assert [s.house_number for s in box.suggestions] == ["31.1"]
+    assert [(f.field, f.suggestion) for f in findings] == [(FIELD_LOCALITY, "Musterdorf")]
 
 
-def test_suggestions_are_empty_without_a_register(tmp_path):
-    """The field still works; it simply offers nothing."""
-    box, street, _, _, _ = _fields(tmp_path / "gibt-es-nicht.sqlite3")
+def test_yes_writes_the_field_the_finding_is_about(address_register):
+    """A postal-code finding once landed in the street field."""
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Drittweg", "1"
+    postal_code.value, locality.value = "3048", "Musterdorf"
+    finding = box.findings()[0]
+
+    box.accept(finding)
+
+    assert postal_code.value == "3065"
+    assert street.value == "Drittweg", "die Strasse war richtig und bleibt"
+
+
+def test_yes_corrects_a_locality(address_register):
+    """The ordinary case, so the mapping is checked both ways."""
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Erstweg", "4"
+    postal_code.value, locality.value = "3048", "Grossgemeinde"
+
+    box.accept(box.findings()[0])
+
+    assert locality.value == "Musterdorf"
+
+
+def test_no_silences_the_hint_for_that_exact_text(address_register):
+    """One click has to settle it while the dialog is open."""
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Postfach", ""
+    postal_code.value, locality.value = "3048", "Musterdorf"
+
+    box.dismiss(box.findings()[0])
+
+    assert box.findings() == []
+    assert box.dismissals[DISMISS_ADDRESS] == address_signature("Postfach", "", "3048")
+
+
+def test_changing_the_text_after_a_no_asks_again(address_register):
+    """The dismissal is the value, so it expires when the value does."""
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Postfach", ""
+    postal_code.value, locality.value = "3048", "Musterdorf"
+    box.dismiss(box.findings()[0])
+    assert box.findings() == []
+
+    street.value = "Anderswegli"
+
+    assert [f.field for f in box.findings()] == ["street"]
+
+
+def test_a_dismissal_reaches_the_database_on_save(address_register):
+    """The dialog collects it; saving writes it.
+
+    After the save rather than inside it: a new record has no id while the
+    dialog is open.
+    """
+    site_id = _site(street="Postfach")
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Postfach", "4"
+    postal_code.value, locality.value = "3048", "Musterdorf"
+    box.dismiss(box.findings()[0])
+
+    with connection_scope() as connection:
+        store_dismissals(connection, box, site_id, "site")
+
+    assert _issues() == []
+
+
+def test_a_locality_dismissal_writes_the_locality_column(address_register):
+    """Two columns, because the two findings are independent."""
+    site_id = _site(locality="Grossgemeinde")
+    box, street, house_number, postal_code, locality = _fields(address_register)
+    street.value, house_number.value = "Erstweg", "4"
+    postal_code.value, locality.value = "3048", "Grossgemeinde"
+    box.dismiss(box.findings()[0])
+    assert DISMISS_LOCALITY in box.dismissals
+
+    with connection_scope() as connection:
+        store_dismissals(connection, box, site_id, "site")
+        assert site_repo.get(connection, site_id).locality_confirmed == "Grossgemeinde"
+
+    assert _issues() == []
+
+
+def test_suggestions_and_hints_are_empty_without_a_register(tmp_path):
+    """The fields still work; they simply offer nothing."""
+    box, street, _, _, _ = _fields(tmp_path / "gibt-es-nicht.sqlite3", with_hints=True)
     street.value = "Erstweg"
 
     box.update()
 
     assert box.suggestions == []
+    assert box.findings() == []
 
 
 def test_the_suggestion_source_is_the_shared_lookup(address_register):
     """One mechanism, not a second search living in the widget."""
-    box, street, _, _, _ = _fields(address_register)
+    box, street, _, postal_code, _ = _fields(address_register)
     street.value = "Erstweg"
     box.update()
 
-    assert box.suggestions == suggest_addresses("Erstweg", path=address_register)
-
-
-def test_yes_writes_the_field_the_finding_is_about(address_register):
-    """A postal-code finding once landed in the street field.
-
-    An "everything that is not the locality is the street" branch invites
-    exactly that, which is why the mapping is explicit.
-    """
-    site_id = _site(street="Drittweg", number="1", locality="Beispiel Dorf")
-    with connection_scope() as connection:
-        site = site_repo.get(connection, site_id)
-        site.postal_code = "3048"
-        site_repo.update(connection, site)
-
-    issue = next(i for i in _issues() if i.object_id == site_id)
-    apply_suggestion(issue)
-
-    with connection_scope() as connection:
-        corrected = site_repo.get(connection, site_id)
-    assert corrected.postal_code == "3065"
-    assert corrected.street == "Drittweg", "die Strasse war richtig und bleibt"
-
-
-def test_yes_corrects_a_locality(address_register):
-    """The ordinary case, so the mapping is checked in both directions."""
-    site_id = _site(locality="Grossgemeinde")
-
-    apply_suggestion(next(i for i in _issues() if i.object_id == site_id))
-
-    with connection_scope() as connection:
-        assert site_repo.get(connection, site_id).municipality == "Musterdorf"
-
-
-def test_yes_does_nothing_when_there_is_nothing_to_offer(address_register):
-    """A hint without a suggestion carries only a Nein, so Ja must be inert."""
-    site_id = _site(street="Nirgendweg")
-    issue = next(i for i in _issues() if i.object_id == site_id)
-    assert issue.finding.suggestion == ""
-
-    apply_suggestion(issue)
-
-    with connection_scope() as connection:
-        assert site_repo.get(connection, site_id).street == "Nirgendweg"
+    assert box.suggestions == suggest_addresses("Erstweg", path=address_register, postal_code="")

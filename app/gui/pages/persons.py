@@ -17,8 +17,7 @@ from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
-from app.domain.address_check import KIND_PERSON
-from app.gui.address_hints import render_address_hints
+from app.domain.address_check import KIND_PERSON, issue_ids
 from app.gui.navigation import page_frame
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
@@ -314,13 +313,11 @@ def persons_page() -> None:
             only_cooperative_switch = ui.switch("Nur Genossenschafter")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
-        # Above the list on purpose: a list is where work gets done, and the
-        # Austritte page already carries its action there. `refresh` is
-        # defined further down and resolved when a button is clicked, not
-        # now.
-        render_address_hints(KIND_PERSON, lambda: refresh())
-
         list_container = ui.column().classes("w-full gap-2 mt-2")
+
+        #: Person ids the address register disagrees with, refreshed with the
+        #: list so a correction makes the marker disappear.
+        address_warnings: set[int] = set()
 
         all_entries: list[tuple[Person, str]] = []
         visible_persons: list[Person] = []
@@ -392,7 +389,15 @@ def persons_page() -> None:
                         ui.label("Papierrechnung: " + ("ja" if person.paper_invoice else "nein")).classes(
                             "text-grey-7"
                         )
-                    with ui.row().classes("gap-1 ml-auto"):
+                    with ui.row().classes("gap-1 ml-auto items-center"):
+                        if person.id in address_warnings:
+                            # A marker, not a question: the list cannot show
+                            # what a suggestion would replace, so it only
+                            # says "look at this one". The question is asked
+                            # at the field in the edit dialog.
+                            ui.icon("warning", color="warning").tooltip(
+                                "Adresse weicht vom amtlichen Verzeichnis ab"
+                            )
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
                         ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
                         if person.active:
@@ -438,6 +443,8 @@ def persons_page() -> None:
             """
             nonlocal all_entries, memberships_by_person
             with connection_scope() as connection:
+                address_warnings.clear()
+                address_warnings.update(issue_ids(connection, KIND_PERSON))
                 persons = person_repo.list_all(connection)
                 all_entries = [(p, _search_text_for_person(connection, p)) for p in persons]
                 # Today's roll, strictly -- see `app.models.

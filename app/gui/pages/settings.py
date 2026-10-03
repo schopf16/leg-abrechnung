@@ -52,16 +52,24 @@ def settings_page() -> None:
 
         with ui.card().classes("w-full max-w-lg"):
             street = ui.input("Strasse", value=current.address_street).classes("w-full")
+            street_hint = ui.column().classes("w-full gap-0")
             with ui.row().classes("w-full gap-2"):
                 zip_code = ui.input("PLZ", value=current.address_zip).classes("w-24")
                 city = ui.input("Ort", value=current.address_city).classes("flex-grow")
+            locality_hint = ui.column().classes("w-full gap-0")
             country = ui.input("Land", value=current.address_country or "CH").classes("w-full")
             # The most consequential address in the app: it is the creditor
             # on every QR-bill (app/pdf/qr_bill_render.py) and the letterhead
             # of every document, entered once and never looked at again.
             # Street and house number share one field here, so no separate
             # number input is passed.
-            SuggestionBox(street, zip_code, city)
+            SuggestionBox(
+                street,
+                zip_code,
+                city,
+                street_hint=street_hint,
+                locality_hint=locality_hint,
+            )
             qr_iban = ui.input("QR-IBAN", value=current.qr_iban).classes("w-full")
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 

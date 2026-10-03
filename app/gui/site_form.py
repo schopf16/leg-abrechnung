@@ -10,7 +10,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.gui.address_input import SuggestionBox
+from app.gui.address_input import SuggestionBox, store_dismissals
 from app.gui.safe_notify import safe_notify
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
@@ -85,6 +85,7 @@ def open_site_form(
                 .classes("w-24")
                 .props("debounce=300")
             )
+        street_hint = ui.column().classes("w-full gap-0")
         with ui.row().classes("w-full gap-2"):
             postal_code = (
                 ui.input("PLZ", value=_initial(existing, "postal_code", prefill, "postal_code"))
@@ -94,10 +95,20 @@ def open_site_form(
             municipality = ui.input(
                 "Ort", value=_initial(existing, "municipality", prefill, "municipality")
             ).classes("flex-grow")
-        # Suggestions from the official register, if one has been downloaded.
-        # A plain input with a list under it, never a select: an address the
-        # register does not know still has to be typeable.
-        SuggestionBox(street, postal_code, municipality, house_number)
+        locality_hint = ui.column().classes("w-full gap-0")
+        # Suggestions and hints from the official register, if one has been
+        # downloaded. A plain input with a list under it, never a select: an
+        # address the register does not know still has to be typeable. The
+        # hints sit under their own row, so the value a suggestion would
+        # replace is visible right above it.
+        suggestions = SuggestionBox(
+            street,
+            postal_code,
+            municipality,
+            house_number,
+            street_hint=street_hint,
+            locality_hint=locality_hint,
+        )
         duplicate_warning = ui.label("").classes("text-warning")
         address_detail = ui.input(
             "Lage (optional, z. B. Stockwerk)", value=existing.address_detail if existing else ""
@@ -174,6 +185,7 @@ def open_site_form(
                     )
                     new_id = site_repo.create(connection, saved)
                     saved.id = new_id
+                store_dismissals(connection, suggestions, saved.id, "site")
             dialog.close()
             # Notify before any caller-side refresh() -- see
             # app.gui.safe_notify for why (a caller may tear down this

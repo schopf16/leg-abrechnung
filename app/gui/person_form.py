@@ -16,7 +16,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.gui.address_input import SuggestionBox
+from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.iban_validation import normalize_iban, validate_iban
 from app.gui.cooperative_form import CooperativeEditor
 from app.gui.safe_notify import safe_notify
@@ -118,6 +118,7 @@ def open_person_form(
                 "Hausnummer",
                 value=_initial(existing, "billing_house_number", prefill, "house_number"),
             ).classes("w-24")
+        street_hint = ui.column().classes("w-full gap-0")
         with ui.row().classes("w-full gap-2"):
             postal_code = ui.input(
                 "PLZ", value=_initial(existing, "billing_postal_code", prefill, "postal_code")
@@ -128,11 +129,20 @@ def open_person_form(
             country = ui.input(
                 "Land", value=_initial(existing, "billing_country", prefill, "country", "CH")
             ).classes("w-24")
+        locality_hint = ui.column().classes("w-full gap-0")
         # Suggestions on the billing address too. A PO box or a foreign
         # address is legitimate and the register cannot know it, but the
         # administrator decided that catching the many ordinary typos beats
-        # ignoring the check over the occasional PO box.
-        SuggestionBox(street, postal_code, city, house_number)
+        # ignoring the check over the occasional PO box: one "Nein" retires
+        # a PO box for good.
+        suggestions = SuggestionBox(
+            street,
+            postal_code,
+            city,
+            house_number,
+            street_hint=street_hint,
+            locality_hint=locality_hint,
+        )
 
         ui.separator().classes("my-2")
         # Read-only on purpose, but shown here because this dialog is where
@@ -308,6 +318,7 @@ def open_person_form(
                     )
                     new_id = person_repo.create(connection, saved)
                     saved.id = new_id
+                store_dismissals(connection, suggestions, saved.id, "person")
             # Applied after the person is saved, because a membership needs
             # a person to hang on -- for a new one the id only exists now.
             cooperative_warnings: list[str] = []

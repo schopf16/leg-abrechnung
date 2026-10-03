@@ -212,6 +212,7 @@ def suggest_addresses(
     query: str,
     limit: int = DEFAULT_LIMIT,
     path: Optional[Path] = None,
+    postal_code: str = "",
 ) -> list[AddressSuggestion]:
     """Narrow the register down to what has been typed so far.
 
@@ -228,6 +229,13 @@ def suggest_addresses(
         query: What the administrator has typed.
         limit: Maximum number of suggestions.
         path: The register file.
+        postal_code: A postal code the form already holds. Matching streets
+            are offered **first** -- without this, typing "untere z" with
+            3063 Ittigen already filled in buried the one relevant street
+            under six from other cantons. Ranked rather than filtered: a
+            street really can sit behind a different postal code, and that
+            case is exactly what `verify` reports, so hiding it here would
+            make the correction unreachable.
 
     Returns:
         Up to `limit` suggestions, best match first; empty when the query is
@@ -235,6 +243,7 @@ def suggest_addresses(
     """
     street_text, house_number = split_query(query)
     folded = fold_for_sort(street_text)
+    code = postal_code.strip()
     if len(folded) < 2:
         return []
 
@@ -248,11 +257,12 @@ def suggest_addresses(
                 SELECT s.street, a.number, s.postal_code, s.locality
                 FROM street s JOIN address a ON a.street_id = s.id
                 WHERE s.street_fold LIKE ? AND a.number_fold LIKE ?
-                ORDER BY a.official DESC, (a.status = 'real') DESC,
+                ORDER BY (s.postal_code = ?) DESC,
+                         a.official DESC, (a.status = 'real') DESC,
                          LENGTH(s.street_fold), s.street_fold, LENGTH(a.number), a.number
                 LIMIT ?
                 """,
-                (f"{folded}%", f"{fold_for_sort(house_number)}%", limit),
+                (f"{folded}%", f"{fold_for_sort(house_number)}%", code, limit),
             ).fetchall()
             return [
                 AddressSuggestion(r["street"], r["number"], r["postal_code"], r["locality"]) for r in rows
@@ -263,10 +273,10 @@ def suggest_addresses(
             SELECT street, postal_code, locality
             FROM street
             WHERE street_fold LIKE ?
-            ORDER BY LENGTH(street_fold), street_fold, postal_code
+            ORDER BY (postal_code = ?) DESC, LENGTH(street_fold), street_fold, postal_code
             LIMIT ?
             """,
-            (f"{folded}%", limit),
+            (f"{folded}%", code, limit),
         ).fetchall()
         if not rows:
             # Only now the slower contains-match: a leading wildcard cannot
@@ -277,10 +287,10 @@ def suggest_addresses(
                 SELECT street, postal_code, locality
                 FROM street
                 WHERE street_fold LIKE ?
-                ORDER BY LENGTH(street_fold), street_fold, postal_code
+                ORDER BY (postal_code = ?) DESC, LENGTH(street_fold), street_fold, postal_code
                 LIMIT ?
                 """,
-                (f"%{folded}%", limit),
+                (f"%{folded}%", code, limit),
             ).fetchall()
         return [AddressSuggestion(r["street"], "", r["postal_code"], r["locality"]) for r in rows]
     except sqlite3.Error:
