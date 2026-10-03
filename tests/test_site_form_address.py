@@ -186,3 +186,31 @@ def test_the_dialog_works_without_a_register():
 
     assert _suggestions(client) == 0
     assert _hints(client) == []
+
+
+# --- Getting out of the way -----------------------------------------------
+
+
+def test_the_cursor_starts_in_the_address_field(address_register):
+    """So the dialog can be typed into without reaching for the mouse."""
+    fields = _fields(_dialog())
+
+    assert fields["Adresse"]._props.get("autofocus") is True
+    assert all(
+        element._props.get("autofocus") is not True for label, element in fields.items() if label != "Adresse"
+    ), "genau ein Feld darf den Fokus beanspruchen"
+
+
+def test_the_address_fields_do_not_delay_the_lookup(address_register):
+    """Typing a street quickly and stopping left the list empty until
+    another key was pressed seconds later.
+
+    The dialog carried `debounce=300` of its own for the duplicate check and
+    the suggestion box added a second delay on top. Two stacked delays are
+    not worth reasoning about, and the lookup is an indexed prefix query
+    over 197'000 streets -- there is nothing to spare the machine.
+    """
+    fields = _fields(_dialog())
+
+    for label in ("Adresse", "Hausnummer", "PLZ", "Ort"):
+        assert fields[label]._props.get("debounce") in (0, "0"), label

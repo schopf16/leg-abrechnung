@@ -88,10 +88,14 @@ def open_person_form(
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
         ui.label("Person bearbeiten" if existing else "Neue Person").classes("text-lg font-bold")
-        company = ui.input(
-            "Firma (optional -- leer lassen für eine Privatperson)",
-            value=_initial(existing, "company", prefill, "company"),
-        ).classes("w-full")
+        company = (
+            ui.input(
+                "Firma (optional -- leer lassen für eine Privatperson)",
+                value=_initial(existing, "company", prefill, "company"),
+            )
+            .classes("w-full")
+            .props("autofocus")
+        )
         ui.label(
             "Vorname/Nachname: der Person selbst, oder der "
             "Ansprechsperson bei einer Firma (kann bei einer reinen "

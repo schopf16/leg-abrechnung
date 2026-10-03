@@ -90,10 +90,17 @@ def open_metering_point_form(
             identifier_input = ui.input("Identifikator (11-stellig)", value=default_identifier).classes(
                 "flex-grow"
             )
-        metering_point_number_input = ui.input(
-            "Messpunktnummer (wird rechtsbündig auf 20 Stellen mit führenden Nullen aufgefüllt)",
-            value=default_metering_point_number,
-        ).classes("w-full")
+        # Not the first field on screen: Land and Identifikator carry
+        # defaults from the settings and are rarely touched, so starting the
+        # cursor there would mean two tabs before anything can be typed.
+        metering_point_number_input = (
+            ui.input(
+                "Messpunktnummer (wird rechtsbündig auf 20 Stellen mit führenden Nullen aufgefüllt)",
+                value=default_metering_point_number,
+            )
+            .classes("w-full")
+            .props("autofocus")
+        )
         designation_preview = ui.label("").classes("font-mono text-caption text-grey-8")
 
         def update_preview() -> None:
