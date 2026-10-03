@@ -314,7 +314,12 @@ def persons_page() -> None:
             # Scrolling 91 cards to find the handful that are marked is the
             # work this saves. Named after what it shows, not after the
             # register, because that is what the reader is looking for.
+            #
+            # Hidden while there is nothing to filter: a control that can
+            # only ever empty the list is clutter, and the filter row
+            # already carries three.
             only_address_issues_switch = ui.switch("Nur fehlerhafte Adressen")
+            only_address_issues_switch.visible = False
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -465,6 +470,13 @@ def persons_page() -> None:
                     for m in cooperative_membership_repo.list_all(connection)
                     if m.covers(date.today())
                 }
+            # A control that can only ever empty the list is clutter, and the
+            # filter row already carries three.
+            only_address_issues_switch.visible = bool(address_warnings)
+            if not address_warnings:
+                # Correcting the last one must not leave the list filtered
+                # down to nothing by a switch that is no longer on screen.
+                only_address_issues_switch.value = False
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
