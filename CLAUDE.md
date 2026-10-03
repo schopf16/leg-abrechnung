@@ -877,6 +877,18 @@ state on the page that started it would vanish the moment the administrator
 navigated away, which is the whole thing being fixed. A second click finds
 the phase set and returns.
 
+Yielding is not enough on its own, and measuring showed where. The read loop
+hands back control every 46 ms (95th percentile 55 ms), but one block ran
+**2'070 ms**: `CREATE INDEX idx_address_lookup` over 3.3 million rows, a
+single SQLite statement that cannot be broken up from Python. That is past
+the one second NiceGUI allows the browser to answer a state query, and it
+filled the log with `TimeoutError: JavaScript did not respond within 1.0 s`
+while an update ran. So `build_register` stops before indexing and
+`finalise_register` does the indexing and the swap, run with
+`asyncio.to_thread` -- SQLite releases the GIL while it works, so a thread
+is all it takes. Measured again afterwards: longest block 179 ms, worst
+delay to a waiting task 243 ms.
+
 Measured by running it: 76 s for the whole click (16 s download of 143 MB,
 then the parse of 3'303'418 rows), and **148 MB** on disk -- 358 MB if
 street, locality and municipality were repeated per row instead of held in a

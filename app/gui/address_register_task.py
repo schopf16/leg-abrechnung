@@ -37,6 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 #: Phase names, also used as the German prefix of the header line.
 PHASE_DOWNLOAD = "Herunterladen"
 PHASE_PARSE = "Verarbeiten"
+PHASE_FINISH = "Abschliessen"
 
 
 @dataclass
@@ -135,6 +136,15 @@ async def run_update(
             # The one line that keeps the window usable: hand control back
             # to the event loop between batches of rows.
             await asyncio.sleep(0)
+
+        # In a thread, not here: indexing is a single 1.8-second SQLite
+        # statement that no amount of yielding can break up, and it blocked
+        # the loop long enough for NiceGUI's one-second browser round trips
+        # to time out. SQLite releases the GIL while it works, so a thread
+        # is enough.
+        STATE.phase = PHASE_FINISH
+        STATE.progress = 1.0
+        await asyncio.to_thread(address_register.finalise_register, target, asset.data_date)
         STATE.finished = True
         return True
     except AddressRegisterError as exc:

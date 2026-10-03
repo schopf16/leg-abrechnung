@@ -332,6 +332,13 @@ def build_register(
             replaced only once the new one is complete.
         data_date: swisstopo's publication date, stored for display.
 
+    Leaves the finished rows in a scratch file **without indexes**;
+    `finalise_register` adds those and swaps the file into place. The split
+    exists because `CREATE INDEX` over 3.3 million rows is one uninterruptible
+    1.8-second statement -- long enough to miss the one second NiceGUI allows
+    the browser for a state query, which showed up as TimeoutErrors in the
+    log while an update ran.
+
     Yields:
         Progress from 0.0 to 1.0, based on bytes read from the ZIP member.
 
@@ -414,27 +421,60 @@ def build_register(
 
                 if pending:
                     db.executemany("INSERT INTO address VALUES (?, ?, ?, ?, ?)", pending)
-
-                db.executescript(_INDEXES)
-                db.executemany(
-                    "INSERT INTO meta (key, value) VALUES (?, ?)",
-                    [
-                        ("data_date", data_date.isoformat() if data_date else ""),
-                        ("downloaded_at", datetime.now(timezone.utc).isoformat(timespec="seconds")),
-                    ],
-                )
                 db.commit()
             finally:
                 db.close()
-
-        # Only now is the old register touched: a failure above leaves
-        # whatever was working in place.
-        target.unlink(missing_ok=True)
-        scratch.replace(target)
         yield 1.0
     except zipfile.BadZipFile as exc:
         scratch.unlink(missing_ok=True)
         raise AddressRegisterError(f"Die heruntergeladene Datei ist kein Archiv: {exc}") from exc
+    except BaseException:
+        scratch.unlink(missing_ok=True)
+        raise
+
+
+def finalise_register(
+    target: Optional[Path] = None,
+    data_date: Optional[date] = None,
+) -> None:
+    """Index the freshly built register and swap it into place.
+
+    Kept out of `build_register` so a caller can run it in a thread: the
+    address index is one 1.8-second SQLite statement, and SQLite releases
+    the GIL while it works, so a thread is all it takes to keep the window
+    responsive through it. Everything here opens its own connection, because
+    a `sqlite3.Connection` belongs to the thread that created it.
+
+    Args:
+        target: Where the finished register goes.
+        data_date: swisstopo's publication date, stored for display.
+
+    Raises:
+        AddressRegisterError: If no scratch file is waiting.
+    """
+    target = target if target is not None else ADDRESS_REGISTER_PATH
+    scratch = target.with_suffix(".building")
+    if not scratch.exists():
+        raise AddressRegisterError("Es liegt kein fertig gelesenes Register bereit.")
+    try:
+        db = sqlite3.connect(scratch)
+        try:
+            db.executescript("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")
+            db.executescript(_INDEXES)
+            db.executemany(
+                "INSERT INTO meta (key, value) VALUES (?, ?)",
+                [
+                    ("data_date", data_date.isoformat() if data_date else ""),
+                    ("downloaded_at", datetime.now(timezone.utc).isoformat(timespec="seconds")),
+                ],
+            )
+            db.commit()
+        finally:
+            db.close()
+        # Only now is the old register touched: a failure anywhere above
+        # leaves whatever was working in place.
+        target.unlink(missing_ok=True)
+        scratch.replace(target)
     except BaseException:
         scratch.unlink(missing_ok=True)
         raise
