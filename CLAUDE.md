@@ -804,9 +804,33 @@ Nein, and nothing else -- no severity, no explanation of why the app is
 asking. A typo, the political municipality and a PO box all look the same on
 screen; the difference stays inside `address_lookup`. Where the register
 holds nothing close enough, the line is "Nicht im amtlichen Verzeichnis."
-with only a Nein. The hints sit on the Standorte and Personen **lists**,
-following the Austritte page, which also puts its one action on the
-worklist; the dashboard states the fact and links there.
+with only a Nein.
+
+**The question is asked at the field, and only there.** The first build put
+it in a card above the Standorte and Personen lists, reasoning from the
+Austritte page, which does carry its one action on the worklist. That
+reasoning was wrong: Austritte shows *what* is being removed, while this
+showed a name and a suggestion with no sight of which field was meant or
+what stood in it. The administrator's verdict -- "ich sehe ja gar nicht bei
+was?" -- is the correct one, and the card is gone. The lists now render a
+warning triangle beside the eye (`issue_ids`), which says "look at this one"
+and claims nothing more; the dashboard states the fact and links there; and
+`app/gui/address_input.py` renders the question directly under the row
+holding the value it would replace.
+
+A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
+written by `store_dismissals` **after** the record is saved -- a new record
+has no id while the dialog is open.
+
+**The suggestion list floats over the form** (a `ui.menu` anchored to the
+field, dismissable with Escape) rather than sitting in the layout, where it
+resized the dialog on every keystroke -- distracting at exactly the moment
+the administrator is reading what they type. And a postal code already in
+the form **ranks** the street suggestions: without that, typing a street
+with "3063 Ittigen" filled in offered six streets from other cantons above
+the one that fitted. Ranked, not filtered, because a street really can sit
+behind a different postal code -- that is what `FIELD_POSTAL_CODE` reports,
+and filtering would make the correction unreachable.
 
 **Nein stores the confirmed value** (migration 51:
 `site.address_confirmed`/`locality_confirmed`,

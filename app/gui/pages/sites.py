@@ -13,8 +13,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.address_check import KIND_SITE
-from app.gui.address_hints import render_address_hints
+from app.domain.address_check import KIND_SITE, issue_ids
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
@@ -96,12 +95,13 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
     return name, is_future
 
 
-def _to_row(site: Site, substation_areas: dict) -> dict:
+def _to_row(site: Site, substation_areas: dict, warned: set[int]) -> dict:
     """Convert a `site` into a row dict for the NiceGUI table.
 
     Args:
         site: site to convert.
         substation areas: Preloaded `{substation_area_id: substation area}` lookup.
+        warned: Site ids whose address the official register disagrees with.
 
     Returns:
         A dict with the fields required by `COLUMNS`, plus a hidden
@@ -125,6 +125,10 @@ def _to_row(site: Site, substation_areas: dict) -> dict:
         "plz_municipality": f"{site.postal_code} {site.municipality}".strip(),
         "address_detail": site.address_detail,
         "substation_area": substation_area_name,
+        # Only a marker. What is wrong and what is proposed is shown at the
+        # field in the edit dialog, where the current value is visible; a
+        # list row cannot say what a suggestion would replace.
+        "address_warning": site.id in warned,
         "_search": search_text,
         # Kept unformatted alongside the display fields so SORT_OPTIONS can
         # order the house number numerically ("9" before "68").
@@ -174,17 +178,15 @@ def sites_page() -> None:
             )
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
-        # Above the list on purpose: a list is where work gets done, and the
-        # Austritte page already carries its action there. `refresh` is
-        # defined further down and resolved when a button is clicked, not
-        # now.
-        render_address_hints(KIND_SITE, lambda: refresh())
-
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(
             "body-cell-actions",
             r"""
             <q-td :props="props">
+                <q-icon v-if="props.row.address_warning" name="warning" color="warning" size="sm"
+                        class="q-mr-xs">
+                    <q-tooltip>Adresse weicht vom amtlichen Verzeichnis ab</q-tooltip>
+                </q-icon>
                 <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
                 <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
                 <q-btn dense flat icon="delete" color="negative" @click="() => $parent.$emit('remove', props.row)" />
@@ -214,7 +216,8 @@ def sites_page() -> None:
             nonlocal all_rows
             with connection_scope() as connection:
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(connection)}
-                all_rows = [_to_row(s, substation_areas) for s in site_repo.list_all(connection)]
+                warned = issue_ids(connection, KIND_SITE)
+                all_rows = [_to_row(s, substation_areas, warned) for s in site_repo.list_all(connection)]
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())

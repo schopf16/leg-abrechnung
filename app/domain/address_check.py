@@ -202,3 +202,23 @@ def find_address_issues(connection: sqlite3.Connection) -> list[AddressIssue]:
         return issues
     finally:
         register.close()
+
+
+def issue_ids(connection: sqlite3.Connection, kind: str) -> set[int]:
+    """Which records of one kind have an open address finding.
+
+    The lists only *mark* a record; the question itself is asked at the
+    field in the edit dialog. A list cannot show what a suggestion would
+    replace -- a name beside "Meinten Sie: Untere Zollgasse?" says neither
+    which field is meant nor what stands in it -- so a list has no business
+    asking.
+
+    Args:
+        connection: Open connection to the application database.
+        kind: `KIND_SITE` or `KIND_PERSON`.
+
+    Returns:
+        The primary keys with at least one undismissed finding. Empty
+        without a register.
+    """
+    return {issue.object_id for issue in find_address_issues(connection) if issue.kind == kind}
