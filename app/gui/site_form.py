@@ -78,20 +78,18 @@ def open_site_form(
             street = (
                 ui.input("Adresse", value=_initial(existing, "street", prefill, "street"))
                 .classes("flex-grow")
-                .props("debounce=300")
+                # The cursor starts here, so the dialog can be typed into
+                # without reaching for the mouse first.
+                .props("autofocus")
             )
-            house_number = (
-                ui.input("Hausnummer", value=_initial(existing, "house_number", prefill, "house_number"))
-                .classes("w-24")
-                .props("debounce=300")
-            )
+            house_number = ui.input(
+                "Hausnummer", value=_initial(existing, "house_number", prefill, "house_number")
+            ).classes("w-24")
         street_hint = ui.column().classes("w-full gap-0")
         with ui.row().classes("w-full gap-2"):
-            postal_code = (
-                ui.input("PLZ", value=_initial(existing, "postal_code", prefill, "postal_code"))
-                .classes("w-24")
-                .props("debounce=300")
-            )
+            postal_code = ui.input(
+                "PLZ", value=_initial(existing, "postal_code", prefill, "postal_code")
+            ).classes("w-24")
             municipality = ui.input(
                 "Ort", value=_initial(existing, "municipality", prefill, "municipality")
             ).classes("flex-grow")

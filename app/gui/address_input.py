@@ -40,9 +40,13 @@ from app.domain.address_lookup import (
     verify,
 )
 
-#: Debounce for the keystroke handler. Long enough not to query per
-#: character, short enough to feel immediate.
-_DEBOUNCE_MS = 250
+#: No debounce on the address fields, set explicitly because the Standort
+#: dialog carries one of its own for the duplicate check. Typing a street
+#: quickly and then stopping left the list empty until another key was
+#: pressed seconds later, and two stacked delays is not a thing worth
+#: reasoning about -- the lookup is an indexed prefix query over 197'000
+#: streets, so there is nothing to spare the machine.
+_DEBOUNCE_MS = 0
 
 #: Keys of `SuggestionBox.dismissals`, matching the two confirmation columns
 #: migration 51 added to `site` and `person`.
@@ -119,6 +123,9 @@ class SuggestionBox:
         for field in (street, postal_code, locality, house_number):
             if field is not None:
                 field.props(f"debounce={_DEBOUNCE_MS}")
+        # The Standort dialog sets debounce=300 on these for its duplicate
+        # check; the line above overrides it, which is deliberate. That
+        # check reads 92 rows and does not need the delay either.
         street.on_value_change(lambda _: self.update())
         if house_number is not None:
             house_number.on_value_change(lambda _: self.update())
