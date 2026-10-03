@@ -20,8 +20,10 @@ import pytest
 
 from app.db import connection as connection_module
 from app.db.schema import initialize_database
+from app.domain import address_lookup as address_lookup_module
 from app.domain import demo_data as demo_data_module
 from app.domain.demo_data import DemoDataSummary
+from app.importers import address_register as address_register_module
 
 
 @pytest.fixture(scope="session")
@@ -165,3 +167,103 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
             monkeypatch.setattr(module, "create_demo_data", restore)
     monkeypatch.setattr(demo_data_module, "create_demo_data", restore)
     yield
+
+
+#: Header of swisstopo's address CSV, in the real column order. Only the
+#: columns the importer reads carry meaning; the rest are present because a
+#: parser that silently depends on column *count* should fail here, not on
+#: the real 446 MB file.
+_REGISTER_HEADER = (
+    "ADR_EGAID;STR_ESID;BDG_EGID;ADR_EDID;STN_LABEL;ADR_NUMBER;BDG_CATEGORY;BDG_NAME;"
+    "ZIP_LABEL;COM_FOSNR;COM_NAME;COM_CANTON;ADR_STATUS;ADR_OFFICIAL;ADR_MODIFIED;"
+    "ADR_EASTING;ADR_NORTHING"
+)
+
+#: A handful of invented addresses covering every shape the real register
+#: holds: a plain number, a dotted one ("31.1", 331'401 of those), a letter
+#: suffix, an empty number, a non-official row, a planned row, a multi-word
+#: locality, and a postal locality that differs from the political
+#: municipality -- the Worblaufen/Ittigen case, which is the reason the app
+#: fills the postal name and never the municipality.
+REGISTER_ROWS = [
+    ("Erstweg", "4", "3048 Musterdorf", "Grossgemeinde", "real", "true"),
+    ("Erstweg", "6", "3048 Musterdorf", "Grossgemeinde", "real", "true"),
+    ("Erstweg", "31.1", "3048 Musterdorf", "Grossgemeinde", "real", "false"),
+    ("Erstweg", "8a", "3048 Musterdorf", "Grossgemeinde", "real", "true"),
+    ("Zweitweg", "", "3048 Musterdorf", "Grossgemeinde", "planned", "true"),
+    ("Ärniweg", "2", "3048 Musterdorf", "Grossgemeinde", "real", "true"),
+    ("Drittweg", "1", "3065 Beispiel Dorf", "Beispiel", "real", "true"),
+]
+
+
+def write_register_zip(target: Path, rows=None) -> Path:
+    """Write a tiny register archive in swisstopo's own format.
+
+    A real ZIP with a real CSV rather than a stubbed parser: the importer's
+    job is reading that format, and a test that bypasses it would pass while
+    the format handling is broken.
+
+    Args:
+        target: Path of the ZIP to write.
+        rows: `(street, number, zip_label, municipality, status, official)`
+            tuples, defaulting to `REGISTER_ROWS`.
+
+    Returns:
+        `target`, for chaining.
+    """
+    import zipfile
+
+    lines = []
+    for index, (street, number, zip_label, municipality, status, official) in enumerate(
+        rows if rows is not None else REGISTER_ROWS, start=1
+    ):
+        lines.append(
+            f"{index};{index};{index};0;{street};{number};residential;;{zip_label};"
+            f"35{index};{municipality};BE;{status};{official};01.01.2026;2600000;1200000"
+        )
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr(
+            "amtliches-gebaeudeadressverzeichnis_ch_2056.csv",
+            "\ufeff" + _REGISTER_HEADER + "\n" + "\n".join(lines) + "\n",
+        )
+    return target
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_address_register(tmp_path_factory, monkeypatch):
+    """Point the address register at a path that does not exist.
+
+    Same safety net as `_never_touch_the_real_database`, one layer over: the
+    register lives in `data/` on the developer's machine, and any test that
+    renders the Personen or Standorte page calls into
+    `app.domain.address_check`, which would otherwise read it. Results would
+    then depend on whether the machine happens to have downloaded it.
+
+    Autouse and unconditional. Tests that want a register ask for the
+    `address_register` fixture, which points the same attributes at a real
+    little one.
+
+    Yields:
+        None.
+    """
+    absent = Path(tempfile.mkdtemp(dir=tmp_path_factory.getbasetemp())) / "kein-register.sqlite3"
+    monkeypatch.setattr(address_lookup_module, "ADDRESS_REGISTER_PATH", absent)
+    monkeypatch.setattr(address_register_module, "ADDRESS_REGISTER_PATH", absent)
+    yield
+
+
+@pytest.fixture
+def address_register(tmp_path, monkeypatch) -> Path:
+    """Build a small real register and point the whole app at it.
+
+    Returns:
+        Path of the built register file.
+    """
+    zip_path = write_register_zip(tmp_path / "register.zip")
+    target = tmp_path / "adressregister.sqlite3"
+    from datetime import date
+
+    list(address_register_module.build_register(zip_path, target, data_date=date.today()))
+    monkeypatch.setattr(address_lookup_module, "ADDRESS_REGISTER_PATH", target)
+    monkeypatch.setattr(address_register_module, "ADDRESS_REGISTER_PATH", target)
+    return target

@@ -1667,4 +1667,28 @@ Freundliche Grüsse';
                 ON cooperative_membership(person_id);
         """,
     ),
+    Migration(
+        version=51,
+        description="Four columns recording that an address hint was dismissed. "
+        "The app now checks site and person addresses against swisstopo's "
+        "official building address register and offers 'Meinten Sie: X?' "
+        "with yes and no. 'No' has to be remembered or the hint becomes "
+        "noise and trains the administrator to skip the list -- a PO box, a "
+        "c/o line or a genuinely new building is a legitimate address the "
+        "register cannot know. What is stored is the **confirmed value**, "
+        "not a flag and not a date: a 'confirmed on 02.10.2026' keeps "
+        "silencing a hint after the address has changed underneath it, and "
+        "a tick that no longer holds is worse than no tick (same reasoning "
+        "as the billing control points, which are never stored either). "
+        "With the value, the dismissal expires by itself the moment the "
+        "text changes. Two columns per record because the street/house "
+        "number finding and the locality finding are independent -- "
+        "dismissing one must not silence the other.",
+        sql="""
+            ALTER TABLE site ADD COLUMN address_confirmed TEXT NOT NULL DEFAULT '';
+            ALTER TABLE site ADD COLUMN locality_confirmed TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN billing_address_confirmed TEXT NOT NULL DEFAULT '';
+            ALTER TABLE person ADD COLUMN billing_city_confirmed TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 ]

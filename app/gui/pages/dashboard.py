@@ -22,6 +22,7 @@ from app.domain.quality_checks import (
     check_leg_assignment,
     check_leg_production_capacity,
     check_cooperative_members_without_shares,
+    check_addresses,
     check_feed_in_without_consumption,
     check_offboarding_completed_but_active,
     check_onboarding_progress,
@@ -128,6 +129,8 @@ def _load_overview(connection) -> dict:
     for warning in check_substation_area_one_sided(connection):
         action_items.append((warning.message, warning.link))
     for warning in check_leg_production_capacity(connection):
+        action_items.append((warning.message, warning.link))
+    for warning in check_addresses(connection):
         action_items.append((warning.message, warning.link))
 
     leg_rows = []

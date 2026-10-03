@@ -15,6 +15,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from app.domain import participant_mix
+from app.domain.address_check import KIND_SITE, find_address_issues
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.period import quarter_bounds
 from app.models import bank_transaction as bank_transaction_repo
@@ -633,6 +634,36 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
                 category="substation_area_one_sided",
                 message=f"Trafokreis „{substation_area.name}“: {mix.hint}",
                 link="/substation-areas",
+            )
+        )
+    return warnings
+
+
+def check_addresses(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Report addresses the official register disagrees with.
+
+    States the fact and links to the list; the "Meinten Sie: X?" question
+    with its yes and no sits on the Standorte and Personen lists, where the
+    work is actually done. The dashboard is a statement of what needs
+    attention, not a place to change data.
+
+    Silent without a register: it has to be downloaded once, and an absent
+    register is not evidence against anybody's address.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        One warning per affected address.
+    """
+    warnings: list[QualityWarning] = []
+    for issue in find_address_issues(connection):
+        where = "/sites" if issue.kind == KIND_SITE else "/persons"
+        warnings.append(
+            QualityWarning(
+                category="address_not_official",
+                message=f"Adresse weicht vom amtlichen Verzeichnis ab: {issue.label}",
+                link=where,
             )
         )
     return warnings

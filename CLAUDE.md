@@ -719,6 +719,151 @@ Note also that `tests/conftest.py` has an autouse fixture pointing
 renders a page opens the real `data/leg_abrechnung.sqlite3` with actual
 members' data in it.
 
+### The official address register, and the locality rule
+
+`app/importers/address_register.py` downloads swisstopo's **Amtliches
+Verzeichnis der Gebäudeadressen** on one click and builds
+`data/adressregister.sqlite3`; `app/domain/address_lookup.py` narrows it
+while typing and checks a finished address. Four places take an address and
+all four use it: `app/gui/site_form.py`, `app/gui/person_form.py`,
+`app/gui/pages/settings.py` (the LEG's own sender address -- the creditor on
+**every** QR-bill, see `app/pdf/qr_bill_render.py`) and
+`app/gui/pages/web_registrations.py`, which checks a stranger's typing
+before it is adopted.
+
+**Swiss Post's address data was rejected, not overlooked.** Its licence
+forbids passing the data on -- `swissmatch-location` had to stop shipping it
+after a licence change -- so it can never be part of a published
+application. swisstopo's register is free for commercial use *and*
+redistribution; naming the source is the only condition, which the
+Adressregister page does.
+
+**Downloaded whole rather than queried, and that is a privacy decision.**
+geo.admin.ch offers a free fuzzy-search API over the same data. Using it
+would send fragments of a member's address to a federal server on every
+keystroke in an address field. With the register on disk, no address ever
+leaves the machine.
+
+**A file of its own, never tables in the member database.** Three million
+rows of third-party data have nothing to do with the members, every backup
+would grow by well over a hundred megabytes although the file can be
+re-downloaded at any time, and the schema migrations never have to touch it.
+`PRAGMA synchronous = OFF` during the build is defensible for exactly that
+reason and must not spread to the member database.
+
+Four decisions were measured, and each of them is the opposite of the
+obvious choice:
+
+- **Do not filter `ADR_OFFICIAL = true`.** It reads like the right filter
+  and loses real addresses: of 92 sites in the live deployment, 86 validated
+  against the whole register and only **83** against the official rows.
+  `official` and `status` are carried as flags and only ever influence the
+  *order* suggestions appear in. `status = 'planned'` is kept for the same
+  reason.
+- **Compare the house number as folded text**, never split into a figure and
+  a letter the way `address_key` does. Of the official addresses 331'401 are
+  dotted ("31.1"), 25'403 are shaped differently again and 7'078 are empty.
+- **The locality is always the postal one** (`ZIP_LABEL`), never the
+  political municipality (`COM_NAME`). It is the name the member reads on
+  the invoice, and somebody living in Worblaufen should not find their
+  village replaced by the municipality that absorbed it. It is also the
+  better-defined of the two: postal code 3048 lies in **two** municipalities
+  (Ittigen and Bern), so the political name is not even determined by the
+  postal code. A stored municipality is accepted rather than called wrong,
+  and the postal locality is offered -- `COM_NAME` is never filled in.
+- **`Site.municipality` therefore holds a postal locality despite its
+  name.** The German label is "Ort" everywhere; the column keeps its name
+  because renaming it is a migration through `from_row`, every query, the
+  sort keys, the PDF and the tests, which is a lot of movement for a word.
+  Do not "fix" the data to match the identifier.
+
+**A street that exists elsewhere is a wrong postal code, not a wrong
+street**, and finding that out cost a real run against the real data. Asked
+for the closest street *within* the typed postal code, the register offered a
+correctly spelled street the name of a **different** real street, and one
+click would have written it into the record. Almost every Swiss street name
+ends in "strasse", so the shared suffix alone carries the similarity score --
+invented but identical in shape, "Rosenstrasse" against "Nelkenstrasse"
+scores 0.720. A higher threshold cannot separate the cases: the real bad
+suggestion scored 0.733 while a genuine postal-code-in-the-locality-field
+error scores 0.737.
+So `verify` first asks whether the street exists under another postal code
+and reports `FIELD_POSTAL_CODE` if it does, and the locality check is then
+skipped -- comparing against the localities of a postal code that is itself
+the mistake would report two findings for one error. Streets additionally
+use a stricter cutoff (`_CUTOFF_STREET`) than localities, whose candidates
+are the few names behind one postal code and genuinely dissimilar.
+
+Which field a "Ja" writes is an **explicit mapping** in
+`app/gui/address_hints.py`, not an if/else: a postal-code finding landed in
+the street field the first time, which is exactly what "everything that is
+not the locality is the street" invites.
+
+**One hint, one wording, yes or no.** "Meinten Sie: Worblaufen?" with Ja and
+Nein, and nothing else -- no severity, no explanation of why the app is
+asking. A typo, the political municipality and a PO box all look the same on
+screen; the difference stays inside `address_lookup`. Where the register
+holds nothing close enough, the line is "Nicht im amtlichen Verzeichnis."
+with only a Nein. The hints sit on the Standorte and Personen **lists**,
+following the Austritte page, which also puts its one action on the
+worklist; the dashboard states the fact and links there.
+
+**Nein stores the confirmed value** (migration 51:
+`site.address_confirmed`/`locality_confirmed`,
+`person.billing_address_confirmed`/`billing_city_confirmed`), not a flag and
+not a date. A date would keep silencing a hint after the address beneath it
+changed, and a tick that no longer holds is worse than no tick -- the same
+reasoning that keeps the billing control points unstored. With the value the
+dismissal expires by itself. Two columns per record because the
+street/house-number finding and the locality finding are independent, and
+`update()` deliberately does **not** write these columns, so editing an
+unrelated field cannot clear a dismissal.
+
+Persons are checked only when `billing_country` is CH, but then **fully**,
+street and house number included. That was a reversal: sparing the
+occasional PO box one click is not worth leaving every ordinary typo in a
+billing address unchecked, and one Nein retires a PO box for good.
+
+**The update must not block and must be followable after leaving the page.**
+The pattern in `app/gui/pages/import_page.py` yields *between* files and
+lets each file's work block, which is fine for many small files and useless
+for one 35-second parse -- the bar would sit at zero and the window would be
+dead. So the download streams with `httpx.AsyncClient` (already a
+dependency, already used in `app/emailing/graph_client.py`) and
+`build_register` is a **generator** that hands control back every 5'000
+rows. Progress lives in a module-level object in
+`app/gui/address_register_task.py`, not on a client, and
+`app.gui.navigation.page_frame` shows it in the header of all 21 pages;
+state on the page that started it would vanish the moment the administrator
+navigated away, which is the whole thing being fixed. A second click finds
+the phase set and returns.
+
+Measured by running it: 76 s for the whole click (16 s download of 143 MB,
+then the parse of 3'303'418 rows), and **148 MB** on disk -- 358 MB if
+street, locality and municipality were repeated per row instead of held in a
+`street` table. The 127 MB measured before the build existed was without
+`locality_fold` and its index, which the locality search needs so that
+umlauts fold the way they do everywhere else.
+
+The download URL is read from the STAC catalogue and then checked against
+`_ALLOWED_HOSTS` over HTTPS. A forged catalogue response is needed to
+exploit it at all, so that check bounds the damage rather than closing a
+hole -- but this is the one path in an otherwise offline app that fetches
+from the network and writes to disk, and the set of legitimate hosts is
+three entries long.
+Quarterly staleness (`STALE_AFTER_DAYS`), shown as the **data** date from
+STAC rather than the download time. The asset URL is read from STAC too,
+because swisstopo versions the file name.
+
+**Without a register nothing breaks**: no suggestions, no findings, and the
+Adressregister page is the one place that says it has not been downloaded.
+The lists stay silent about it. `tests/conftest.py` has an autouse fixture
+pointing the register path at a file that does not exist, for the same
+reason it redirects `connection_scope()`: otherwise a test that renders the
+Personen page would read whatever register the developer's machine happens
+to hold. That fixture only works because the path is resolved in the
+function body -- a default argument would bind it at import time.
+
 ### The repository is public, and that is a deliberate trade
 
 `schopf16/leg-abrechnung` is **public**, so that the free GitHub tooling

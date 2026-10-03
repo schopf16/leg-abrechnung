@@ -22,6 +22,7 @@ from app.gui import pages as _pages  # noqa: F401  -- registers every route
 #: bug, not a test to delete.
 EXPECTED_ROUTES = [
     "/",
+    "/address-register",
     "/assignments",
     "/backup",
     "/billing",

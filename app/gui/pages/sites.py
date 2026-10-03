@@ -13,6 +13,8 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.address_check import KIND_SITE
+from app.gui.address_hints import render_address_hints
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
@@ -35,7 +37,7 @@ from app.models.site import Site
 
 COLUMNS = [
     {"name": "address", "label": "Adresse", "field": "address", "align": "left"},
-    {"name": "plz_municipality", "label": "PLZ / Gemeinde", "field": "plz_municipality", "align": "left"},
+    {"name": "plz_municipality", "label": "PLZ / Ort", "field": "plz_municipality", "align": "left"},
     {"name": "address_detail", "label": "Lage", "field": "address_detail", "align": "left"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
@@ -56,7 +58,7 @@ SORT_OPTIONS = [
     ),
     SortOption(
         "municipality",
-        "PLZ / Gemeinde",
+        "PLZ / Ort",
         lambda row: (
             text_key(row["_postal_code"], row["_municipality"]),
             address_key(row["_street"], row["_house_number"]),
@@ -166,11 +168,17 @@ def sites_page() -> None:
 
         with ui.row().classes("w-full items-center gap-4"):
             search_input = (
-                ui.input("Suche (Adresse, PLZ, Gemeinde, Trafokreis...)")
+                ui.input("Suche (Adresse, PLZ, Ort, Trafokreis...)")
                 .classes("w-full max-w-md")
                 .props("debounce=300 clearable")
             )
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+
+        # Above the list on purpose: a list is where work gets done, and the
+        # Austritte page already carries its action there. `refresh` is
+        # defined further down and resolved when a button is clicked, not
+        # now.
+        render_address_hints(KIND_SITE, lambda: refresh())
 
         table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         table.add_slot(

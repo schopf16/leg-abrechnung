@@ -27,6 +27,13 @@ class Site:
         substation_area_id: Foreign key to the assigned `substation area`, `None`
             until manually assigned.
         created_at: ISO-8601 creation timestamp.
+        address_confirmed: The street/house number/postal code the
+            administrator has waved through despite the address register
+            disagreeing, stored as the confirmed text rather than a flag so
+            the dismissal expires by itself when the address changes. Written
+            only by `confirm_address`, never by `update` -- editing an
+            unrelated field must not bring a dismissed hint back.
+        locality_confirmed: The same for the locality.
     """
 
     id: Optional[int]
@@ -37,14 +44,19 @@ class Site:
     address_detail: str
     substation_area_id: Optional[int]
     created_at: str
+    address_confirmed: str = ""
+    locality_confirmed: str = ""
 
     @property
     def full_address(self) -> str:
         """The full postal address as a single display string.
 
         Returns:
-            `"<address> <Hausnummer>, <PLZ> <Gemeinde>"`, with missing
-            parts omitted gracefully.
+            `"<address> <Hausnummer>, <PLZ> <Ort>"`, with missing parts
+            omitted gracefully. The locality, not the political
+            municipality: this string is printed on the invoice, and
+            `municipality` holds the postal locality despite its name (see
+            CLAUDE.md).
         """
         street = " ".join(p for p in (self.street, self.house_number) if p)
         city = " ".join(p for p in (self.postal_code, self.municipality) if p)
@@ -69,6 +81,8 @@ class Site:
             address_detail=row["address_detail"],
             substation_area_id=row["substation_area_id"],
             created_at=row["created_at"],
+            address_confirmed=row["address_confirmed"],
+            locality_confirmed=row["locality_confirmed"],
         )
 
 
@@ -220,4 +234,40 @@ def delete(connection: sqlite3.Connection, site_id: int) -> None:
         None.
     """
     connection.execute("DELETE FROM site WHERE id = ?", (site_id,))
+    connection.commit()
+
+
+def confirm_address(connection: sqlite3.Connection, site_id: int, value: str) -> None:
+    """Record that the street/house number/postal code was waved through.
+
+    Deliberately separate from `update`: the dismissal must survive an edit
+    to an unrelated field, and `update` rewriting it from a freshly built
+    dataclass would quietly clear it.
+
+    Args:
+        connection: Open SQLite connection.
+        site_id: The site.
+        value: The exact text being confirmed, as
+            `app.domain.address_lookup` composes it. An empty string clears
+            the confirmation, which makes the hint reappear.
+
+    Returns:
+        None.
+    """
+    connection.execute("UPDATE site SET address_confirmed = ? WHERE id = ?", (value, site_id))
+    connection.commit()
+
+
+def confirm_locality(connection: sqlite3.Connection, site_id: int, value: str) -> None:
+    """Record that the locality was waved through.
+
+    Args:
+        connection: Open SQLite connection.
+        site_id: The site.
+        value: The confirmed locality.
+
+    Returns:
+        None.
+    """
+    connection.execute("UPDATE site SET locality_confirmed = ? WHERE id = ?", (value, site_id))
     connection.commit()

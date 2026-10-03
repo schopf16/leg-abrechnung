@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.address_input import SuggestionBox
 from app.gui.safe_notify import safe_notify
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
@@ -91,8 +92,12 @@ def open_site_form(
                 .props("debounce=300")
             )
             municipality = ui.input(
-                "Gemeinde", value=_initial(existing, "municipality", prefill, "municipality")
+                "Ort", value=_initial(existing, "municipality", prefill, "municipality")
             ).classes("flex-grow")
+        # Suggestions from the official register, if one has been downloaded.
+        # A plain input with a list under it, never a select: an address the
+        # register does not know still has to be typeable.
+        SuggestionBox(street, postal_code, municipality, house_number)
         duplicate_warning = ui.label("").classes("text-warning")
         address_detail = ui.input(
             "Lage (optional, z. B. Stockwerk)", value=existing.address_detail if existing else ""

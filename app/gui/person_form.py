@@ -16,6 +16,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.address_input import SuggestionBox
 from app.domain.iban_validation import normalize_iban, validate_iban
 from app.gui.cooperative_form import CooperativeEditor
 from app.gui.safe_notify import safe_notify
@@ -127,6 +128,11 @@ def open_person_form(
             country = ui.input(
                 "Land", value=_initial(existing, "billing_country", prefill, "country", "CH")
             ).classes("w-24")
+        # Suggestions on the billing address too. A PO box or a foreign
+        # address is legitimate and the register cannot know it, but the
+        # administrator decided that catching the many ordinary typos beats
+        # ignoring the check over the occasional PO box.
+        SuggestionBox(street, postal_code, city, house_number)
 
         ui.separator().classes("my-2")
         # Read-only on purpose, but shown here because this dialog is where

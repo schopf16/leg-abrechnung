@@ -43,6 +43,7 @@ from nicegui import ui
 from app.config import ConfigError, get_leg_api_token
 from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
+from app.domain.address_lookup import verify
 from app.gui.navigation import page_frame
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
@@ -358,6 +359,18 @@ def web_registrations_page() -> None:
                     with ui.column().classes("gap-0 min-w-[200px]"):
                         ui.label(f"{reg.street} {reg.house_number}".strip() or "-")
                         ui.label(f"{reg.postal_code} {reg.city}".strip() or "-")
+                        # Checked here, before the address is adopted: this
+                        # one was typed by a stranger into the form on
+                        # leg-ittigen.ch, and once it is in the master data
+                        # somebody has to find the typo again. No buttons --
+                        # nothing is stored yet to correct; the prefilled
+                        # dialog offers the suggestions.
+                        for finding in verify(reg.street, reg.house_number, reg.postal_code, reg.city):
+                            ui.label(
+                                f"Meinten Sie: {finding.suggestion}?"
+                                if finding.suggestion
+                                else "Nicht im amtlichen Verzeichnis."
+                            ).classes("text-caption text-warning")
                     with ui.column().classes("gap-0 min-w-[180px]"):
                         ui.label(f"BKW-Kundennummer: {reg.bkw_customer_number or '-'}")
                         ui.label(f"IBAN: {reg.iban or '-'}").classes("text-grey-7")
