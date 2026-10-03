@@ -311,6 +311,10 @@ def persons_page() -> None:
             # The members' list the cooperative needs is this list, filtered
             # and printed -- not a page of its own.
             only_cooperative_switch = ui.switch("Nur Genossenschafter")
+            # Scrolling 91 cards to find the handful that are marked is the
+            # work this saves. Named after what it shows, not after the
+            # register, because that is what the reader is looking for.
+            only_address_issues_switch = ui.switch("Nur fehlerhafte Adressen")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
@@ -395,7 +399,12 @@ def persons_page() -> None:
                             # what a suggestion would replace, so it only
                             # says "look at this one". The question is asked
                             # at the field in the edit dialog.
-                            ui.icon("warning", color="warning").tooltip(
+                            #
+                            # Sized explicitly: a bare q-icon inherits the
+                            # surrounding 1em and comes out visibly smaller
+                            # than the icons in the flat buttons next to it,
+                            # which Quasar renders at 1.715em.
+                            ui.icon("warning", color="warning", size="1.715em").classes("q-px-sm").tooltip(
                                 "Adresse weicht vom amtlichen Verzeichnis ab"
                             )
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
@@ -427,6 +436,7 @@ def persons_page() -> None:
                 for person, search_text in all_entries
                 if (person.active or show_inactive_switch.value)
                 and (not only_cooperative_switch.value or person.id in memberships_by_person)
+                and (not only_address_issues_switch.value or person.id in address_warnings)
                 and (not needle or needle in search_text)
             ]
             visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select)
@@ -459,6 +469,7 @@ def persons_page() -> None:
 
         search_input.on_value_change(lambda _: apply_filter())
         show_inactive_switch.on_value_change(lambda _: apply_filter())
+        only_address_issues_switch.on_value_change(lambda _: apply_filter())
         only_cooperative_switch.on_value_change(lambda _: apply_filter())
 
         def on_view(person: Person) -> None:

@@ -806,6 +806,17 @@ screen; the difference stays inside `address_lookup`. Where the register
 holds nothing close enough, the line is "Nicht im amtlichen Verzeichnis."
 with only a Nein.
 
+**The overview summarises.** `summarise_warnings` collapses several
+findings of one kind into a single counted line -- thirteen address lines
+pushed everything else off the screen, and a list that long stops being read
+at all. A *single* finding keeps its own message, because naming the one
+metering point without a LEG is more useful than "1 Messpunkt ohne LEG" and
+costs the same line. Grouped by category and `summary`, never by `link`:
+most per-record warnings link to their own record, so grouping by link would
+collapse nothing; the collapsed line carries `summary_link`, pointing at the
+list where the whole group can be worked off. A check with no `summary` is
+never collapsed, so this is opt-in per check.
+
 **The question is asked at the field, and only there.** The first build put
 it in a card above the Standorte and Personen lists, reasoning from the
 Austritte page, which does carry its one action on the worklist. That
@@ -816,7 +827,11 @@ was?" -- is the correct one, and the card is gone. The lists now render a
 warning triangle beside the eye (`issue_ids`), which says "look at this one"
 and claims nothing more; the dashboard states the fact and links there; and
 `app/gui/address_input.py` renders the question directly under the row
-holding the value it would replace.
+holding the value it would replace. The triangle is sized at `1.715em`
+because a bare `q-icon` inherits the surrounding `1em` and comes out
+visibly smaller than the icons in the flat buttons beside it. The Personen
+list also has a "Nur fehlerhafte Adressen" switch, so the marked handful can
+be worked off without scrolling ninety cards.
 
 A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
 written by `store_dismissals` **after** the record is saved -- a new record
