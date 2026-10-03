@@ -163,6 +163,8 @@ class Person:
     second_first_name: str = ""
     second_last_name: str = ""
     second_contact_email: str = ""
+    billing_address_confirmed: str = ""
+    billing_city_confirmed: str = ""
 
     @property
     def full_name(self) -> str:
@@ -315,6 +317,8 @@ class Person:
             billing_postal_code=row["billing_postal_code"],
             billing_city=row["billing_city"],
             billing_country=row["billing_country"],
+            billing_address_confirmed=row["billing_address_confirmed"],
+            billing_city_confirmed=row["billing_city_confirmed"],
             iban=row["iban"],
             customer_number=row["customer_number"],
             bkw_customer_number=row["bkw_customer_number"],
@@ -577,3 +581,37 @@ def delete(connection: sqlite3.Connection, person_id: int) -> bool:
         connection.rollback()
         set_active(connection, person_id, False)
         return False
+
+
+def confirm_billing_address(connection: sqlite3.Connection, person_id: int, value: str) -> None:
+    """Record that the billing street/house number/postal code is intended.
+
+    A PO box, a "c/o" line or a foreign address is perfectly legitimate and
+    the register cannot know it, so one dismissal has to hold. Separate from
+    `update` for the same reason as `app.models.site.confirm_address`.
+
+    Args:
+        connection: Open SQLite connection.
+        person_id: The person.
+        value: The exact text being confirmed. Empty clears it.
+
+    Returns:
+        None.
+    """
+    connection.execute("UPDATE person SET billing_address_confirmed = ? WHERE id = ?", (value, person_id))
+    connection.commit()
+
+
+def confirm_billing_city(connection: sqlite3.Connection, person_id: int, value: str) -> None:
+    """Record that the billing locality is intended.
+
+    Args:
+        connection: Open SQLite connection.
+        person_id: The person.
+        value: The confirmed locality.
+
+    Returns:
+        None.
+    """
+    connection.execute("UPDATE person SET billing_city_confirmed = ? WHERE id = ?", (value, person_id))
+    connection.commit()

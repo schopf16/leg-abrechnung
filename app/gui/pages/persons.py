@@ -17,6 +17,8 @@ from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
+from app.domain.address_check import KIND_PERSON
+from app.gui.address_hints import render_address_hints
 from app.gui.navigation import page_frame
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
@@ -311,6 +313,12 @@ def persons_page() -> None:
             # and printed -- not a page of its own.
             only_cooperative_switch = ui.switch("Nur Genossenschafter")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+
+        # Above the list on purpose: a list is where work gets done, and the
+        # Austritte page already carries its action there. `refresh` is
+        # defined further down and resolved when a button is clicked, not
+        # now.
+        render_address_hints(KIND_PERSON, lambda: refresh())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

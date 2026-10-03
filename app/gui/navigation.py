@@ -66,6 +66,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
         "Einstellungen",
         [
             ("/settings", "Stammdaten"),
+            ("/address-register", "Adressregister"),
             ("/backup", "Backup"),
         ],
     ),
@@ -136,6 +137,7 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
     with ui.header().classes("items-center justify-between bg-primary text-white"):
         ui.label("LEG-Abrechnung").classes("text-lg font-bold")
         ui.label(title).classes("text-md")
+        _render_address_register_progress()
 
     with ui.left_drawer(fixed=True).classes("bg-grey-1 q-pa-none").props("width=240"):
         for group_label, items in NAV_GROUPS:
@@ -168,3 +170,37 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
 
     with ui.column().classes("w-full max-w-5xl mx-auto p-4") as content:
         yield content
+
+
+def _render_address_register_progress() -> None:
+    """Show the running address-register update in the header, everywhere.
+
+    The update takes about a minute and the administrator is meant to keep
+    working during it, so they will leave the page that started it. A
+    progress bar that lived on that page would disappear with it and leave
+    them unable to tell whether the update had finished -- which is the
+    whole complaint this answers. The state is therefore module-level (see
+    `app.gui.address_register_task`) and read here, on every page.
+
+    A one-second timer rather than a push: the state is a plain object with
+    no change notification, and polling once a second is cheaper than wiring
+    one up for a line of text.
+
+    Returns:
+        None.
+    """
+    from app.gui.address_register_task import STATE
+
+    label = ui.label().classes("text-caption")
+
+    def refresh() -> None:
+        """Copy the current phase and percentage into the header label.
+
+        Returns:
+            None.
+        """
+        label.text = STATE.label
+        label.visible = bool(STATE.label)
+
+    refresh()
+    ui.timer(1.0, refresh)

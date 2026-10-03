@@ -3,6 +3,7 @@ all `@ui.page` routes with NiceGUI.
 """
 
 from app.gui.pages import (  # noqa: F401
+    address_register,
     billing,
     onboardings,
     offboardings,

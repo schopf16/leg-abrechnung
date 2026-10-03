@@ -26,6 +26,14 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 #: Path of the live SQLite database file.
 DATABASE_PATH = DATA_DIR / "leg_abrechnung.sqlite3"
 
+#: Path of the official building address register, built by
+#: `app.importers.address_register`. A file of its own rather than tables in
+#: DATABASE_PATH: it holds three million rows of swisstopo data that have
+#: nothing to do with the members, it would add well over a hundred megabytes
+#: to every backup although it can be re-downloaded at any time, and keeping
+#: it out means the schema migrations never have to touch it.
+ADDRESS_REGISTER_PATH = DATA_DIR / "adressregister.sqlite3"
+
 
 def ensure_directories() -> None:
     """Create the data, output, backup and log directories if missing.

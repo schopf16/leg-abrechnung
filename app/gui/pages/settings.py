@@ -7,6 +7,7 @@ from nicegui import ui
 
 from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
+from app.gui.address_input import SuggestionBox
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
@@ -55,6 +56,12 @@ def settings_page() -> None:
                 zip_code = ui.input("PLZ", value=current.address_zip).classes("w-24")
                 city = ui.input("Ort", value=current.address_city).classes("flex-grow")
             country = ui.input("Land", value=current.address_country or "CH").classes("w-full")
+            # The most consequential address in the app: it is the creditor
+            # on every QR-bill (app/pdf/qr_bill_render.py) and the letterhead
+            # of every document, entered once and never looked at again.
+            # Street and house number share one field here, so no separate
+            # number input is passed.
+            SuggestionBox(street, zip_code, city)
             qr_iban = ui.input("QR-IBAN", value=current.qr_iban).classes("w-full")
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
