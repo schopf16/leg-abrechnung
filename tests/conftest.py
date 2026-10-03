@@ -229,6 +229,27 @@ def write_register_zip(target: Path, rows=None) -> Path:
     return target
 
 
+def build_test_register(zip_path: Path, target: Path, data_date=None) -> Path:
+    """Run both halves of the build, as the application does.
+
+    `build_register` deliberately stops before indexing so the caller can run
+    that part in a thread -- a single 1.8-second SQLite statement that would
+    otherwise block the event loop. Tests want the finished file, so they run
+    both steps through here rather than remembering the order.
+
+    Args:
+        zip_path: The archive to read.
+        target: Where the finished register goes.
+        data_date: Publication date to record.
+
+    Returns:
+        `target`.
+    """
+    list(address_register_module.build_register(zip_path, target, data_date=data_date))
+    address_register_module.finalise_register(target, data_date)
+    return target
+
+
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_address_register(tmp_path_factory, monkeypatch):
     """Point the address register at a path that does not exist.
@@ -263,7 +284,7 @@ def address_register(tmp_path, monkeypatch) -> Path:
     target = tmp_path / "adressregister.sqlite3"
     from datetime import date
 
-    list(address_register_module.build_register(zip_path, target, data_date=date.today()))
+    build_test_register(zip_path, target, date.today())
     monkeypatch.setattr(address_lookup_module, "ADDRESS_REGISTER_PATH", target)
     monkeypatch.setattr(address_register_module, "ADDRESS_REGISTER_PATH", target)
     return target

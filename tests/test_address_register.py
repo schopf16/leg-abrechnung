@@ -26,6 +26,7 @@ import pytest
 
 from app.importers.address_register import (
     STALE_AFTER_DAYS,
+    finalise_register,
     AddressRegisterError,
     RegisterInfo,
     build_register,
@@ -33,7 +34,7 @@ from app.importers.address_register import (
     select_asset,
     split_zip_label,
 )
-from tests.conftest import write_register_zip
+from tests.conftest import build_test_register, write_register_zip
 
 
 def _rows(register) -> list[tuple]:
@@ -132,7 +133,7 @@ def test_a_row_without_a_usable_postal_code_is_skipped(tmp_path):
     )
     target = tmp_path / "reg.sqlite3"
 
-    list(build_register(zip_path, target))
+    build_test_register(zip_path, target)
 
     assert [row[0] for row in _rows(target)] == ["Erstweg"]
 
@@ -170,7 +171,7 @@ def test_progress_rises_and_reaches_one(tmp_path):
 def test_a_broken_archive_leaves_the_previous_register_untouched(tmp_path):
     """An update must not be able to destroy a working register."""
     target = tmp_path / "reg.sqlite3"
-    list(build_register(write_register_zip(tmp_path / "good.zip"), target))
+    build_test_register(write_register_zip(tmp_path / "good.zip"), target)
     before = target.read_bytes()
 
     broken = tmp_path / "broken.zip"
@@ -303,3 +304,43 @@ def test_a_download_address_outside_swisstopo_is_refused(href):
 
     with pytest.raises(AddressRegisterError):
         select_asset(payload)
+
+
+# --- Reading and finishing are two steps ----------------------------------
+
+
+def test_reading_alone_leaves_the_old_register_in_place(tmp_path):
+    """The swap happens in `finalise_register`, not when the rows are read.
+
+    The split is not cosmetic: indexing is a single 1.8-second SQLite
+    statement that cannot be broken up, so the caller runs it in a thread.
+    Measured on the real file, the parse yields every 46 ms while that one
+    statement blocked for 2'070 ms -- past the second NiceGUI allows the
+    browser to answer, which is what filled the log with TimeoutErrors
+    during an update.
+    """
+    target = tmp_path / "reg.sqlite3"
+    build_test_register(write_register_zip(tmp_path / "first.zip"), target)
+    before = target.read_bytes()
+
+    list(build_register(write_register_zip(tmp_path / "second.zip"), target))
+
+    assert target.read_bytes() == before, "das alte Register muss bis zum Tausch gelten"
+    assert target.with_suffix(".building").exists()
+
+
+def test_finishing_without_a_read_file_is_refused(tmp_path):
+    """Says so rather than leaving the administrator with no register."""
+    with pytest.raises(AddressRegisterError):
+        finalise_register(tmp_path / "reg.sqlite3")
+
+
+def test_the_lookup_index_exists_after_finishing(address_register):
+    """The one that costs the 1.8 seconds, and the one every lookup uses."""
+    connection = sqlite3.connect(address_register)
+    try:
+        names = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    finally:
+        connection.close()
+
+    assert "idx_address_lookup" in names
