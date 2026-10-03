@@ -600,3 +600,46 @@ def test_the_filter_finds_nothing_to_hide_without_a_register(tmp_path):
     _switch(client, "Nur fehlerhafte Adressen").value = True
 
     assert _card_names(client) == []
+
+
+def test_the_filter_is_hidden_when_there_is_nothing_to_filter(address_register):
+    """A switch that can only ever empty the list is clutter.
+
+    The filter row already carries three, and on a clean deployment this one
+    would never do anything.
+    """
+    _person(street="Erstweg")
+
+    client = _persons_page()
+
+    assert _switch(client, "Nur fehlerhafte Adressen").visible is False
+
+
+def test_the_filter_appears_as_soon_as_something_is_marked(address_register):
+    """And it has to come back, or it is just gone."""
+    _person(street="Nirgendweg")
+
+    client = _persons_page()
+
+    assert _switch(client, "Nur fehlerhafte Adressen").visible is True
+
+
+def test_the_filter_switches_itself_off_when_the_last_finding_goes(address_register):
+    """Correcting the last address must not leave the list filtered to
+    nothing by a control that is no longer on screen."""
+    person_id = _person(street="Nirgendweg")
+    client = _persons_page()
+    switch = _switch(client, "Nur fehlerhafte Adressen")
+    switch.value = True
+
+    with connection_scope() as connection:
+        person = person_repo.get(connection, person_id)
+        person.billing_street = "Erstweg"
+        person_repo.update(connection, person)
+
+    from app.gui.pages import persons as persons_module  # noqa: F401
+
+    client2 = _persons_page()
+    assert _switch(client2, "Nur fehlerhafte Adressen").visible is False
+    assert _switch(client2, "Nur fehlerhafte Adressen").value is False
+    assert len(_card_names(client2)) == 1

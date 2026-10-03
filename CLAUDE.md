@@ -837,6 +837,26 @@ A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
 written by `store_dismissals` **after** the record is saved -- a new record
 has no id while the dialog is open.
 
+**`verify` says nothing until there is an address to check.** With a blank
+street or postal code it returns nothing, and a blank house number is
+skipped rather than reported: those are "not typed yet", not "wrong". A
+freshly opened Standort dialog otherwise greeted the administrator with
+"Nicht im amtlichen Verzeichnis." under an empty field -- a complaint about
+something they had not written, sitting exactly where they were looking for
+help, which is what made the suggestions look broken. Every check needs the
+postal code anyway, so without one there is no honest statement to make.
+
+`tests/test_site_form_address.py` drives the **dialog**, setting a field's
+value the way typing does. The tests in `test_address_hints.py` call
+`SuggestionBox.update()` directly, which proves the logic and nothing about
+the wiring -- and the empty-form complaint slipped through exactly there.
+
+The "Nur fehlerhafte Adressen" switch on the Personen list is hidden while
+nothing is marked, and switches itself off when the last finding goes: a
+control that can only ever empty the list is clutter, and leaving it on
+after the last correction would filter the list down to nothing from
+off-screen.
+
 **The suggestion list floats over the form** (a `ui.menu` anchored to the
 field, dismissable with Escape) rather than sitting in the layout, where it
 resized the dialog on every keystroke -- distracting at exactly the moment

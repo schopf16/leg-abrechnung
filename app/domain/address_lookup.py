@@ -408,8 +408,18 @@ def verify(
     Returns:
         One `AddressFinding` per disagreement, empty when the address checks
         out -- and also empty when no register is installed, because an
-        absent register is not evidence against an address.
+        absent register is not evidence against an address, and empty while
+        the address is still being typed.
     """
+    # Nothing to check before there is an address. A freshly opened dialog
+    # otherwise greeted the administrator with "Nicht im amtlichen
+    # Verzeichnis." under an empty field -- a complaint about something they
+    # had not written yet, sitting exactly where they were looking for help.
+    # Every check below needs the postal code, so without one there is no
+    # honest statement to make either.
+    if not street.strip() or not postal_code.strip():
+        return []
+
     own_connection = connection is None
     connection = connection or _connect(_resolve(path))
     if connection is None:
@@ -424,7 +434,10 @@ def verify(
             (folded_street, code),
         ).fetchall()
 
-        if street_rows:
+        # An empty house number is "not typed yet", not "wrong". Reporting
+        # it would nag through every keystroke of the street above it, and
+        # the register holds 7'078 addresses without a number anyway.
+        if street_rows and house_number.strip():
             street_ids = [row["id"] for row in street_rows]
             # The only interpolation into SQL in this module, and it inserts
             # nothing but "?,?,?" -- SQLite has no parameter for a list, so a
@@ -450,7 +463,7 @@ def verify(
                         _closest(house_number, candidates),
                     )
                 )
-        else:
+        elif not street_rows:
             # Before proposing a different street: does this one exist under
             # another postal code? Then the street is right and the postal
             # code is wrong, and saying so beats offering a street the
