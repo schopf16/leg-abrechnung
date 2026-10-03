@@ -502,3 +502,101 @@ def test_the_suggestion_source_is_the_shared_lookup(address_register):
     box.update()
 
     assert box.suggestions == suggest_addresses("Erstweg", path=address_register, postal_code="")
+
+
+# --- The filter on the Personen list --------------------------------------
+
+
+def _persons_page():
+    """Render the Personen page.
+
+    Returns:
+        The client holding the rendered page.
+    """
+    from app.gui.pages import persons as persons_module
+
+    client = Client(ui.page("/probe-persons-filter")(lambda: None), request=None)
+    with client:
+        persons_module.persons_page()
+    return client
+
+
+def _switch(client, label: str):
+    """Find one switch by its German label.
+
+    Args:
+        client: The rendered client.
+        label: The switch text.
+
+    Returns:
+        The switch element.
+    """
+    matches = [
+        element
+        for element in client.elements.values()
+        # The label is a plain attribute on the element, not a Quasar prop.
+        if element.__class__.__name__ == "Switch" and getattr(element, "text", "") == label
+    ]
+    assert len(matches) == 1, f"{len(matches)} Schalter mit {label!r}"
+    return matches[0]
+
+
+def _card_names(client) -> list[str]:
+    """The person names currently rendered as cards.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The names, in display order.
+    """
+    # Exact match, not a substring: the locality "3048 Musterdorf" on the
+    # same card contains the surname and would be counted as a second person.
+    return [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Label" and getattr(element, "text", "") == "Anna Muster"
+    ]
+
+
+def test_the_filter_shows_only_the_marked_persons(address_register):
+    """Scrolling 91 cards to find the handful that are marked is the work
+    this saves.
+
+    Driven rather than rendered: a switch that is drawn but not wired looks
+    exactly the same on screen.
+    """
+    _person(street="Nirgendweg")
+    _person(street="Erstweg")
+
+    client = _persons_page()
+    before = len(_card_names(client))
+    assert before == 2
+
+    switch = _switch(client, "Nur fehlerhafte Adressen")
+    switch.value = True
+
+    assert len(_card_names(client)) == 1
+
+
+def test_the_filter_off_shows_everybody_again(address_register):
+    """It filters; it does not hide anything permanently."""
+    _person(street="Nirgendweg")
+    _person(street="Erstweg")
+    client = _persons_page()
+    switch = _switch(client, "Nur fehlerhafte Adressen")
+
+    switch.value = True
+    switch.value = False
+
+    assert len(_card_names(client)) == 2
+
+
+def test_the_filter_finds_nothing_to_hide_without_a_register(tmp_path):
+    """Nothing is marked, so the filter empties the list rather than lying."""
+    _person(street="Nirgendweg")
+    client = _persons_page()
+
+    _switch(client, "Nur fehlerhafte Adressen").value = True
+
+    assert _card_names(client) == []

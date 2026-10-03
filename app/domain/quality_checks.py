@@ -65,6 +65,63 @@ class QualityWarning:
     category: str
     message: str
     link: Optional[str] = None
+    summary: str = ""
+    summary_link: Optional[str] = None
+
+
+def summarise_warnings(warnings: list[QualityWarning]) -> list[QualityWarning]:
+    """Collapse repeated findings so the overview stays readable.
+
+    Thirteen address lines pushed everything else off the screen, and a list
+    that long stops being read at all -- "vor lauter Fehler sehe ich gar
+    nichts mehr". Several findings of the same kind become one line with a
+    count and the link to the page that fixes them.
+
+    A **single** finding keeps its own message: naming the one metering
+    point without a LEG is more useful than "1 Messpunkt ohne LEG", and
+    costs the same line either way.
+
+    Grouped by category *and* summary, never by link: most per-record
+    warnings link to their own record, so grouping by link would collapse
+    nothing. The collapsed line therefore carries `summary_link`, which
+    points at the **list** the whole group is worked off -- the one place a
+    reader can act on all of them.
+
+    The same `summary` text used twice with different links is how one check
+    speaks twice on purpose: addresses on Standorte and addresses on
+    Personen are two jobs, so they carry two different summaries.
+
+    Args:
+        warnings: Everything the checks produced, in display order.
+
+    Returns:
+        The same warnings with each repeated group replaced by one summary
+        line, keeping the order in which each group first appeared.
+    """
+    order: list[tuple[str, str]] = []
+    grouped: dict[tuple[str, str], list[QualityWarning]] = {}
+    for warning in warnings:
+        key = (warning.category, warning.summary)
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(warning)
+
+    collapsed: list[QualityWarning] = []
+    for key in order:
+        group = grouped[key]
+        summary = key[1]
+        if len(group) > 1 and summary:
+            collapsed.append(
+                QualityWarning(
+                    category=group[0].category,
+                    message=f"{len(group)} {summary}",
+                    link=group[0].summary_link or group[0].link,
+                )
+            )
+        else:
+            collapsed.extend(group)
+    return collapsed
 
 
 def check_assignment_consistency(connection: sqlite3.Connection) -> list[QualityWarning]:
@@ -195,6 +252,8 @@ def check_reading_completeness(
                 f"Messpunkt {gap.designation}: "
                 f"{gap.day.isoformat()} hat {gap.count}/{gap.expected} Messwerten."
             ),
+            summary="Tage mit unvollständigen Messwerten",
+            summary_link="/import",
             link=f"/metering-points/{gap.metering_point_id}",
         )
         for gap in find_reading_gaps(connection, year, quarter)
@@ -265,6 +324,8 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
                 category="leg_not_assigned",
                 message=f"Messpunkt „{metering_point.designation}“ hat noch keine zugeordnete LEG.",
                 link=f"/metering-points/{metering_point.id}",
+                summary="Messpunkte ohne LEG",
+                summary_link="/metering-points",
             )
         )
 
@@ -308,6 +369,8 @@ def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> li
                     "die Person ist aber noch aktiv -- unter „Austritte“ entfernen "
                     "oder deaktivieren."
                 ),
+                summary="abgeschlossene Austritte, Person noch aktiv",
+                summary_link="/offboardings",
                 link=f"/persons/{person.id}",
             )
         )
@@ -355,6 +418,8 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
                     f'"{person_name}" speist{where} in die LEG ein, hat dort '
                     "aber keine Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
                 ),
+                summary="Anschlüsse speisen ein, ohne zu beziehen",
+                summary_link="/assignments",
                 link=f"/persons/{person.id}" if person is not None else None,
             )
         )
@@ -393,6 +458,8 @@ def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> 
                     f'Genossenschaftsmitglied "{person_name}" hat 0 Anteile '
                     "erfasst -- Anzahl auf der Personen-Detailseite nachtragen."
                 ),
+                summary="Genossenschafter ohne erfasste Anteile",
+                summary_link="/persons",
                 link=f"/persons/{person.id}" if person is not None else None,
             )
         )
@@ -432,6 +499,8 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
                     f'"{step_label}".'
                 ),
                 link=f"/persons/{person.id}" if person is not None else None,
+                summary="Aufnahmen hängen zu lange auf einem Schritt",
+                summary_link="/onboardings",
             )
         )
 
@@ -634,6 +703,8 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
                 category="substation_area_one_sided",
                 message=f"Trafokreis „{substation_area.name}“: {mix.hint}",
                 link="/substation-areas",
+                summary="Trafokreise mit nur einer Richtung",
+                summary_link="/substation-areas",
             )
         )
     return warnings
@@ -664,6 +735,12 @@ def check_addresses(connection: sqlite3.Connection) -> list[QualityWarning]:
                 category="address_not_official",
                 message=f"Adresse weicht vom amtlichen Verzeichnis ab: {issue.label}",
                 link=where,
+                summary=(
+                    "Standort-Adressen sollten geprüft werden"
+                    if issue.kind == KIND_SITE
+                    else "Personen-Adressen sollten geprüft werden"
+                ),
+                summary_link=where,
             )
         )
     return warnings

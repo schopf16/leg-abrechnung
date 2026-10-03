@@ -28,6 +28,7 @@ from app.domain.quality_checks import (
     check_onboarding_progress,
     check_open_billing_cycle,
     check_substation_area_one_sided,
+    summarise_warnings,
     check_unresolved_bank_transactions,
 )
 from app.gui.navigation import page_frame
@@ -110,27 +111,34 @@ def _load_overview(connection) -> dict:
     if not settings.address_street.strip():
         action_items.append(("Absender-Adresse ist in den Einstellungen noch nicht erfasst.", "/settings"))
 
+    collected: list = []
     for warning in check_assignment_consistency(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_leg_assignment(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_onboarding_progress(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_offboarding_completed_but_active(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_cooperative_members_without_shares(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_feed_in_without_consumption(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_open_billing_cycle(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_unresolved_bank_transactions(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_substation_area_one_sided(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_leg_production_capacity(connection):
-        action_items.append((warning.message, warning.link))
+        collected.append(warning)
     for warning in check_addresses(connection):
+        collected.append(warning)
+
+    # Collapsed last, so a handful of repeated findings become one line each
+    # and the rest of the overview stays visible. Thirteen address lines
+    # pushed everything else off the screen.
+    for warning in summarise_warnings(collected):
         action_items.append((warning.message, warning.link))
 
     leg_rows = []
