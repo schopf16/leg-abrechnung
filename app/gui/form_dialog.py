@@ -176,8 +176,17 @@ class FormGuard:
         with ui.dialog() as confirm, ui.card():
             ui.label("Eingaben verwerfen?")
             with ui.row().classes("w-full justify-end gap-2"):
-                keep = ui.button("Weiter bearbeiten", on_click=lambda: self._answer(0)).props("flat")
-                throw_away = ui.button("Verwerfen", on_click=lambda: self._answer(1), color="negative")
+                # Both start flat; the marked one loses `flat` and is drawn
+                # filled in its own colour. One filled button among flat
+                # ones cannot be mistaken, which an outline could -- this
+                # started with a thin ring and the administrator could not
+                # see which answer the keys would take.
+                keep = ui.button("Weiter bearbeiten", on_click=lambda: self._answer(0)).props(
+                    "flat color=primary"
+                )
+                throw_away = ui.button("Verwerfen", on_click=lambda: self._answer(1), color="negative").props(
+                    "flat"
+                )
         # Persistent for a reason found by using it: the Escape keystroke
         # that opens this question goes on to reach the question itself,
         # and a non-persistent dialog is closed by Quasar on that same
@@ -232,17 +241,20 @@ class FormGuard:
     def _show_the_mark(self) -> None:
         """Draw the mark on the answer the keys would take.
 
-        The same grey bar the drawer marks the open chapter with, rather
-        than a third way of saying "this one".
+        Exactly one answer is drawn filled and the other flat, the way
+        every operating system marks the default button -- and unlike the
+        thin ring this started with, it cannot be overlooked.
 
         Returns:
             None.
         """
         for index, (button, _) in enumerate(self._answers):
             if index == self._marked:
-                button.style("outline: 2px solid rgba(0,0,0,0.45); outline-offset: 2px;")
+                button.props(remove="flat")
+                button.style("font-weight: 700;")
             else:
-                button.style("outline: none;")
+                button.props("flat")
+                button.style("font-weight: 400;")
 
     def _answer(self, index: int) -> None:
         """Take one of the two answers.

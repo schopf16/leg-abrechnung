@@ -408,6 +408,10 @@ administrator within minutes of first opening a dialog:
   text**, so it is the one place where the arrows have nothing else to do:
   they move the mark between the answers and Enter takes the marked one,
   which starts on "Weiter bearbeiten" so that a hasty Enter keeps the work.
+  The mark is **exactly one filled button among flat ones**, the way every
+  operating system draws a default button. It started as a thin ring and the
+  administrator could not see it at all -- a mark that has to be looked for
+  is not a mark.
 - **Enter worked and looked broken.** The save handler ran, refused, and
   wrote "Firma oder Vorname/Nachname sind erforderlich." underneath the
   last field of a dialog taller than the window, so the message was never

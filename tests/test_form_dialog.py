@@ -367,3 +367,26 @@ def test_the_leg_dialog_asks_before_discarding_what_was_typed(address_register, 
 
     assert dialog.value is True, "der Dialog darf nicht stillschweigend zugehen"
     assert guard._confirm.value is True, "es muss gefragt werden"
+
+
+def test_the_marked_answer_is_visibly_the_marked_one(press):
+    """Reported from use: "ich sehe nicht welcher button ausgewählt wurde".
+
+    The first attempt drew a thin ring around it, which was invisible on a
+    small card. Exactly one answer is filled and the other flat now -- the
+    way every operating system marks the default button.
+    """
+    client, _, guard, fields, _ = _dialog("/probe-guard-mark-visible")
+
+    fields["text"].value = "Muster"
+    with client:
+        press("Escape")
+
+        keep, throw_away = (button for button, _ in guard._answers)
+        assert "flat" not in keep._props, "die vormarkierte Antwort muss gefüllt sein"
+        assert throw_away._props.get("flat") is True
+
+        press("ArrowRight")
+
+        assert keep._props.get("flat") is True
+        assert "flat" not in throw_away._props, "die Markierung muss mitwandern"
