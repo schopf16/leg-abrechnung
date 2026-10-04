@@ -90,7 +90,11 @@ def open_person_form(
     """
     prefill = prefill or {}
 
-    with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
+    # Wider than the other forms on purpose: this is the one dialog with
+    # five sections, and the width is what lets each row hold its fields
+    # side by side instead of stacking them into a dialog taller than the
+    # window.
+    with ui.dialog() as dialog, ui.card().classes("w-full max-w-3xl"):
         ui.label("Person bearbeiten" if existing else "Neue Person").classes("text-lg font-bold")
         # The findings for this record, except the ones rendered
         # beside their own field further down.
@@ -106,11 +110,6 @@ def open_person_form(
             .classes("w-full")
             .props("autofocus")
         )
-        ui.label(
-            "Vorname/Nachname: der Person selbst, oder der "
-            "Ansprechsperson bei einer Firma (kann bei einer reinen "
-            "Firmenadresse ohne Ansprechsperson leer bleiben)."
-        ).classes("text-caption text-grey-6")
         with ui.row().classes("w-full gap-2"):
             salutation = ui.select(
                 ["", *SALUTATION_OPTIONS],
@@ -120,6 +119,7 @@ def open_person_form(
             first_name = ui.input(
                 "Vorname", value=_initial(existing, "first_name", prefill, "first_name")
             ).classes("flex-grow")
+            first_name.props('hint="Person selbst oder Ansprechsperson der Firma"')
             last_name = ui.input(
                 "Nachname", value=_initial(existing, "last_name", prefill, "last_name")
             ).classes("flex-grow")
@@ -179,11 +179,7 @@ def open_person_form(
 
         ui.separator().classes("my-2")
         ui.label("Zweite Person (optional)").classes("text-body1 font-bold")
-        ui.label(
-            "Für ein Paar oder eine Partnerschaft: beide Namen stehen auf "
-            "der Anschrift und in der Anrede, abgerechnet wird weiterhin "
-            "einmal -- ein Kunde, ein Beleg."
-        ).classes("text-caption text-grey-6")
+        ui.label("Beide Namen auf Anschrift und Anrede, eine Rechnung.").classes("text-caption text-grey-6")
         with ui.row().classes("w-full gap-2"):
             second_salutation = ui.select(
                 ["", *SALUTATION_OPTIONS],
@@ -262,13 +258,7 @@ def open_person_form(
                 f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
             ).classes("text-caption text-grey-6")
         else:
-            ui.label(
-                "Die Kunden-Nr. wird beim Speichern automatisch und "
-                "zufällig vergeben (keine fortlaufende Nummer, um "
-                "Rückschlüsse auf Kundenanzahl oder -reihenfolge zu "
-                "verhindern) und ist danach nicht mehr änderbar."
-            ).classes("text-caption text-grey-6")
-        error_label = ui.label("").classes("text-negative")
+            ui.label("Die Kunden-Nr. wird beim Speichern vergeben.").classes("text-caption text-grey-6")
 
         def save() -> None:
             """Validate the form and persist the person.
@@ -373,7 +363,8 @@ def open_person_form(
             if on_saved:
                 on_saved(saved)
 
-        with ui.row().classes("w-full justify-end gap-2 mt-2"):
+        with ui.row().classes("w-full items-center gap-2 mt-2"):
+            error_label = ui.label("").classes("text-negative mr-auto")
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
     form_guard(dialog, on_save=save)

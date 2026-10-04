@@ -83,6 +83,7 @@ class FormGuard:
                     field.on("keydown.enter", lambda _: self._save())
 
         self._confirm = self._build_confirm()
+        self._keep_the_footer_in_view()
 
     @staticmethod
     def _enter_belongs_to_the_form(field: ValueElement) -> bool:
@@ -136,7 +137,48 @@ class FormGuard:
             with ui.row().classes("w-full justify-end gap-2"):
                 ui.button("Weiter bearbeiten", on_click=lambda: confirm.close()).props("flat")
                 ui.button("Verwerfen", on_click=discard, color="negative")
+        # Persistent for a reason found by using it: the Escape keystroke
+        # that opens this question goes on to reach the question itself,
+        # and a non-persistent dialog is closed by Quasar on that same
+        # event -- so it appeared and vanished in one blink. Escape here
+        # therefore means "Weiter bearbeiten", which is also the safe
+        # reading of pressing it twice.
+        confirm.props("persistent")
+        confirm.on("keydown.escape", lambda _: confirm.close())
         return confirm
+
+    def _keep_the_footer_in_view(self) -> None:
+        """Pin the button row to the bottom of the visible dialog.
+
+        A dialog with seventeen fields is taller than the window, and the
+        administrator pressed Enter in the middle of it: the save handler
+        ran, refused, and wrote its message underneath the last field --
+        off screen. It read as "Enter does nothing", which is the worst
+        possible outcome of adding a key.
+
+        So the row that carries Abbrechen and Speichern (and, where the
+        dialog puts it there, the error) sticks to the bottom edge while
+        the fields scroll behind it. Nothing in this app needs scrolling
+        to reach an action any more.
+
+        Returns:
+            None.
+        """
+        card = next(iter(self.dialog.default_slot.children), None)
+        if card is None:
+            return
+        footer = None
+        for child in card.default_slot.children:
+            if child.__class__.__name__ == "Row" and any(
+                element.__class__.__name__ == "Button" for element in child.descendants()
+            ):
+                footer = child
+        if footer is None:
+            return
+        footer.style(
+            "position: sticky; bottom: 0; z-index: 2; background: white; "
+            "padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.08);"
+        )
 
     def _escape(self) -> None:
         """Close the dialog, asking first if there is something to lose.

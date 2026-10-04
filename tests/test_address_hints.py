@@ -573,3 +573,113 @@ def test_a_form_without_a_house_number_field_is_not_written_into(address_registe
     box.accept(AddressFinding(FIELD_HOUSE_NUMBER, "4a", "4"))
 
     assert street.value == "Erstweg 4"
+
+
+# --- The list has a keyboard ----------------------------------------------
+#
+# Reported from use: "beim enter in einem feld mit vorschläge öffnet die
+# vorschläge, ich kann dann aber mit pfeil hoch runter nicht durchscrollen
+# oder mit enter auswählen". The list could only ever be used with a mouse,
+# because it floats without taking focus (`no-focus`) -- so the keys have to
+# be bound on the field being typed in, the same reason Escape already was.
+#
+# Driven through the postal code, because that is the field whose query
+# returns more than one entry from the test register.
+
+
+def _key(element, event_type: str):
+    """The handler registered for one key on one element.
+
+    Args:
+        element: The input the key is bound on.
+        event_type: e.g. "keydown.down".
+
+    Returns:
+        The handler, callable with no argument.
+    """
+    for listener in element._event_listeners.values():
+        if listener.type == event_type:
+            return listener.handler
+    raise AssertionError(f"kein Listener fuer {event_type}")
+
+
+def _open_locality_list(register):
+    """Type a postal code that matches both localities.
+
+    Args:
+        register: Path of the test register.
+
+    Returns:
+        `(box, street, postal_code, locality)`.
+    """
+    box, street, _, postal_code, locality = _fields(register)
+    postal_code.value = "30"
+    box.update_locality(postal_code)
+    assert len(box.suggestions) > 1, box.suggestions
+    return box, street, postal_code, locality
+
+
+def test_the_arrows_walk_the_open_list(address_register):
+    """Down lands on the first entry, up from nothing on the last."""
+    box, _, postal_code, _ = _open_locality_list(address_register)
+
+    _key(postal_code, "keydown.down")()
+    assert box._highlight == 0
+
+    _key(postal_code, "keydown.down")()
+    assert box._highlight == 1
+
+    box._highlight = -1
+    _key(postal_code, "keydown.up")()
+    assert box._highlight == len(box.suggestions) - 1
+
+
+def test_the_arrows_wrap_rather_than_stopping(address_register):
+    """A short list is walked round faster than back."""
+    box, _, postal_code, _ = _open_locality_list(address_register)
+    box._highlight = len(box.suggestions) - 1
+
+    _key(postal_code, "keydown.down")()
+
+    assert box._highlight == 0
+
+
+def test_enter_takes_the_entry_the_arrows_reached(address_register):
+    """The other half of the report: Enter did nothing."""
+    box, _, postal_code, locality = _open_locality_list(address_register)
+    _key(postal_code, "keydown.down")()
+    chosen = box.suggestions[0]
+
+    _key(postal_code, "keydown.enter")()
+
+    assert postal_code.value == chosen.postal_code
+    assert locality.value == chosen.locality
+    assert box.suggestions == []
+
+
+def test_enter_takes_nothing_that_was_not_stepped_onto(address_register):
+    """Deliberate, and the project has already paid for the lesson.
+
+    A street suggestion can be a correctly spelled *different* real street
+    (see CLAUDE.md on `FIELD_POSTAL_CODE`), so a blind Enter taking the
+    first entry is exactly the destructive case that was fixed once before.
+    """
+    box, _, postal_code, locality = _open_locality_list(address_register)
+    assert box._highlight == -1
+
+    _key(postal_code, "keydown.enter")()
+
+    assert postal_code.value == "30", "nichts darf übernommen worden sein"
+    assert not locality.value
+
+
+def test_a_new_search_forgets_where_the_arrows_were(address_register):
+    """Otherwise the index points into the previous set of suggestions."""
+    box, street, postal_code, _ = _open_locality_list(address_register)
+    _key(postal_code, "keydown.down")()
+    assert box._highlight == 0
+
+    street.value = "Erstweg"
+    box.update()
+
+    assert box._highlight == -1

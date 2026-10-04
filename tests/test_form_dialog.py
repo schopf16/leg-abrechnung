@@ -171,3 +171,84 @@ def test_the_real_edit_dialogs_are_guarded(module, function, address_register):
     forms = [element for element in dialogs if element._props.get("persistent")]
 
     assert forms, f"{function}: kein persistenter Dialog"
+
+
+# --- What using it exposed -------------------------------------------------
+
+
+def test_the_question_survives_the_keystroke_that_opened_it():
+    """It appeared and vanished in one blink.
+
+    The Escape keydown that opens the question goes on to reach the
+    question, and Quasar closes a non-persistent dialog on exactly that
+    event. Escape here therefore means "Weiter bearbeiten" -- which is also
+    the safe reading of pressing it twice.
+    """
+    client, dialog, guard, fields, _ = _dialog("/probe-guard-question-stays")
+
+    fields["text"].value = "Muster"
+    with client:
+        _listener(dialog, "keydown.escape")(None)
+
+    assert guard._confirm._props.get("persistent") is True
+    assert guard._confirm.value is True
+
+    with client:
+        _listener(guard._confirm, "keydown.escape")(None)
+
+    assert guard._confirm.value is False
+    assert dialog.value is True, "zurück zum Bearbeiten, nicht verworfen"
+
+
+def test_the_buttons_stay_in_view_when_the_dialog_is_taller_than_the_window():
+    """The Person dialog is taller than a laptop screen.
+
+    Enter pressed in the middle of it ran the save, got a refusal, and wrote
+    the message underneath the last field -- off screen. It read as "Enter
+    does nothing", which is the worst possible outcome of adding a key.
+    """
+    client = Client(ui.page("/probe-guard-sticky")(lambda: None), request=None)
+    with client:
+        with ui.dialog() as dialog, ui.card():
+            ui.input("Name")
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Abbrechen", on_click=dialog.close).props("flat")
+                ui.button("Speichern")
+        form_guard(dialog)
+
+    card = dialog.default_slot.children[0]
+    footer = [
+        child
+        for child in card.default_slot.children
+        if child.__class__.__name__ == "Row"
+        and any(element.__class__.__name__ == "Button" for element in child.descendants())
+    ]
+
+    assert footer, "keine Knopfzeile gefunden"
+    assert footer[-1]._style.get("position") == "sticky"
+
+
+def test_the_person_dialog_shows_its_error_beside_the_save_button(address_register):
+    """Driven through the real dialog, because that is where it was wrong."""
+    from app.gui.person_form import open_person_form
+
+    client = Client(ui.page("/probe-person-error-position")(lambda: None), request=None)
+    with client:
+        open_person_form()
+        save = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and element.text == "Speichern"
+        )
+        # An empty form: neither a company nor a name, which is the refusal
+        # the administrator ran into.
+        _listener(save, "click")(None)
+
+    row = save.parent_slot.parent
+    messages = [
+        element.text
+        for element in row.descendants()
+        if element.__class__.__name__ == "Label" and element.text
+    ]
+
+    assert any("erforderlich" in message for message in messages), messages

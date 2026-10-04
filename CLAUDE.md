@@ -351,6 +351,29 @@ itself) is not in the snapshot, so a change made only there reads as clean.
 The protection that matters for an accidental click is `persistent`, which
 has no such gap.
 
+**Three things only using it could have shown**, all three reported by the
+administrator within minutes of first opening a dialog:
+
+- The question appeared and vanished in one blink. The Escape keydown that
+  opens it goes on to reach the question itself, and Quasar closes a
+  non-persistent dialog on exactly that event. The question is therefore
+  `persistent` too, with its own Escape meaning "Weiter bearbeiten" --
+  which is also the safe reading of pressing Escape twice.
+- **Enter worked and looked broken.** The save handler ran, refused, and
+  wrote "Firma oder Vorname/Nachname sind erforderlich." underneath the
+  last field of a dialog taller than the window, so the message was never
+  seen. `form_guard` now pins the button row to the bottom edge of the
+  visible dialog (`position: sticky`), and the Person dialog puts its error
+  label *in* that row. Nothing in this app needs scrolling to reach an
+  action or to read why one was refused.
+- The Person dialog was simply too tall. Three paragraphs of justification
+  inside it -- why a first name may be blank, why both partners are named,
+  why the customer number is random -- came to about ten lines, and the
+  administrator has twice said that a hint needs no reasoning. They are one
+  short line or a field `hint` now, and the card is `max-w-3xl` so each row
+  holds its fields side by side. A dialog with seventeen inputs will never
+  fit a laptop screen, which is why the sticky row is the actual fix.
+
 **Read-only dialogs deliberately do not get this.** An invoice preview or a
 detail view holds nothing to lose, and clicking beside it is the fastest way
 to dismiss it. Consequence for tests: a switch inside a guarded dialog is
@@ -1114,6 +1137,17 @@ nothing is marked, and switches itself off when the last finding goes: a
 control that can only ever empty the list is clutter, and leaving it on
 after the last correction would filter the list down to nothing from
 off-screen.
+
+**The list has a keyboard, and it refuses to guess.** Down and up walk the
+entries (wrapping), Enter takes the one they reached, and the highlighted
+entry carries the same grey bar the drawer marks the open chapter with. The
+keys are bound on the field being typed in rather than on the menu, for the
+reason Escape already was: the menu floats with `no-focus` and never holds
+the keyboard. **Enter takes nothing while no entry is highlighted** -- a
+street suggestion can be a correctly spelled *different* real street, so a
+blind Enter on the first entry is precisely the destructive case fixed
+above. For the same reason `form_guard` binds no Enter at all on a field
+that owns a lookup menu: there the key belongs to the list.
 
 **The suggestion list floats over the form** (a `ui.menu` anchored to the
 field, dismissable with Escape) rather than sitting in the layout, where it
