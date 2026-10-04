@@ -484,6 +484,26 @@ and `subject_id`, `problems_for(connection, kind)` groups them, and
 enumerations would drift until a list stayed unmarked for a finding the
 overview was already showing.
 
+**A list runs only the checks that could mark one of its own entries**, via
+`CHECK_SUBJECTS`/`checks_for`. Measured on the live deployment, where every
+list ran all eleven: `problems_for` cost 128 ms, of which
+`check_substation_area_one_sided` was 49 ms and `check_addresses` 41 ms --
+and on the Personen page the first of those cannot produce a single finding.
+The administrator reported the pages opening slowly and this was the
+server's share of it: the LEGs page went from 123 ms to 33 ms, Trafokreise
+from 174 to 109. The overview still runs everything, because it shows
+everything.
+
+The table is **declared, not discovered**: a check's subject is only known
+after running it, which is the cost being avoided. Drift is therefore the
+risk, and `tests/test_check_subjects.py` re-derives the table from the
+source with `ast` rather than from a run -- no test data triggers all eleven
+checks at once, so a run-based check would pass while the table was wrong.
+A check that gains a subject without a table entry would quietly stop
+reaching the list it belongs to: the overview would name the finding and the
+list would show no triangle, which is the exact gap the markers were built
+to close.
+
 This exists because summarising the overview took something away.
 "7 Messpunkte ohne LEG" with a link to the list replaced seven lines that
 each named their metering point, so the reader arrived at the list and could
