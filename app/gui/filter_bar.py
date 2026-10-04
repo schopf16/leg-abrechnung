@@ -59,6 +59,9 @@ class FilterBar:
             None.
         """
         self._route = route
+        #: `(element, default)` for everything the bar handed out, so it can
+        #: say whether anything is filtered and put it all back.
+        self._defaults: list[tuple] = []
         with ui.row().classes("w-full items-start justify-between gap-6"):
             self.left = ui.column().classes("gap-2 grow")
             with ui.column().classes("gap-1 items-start shrink-0"):
@@ -92,6 +95,7 @@ class FilterBar:
                 .props(f'debounce=300 clearable dense hint="{fields}"')
             )
         self._keep(field, "search")
+        self._defaults.append((field, ""))
         return field
 
     def sort(self, options: Sequence[SortOption], on_change: Callable[[], None]) -> SortControl:
@@ -131,6 +135,7 @@ class FilterBar:
                 f'label="{label}" dense'
             )
         self._keep(switch, f"filter:{label}")
+        self._defaults.append((switch, value))
         return switch
 
     def choice(
@@ -157,6 +162,7 @@ class FilterBar:
                 .props("dense")
             )
         self._keep(select, f"choice:{label}")
+        self._defaults.append((select, value))
         return select
 
     def problem_filter(self, on_change: Callable[[], None]) -> ProblemFilter:
@@ -177,7 +183,39 @@ class FilterBar:
         if self._recall("filter:problems", False):
             problem_filter.switch.value = True
         self._keep(problem_filter.switch, "filter:problems")
+        self._defaults.append((problem_filter.switch, False))
         return problem_filter
+
+    # -- resetting ----------------------------------------------------------
+
+    def is_filtering(self) -> bool:
+        """Whether any control is set to something other than its default.
+
+        What an empty list uses to decide whether to offer a way out: with
+        nothing filtered, "Filter zurücksetzen" would be a button that does
+        nothing, and the list is simply empty.
+
+        Returns:
+            `True` if at least one control is away from its default.
+        """
+        return any(element.value != default for element, default in self._defaults)
+
+    def reset(self, then: Optional[Callable[[], None]] = None) -> None:
+        """Put every control back to its default.
+
+        Sets the values silently and then calls the page once, rather than
+        letting five controls fire five refreshes.
+
+        Args:
+            then: The page's refresh.
+
+        Returns:
+            None.
+        """
+        for element, default in self._defaults:
+            element.value = default
+        if then is not None:
+            then()
 
     # -- remembering --------------------------------------------------------
 

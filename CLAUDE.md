@@ -454,6 +454,48 @@ empty too, so on blur it would complain about a form that is merely
 unfinished -- the same mistake `verify` made when it greeted an empty
 Standort dialog with "Nicht im amtlichen Verzeichnis."
 
+### One wording for an amount, one for a date
+
+`app/formatting.py` holds `format_chf` and `format_date`, layer-neutral for
+the reason `app/format_size.py` and `app/sort_keys.py` are: the PDF layer must
+not import from `app/gui`, and an amount has to read the same on the screen
+and on the invoice.
+
+**Money** lives as integer Rappen everywhere and was turned into text by hand
+at sixteen places in the interface, each writing its own
+`f"{x / 100:.2f} CHF"` -- sixteen chances to divide by the wrong number, and
+no thousands separator anywhere, so `12345.60` was read wrongly at a glance
+on a Debitoren page. `format_chf` knows that a Rappen is a hundredth and that
+Switzerland groups with an apostrophe (`1'234.56`). Three `/ 100` remain and
+are right: two feed `ui.number`, which wants a number, and one is a numeric
+table column.
+
+**Dates** were German on most pages and ISO on one -- Zuordnungen printed
+`2026-10-04` beside neighbours printing `04.10.2026`. What `format_date`
+deliberately does *not* touch is an ISO string inside
+`ui.input(..., type=date)` or in a sort key: the browser's date field speaks
+ISO and sort keys compare text, so neither is display.
+
+Neither helper invents a value. `None` is an em dash, not `0.00` and not
+today -- "not recorded" and "zero" are different statements, the same rule
+the Ausgewogenheit view follows with its "—", and the same reason
+`Person.deactivated_at` stays `None` rather than carrying a made-up day.
+
+**A list says how many it shows** (`app/gui/list_footer.py`). A table says it
+already -- Quasar prints "1-50 von 92" -- so this is for the card lists,
+which said nothing: Debitoren could be filtered from ninety-two down to nine
+with no sign that it had been. `render_count` gives them that sentence.
+
+**An empty list offers the way out, when there is one.** "Keine passenden
+Austritte." is a statement, and the reader's next question is what to do
+about it. `FilterBar.is_filtering()` decides whether to offer "Filter
+zurücksetzen": with nothing filtered it would be a button that does nothing,
+and the list is simply empty -- which is why the message differs too ("Noch
+kein Austritt gestartet."). `FilterBar.reset(then)` puts every control back
+and calls the page **once**, rather than letting five controls fire five
+rebuilds. An empty Mahnwesen worklist deliberately gets no suggestion: it is
+good news.
+
 ### The fix loop has to close
 
 See the triangle, open the record, correct it, come back. Two halves of that

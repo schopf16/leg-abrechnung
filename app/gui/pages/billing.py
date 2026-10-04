@@ -3,6 +3,7 @@
 from nicegui import ui
 
 from app.config import ConfigError, get_graph_config
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain.billing import create_billing_runs_for_all_legs, create_or_replace_billing_run
 from app.domain.distribution import LegNotAssignedError
@@ -64,8 +65,8 @@ def _all_legs_row(outcome) -> dict:
     return {
         "leg": outcome.leg.name,
         "items": len(outcome.items),
-        "invoiced": f"{outcome.total_invoiced_rappen / 100:.2f}",
-        "credited": f"{outcome.total_credited_rappen / 100:.2f}",
+        "invoiced": f"{format_chf(outcome.total_invoiced_rappen)}",
+        "credited": f"{format_chf(outcome.total_credited_rappen)}",
         "balance": "✓" if outcome.control_check and outcome.control_check.balanced else "⚠",
         "documents": len(export.document_paths) if export is not None else "-",
         "note": note,
@@ -383,8 +384,8 @@ def billing_page() -> None:
                     balance_class = "text-positive" if control_check.balanced else "text-negative"
                     ui.label(
                         f"{balance_text} "
-                        f"(offen zugunsten LEG: {control_check.total_owed_to_leg_rappen / 100:.2f} CHF, "
-                        f"offen zulasten LEG: {control_check.total_owed_by_leg_rappen / 100:.2f} CHF)"
+                        f"(offen zugunsten LEG: {format_chf(control_check.total_owed_to_leg_rappen, with_unit=True)}, "
+                        f"offen zulasten LEG: {format_chf(control_check.total_owed_by_leg_rappen, with_unit=True)})"
                     ).classes(balance_class)
 
                 if items:
@@ -908,7 +909,9 @@ def billing_page() -> None:
                     ui.label(
                         f"Verwaltungsaufwand Einspeisung: {settings.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh"
                     )
-                    ui.label(f"Kosten Papierrechnung: {settings.paper_invoice_rappen / 100:.2f} CHF")
+                    ui.label(
+                        f"Kosten Papierrechnung: {format_chf(settings.paper_invoice_rappen, with_unit=True)}"
+                    )
 
                 year, quarter = current_period()
                 with connection_scope() as connection:

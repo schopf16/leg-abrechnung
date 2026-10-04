@@ -15,6 +15,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
+from app.gui.list_footer import render_count, render_empty
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -280,6 +281,9 @@ def onboardings_page() -> None:
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
+            # Counted before the step filter narrows it, so "3 von 88" says
+            # what the reader expects it to say.
+            total_onboardings = len(onboardings)
             step_attr = step_filter.value
             if step_attr is not None:
                 # A tracker matches only while that one step's own date is
@@ -292,7 +296,15 @@ def onboardings_page() -> None:
             list_container.clear()
             with list_container:
                 if not onboardings:
-                    ui.label("Keine passenden Aufnahmen.")
+                    render_empty(
+                        "Keine passenden Aufnahmen."
+                        if bar.is_filtering()
+                        else "Noch keine Aufnahme gestartet.",
+                        action_label="Filter zurücksetzen" if bar.is_filtering() else None,
+                        on_action=(lambda: bar.reset(refresh)) if bar.is_filtering() else None,
+                    )
+                else:
+                    render_count(visible=len(onboardings), total=total_onboardings, noun="Aufnahmen")
                 for onboarding in onboardings:
                     person = persons.get(onboarding.person_id)
                     if person is None:

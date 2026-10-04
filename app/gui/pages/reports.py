@@ -2,6 +2,7 @@
 
 from nicegui import ui
 
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain.billing import compute_billing_items, verify_sum_balance
 from app.domain.distribution import LegNotAssignedError, compute_quarter_distribution
@@ -245,8 +246,8 @@ def reports_page() -> None:
                         balance_symbol = "✓" if control_check.balanced else "⚠"
                         ui.label(
                             f"{balance_symbol} Summenabgleich: offen zugunsten LEG "
-                            f"{control_check.total_owed_to_leg_rappen / 100:.2f} CHF, offen "
-                            f"zulasten LEG {control_check.total_owed_by_leg_rappen / 100:.2f} CHF"
+                            f"{format_chf(control_check.total_owed_to_leg_rappen, with_unit=True)}, offen "
+                            f"zulasten LEG {format_chf(control_check.total_owed_by_leg_rappen, with_unit=True)}"
                         ).classes(balance_class)
 
                     if items:

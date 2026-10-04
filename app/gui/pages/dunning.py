@@ -13,6 +13,7 @@ from datetime import date
 from nicegui import ui
 
 from app.config import ConfigError, get_graph_config
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain import dunning
 from app.emailing import graph_client
@@ -50,7 +51,7 @@ def _print_row(candidate: dunning.DunningCandidate) -> dict:
         "person": candidate.person.display_name,
         "customer_number": candidate.person.formatted_customer_number,
         "level": str(candidate.level),
-        "betrag": f"{candidate.total_open_rappen / 100:.2f}",
+        "betrag": f"{format_chf(candidate.total_open_rappen)}",
     }
 
 
@@ -114,7 +115,9 @@ def dunning_page() -> None:
                     ui.badge(
                         f"Stufe {candidate.level}", color="warning" if candidate.level == 1 else "negative"
                     )
-                    ui.label(f"{candidate.total_open_rappen / 100:.2f} CHF").classes("font-bold ml-auto")
+                    ui.label(f"{format_chf(candidate.total_open_rappen, with_unit=True)}").classes(
+                        "font-bold ml-auto"
+                    )
                     ui.button("Vorschau & Senden", on_click=lambda c=candidate: open_send_dialog(c)).props(
                         "dense"
                     )
@@ -259,7 +262,7 @@ def dunning_page() -> None:
                     sent_display = log.sent_at.replace("T", " ").split(".")[0]
                     with ui.row().classes("w-full justify-between text-body2 border-b py-1"):
                         ui.label(f"{sent_display} -- {name} -- Stufe {log.level}")
-                        ui.label(f"{log.amount_rappen / 100:.2f} CHF")
+                        ui.label(f"{format_chf(log.amount_rappen, with_unit=True)}")
 
         refresh_candidates()
         refresh_history()

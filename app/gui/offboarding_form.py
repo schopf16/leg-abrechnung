@@ -29,6 +29,7 @@ from typing import Callable, Optional
 
 from nicegui import ui
 
+from app.formatting import format_date
 from app.db.connection import connection_scope
 from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
@@ -188,7 +189,7 @@ def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
         return
 
     with ui.dialog() as confirm, ui.card():
-        ui.label(f"Zuordnung(en) von {person.display_name} per {exit_date.isoformat()} beenden?").classes(
+        ui.label(f"Zuordnung(en) von {person.display_name} per {format_date(exit_date)} beenden?").classes(
             "font-bold"
         )
         for z in open_assignments:

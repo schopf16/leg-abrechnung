@@ -23,6 +23,7 @@ from datetime import date, timedelta
 
 from nicegui import ui
 
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain.period import quarter_bounds, quarter_label
 from app.models import billing_run as billing_run_repo
@@ -123,18 +124,18 @@ def open_invoice_detail(item_id: int) -> None:
                         f"Verwaltungsaufwand Bezug ({item.consumed_kwh:.3f} kWh × "
                         f"{item.admin_fee_consumption_rp_per_kwh:.4f} Rp./kWh)"
                     )
-                    ui.label(f"{item.admin_fee_consumption_rappen / 100:.2f} CHF")
+                    ui.label(f"{format_chf(item.admin_fee_consumption_rappen, with_unit=True)}")
             if item.admin_fee_feed_in_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label(
                         f"Verwaltungsaufwand Einspeisung ({item.produced_kwh:.3f} kWh × "
                         f"{item.admin_fee_feed_in_rp_per_kwh:.4f} Rp./kWh)"
                     )
-                    ui.label(f"{item.admin_fee_feed_in_rappen / 100:.2f} CHF")
+                    ui.label(f"{format_chf(item.admin_fee_feed_in_rappen, with_unit=True)}")
             if item.paper_invoice_rappen > 0:
                 with ui.row().classes("w-full justify-between text-body2"):
                     ui.label("Kosten Papierrechnung")
-                    ui.label(f"{item.paper_invoice_rappen / 100:.2f} CHF")
+                    ui.label(f"{format_chf(item.paper_invoice_rappen, with_unit=True)}")
 
         ui.separator().classes("my-2")
 

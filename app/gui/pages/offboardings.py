@@ -16,6 +16,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
+from app.gui.list_footer import render_count, render_empty
 from app.gui.navigation import page_frame
 from app.gui.offboarding_form import open_offboarding_form, open_remove_person_dialog
 from app.gui.print_list import render_print_button
@@ -263,7 +264,19 @@ def offboardings_page() -> None:
             list_container.clear()
             with list_container:
                 if not visible_offboardings:
-                    ui.label("Keine passenden Austritte.")
+                    render_empty(
+                        "Keine passenden Austritte."
+                        if bar.is_filtering()
+                        else "Noch kein Austritt gestartet.",
+                        action_label="Filter zurücksetzen" if bar.is_filtering() else None,
+                        on_action=(lambda: bar.reset(refresh)) if bar.is_filtering() else None,
+                    )
+                else:
+                    render_count(
+                        visible=len(visible_offboardings),
+                        total=len(all_offboardings),
+                        noun="Austritte",
+                    )
                 for offboarding in visible_offboardings:
                     person = persons.get(offboarding.person_id)
                     if person is None:
