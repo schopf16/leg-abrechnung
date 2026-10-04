@@ -323,7 +323,56 @@ sich also mit einer neueren App-Version noch öffnen.
 
 ---
 
-## 7. Tests ausführen
+## 7. Adressregister
+
+Die App kann Adressen gegen das **Amtliche Verzeichnis der Gebäudeadressen**
+prüfen und daraus ausfüllen. Das ist das offizielle Verzeichnis der
+Schweizer Gebäudeadressen von swisstopo.
+
+**Einrichten:** Seite „Adressregister" öffnen und auf **„Jetzt
+aktualisieren"** klicken. Die App lädt das Verzeichnis selbst herunter und
+bereitet es auf — das dauert etwa eine Minute (rund 140 MB Download, 3,3
+Millionen Adressen) und belegt danach etwa 150 MB auf der Festplatte. Sie
+können während des Vorgangs normal weiterarbeiten; oben am Bildschirmrand
+steht auf jeder Seite, wie weit es ist.
+
+**Was es bringt:**
+
+- **Beim Tippen**: im Adressfeld eines Standorts, einer Person oder in den
+  Einstellungen erscheint eine Vorschlagsliste, die mit jedem Zeichen kürzer
+  wird. Ein Klick übernimmt Strasse, Hausnummer, PLZ und Ort auf einmal.
+  Klicken Sie nichts an, bleibt genau das stehen, was Sie geschrieben
+  haben — Adressen, die das Verzeichnis nicht kennt, lassen sich weiterhin
+  erfassen. Mit **Esc** verschwindet die Liste.
+- **Beim Prüfen**: weicht eine erfasste Adresse vom Verzeichnis ab, fragt
+  die App im Bearbeiten-Dialog **„Meinten Sie: …?"** mit **Ja** und **Nein**.
+  *Ja* übernimmt den amtlichen Wert, *Nein* heisst „so ist es richtig" und
+  der Hinweis bleibt weg, solange der Text unverändert bleibt. Ein Postfach
+  oder eine Adresse im Ausland kostet also genau einen Klick, dauerhaft.
+- In der Personen- und Standorte-Liste steht bei betroffenen Einträgen ein
+  **Warndreieck** neben dem Auge, und auf der Übersicht erscheint eine Zeile
+  mit der Anzahl.
+
+**Ortsbezeichnung statt Gemeinde:** Die App verwendet immer die postalische
+Ortsbezeichnung zur PLZ, nie die politische Gemeinde — bei 3048 also
+„Worblaufen" und nicht „Ittigen". Das ist der Name, der auf der Rechnung
+steht.
+
+**Aktualisieren:** Nach einem Vierteljahr meldet die Seite, dass die Daten
+alt sind. Ein Klick genügt. Angezeigt wird der Stand der Daten bei
+swisstopo, nicht der Zeitpunkt des Downloads.
+
+**Ohne Register** funktioniert alles wie bisher: keine Vorschläge, keine
+Hinweise, keine Fehlermeldung.
+
+**Datenschutz:** Das Verzeichnis wird vollständig heruntergeladen und liegt
+danach auf Ihrem Rechner. Es wird **keine einzige Adresse irgendwohin
+abgefragt** — auch nicht beim Tippen. Quelle: Amtliches Verzeichnis der
+Gebäudeadressen, ©swisstopo.
+
+---
+
+## 8. Tests ausführen
 
 Die Kernlogik (Verteilung, Abrechnung, Import, Migrationen) ist durch
 automatisierte Tests abgesichert. Zum Ausführen:
@@ -336,7 +385,7 @@ automatisierte Tests abgesichert. Zum Ausführen:
 
 ---
 
-## 8. Was nie auf GitHub landet
+## 9. Was nie auf GitHub landet
 
 Der Code liegt in einem **öffentlichen** GitHub-Repository. Damit dabei
 niemals versehentlich persönliche Daten (Datenbank, PDFs, Adressen, IBANs)
@@ -359,7 +408,7 @@ Abschnitt 6 zuständig.
 
 ---
 
-## 9. Technischer Überblick (für Entwickler)
+## 10. Technischer Überblick (für Entwickler)
 
 - **Sprache/Oberfläche:** Python + [NiceGUI](https://nicegui.io) (läuft als
   eigenständiges Desktop-Fenster, kein separater Server nötig).
@@ -407,7 +456,7 @@ Modultrennung ist bewusst strikt: die Domänenlogik kennt weder SQL noch
 NiceGUI-Details, die GUI kennt keine SQL-Details, der Import kennt nichts
 über das Dateiformat hinaus die Schnittstelle `ParsedReading`.
 
-## 10. Lizenz
+## 11. Lizenz
 
 Copyright (C) 2026 Michael Anderegg
 

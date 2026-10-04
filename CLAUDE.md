@@ -667,7 +667,7 @@ it saves, and it swallows `pdb` and `print`. Full run parallel, targeted
 run plain. While working, run the test files the change actually touches
 (`pytest tests/test_billing.py -q`) plus a render check when a page
 changed; save the full suite and the four gates for the point where the
-work is claimed to be done. Waiting for all 905 tests to learn that a
+work is claimed to be done. Waiting for all 1'077 tests to learn that a
 one-line edit compiles is not verification, it is ceremony.
 
 Tests must therefore stay **order- and process-independent**: xdist hands
@@ -795,9 +795,20 @@ use a stricter cutoff (`_CUTOFF_STREET`) than localities, whose candidates
 are the few names behind one postal code and genuinely dissimilar.
 
 Which field a "Ja" writes is an **explicit mapping** in
-`app/gui/address_hints.py`, not an if/else: a postal-code finding landed in
-the street field the first time, which is exactly what "everything that is
-not the locality is the street" invites.
+`SuggestionBox.accept`, never "everything that is not the locality is the
+street". That shape has now cost two defects. First a postal-code finding
+was written into the street field. Then the hints moved from a list card
+into the dialog, the mapping became an `if/elif` with the same trailing
+`else`, and a **house number** took the same path: correcting "4a" to "4"
+overwrote the street with "4" and left the number wrong -- one click
+destroying the address. A field the mapping does not know is now left alone
+rather than written somewhere plausible, and
+`test_yes_writes_only_the_field_the_finding_is_about` covers every field it
+can write.
+
+The second defect was found by this file, not by the tests: the paragraph
+still named a GUI module that had been deleted in the meantime, and chasing
+that dead reference led straight to the `else` branch.
 
 **One hint, one wording, yes or no.** "Meinten Sie: Worblaufen?" with Ja and
 Nein, and nothing else -- no severity, no explanation of why the app is
@@ -836,6 +847,22 @@ be worked off without scrolling ninety cards.
 A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
 written by `store_dismissals` **after** the record is saved -- a new record
 has no id while the dialog is open.
+
+**The cursor starts in the field meant to be typed into** -- Adresse on a
+Standort, Firma on a Person, Messpunktnummer on a Messpunkt. Not the first
+field there: Land and Identifikator carry defaults from the settings, so
+starting on them would mean two tabs before anything happens.
+
+**The address fields carry no debounce.** The Standort dialog had
+`debounce=300` of its own for the duplicate check and the suggestion box put
+`debounce=250` on top; typing a street quickly and stopping then left the
+list empty until another key was pressed seconds later. Two stacked delays
+on one field is not a thing worth reasoning about, and there is nothing to
+spare the machine -- the lookup is an indexed prefix query over 197'000
+streets and the duplicate check reads 92 rows. Honest about the limit of
+that diagnosis: the binding was never broken Python-side, which was measured
+before anything changed, so what the browser did with two debounce values
+could not be observed from here. Removing the stacking removed the variable.
 
 **`verify` says nothing until there is an address to check.** With a blank
 street or postal code it returns nothing, and a blank house number is
@@ -953,7 +980,7 @@ Test data is invented (`example.invalid` addresses, `Muster`/`Beispiel`
 names); real figures quoted in a commit message stay aggregate ("26 von 29
 Messpunkten"), never per person.
 
-Licensed **GPL-3.0-or-later** (see `LICENSE` and README section 10): others
+Licensed **GPL-3.0-or-later** (see `LICENSE` and README section 11): others
 may use and adapt it, and anyone distributing a modified version has to
 publish their source too, so improvements can find their way back. GPL-2
 was ruled out because `svglib` is LGPL-3.0 and incompatible with it; every

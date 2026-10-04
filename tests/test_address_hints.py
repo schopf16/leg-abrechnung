@@ -21,6 +21,7 @@ The lists now only mark a record; the hint is rendered beside the value it
 would replace, and the tests below check both halves.
 """
 
+import pytest
 from nicegui import Client, ui
 
 from app.db.connection import connection_scope
@@ -31,7 +32,7 @@ from app.domain.address_check import (
     find_address_issues,
 )
 from app.domain.address_check import issue_ids
-from app.domain.address_lookup import FIELD_LOCALITY, suggest_addresses
+from app.domain.address_lookup import FIELD_HOUSE_NUMBER, FIELD_LOCALITY, suggest_addresses
 from app.gui.address_input import (
     DISMISS_ADDRESS,
     DISMISS_LOCALITY,
@@ -643,3 +644,73 @@ def test_the_filter_switches_itself_off_when_the_last_finding_goes(address_regis
     assert _switch(client2, "Nur fehlerhafte Adressen").visible is False
     assert _switch(client2, "Nur fehlerhafte Adressen").value is False
     assert len(_card_names(client2)) == 1
+
+
+@pytest.mark.parametrize(
+    "street, number, postal_code, locality, field_index, expected",
+    [
+        # (which input must change, what it must become)
+        ("Erstweg", "4a", "3048", "Musterdorf", 1, "4"),
+        ("Drittweg", "1", "3048", "Musterdorf", 2, "3065"),
+        ("Erstweg", "4", "3048", "Grossgemeinde", 3, "Musterdorf"),
+    ],
+)
+def test_yes_writes_only_the_field_the_finding_is_about(
+    address_register, street, number, postal_code, locality, field_index, expected
+):
+    """Twice now a suggestion has landed in the wrong field.
+
+    First a postal code went into the street. The if/elif that replaced the
+    mapping then did the same to a house number: correcting "4a" to "4"
+    overwrote the street with "4" and left the number wrong -- a click that
+    destroyed data. An explicit mapping, and every field it can write
+    checked here.
+    """
+    box, *fields = _fields(address_register)
+    fields[0].value, fields[1].value = street, number
+    fields[2].value, fields[3].value = postal_code, locality
+    before = [f.value for f in fields]
+
+    box.accept(box.findings()[0])
+
+    after = [f.value for f in fields]
+    assert after[field_index] == expected
+    for index, (was, now) in enumerate(zip(before, after)):
+        if index != field_index:
+            assert now == was, f"Feld {index} wurde mitgeändert: {was!r} -> {now!r}"
+
+
+def test_yes_leaves_everything_alone_when_the_field_is_unknown(address_register):
+    """A finding this box cannot place must not be written somewhere plausible."""
+    from app.domain.address_lookup import AddressFinding
+
+    box, *fields = _fields(address_register)
+    fields[0].value, fields[1].value = "Erstweg", "4"
+    fields[2].value, fields[3].value = "3048", "Musterdorf"
+    before = [f.value for f in fields]
+
+    box.accept(AddressFinding("etwas_neues", "x", "y"))
+
+    assert [f.value for f in fields] == before
+
+
+def test_a_form_without_a_house_number_field_is_not_written_into(address_register):
+    """The settings page keeps street and number in one field.
+
+    Writing a house-number suggestion there would replace "Strasse 4" with
+    "4". The mapping has no fallback for that reason, and this pins it even
+    though `verify` cannot produce the finding in that form today.
+    """
+    from app.domain.address_lookup import AddressFinding
+
+    client = Client(ui.page("/probe-no-number-field")(lambda: None), request=None)
+    with client:
+        street = ui.input("Strasse")
+        postal_code = ui.input("PLZ")
+        locality = ui.input("Ort")
+        box = SuggestionBox(street, postal_code, locality, path=address_register)
+    street.value = "Erstweg 4"
+
+    box.accept(AddressFinding(FIELD_HOUSE_NUMBER, "4a", "4"))
+
+    assert street.value == "Erstweg 4"
