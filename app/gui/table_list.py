@@ -49,9 +49,17 @@ def paged_table(**kwargs) -> ui.table:
         The table.
     """
     table = ui.table(pagination={"rowsPerPage": DEFAULT_PAGE_SIZE}, **kwargs)
-    # Quasar's own footer: the arrows, "1-50 von 92", and the select. Its
-    # labels are English by default, and this app is German throughout.
-    table.props(f'rows-per-page-options="{PAGE_SIZE_OPTIONS}"')
+    # Assigned, not passed through `props()`: that parses a string, so
+    # Quasar received the literal text "[30, 50, 100, 0]" and the select had
+    # nothing to offer -- the administrator found the 50 unchangeable. An
+    # array prop has to reach the browser as an array.
+    table._props["rows-per-page-options"] = list(PAGE_SIZE_OPTIONS)
+    # Quasar's own footer otherwise: the arrows, "1-50 von 92" and the
+    # select. Its labels are English by default and this app is German.
     table.props('rows-per-page-label="Zeilen pro Seite"')
     table.props('no-data-label="Keine Einträge"')
+    # Quasar marks a table non-selectable, so a cell could be read but not
+    # copied -- and a Kunden-Nr. is there to be pasted somewhere else. The
+    # buttons in the actions column stay unselectable, as buttons are.
+    table.classes("leg-selectable")
     return table

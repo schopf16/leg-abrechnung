@@ -155,6 +155,15 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
         " color: rgba(0,0,0,0.87); }"
         ".leg-nav-group .q-item { padding: 6px 12px; min-height: 0; }"
         ".leg-nav-group .q-item__label { font-size: 13px; font-weight: 600; }"
+        # A list is there to be read *and* used elsewhere: a Kunden-Nr. gets
+        # pasted into a bank form, an address into a letter. Quasar renders
+        # a table inside `.non-selectable`, whose rule carries `!important`,
+        # so undoing it needs the same weight. The buttons in the actions
+        # column keep their own `non-selectable`, as buttons should.
+        ".leg-selectable, .leg-selectable td, .leg-selectable th "
+        "{ -webkit-user-select: text !important; user-select: text !important; }"
+        ".leg-selectable .q-btn { -webkit-user-select: none !important;"
+        " user-select: none !important; }"
         "</style>"
     )
     ui.add_head_html(PRINT_STYLE)

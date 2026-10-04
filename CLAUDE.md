@@ -456,8 +456,13 @@ Standort dialog with "Nicht im amtlichen Verzeichnis."
 
 ### A long list is a table, and it pages
 
-`app/gui/table_list.py`'s `paged_table` builds the lists that are tables --
-Personen and Standorte -- with one page size for both.
+`app/gui/table_list.py`'s `paged_table` builds **every Stammdaten list** --
+Trafokreise, Standorte, Messpunkte, LEGs and Personen -- with one page size
+for all of them. The administrator's verdict after seeing the first one:
+*"eine solche tabellenansicht ist näher an einer datenbank als diese
+boubles"*. Zuordnungen is the deliberate exception: it groups its rows per
+metering point, and a flat row per assignment would lose the grouping that
+makes a move legible.
 
 **Why Personen stopped being cards.** It drew 92 cards of 23 interface
 elements each, 2'108 in all, and the administrator reported the page taking
@@ -475,6 +480,15 @@ Papierrechnung, BKW-Nummer, Bemerkung, the Genossenschaft badge) was already
 on the detail page. `tests/test_person_couple.py` checks that explicitly, so
 "moved one click away" cannot quietly become "dropped".
 
+Each list keeps the columns its reader needs and no more, and the rule for
+leaving one out is the same everywhere: a column that is empty for all but a
+handful of records is clutter. PV and battery capacity are therefore on the
+Messpunkt detail page, the LEG's Trafokreise are one cell rather than a
+status line with an indented list, and a Trafokreis keeps its Bemerkung
+because that column is usually filled. A Trafokreis has no detail page at
+all, so its finding is read in the **pencil** -- `render_problem_notes` in
+its form, without which the triangle on that one list pointed at nothing.
+
 Two details follow from the shape rather than from taste. A deactivated
 person is marked **in the name cell** (`Muster, Anna · inaktiv seit …`)
 because a status column would be empty for all but a handful of people, and
@@ -483,6 +497,22 @@ Genossenschafter badge is gone from the list: the "Nur Genossenschafter"
 filter is the members' list (there is no page of its own), the printout
 keeps its "Anteile" column, and `test_a_deactivated_member_drops_off_the_list_at_once`
 now watches the filter instead of a badge -- the same defect, one layer in.
+
+**A cell can be marked and copied.** Quasar renders a table inside
+`.non-selectable`, whose rule carries `!important`, so a Kunden-Nr. could be
+read and not pasted into a bank form -- the administrator hit that
+immediately. `paged_table` adds `leg-selectable` and `page_frame`'s
+stylesheet undoes the rule with the same weight, while the buttons in the
+actions column stay unselectable, as buttons should be. The class and the
+rule live in two modules, so `tests/test_persons_table.py` checks both: each
+alone passes while copying stays impossible.
+
+**An array prop has to reach the browser as an array.**
+`rows-per-page-options` went through `props()` at first, which parses a
+string, so Quasar received the literal text `"[30, 50, 100, 0]"` and the
+select had nothing to offer -- the 50 was unchangeable. It is assigned to
+`_props` as a list, and the test asserts the type rather than the value,
+because the wrong one stringifies to something that looks right.
 
 **Paging is Quasar's own, and that is a different decision from sorting.**
 Sorting may not use Quasar's `sortable: True` headers because half the lists
