@@ -14,6 +14,9 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
+from app.gui.list_footer import render_count, render_empty
 from app.gui.navigation import page_frame
 from app.gui.offboarding_form import open_offboarding_form, open_remove_person_dialog
 from app.gui.print_list import render_print_button
@@ -22,7 +25,6 @@ from app.gui.sorting import (
     SortOption,
     apply_sort,
     person_name_key,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -156,9 +158,9 @@ def offboardings_page() -> None:
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
-        with ui.row().classes("w-full items-center gap-4"):
-            show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
-            sort_select = render_sort_select(sort_options({}), lambda: refresh())
+        bar = FilterBar("/offboardings")
+        sort_select = bar.sort(sort_options({}), lambda: refresh())
+        show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
@@ -262,7 +264,19 @@ def offboardings_page() -> None:
             list_container.clear()
             with list_container:
                 if not visible_offboardings:
-                    ui.label("Keine passenden Austritte.")
+                    render_empty(
+                        "Keine passenden Austritte."
+                        if bar.is_filtering()
+                        else "Noch kein Austritt gestartet.",
+                        action_label="Filter zurücksetzen" if bar.is_filtering() else None,
+                        on_action=(lambda: bar.reset(refresh)) if bar.is_filtering() else None,
+                    )
+                else:
+                    render_count(
+                        visible=len(visible_offboardings),
+                        total=len(all_offboardings),
+                        noun="Austritte",
+                    )
                 for offboarding in visible_offboardings:
                     person = persons.get(offboarding.person_id)
                     if person is None:
@@ -367,6 +381,7 @@ def offboardings_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Starten", on_click=start)
+            form_guard(dialog, on_save=start)
             dialog.open()
 
         refresh()

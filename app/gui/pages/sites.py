@@ -14,16 +14,22 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.quality_checks import SUBJECT_SITE
+from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import TABLE_MARKER_HTML, ProblemFilter, load_problems
+from app.gui.problem_markers import (
+    TABLE_MARKER_HTML,
+    load_problems,
+    render_problem_notes,
+)
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
     apply_sort,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -170,16 +176,12 @@ def sites_page() -> None:
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Adresse, PLZ, Ort, Trafokreis...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar("/sites")
+        search_input = bar.search("Adresse, PLZ, Ort, Trafokreis")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
+        table = paged_table(route="/sites", columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         # The marker comes from `app.gui.problem_markers` rather than being
         # written out here: a table renders its cells as markup while a card
         # renders elements, so the triangle exists twice and must not drift.
@@ -330,7 +332,16 @@ def site_detail_page(site_id: int) -> None:
             ui.link("← Zurück zu Standorten", "/sites")
             return
 
-        ui.link("← Zurück zu Standorten", "/sites")
+        render_detail_header(
+            list_route="/sites",
+            list_label="Standorte",
+            title=site.full_address,
+            on_edit=lambda: open_site_form(existing=site, on_saved=lambda _: ui.navigate.reload()),
+        )
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_SITE).get(site.id))
         ui.label(site.full_address).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Lage: {site.address_detail or '-'}")

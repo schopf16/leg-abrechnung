@@ -49,23 +49,12 @@ def load_problems(subject_kind: str) -> dict[int, list[QualityWarning]]:
         return problems_for(connection, subject_kind)
 
 
-def render_marker() -> None:
-    """Draw the warning triangle beside a list entry's other icons.
-
-    Sized explicitly: a bare `q-icon` inherits the surrounding `1em` and
-    comes out visibly smaller than the icons inside the flat buttons next to
-    it, which Quasar renders at 1.715em.
-
-    Returns:
-        None.
-    """
-    ui.icon("warning", color="warning", size="1.715em").classes("q-px-sm")
-
-
-#: The same marker for a Quasar table's action slot. Tables render their
-#: cells as HTML rather than as elements, so the triangle has to exist twice
-#: -- once as Python, once as markup. Kept side by side here so the two
-#: cannot drift apart.
+#: The marker, for a Quasar table's action slot. There used to be a second
+#: rendering as Python elements (`render_marker`), for when the lists that
+#: carry markers were cards. All five are tables now -- see CLAUDE.md on
+#: tables and paging -- so that one had no caller left and is gone rather
+#: than kept warm: an unused second rendering of the same thing is exactly
+#: what drifts.
 TABLE_MARKER_HTML = (
     '<q-icon v-if="props.row.has_problem" name="warning" color="warning" size="1.715em" class="q-px-sm" />'
 )
@@ -87,7 +76,9 @@ class ProblemFilter:
         Returns:
             None.
         """
-        self.switch = ui.switch(FILTER_LABEL)
+        # Quasar wires up the `label` *prop*; text in the default slot
+        # renders beside the switch and does nothing when clicked.
+        self.switch = ui.switch().props(f'label="{FILTER_LABEL}" dense')
         self.switch.visible = False
         self.switch.on_value_change(lambda _: on_change())
 
@@ -116,7 +107,17 @@ class ProblemFilter:
             self.switch.value = False
 
 
-def render_problem_notes(warnings: Optional[list[QualityWarning]]) -> None:
+#: Findings an edit dialog already shows at the field itself. Repeating them
+#: in the block at the top would say the same thing twice, once far from the
+#: input it is about.
+AT_THE_FIELD = frozenset({"address_not_official"})
+
+
+def render_problem_notes(
+    warnings: Optional[list[QualityWarning]],
+    *,
+    exclude: frozenset = frozenset(),
+) -> None:
     """Spell the findings out, for a detail page or an edit dialog.
 
     This is where the text belongs: the eye shows it, the pencil shows it
@@ -124,10 +125,13 @@ def render_problem_notes(warnings: Optional[list[QualityWarning]]) -> None:
 
     Args:
         warnings: The findings for this record, or `None`.
+        exclude: Categories to leave out -- a dialog passes `AT_THE_FIELD`
+            because it renders those beside the input they are about.
 
     Returns:
         None.
     """
+    warnings = [w for w in (warnings or []) if w.category not in exclude]
     if not warnings:
         return
     with ui.card().classes("w-full bg-orange-1"):

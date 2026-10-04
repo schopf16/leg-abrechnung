@@ -87,8 +87,25 @@ def db() -> sqlite3.Connection:
     return connection
 
 
-@pytest.fixture(scope="session")
-def _demo_template(_migrated_template, tmp_path_factory) -> tuple[Path, DemoDataSummary]:
+#: The demo database, built once per process on first use. A module-level
+#: cache rather than a session fixture, because the only caller is the
+#: closure inside `_demo_data_from_template` and reaching a fixture from
+#: there (`request.getfixturevalue`) trips pytest's own finalizer
+#: bookkeeping -- `assert not self._finalizers` -- as soon as a second test
+#: asks for it.
+_DEMO_TEMPLATE: list = []
+
+#: The genuine generator, captured at import time. Building the template
+#: lazily means building it *after* `_demo_data_from_template` has already
+#: replaced `create_demo_data` with the restore -- so looking the name up at
+#: call time makes the builder call the restore, which calls the builder.
+#: The first symptom was not a RecursionError but
+#: `'WindowsPath' object has no attribute '_str'`, from pathlib running out
+#: of stack halfway down.
+_REAL_CREATE_DEMO_DATA = demo_data_module.create_demo_data
+
+
+def _demo_template(migrated: Path) -> tuple[Path, DemoDataSummary]:
     """Build the demo data once, into a file the tests then copy.
 
     Produced by the **real** `create_demo_data`, so what the tests work on
@@ -97,26 +114,36 @@ def _demo_template(_migrated_template, tmp_path_factory) -> tuple[Path, DemoData
     function directly (see `_demo_data_from_template`), so the generator
     itself stays under test.
 
+    **Built on first use, not before the first test.** As a fixture argument
+    it was created in every session, so `pytest tests/test_filter_bar.py` --
+    five tests that touch no readings -- paid for 229'632 of them, and so did
+    each of the eight xdist workers. Only 10 of 1'193 tests need it.
+
+    Args:
+        migrated: The migrated template to start from.
+
     Returns:
         `(path, summary)`: the template file, never opened for writing by
         tests, and the `DemoDataSummary` the real call produced, so a
         restore can hand back the same object the real call would have.
     """
-    template = tmp_path_factory.mktemp("demo") / "demo.sqlite3"
-    shutil.copy2(_migrated_template, template)
-    connection = sqlite3.connect(template)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    try:
-        summary = demo_data_module.create_demo_data(connection)
-        connection.commit()
-    finally:
-        connection.close()
-    return template, summary
+    if not _DEMO_TEMPLATE:
+        template = Path(tempfile.mkdtemp(prefix="leg-demo-")) / "demo.sqlite3"
+        shutil.copy2(migrated, template)
+        connection = sqlite3.connect(template)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        try:
+            summary = _REAL_CREATE_DEMO_DATA(connection)
+            connection.commit()
+        finally:
+            connection.close()
+        _DEMO_TEMPLATE.append((template, summary))
+    return _DEMO_TEMPLATE[0]
 
 
 @pytest.fixture(autouse=True)
-def _demo_data_from_template(request, _demo_template, monkeypatch):
+def _demo_data_from_template(request, _migrated_template, monkeypatch):
     """Serve `create_demo_data` from the session template.
 
     Replaced in every test module that imported the name, because they
@@ -130,6 +157,12 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
     whole job is checking what the generator produces, including the
     `DemoDataAlreadyExists` guard, which a restore cannot raise.
 
+    **The template is built inside `restore`, on first use.** Taken as a
+    fixture argument it was created in every session, so
+    `pytest tests/test_filter_bar.py` -- five tests that touch no readings at
+    all -- paid 2.7 seconds for 229'632 of them, and so did each of the eight
+    xdist workers. That is the fan the administrator heard while developing.
+
     Safe to swap in because a restore replaces the whole database: no test
     writes rows before calling it (checked), and none uses the return
     value outside `test_demo_data.py`.
@@ -141,9 +174,6 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
         yield
         return
 
-    template_path, template_summary = _demo_template
-    source_uri = f"{template_path.resolve().as_uri()}?mode=ro"
-
     def restore(connection: sqlite3.Connection):
         """Copy the template over this connection's database.
 
@@ -153,6 +183,8 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
         Returns:
             The `DemoDataSummary` the real call would have returned.
         """
+        template_path, template_summary = _demo_template(_migrated_template)
+        source_uri = f"{template_path.resolve().as_uri()}?mode=ro"
         source = sqlite3.connect(source_uri, uri=True)
         try:
             source.backup(connection)
@@ -288,3 +320,126 @@ def address_register(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(address_lookup_module, "ADDRESS_REGISTER_PATH", target)
     monkeypatch.setattr(address_register_module, "ADDRESS_REGISTER_PATH", target)
     return target
+
+
+def _key_event(name: str, *, code: str = "", keydown: bool = True):
+    """Build one key press, as NiceGUI's keyboard would deliver it.
+
+    The app binds no keys to elements any more (see `app.gui.keyboard`), so
+    a test that wants to press a key has to go through the one dispatcher --
+    which is also the only way to find out whether the right layer answered.
+
+    Args:
+        name: The browser's key name, e.g. "Enter", "Escape", "ArrowDown".
+        code: The key code, defaulting to `name`.
+        keydown: False for a key release.
+
+    Returns:
+        A `KeyEventArguments` ready for `app.gui.keyboard.handle_key`.
+    """
+    from nicegui.events import KeyboardAction, KeyboardKey, KeyboardModifiers, KeyEventArguments
+
+    return KeyEventArguments(
+        sender=None,
+        client=None,
+        action=KeyboardAction(keydown=keydown, keyup=not keydown, repeat=False),
+        key=KeyboardKey(name=name, code=code or name, location=0),
+        modifiers=KeyboardModifiers(alt=False, ctrl=False, meta=False, shift=False),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_list_state_outlives_its_test():
+    """Empty the remembered filters around every test.
+
+    `app.gui.list_state` keeps what a list was showing in a module-level
+    store, deliberately -- this is one native window for one administrator.
+    In a test process that means one test's search text would filter
+    another's list, and xdist hands each worker an arbitrary slice, so the
+    failure would not even be reproducible.
+
+    Yields:
+        None.
+    """
+    from app.gui import list_state
+
+    list_state.forget_everything()
+    yield
+    list_state.forget_everything()
+
+
+@pytest.fixture(autouse=True)
+def _no_keyboard_layer_outlives_its_test():
+    """Empty the keyboard stack around every test.
+
+    Without a client to hang it on the stack is module-level (see
+    `app.gui.keyboard`), so a layer left behind by one test would answer
+    another test's keys -- and xdist hands each worker an arbitrary slice,
+    so that failure would not even be reproducible.
+
+    Yields:
+        None.
+    """
+    from app.gui import keyboard
+
+    keyboard._FALLBACK.clear()
+    yield
+    keyboard._FALLBACK.clear()
+
+
+@pytest.fixture
+def press():
+    """Press keys through the app's one dispatcher.
+
+    No key is bound to an element any more (see `app.gui.keyboard`), so this
+    is the only way to press one -- and it is also the only way to find out
+    whether the right layer answered.
+
+    Returns:
+        `press("ArrowDown")`, `press("Enter")`, ...
+    """
+    from app.gui.keyboard import handle_key
+
+    def _press(name: str) -> None:
+        """Press one key.
+
+        Args:
+            name: The browser's key name.
+
+        Returns:
+            None.
+        """
+        handle_key(_key_event(name))
+
+    return _press
+
+
+#: The fixture whose tests need the demo database. Carrying 229'632 readings
+#: around is the one genuinely expensive thing in this suite, so the tests
+#: that do are marked and can be left out while developing.
+#:
+#: `real_demo_data` is a *marker*, not a fixture, and is checked separately
+#: below -- it builds the data for real, which is the most expensive case of
+#: all.
+_HEAVY_FIXTURES = frozenset({"demo_data"})
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Mark every test that needs the demo database as `heavy`.
+
+    Derived from the fixtures a test asks for rather than written on each
+    test by hand: a marker that has to be remembered drifts, and the point
+    of `-m "not heavy"` is that it stays true without anybody maintaining
+    it. `real_demo_data` counts too -- it builds the data for real, which is
+    the most expensive case of all.
+
+    Args:
+        items: The collected tests, modified in place.
+
+    Returns:
+        None.
+    """
+    for item in items:
+        names = set(getattr(item, "fixturenames", ()))
+        if names & _HEAVY_FIXTURES or item.get_closest_marker("real_demo_data"):
+            item.add_marker(pytest.mark.heavy)

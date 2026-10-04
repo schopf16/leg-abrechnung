@@ -442,7 +442,11 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
                     "aber keine Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
                 ),
                 summary="Anschlüsse speisen ein, ohne zu beziehen",
-                summary_link="/assignments",
+                # Personen, not Zuordnungen: that is where the finding is
+                # marked, and a summary line that lands on a list with no
+                # triangle leaves the reader hunting -- which is exactly
+                # what it did.
+                summary_link="/persons",
                 subject_kind=SUBJECT_PERSON,
                 subject_id=person.id if person is not None else None,
                 link=f"/persons/{person.id}" if person is not None else None,
@@ -806,6 +810,47 @@ ALL_CHECKS = (
     check_addresses,
 )
 
+#: Which `SUBJECT_*` each check can mark, so a list can run only the checks
+#: that could possibly concern it. Measured on the live deployment, where
+#: every list page ran all eleven: `problems_for` took 128 ms, of which
+#: `check_substation_area_one_sided` was 49 ms and `check_addresses` 41 ms
+#: -- and on the Personen page the first of those cannot produce a single
+#: finding. The administrator reported the page opening slowly, and this was
+#: most of it.
+#:
+#: Declared rather than discovered, because a check's subject is only known
+#: after running it, which is the thing being avoided. Drift is caught by
+#: `test_every_check_declares_the_subjects_it_can_mark`, which re-derives
+#: the table from the source rather than from a run -- no test data triggers
+#: all eleven checks at once.
+CHECK_SUBJECTS: dict = {
+    check_assignment_consistency: (SUBJECT_METERING_POINT,),
+    check_leg_assignment: (SUBJECT_METERING_POINT,),
+    check_onboarding_progress: (SUBJECT_PERSON,),
+    check_offboarding_completed_but_active: (SUBJECT_PERSON,),
+    check_cooperative_members_without_shares: (SUBJECT_PERSON,),
+    check_feed_in_without_consumption: (SUBJECT_PERSON,),
+    # Deployment-wide findings: they belong on the overview and mark no
+    # single record, so no list has to run them.
+    check_open_billing_cycle: (),
+    check_unresolved_bank_transactions: (),
+    check_substation_area_one_sided: (SUBJECT_SUBSTATION_AREA,),
+    check_leg_production_capacity: (SUBJECT_LEG,),
+    check_addresses: (SUBJECT_PERSON, SUBJECT_SITE),
+}
+
+
+def checks_for(subject_kind: str) -> tuple:
+    """The checks that can mark an entry of one list.
+
+    Args:
+        subject_kind: One of the `SUBJECT_*` constants.
+
+    Returns:
+        The checks to run, in `ALL_CHECKS` order.
+    """
+    return tuple(check for check in ALL_CHECKS if subject_kind in CHECK_SUBJECTS[check])
+
 
 def all_warnings(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Run every check, in the order the overview shows them.
@@ -840,8 +885,9 @@ def problems_for(connection: sqlite3.Connection, subject_kind: str) -> dict[int,
         `{record id: findings}`, holding only the records that have one.
     """
     found: dict[int, list[QualityWarning]] = {}
-    for warning in all_warnings(connection):
-        if warning.subject_kind != subject_kind or warning.subject_id is None:
-            continue
-        found.setdefault(warning.subject_id, []).append(warning)
+    for check in checks_for(subject_kind):
+        for warning in check(connection):
+            if warning.subject_kind != subject_kind or warning.subject_id is None:
+                continue
+            found.setdefault(warning.subject_id, []).append(warning)
     return found

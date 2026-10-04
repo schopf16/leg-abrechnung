@@ -275,8 +275,9 @@ def _switch(client: Client, label: str):
     matches = [
         element
         for element in client.elements.values()
-        # A switch keeps its caption in `.text`, not in `_props["label"]`.
-        if element.__class__.__name__ == "Switch" and getattr(element, "text", None) == label
+        # The caption lives in the `label` prop, which is the half Quasar
+        # makes clickable -- see `app.gui.filter_bar`.
+        if element.__class__.__name__ == "Switch" and element._props.get("label") == label
     ]
     assert len(matches) == 1, f"Schalter {label!r} nicht eindeutig: {len(matches)}"
     return matches[0]
@@ -299,16 +300,53 @@ def _set_switch(switch, value: bool) -> None:
     switch.value = value
 
 
-def test_the_persons_page_shows_a_couple_and_its_note():
-    """Both names, both addresses and the internal note reach the card."""
+def _rows(client):
+    """The entries of a list table.
+
+    The Personen list is a table since the card version cost 2'108
+    interface elements for 92 people, so what used to be read off the
+    screen is read off `rows`.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The row dicts.
+    """
+    table = next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
+    return table.rows
+
+
+def test_the_list_names_both_of_a_couple():
+    """One customer, one row, two names.
+
+    The list shows Kunden-Nr., Name and Adresse; the second address and the
+    internal note are behind the eye, which the next test checks -- that is
+    the administrator's own cut: "alles andere dann hinter auge".
+    """
     with connection_scope() as connection:
         person_repo.create(connection, _couple(note="Zahlt per Dauerauftrag."))
 
-    client = _probe(_persons_page, "/probe-persons-couple")
+    rows = _rows(_probe(_persons_page, "/probe-persons-couple"))
+
+    assert len(rows) == 1
+    assert rows[0]["name"] == "Anna Muster und Beat Beispiel"
+
+
+def test_the_detail_page_still_carries_what_the_list_dropped():
+    """Nothing was lost in the move to a table, only moved one click away."""
+    with connection_scope() as connection:
+        person_id = person_repo.create(connection, _couple(note="Zahlt per Dauerauftrag."))
+
+    from app.gui.pages.persons import person_detail_page
+
+    client = Client(ui.page("/probe-persons-couple-detail")(lambda: None), request=None)
+    with client:
+        person_detail_page(person_id)
     labels = _labels(client)
 
     assert any("Anna Muster und Beat Beispiel" in text for text in labels)
-    assert "beat@example.invalid" in labels
+    assert any("beat@example.invalid" in text for text in labels)
     assert any("Dauerauftrag" in text for text in labels)
 
 
@@ -342,13 +380,17 @@ def test_the_cooperative_filter_actually_filters():
         )
 
     client = _probe(_persons_page, "/probe-persons-coop-filter")
-    assert any("Kundin" in text for text in _labels(client)), "ungefiltert sind beide da"
-    assert any("Genossenschafter (7 Anteile)" in text for text in _labels(client))
+    assert any("Kundin" in row["name"] for row in _rows(client)), "ungefiltert sind beide da"
 
     _set_switch(_switch(client, "Nur Genossenschafter"), True)
-    filtered = _labels(client)
-    assert any("Mitglied" in text for text in filtered)
-    assert not any("Kundin" in text for text in filtered), "die Nicht-Mitglieder müssen weg sein"
+
+    names = [row["name"] for row in _rows(client)]
+    assert any("Mitglied" in name for name in names)
+    assert not any("Kundin" in name for name in names), "die Nicht-Mitglieder müssen weg sein"
+    # The shares themselves are no longer on the list. They are on the
+    # detail page and in the printout's "Anteile" column, and the filter is
+    # what answers "who is a member" on screen -- the three columns are the
+    # administrator's own cut, "alles andere dann hinter auge".
 
 
 def test_the_detail_page_shows_the_membership_history_and_the_salutation():

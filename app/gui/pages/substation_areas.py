@@ -18,11 +18,14 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.participant_mix import compute_participant_mix_for_substation_area
 from app.domain.quality_checks import SUBJECT_SUBSTATION_AREA
+from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import TABLE_MARKER_HTML, load_problems, render_problem_notes
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
-from app.gui.sorting import SortOption, apply_sort, render_sort_select, sort_description, text_key
+from app.gui.table_list import paged_table
+from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
@@ -38,6 +41,23 @@ PRINT_COLUMNS = [
     ("Bemerkung", "note"),
 ]
 
+
+#: What the list shows. A Trafokreis has no detail page of its own, so the
+#: pencil is where its finding is read -- see `render_problem_notes` in the
+#: form below.
+COLUMNS = [
+    {"name": "name", "label": "Name", "field": "name", "align": "left"},
+    {"name": "bkw_designation", "label": "BKW-Bezeichnung", "field": "bkw_designation", "align": "left"},
+    {"name": "sites_count", "label": "Standorte", "field": "sites_count", "align": "right"},
+    {
+        "name": "producer_consumer",
+        "label": "Produzenten / Konsumenten",
+        "field": "producer_consumer",
+        "align": "left",
+    },
+    {"name": "note", "label": "Bemerkung", "field": "note", "align": "left"},
+    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
 
 #: Orders the Trafokreise list offers, default first.
 SORT_OPTIONS = [
@@ -150,16 +170,28 @@ def substation_areas_page() -> None:
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar("/substation-areas")
+        search_input = bar.search("Name, BKW-Bezeichnung, Bemerkung")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        list_container = ui.column().classes("w-full gap-2 mt-2")
+        table = paged_table(route="/substation-areas", columns=COLUMNS, rows=[], row_key="id").classes(
+            "w-full mt-2"
+        )
+        # The marker comes from `app.gui.problem_markers`: a table renders
+        # its cells as markup while a card rendered elements, so the triangle
+        # exists twice and must not drift.
+        table.add_slot(
+            "body-cell-actions",
+            f"""
+            <q-td :props="props">
+                {TABLE_MARKER_HTML}
+                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
+                <q-btn dense flat icon="delete" color="negative"
+                       @click="() => $parent.$emit('remove', props.row)" />
+            </q-td>
+            """,
+        )
 
         #: Ids with an open finding, refreshed with the list so a
         #: correction makes the marker disappear.
@@ -167,37 +199,6 @@ def substation_areas_page() -> None:
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
-
-        def render_card(row: dict) -> None:
-            """Render one substation area as a card with wrapping field groups.
-
-            Args:
-                row: Row dict from `_to_row`.
-
-            Returns:
-                None.
-            """
-            with ui.card().classes("w-full"):
-                with ui.row().classes("w-full items-center gap-4 flex-wrap"):
-                    with ui.column().classes("gap-0 min-w-[180px]"):
-                        ui.label(row["name"]).classes("font-bold")
-                        if row["bkw_designation"]:
-                            ui.label(row["bkw_designation"]).classes("text-caption text-grey-6")
-                    ui.label(f"{row['sites_count']} Standort(e)").classes("text-body2")
-                    ui.label(row["producer_consumer"]).classes("text-body2")
-                    with ui.row().classes("gap-1 ml-auto items-center"):
-                        if row["id"] in problems:
-                            # No text: the eye shows what is wrong, the pencil fixes
-                            # it. See `app.gui.problem_markers`.
-                            render_marker()
-                        ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
-                        ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
-                            "dense flat color=negative"
-                        )
-                if row["hint"]:
-                    ui.label(row["hint"]).classes("w-full text-body2 text-negative")
-                if row["note"]:
-                    ui.label(row["note"]).classes("w-full text-body2 text-grey-7")
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value.
@@ -211,12 +212,11 @@ def substation_areas_page() -> None:
             if problem_filter.active:
                 visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
-            list_container.clear()
-            with list_container:
-                if not visible_rows:
-                    ui.label("Keine Trafokreise gefunden.").classes("text-grey-6")
-                for row in visible_rows:
-                    render_card(row)
+            # The whole filtered result goes to the table, which shows a
+            # window onto it: the search runs over every entry and the
+            # printout holds every filtered row, not the page on screen.
+            table.rows = [row | {"has_problem": row["id"] in problems} for row in visible_rows]
+            table.update()
 
         def refresh() -> None:
             """Reload all substation areas from the database and re-apply the filter.
@@ -255,6 +255,11 @@ def substation_areas_page() -> None:
                 ui.label("Trafokreis bearbeiten" if existing else "Neuer Trafokreis").classes(
                     "text-lg font-bold"
                 )
+                # A Trafokreis has no detail page, so the pencil is the only
+                # place its finding can be read -- otherwise the triangle on
+                # the list points at nothing. Same call as the other forms.
+                if existing is not None:
+                    render_problem_notes(load_problems(SUBJECT_SUBSTATION_AREA).get(existing.id))
                 name = (
                     ui.input(
                         "Name (frei wählbar, z. B. Pseudo-Name)",
@@ -344,6 +349,7 @@ def substation_areas_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Speichern", on_click=save)
+            form_guard(dialog, on_save=save)
             dialog.open()
 
         def on_edit(row: dict) -> None:
@@ -391,5 +397,8 @@ def substation_areas_page() -> None:
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
+
+        table.on("edit", lambda event: on_edit(event.args))
+        table.on("remove", lambda event: on_remove(event.args))
 
         refresh()

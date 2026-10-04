@@ -9,15 +9,21 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
 from app.domain.quality_checks import SUBJECT_METERING_POINT
+from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import (
+    TABLE_MARKER_HTML,
+    load_problems,
+    render_problem_notes,
+)
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
     apply_sort,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -51,6 +57,19 @@ PRINT_COLUMNS = [
     ("Batteriespeicher (kWh)", "battery_capacity_kwh"),
 ]
 
+
+#: What the list shows. PV and battery capacity are on the detail page: they
+#: are filled in for a handful of metering points and would be two almost
+#: always empty columns here.
+COLUMNS = [
+    {"name": "designation", "label": "Messpunkt", "field": "designation", "align": "left"},
+    {"name": "label", "label": "Bezeichnung", "field": "label", "align": "left"},
+    {"name": "direction", "label": "Messrichtung", "field": "direction", "align": "left"},
+    {"name": "site", "label": "Standort", "field": "site", "align": "left"},
+    {"name": "leg", "label": "LEG", "field": "leg", "align": "left"},
+    {"name": "person", "label": "Zugeordnet", "field": "person", "align": "left"},
+    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
 
 #: Orders the Messpunkte list offers, default first.
 SORT_OPTIONS = [
@@ -163,6 +182,8 @@ def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
         "site_address": site_address,
         "site_street": site_street,
         "site_city": site_city,
+        # One cell for the table; the card had two lines for it.
+        "site": ", ".join(part for part in (site_street, site_city) if part),
         "leg": leg_name,
         "person": person_name,
         "person_is_future": person_is_future,
@@ -211,17 +232,30 @@ def metering_points_page() -> None:
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar("/metering-points")
+        search_input = bar.search("Bezeichnung, Richtung, Standort, LEG, Person")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        without_assignment_switch = bar.filter("Nur ohne Zuordnung (auch nicht künftig)")
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        list_container = ui.column().classes("w-full gap-2 mt-2")
+        table = paged_table(route="/metering-points", columns=COLUMNS, rows=[], row_key="id").classes(
+            "w-full mt-2"
+        )
+        # The marker comes from `app.gui.problem_markers`: a table renders
+        # its cells as markup while a card rendered elements, so the triangle
+        # exists twice and must not drift.
+        table.add_slot(
+            "body-cell-actions",
+            f"""
+            <q-td :props="props">
+                {TABLE_MARKER_HTML}
+                <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
+                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
+                <q-btn dense flat icon="delete" color="negative"
+                       @click="() => $parent.$emit('remove', props.row)" />
+            </q-td>
+            """,
+        )
 
         #: Ids with an open finding, refreshed with the list so a
         #: correction makes the marker disappear.
@@ -229,52 +263,6 @@ def metering_points_page() -> None:
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
-
-        def render_card(row: dict) -> None:
-            """Render one MeteringPoint as a card with wrapping field groups.
-
-            Args:
-                row: Row dict built by `_to_row`.
-
-            Returns:
-                None.
-            """
-            with ui.card().classes("w-full"):
-                with ui.row().classes("w-full items-start gap-6 flex-wrap"):
-                    with ui.column().classes("gap-0 min-w-[220px]"):
-                        _metering_point_designation_row(row["designation"])
-                        if row["label"]:
-                            ui.label(row["label"]).classes("text-caption text-grey-8")
-                        ui.label(row["direction"]).classes("text-caption text-grey-6")
-                    with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(row["site_street"])
-                        ui.label(row["site_city"])
-                        ui.label(f"LEG: {row['leg']}").classes("text-grey-7")
-                    with ui.column().classes("gap-0 min-w-[180px]"):
-                        person_label = ui.label(f"Zugeordnet: {row['person']}")
-                        if row["person_is_future"]:
-                            person_label.classes("text-orange-8")
-                            ui.label("(bevorstehend)").classes("text-caption text-orange-8")
-                        extras = []
-                        if row["pv_capacity_kwp"] is not None:
-                            extras.append(f"PV {row['pv_capacity_kwp']:g} kWp")
-                        if row["battery_capacity_kwh"] is not None:
-                            extras.append(f"Speicher {row['battery_capacity_kwh']:g} kWh")
-                        if extras:
-                            ui.label(", ".join(extras)).classes("text-grey-7 text-caption")
-                    with ui.row().classes("gap-1 ml-auto items-center"):
-                        if row["id"] in problems:
-                            # No text: the eye shows what is wrong, the pencil fixes
-                            # it. See `app.gui.problem_markers`.
-                            render_marker()
-                        ui.button(
-                            icon="visibility",
-                            on_click=lambda r=row: ui.navigate.to(f"/metering-points/{r['id']}"),
-                        ).props("dense flat")
-                        ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
-                        ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
-                            "dense flat color=negative"
-                        )
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value
@@ -297,12 +285,11 @@ def metering_points_page() -> None:
             if problem_filter.active:
                 visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
-            list_container.clear()
-            with list_container:
-                if not visible_rows:
-                    ui.label("Keine Messpunkte gefunden.")
-                for row in visible_rows:
-                    render_card(row)
+            # The whole filtered result goes to the table, which shows a
+            # window onto it: the search runs over every entry and the
+            # printout holds every filtered row, not the page on screen.
+            table.rows = [row | {"has_problem": row["id"] in problems} for row in visible_rows]
+            table.update()
 
         def refresh() -> None:
             """Reload all metering points from the database and re-apply the filter.
@@ -380,6 +367,10 @@ def metering_points_page() -> None:
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
 
+        table.on("view", lambda event: ui.navigate.to(f"/metering-points/{event.args['id']}"))
+        table.on("edit", lambda event: on_edit(event.args))
+        table.on("remove", lambda event: on_remove(event.args))
+
         refresh()
 
 
@@ -408,7 +399,16 @@ def metering_point_detail_page(metering_point_id: int) -> None:
             ui.link("← Zurück zu Messpunkten", "/metering-points")
             return
 
-        ui.link("← Zurück zu Messpunkten", "/metering-points")
+        render_detail_header(
+            list_route="/metering-points",
+            list_label="Messpunkte",
+            title=mp.designation,
+            on_edit=lambda: open_metering_point_form(existing=mp, on_saved=lambda _: ui.navigate.reload()),
+        )
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_METERING_POINT).get(mp.id))
         _metering_point_designation_row(mp.designation, classes="text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             if mp.label:

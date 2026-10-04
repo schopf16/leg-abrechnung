@@ -19,6 +19,7 @@ inconsistency the shared select exists to remove.
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
@@ -216,6 +217,7 @@ def signatures_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Speichern", on_click=save)
+            form_guard(dialog, on_save=save)
             dialog.open()
 
         def on_edit(event) -> None:

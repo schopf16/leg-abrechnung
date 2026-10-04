@@ -93,7 +93,54 @@ class SortControl:
         self._button = button
         self._on_change = on_change
         self.descending = False
+        self._watchers: list[Callable[[], None]] = []
         button.on_click(self._toggle)
+        select.on_value_change(lambda _: self._notify())
+
+    def set_value(self, key: str, *, descending: bool = False) -> None:
+        """Put the control back the way a previous visit left it.
+
+        Does not call the page's refresh: a page sets this while building
+        itself and reads the control once afterwards anyway.
+
+        Args:
+            key: One of the options' keys.
+            descending: The direction to restore.
+
+        Returns:
+            None.
+        """
+        self._select.value = key
+        self.descending = descending
+        self._show_direction()
+
+    def _show_direction(self) -> None:
+        """Point the arrow the way the current direction says.
+
+        Returns:
+            None.
+        """
+        self._button.props(f"icon={'arrow_downward' if self.descending else 'arrow_upward'}")
+
+    def on_any_change(self, watcher: Callable[[], None]) -> None:
+        """Call `watcher` after the key or the direction changes.
+
+        Args:
+            watcher: Zero-argument callable.
+
+        Returns:
+            None.
+        """
+        self._watchers.append(watcher)
+
+    def _notify(self) -> None:
+        """Tell the watchers the selection changed.
+
+        Returns:
+            None.
+        """
+        for watcher in self._watchers:
+            watcher()
 
     @property
     def value(self) -> Optional[str]:
@@ -103,7 +150,8 @@ class SortControl:
     def _toggle(self) -> None:
         """Flip the direction, update the arrow, and refresh the page."""
         self.descending = not self.descending
-        self._button.props(f"icon={'arrow_downward' if self.descending else 'arrow_upward'}")
+        self._show_direction()
+        self._notify()
         self._on_change()
 
 

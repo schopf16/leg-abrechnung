@@ -13,13 +13,16 @@ from datetime import date
 from nicegui import ui
 
 from app.config import ConfigError, get_graph_config
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain import dunning
 from app.emailing import graph_client
+from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
-from app.gui.sorting import SortOption, apply_sort, person_name_key, render_sort_select, sort_description
+from app.gui.sorting import SortOption, apply_sort, person_name_key, sort_description
 from app.models import dunning_log as dunning_log_repo
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
@@ -48,7 +51,7 @@ def _print_row(candidate: dunning.DunningCandidate) -> dict:
         "person": candidate.person.display_name,
         "customer_number": candidate.person.formatted_customer_number,
         "level": str(candidate.level),
-        "betrag": f"{candidate.total_open_rappen / 100:.2f}",
+        "betrag": f"{format_chf(candidate.total_open_rappen)}",
     }
 
 
@@ -93,7 +96,10 @@ def dunning_page() -> None:
                 get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
             )
 
-        sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh_candidates())
+        # The worklist leads with its own urgency order and has nothing to
+        # filter, but it uses the same bar so the control sits where it does
+        # on every other list.
+        sort_select = FilterBar("/dunning").sort(SORT_OPTIONS, lambda: refresh_candidates())
         candidates_container = ui.column().classes("w-full gap-2 mt-2")
         current_candidates: list[dunning.DunningCandidate] = []
 
@@ -109,7 +115,9 @@ def dunning_page() -> None:
                     ui.badge(
                         f"Stufe {candidate.level}", color="warning" if candidate.level == 1 else "negative"
                     )
-                    ui.label(f"{candidate.total_open_rappen / 100:.2f} CHF").classes("font-bold ml-auto")
+                    ui.label(f"{format_chf(candidate.total_open_rappen, with_unit=True)}").classes(
+                        "font-bold ml-auto"
+                    )
                     ui.button("Vorschau & Senden", on_click=lambda c=candidate: open_send_dialog(c)).props(
                         "dense"
                     )
@@ -176,6 +184,7 @@ def dunning_page() -> None:
                     ui.button("Nicht jetzt", on_click=dialog.close).props("flat")
                     ui.link("Zu „Austritte“", "/offboardings").classes("self-center")
                     ui.button("Ausschluss-Prozess starten", on_click=start, color="negative")
+            form_guard(dialog)
             dialog.open()
 
         def open_send_dialog(candidate: dunning.DunningCandidate) -> None:
@@ -233,6 +242,7 @@ def dunning_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-4"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     send_button = ui.button("Senden", on_click=do_send)
+            form_guard(dialog)
             dialog.open()
 
         ui.separator().classes("my-4")
@@ -252,7 +262,7 @@ def dunning_page() -> None:
                     sent_display = log.sent_at.replace("T", " ").split(".")[0]
                     with ui.row().classes("w-full justify-between text-body2 border-b py-1"):
                         ui.label(f"{sent_display} -- {name} -- Stufe {log.level}")
-                        ui.label(f"{log.amount_rappen / 100:.2f} CHF")
+                        ui.label(f"{format_chf(log.amount_rappen, with_unit=True)}")
 
         refresh_candidates()
         refresh_history()

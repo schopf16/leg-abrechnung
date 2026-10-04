@@ -18,9 +18,12 @@ from typing import Optional
 
 from nicegui import events, ui
 
+from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain import bank_reconciliation, dunning, person_ledger
 from app.gui.invoice_detail import open_invoice_detail
+from app.gui.filter_bar import FilterBar
+from app.gui.list_footer import render_count, render_empty
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
@@ -29,7 +32,6 @@ from app.gui.sorting import (
     apply_sort,
     number_key,
     person_name_key,
-    render_sort_select,
     sort_description,
 )
 from app.importers.base import ImportValidationError
@@ -120,17 +122,18 @@ def receivables_page() -> None:
             "möglich ist -- alles andere wird nur als Vorschlag angezeigt."
         ).classes("text-body2 text-grey-8")
 
-        with ui.row().classes("w-full items-center gap-4 mt-2"):
-            search_input = (
-                ui.input("Suche (Name, Kunden-Nr.)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            only_forderung_switch = ui.switch("Nur offene Forderungen")
-            only_guthaben_switch = ui.switch("Nur Guthaben")
-            only_dunning_switch = ui.switch("Nur fällige Mahnungen")
-            only_offboarding_switch = ui.switch("Nur laufende Austritte")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+        bar = FilterBar("/receivables")
+        search_input = bar.search("Name, Kunden-Nr.")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        only_forderung_switch = bar.filter("Nur offene Forderungen")
+        only_guthaben_switch = bar.filter("Nur Guthaben")
+        only_dunning_switch = bar.filter("Nur fällige Mahnungen")
+        only_offboarding_switch = bar.filter("Nur laufende Austritte")
+
+        # Printing is an action, not a filter, so it sits under the search
+        # and the sort control rather than at the end of four switches --
+        # this is the page that had the most crowded filter row in the app.
+        with bar.left:
             render_print_button(
                 heading="Debitoren",
                 get_columns=lambda: PRINT_COLUMNS,
@@ -209,9 +212,17 @@ def receivables_page() -> None:
             list_container.clear()
             with list_container:
                 if not visible_entries:
-                    ui.label("Keine Einträge für diesen Filter.").classes("text-grey-6")
+                    render_empty(
+                        "Keine Einträge für diesen Filter."
+                        if bar.is_filtering()
+                        else "Noch keine Debitoren erfasst.",
+                        action_label="Filter zurücksetzen" if bar.is_filtering() else None,
+                        on_action=(lambda: bar.reset(apply_filter)) if bar.is_filtering() else None,
+                    )
                 for person, balance_rappen in visible_entries:
                     render_person_card(person, balance_rappen)
+                if visible_entries:
+                    render_count(visible=len(visible_entries), total=len(all_entries), noun="Debitoren")
 
         def refresh_persons() -> None:
             nonlocal all_entries, due_dunning_person_ids, running_offboarding_person_ids
@@ -367,7 +378,7 @@ def receivables_page() -> None:
                         reversal_flag = " ⚠ STORNO" if tx.is_reversal else ""
                         ui.label(
                             f"{tx.booking_date} -- {tx.credit_debit_indicator} "
-                            f"{tx.amount_rappen / 100:.2f} CHF -- {tx.counterparty_name}{reversal_flag}"
+                            f"{format_chf(tx.amount_rappen, with_unit=True)} -- {tx.counterparty_name}{reversal_flag}"
                         ).classes("text-body2 flex-grow")
 
                         if match.status == "auto_matched":
@@ -490,7 +501,7 @@ def receivables_page() -> None:
                 reversal_flag = " ⚠ STORNO" if tx.is_reversal else ""
                 ui.label(
                     f"{tx.booking_date} -- {tx.credit_debit_indicator} "
-                    f"{tx.amount_rappen / 100:.2f} CHF -- {tx.counterparty_name}{reversal_flag}"
+                    f"{format_chf(tx.amount_rappen, with_unit=True)} -- {tx.counterparty_name}{reversal_flag}"
                 ).classes("text-body2 flex-grow" + (" text-negative" if tx.is_reversal else ""))
                 options = {_IGNORE: "Ignorieren", **person_options}
                 select = ui.select(options, label="Person zuweisen").classes("w-64")
@@ -518,7 +529,7 @@ def receivables_page() -> None:
             with ui.row().classes("w-full items-center gap-3 border-b py-1"):
                 ui.label(
                     f"{tx.booking_date} -- {tx.credit_debit_indicator} "
-                    f"{tx.amount_rappen / 100:.2f} CHF -- {person.display_name if person else '?'} "
+                    f"{format_chf(tx.amount_rappen, with_unit=True)} -- {person.display_name if person else '?'} "
                     f"({tx.status})"
                 ).classes("text-body2 flex-grow")
 

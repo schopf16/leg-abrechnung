@@ -444,31 +444,52 @@ def test_the_administrators_own_three_steps(db):
         assert person_id not in coop_repo.member_person_ids(connection)
 
 
-def test_the_badge_disappears_from_the_list_after_deactivating(db):
-    """What the administrator actually looked at: the card in the Personen list."""
+def _members_on_the_list(probe: str) -> list[str]:
+    """The names the Personen list shows with "Nur Genossenschafter" on.
+
+    The list used to badge each member's card and is a table now, so the
+    members' list is what the filter leaves standing -- which is also what
+    gets printed (see CLAUDE.md: there is no page of its own).
+
+    Args:
+        probe: A unique probe route -- every `ui.page` registers itself.
+
+    Returns:
+        The names of the visible rows.
+    """
     from app.gui.pages import persons as persons_module
 
+    client = Client(ui.page(probe)(lambda: None), request=None)
+    with client:
+        persons_module.persons_page()
+        switch = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Switch"
+            and element._props.get("label") == "Nur Genossenschafter"
+        )
+        switch.value = True
+        for handler in switch._change_handlers:
+            handler(None)
+
+    table = next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
+    return [row["name"] for row in table.rows]
+
+
+def test_a_deactivated_member_drops_off_the_list_at_once(db):
+    """The administrator's own sequence: aktivieren, 10 Anteile, deaktivieren.
+
+    The membership used to end *on* the given day and `covers()` includes
+    it, so the person stayed a member for the rest of that day -- on the
+    list, in this filter and on the members' mailing. The symptom used to be
+    a badge on a card; the list is a table now and the filter is the
+    members' list, so that is where it has to show.
+    """
     with connection_scope() as connection:
         person_id = _person(connection)
 
     _edit(person_id, "/probe-badge-on", member=True, shares=10)
-    client = Client(ui.page("/probe-badge-list-on")(lambda: None), request=None)
-    with client:
-        persons_module.persons_page()
-    badges = [
-        element.text
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Badge" and getattr(element, "text", None)
-    ]
-    assert any("Genossenschafter" in text for text in badges), "erst da"
+    assert _members_on_the_list("/probe-badge-list-on"), "erst da"
 
     _edit(person_id, "/probe-badge-off", member=False)
-    client = Client(ui.page("/probe-badge-list-off")(lambda: None), request=None)
-    with client:
-        persons_module.persons_page()
-    badges = [
-        element.text
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Badge" and getattr(element, "text", None)
-    ]
-    assert not any("Genossenschafter" in text for text in badges), "und dann weg"
+    assert _members_on_the_list("/probe-badge-list-off") == [], "und dann weg"

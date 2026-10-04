@@ -18,21 +18,27 @@ from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
+from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import (
+    TABLE_MARKER_HTML,
+    load_problems,
+    render_problem_notes,
+)
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
     apply_sort,
     number_key,
     person_name_key,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -89,6 +95,21 @@ def _customer_number_row(
         ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
             "dense flat size=sm"
         ).tooltip("Kundennummer kopieren")
+
+
+#: What the list shows, on the administrator's own choice: "wichtig wäre mir
+#: sicher kundennummer, name vielleicht noch adresse? alles andere dann
+#: hinter auge". Everything else was already on the detail page.
+#:
+#: Columns are free here in a way cards never were: a Quasar table is one
+#: interface element with its rows as data, so a fourth column costs
+#: nothing, while a 23-element card cost that much times 92.
+COLUMNS = [
+    {"name": "customer_number", "label": "Kunden-Nr.", "field": "customer_number", "align": "left"},
+    {"name": "name", "label": "Name", "field": "name", "align": "left"},
+    {"name": "address", "label": "Adresse", "field": "address", "align": "left"},
+    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
 
 
 #: `(label, field)` pairs for the printed table.
@@ -302,30 +323,39 @@ def persons_page() -> None:
                 )
                 ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
-            # The members' list the cooperative needs is this list, filtered
-            # and printed -- not a page of its own.
-            only_cooperative_switch = ui.switch("Nur Genossenschafter")
-            # Scrolling 91 cards to find the handful that are marked is the
-            # work this saves. Named after what it shows, not after the
-            # register, because that is what the reader is looking for.
-            #
-            # Hidden while there is nothing to filter: a control that can
-            # only ever empty the list is clutter, and the filter row
-            # already carries three.
-            # Scrolling ninety cards to find the handful that are marked is
-            # the work this saves. The same control on every list, from
-            # `app.gui.problem_markers`.
-            problem_filter = ProblemFilter(lambda: apply_filter())
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+        bar = FilterBar("/persons")
+        search_input = bar.search("Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        show_inactive_switch = bar.filter("Deaktivierte Personen anzeigen")
+        # The members' list the cooperative needs is this list, filtered
+        # and printed -- not a page of its own.
+        only_cooperative_switch = bar.filter("Nur Genossenschafter")
+        # Scrolling ninety cards to find the handful that are marked is the
+        # work this saves. The same control on every list, from
+        # `app.gui.problem_markers`, and the bar keeps it below the
+        # permanent filters because it comes and goes with the findings.
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        list_container = ui.column().classes("w-full gap-2 mt-2")
+        table = paged_table(route="/persons", columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        # The marker comes from `app.gui.problem_markers`: a table renders
+        # its cells as markup while a card renders elements, so the triangle
+        # exists twice and must not drift. The last button is delete for an
+        # active person and restore for a deactivated one, which is why the
+        # row carries `is_active`.
+        table.add_slot(
+            "body-cell-actions",
+            f"""
+            <q-td :props="props">
+                {TABLE_MARKER_HTML}
+                <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
+                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
+                <q-btn v-if="props.row.is_active" dense flat icon="delete" color="negative"
+                       @click="() => $parent.$emit('remove', props.row)" />
+                <q-btn v-else dense flat icon="restore" color="primary"
+                       @click="() => $parent.$emit('reactivate', props.row)" />
+            </q-td>
+            """,
+        )
 
         #: Person ids the address register disagrees with, refreshed with the
         #: list so a correction makes the marker disappear.
@@ -356,68 +386,29 @@ def persons_page() -> None:
                 parts.append(f"nur Genossenschafter ({len(visible_persons)}, {shares} Anteile)")
             return ", ".join(parts) if parts else None
 
-        def render_card(person: Person) -> None:
-            """Render one Person as a card with wrapping field groups.
+        def row_for(person: Person) -> dict:
+            """Describe one person as a table row.
+
+            The status is a suffix on the name rather than a column of its
+            own: it is empty for all but a handful of people, and an almost
+            always empty column is clutter in a list of three.
 
             Args:
-                person: Person to render.
+                person: Person to describe.
 
             Returns:
-                None.
+                The row the table and its action slot read.
             """
-            with ui.card().classes("w-full" + ("" if person.active else " opacity-60")):
-                with ui.row().classes("w-full items-start gap-6 flex-wrap"):
-                    with ui.column().classes("gap-0 min-w-[200px]"):
-                        with ui.row().classes("items-center gap-2"):
-                            ui.label(person.display_name).classes("font-bold")
-                            if not person.active:
-                                ui.badge(_status_text(person), color="grey")
-                            membership = memberships_by_person.get(person.id)
-                            if membership is not None:
-                                ui.badge(
-                                    f"Genossenschafter ({membership.shares} Anteile)",
-                                    color="primary",
-                                )
-                        # Only shown when it is missing: the card would
-                        # otherwise carry "Anrede: Frau" for nearly everyone,
-                        # and the one case worth seeing would disappear in it.
-                        if _missing_salutation(person):
-                            ui.label("Anrede fehlt").classes("text-caption text-orange-9")
-                        _customer_number_row(person)
-                        if person.bkw_customer_number is not None:
-                            ui.label(f"BKW-Kunden-Nr. {person.bkw_customer_number}").classes(
-                                "text-caption text-grey-6"
-                            )
-                    with ui.column().classes("gap-0 min-w-[180px]"):
-                        ui.label(person.contact_email or "-")
-                        if person.second_contact_email:
-                            ui.label(person.second_contact_email)
-                        ui.label(person.contact_phone or "-").classes("text-grey-7")
-                    with ui.column().classes("gap-0 min-w-[220px]"):
-                        ui.label(person.billing_street_with_number or "-")
-                        ui.label(f"{person.billing_postal_code} {person.billing_city}".strip())
-                    with ui.column().classes("gap-0 min-w-[200px]"):
-                        ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
-                        ui.label("Papierrechnung: " + ("ja" if person.paper_invoice else "nein")).classes(
-                            "text-grey-7"
-                        )
-                    with ui.row().classes("gap-1 ml-auto items-center"):
-                        if person.id in problems:
-                            # No text: the eye shows what is wrong and the
-                            # pencil fixes it. See `app.gui.problem_markers`.
-                            render_marker()
-                        ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
-                        ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
-                        if person.active:
-                            ui.button(icon="delete", on_click=lambda: on_remove(person)).props(
-                                "dense flat color=negative"
-                            )
-                        else:
-                            ui.button(icon="restore", on_click=lambda: on_reactivate(person)).props(
-                                "dense flat color=primary"
-                            ).tooltip("Wieder aktivieren")
-                if person.note:
-                    ui.label(person.note).classes("text-caption text-grey-7 w-full whitespace-pre-wrap")
+            locality = f"{person.billing_postal_code} {person.billing_city}".strip()
+            address = ", ".join(part for part in (person.billing_street_with_number, locality) if part)
+            return {
+                "id": person.id,
+                "customer_number": person.formatted_customer_number,
+                "name": person.display_name + ("" if person.active else f" · {_status_text(person)}"),
+                "address": address or "-",
+                "is_active": person.active,
+                "has_problem": person.id in problems,
+            }
 
         def apply_filter() -> None:
             """Filter the currently loaded persons by search text and active state.
@@ -439,10 +430,11 @@ def persons_page() -> None:
                 and (not needle or needle in search_text)
             ]
             visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select)
-            list_container.clear()
-            with list_container:
-                for person in visible_persons:
-                    render_card(person)
+            # The whole filtered result goes to the table, which shows a
+            # window onto it: the search runs over every person and the
+            # printout holds every filtered row, not the fifty on screen.
+            table.rows = [row_for(person) for person in visible_persons]
+            table.update()
 
         def refresh() -> None:
             """Reload all persons from the database and re-apply the filter.
@@ -472,7 +464,7 @@ def persons_page() -> None:
         only_cooperative_switch.on_value_change(lambda _: apply_filter())
 
         def on_view(person: Person) -> None:
-            """Card view-button handler: navigate to the person's detail page.
+            """Row view handler: navigate to the person's detail page.
 
             Args:
                 person: Person whose detail page to open.
@@ -483,7 +475,7 @@ def persons_page() -> None:
             ui.navigate.to(f"/persons/{person.id}")
 
         def on_edit(person: Person) -> None:
-            """Card edit-button handler: open the edit dialog for this person.
+            """Row edit handler: open the edit dialog for this person.
 
             Args:
                 person: Person to edit.
@@ -496,7 +488,7 @@ def persons_page() -> None:
             open_person_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_remove(person: Person) -> None:
-            """Card delete-button handler: delete the person after confirmation.
+            """Row delete handler: delete the person after confirmation.
 
             If the person still has billing history, they are deactivated
             instead of deleted (see `person_repo.delete`) -- their
@@ -540,7 +532,7 @@ def persons_page() -> None:
             confirm.open()
 
         def on_reactivate(person: Person) -> None:
-            """Card reactivate-button handler: mark a deactivated person active again.
+            """Row reactivate handler: mark a deactivated person active again.
 
             Args:
                 person: Person to reactivate.
@@ -553,6 +545,56 @@ def persons_page() -> None:
             # notify before refresh() -- see save() above for why
             safe_notify("Person wieder aktiviert.", type="positive")
             refresh()
+
+        def _person_of(event):
+            """Load the person a clicked row stands for.
+
+            The slot emits the row, not the object: a row is data sent to
+            the browser and back, so the record is re-read here rather than
+            trusted from it.
+
+            Args:
+                event: NiceGUI generic event carrying the clicked row.
+
+            Returns:
+                The person, or `None` if it is gone -- which happens when the
+                list was open while the record was deleted elsewhere.
+            """
+            with connection_scope() as connection:
+                return person_repo.get(connection, event.args["id"])
+
+        def _with_person(action):
+            """Wrap a handler so it receives the person, not the row.
+
+            Args:
+                action: One of the handlers above.
+
+            Returns:
+                A callable for `table.on(...)`.
+            """
+
+            def handle(event) -> None:
+                """Resolve the row and run the action.
+
+                Args:
+                    event: NiceGUI generic event.
+
+                Returns:
+                    None.
+                """
+                person = _person_of(event)
+                if person is None:
+                    safe_notify("Diese Person gibt es nicht mehr.", type="warning")
+                    refresh()
+                    return
+                action(person)
+
+            return handle
+
+        table.on("view", _with_person(on_view))
+        table.on("edit", _with_person(on_edit))
+        table.on("remove", _with_person(on_remove))
+        table.on("reactivate", _with_person(on_reactivate))
 
         refresh()
 
@@ -576,7 +618,16 @@ def person_detail_page(person_id: int) -> None:
             ui.link("← Zurück zu Personen", "/persons")
             return
 
-        ui.link("← Zurück zu Personen", "/persons")
+        render_detail_header(
+            list_route="/persons",
+            list_label="Personen",
+            title=person.display_name,
+            on_edit=lambda: open_person_form(existing=person, on_saved=lambda _: ui.navigate.reload()),
+        )
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
         ui.label(person.display_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             if not person.active:

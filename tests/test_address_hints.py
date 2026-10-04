@@ -39,6 +39,7 @@ from app.gui.address_input import (
     SuggestionBox,
     store_dismissals,
 )
+from app.gui.keyboard import layers
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models.person import Person
@@ -573,3 +574,135 @@ def test_a_form_without_a_house_number_field_is_not_written_into(address_registe
     box.accept(AddressFinding(FIELD_HOUSE_NUMBER, "4a", "4"))
 
     assert street.value == "Erstweg 4"
+
+
+# --- The list has a keyboard ----------------------------------------------
+#
+# Reported from use: "beim enter in einem feld mit vorschläge öffnet die
+# vorschläge, ich kann dann aber mit pfeil hoch runter nicht durchscrollen
+# oder mit enter auswählen". No key is bound to an element any more: the
+# list floats with `no-focus` and a Quasar dialog renders its card in a
+# portal, so an element binding depends on both the focus and the event
+# bubbling out of it. `app.gui.keyboard` owns the keys and the list takes
+# them while it is open.
+#
+# Driven through the postal code, because that is the field whose query
+# returns more than one entry from the test register.
+
+
+def _open_locality_list(register):
+    """Type a postal code that matches both localities.
+
+    Args:
+        register: Path of the test register.
+
+    Returns:
+        `(box, street, postal_code, locality)`.
+    """
+    box, street, _, postal_code, locality = _fields(register)
+    postal_code.value = "30"
+    box.update_locality(postal_code)
+    assert len(box.suggestions) > 1, box.suggestions
+    return box, street, postal_code, locality
+
+
+def test_the_open_list_is_the_innermost_thing_and_owns_the_keys(address_register):
+    """It takes the keys when it opens and gives them back when it closes.
+
+    Pushed above the dialog's own layer on purpose: Escape dismisses the
+    list first, and only a second press closes the form behind it.
+    """
+    box, _, _, _ = _open_locality_list(address_register)
+
+    assert layers()[-1] is box._layer
+
+    box.hide()
+
+    assert box._layer not in layers()
+
+
+def test_the_arrows_walk_the_open_list(address_register, press):
+    """Down lands on the first entry, up from nothing on the last."""
+    box, _, _, _ = _open_locality_list(address_register)
+
+    press("ArrowDown")
+    assert box._highlight == 0
+
+    press("ArrowDown")
+    assert box._highlight == 1
+
+    box._highlight = -1
+    press("ArrowUp")
+    assert box._highlight == len(box.suggestions) - 1
+
+
+def test_left_and_right_walk_it_too(address_register, press):
+    """All four arrows mark, which is what the administrator asked for."""
+    box, _, _, _ = _open_locality_list(address_register)
+
+    press("ArrowRight")
+    assert box._highlight == 0
+
+    press("ArrowLeft")
+    assert box._highlight == len(box.suggestions) - 1
+
+
+def test_the_arrows_wrap_rather_than_stopping(address_register, press):
+    """A short list is walked round faster than back."""
+    box, _, _, _ = _open_locality_list(address_register)
+    box._highlight = len(box.suggestions) - 1
+
+    press("ArrowDown")
+
+    assert box._highlight == 0
+
+
+def test_enter_takes_the_entry_the_arrows_reached(address_register, press):
+    """The other half of the report: Enter did nothing."""
+    box, _, postal_code, locality = _open_locality_list(address_register)
+    press("ArrowDown")
+    chosen = box.suggestions[0]
+
+    press("Enter")
+
+    assert postal_code.value == chosen.postal_code
+    assert locality.value == chosen.locality
+    assert box.suggestions == []
+
+
+def test_escape_pushes_the_list_aside_and_keeps_the_text(address_register, press):
+    """One press dismisses the list; the form behind it stays open."""
+    box, _, postal_code, _ = _open_locality_list(address_register)
+
+    press("Escape")
+
+    assert box.suggestions == []
+    assert postal_code.value == "30"
+
+
+def test_enter_takes_nothing_that_was_not_stepped_onto(address_register, press):
+    """Deliberate, and the project has already paid for the lesson.
+
+    A street suggestion can be a correctly spelled *different* real street
+    (see CLAUDE.md on `FIELD_POSTAL_CODE`), so a blind Enter taking the
+    first entry is exactly the destructive case that was fixed once before.
+    """
+    box, _, postal_code, locality = _open_locality_list(address_register)
+    assert box._highlight == -1
+
+    press("Enter")
+
+    assert postal_code.value == "30", "nichts darf übernommen worden sein"
+    assert not locality.value
+
+
+def test_a_new_search_forgets_where_the_arrows_were(address_register, press):
+    """Otherwise the index points into the previous set of suggestions."""
+    box, street, _, _ = _open_locality_list(address_register)
+    press("ArrowDown")
+    assert box._highlight == 0
+
+    street.value = "Erstweg"
+    box.update()
+
+    assert box._highlight == -1

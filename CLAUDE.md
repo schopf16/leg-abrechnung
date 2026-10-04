@@ -128,12 +128,19 @@ this pattern rather than reading the live setting at render time.
 Every *browsable* list — the CRUD pages and worklists under
 `app/gui/pages/` — sorts through `app/gui/sorting.py` and nothing else: a
 module-level `SORT_OPTIONS` list of `SortOption`s (default first), a
-`render_sort_select(SORT_OPTIONS, ...)` as the **last control in the
-page's filter row**, and `apply_sort(rows, SORT_OPTIONS, sort_select)`
-where the page builds its visible rows. `render_sort_select` returns a
-`SortControl` (select + ascending/descending arrow), not a bare
-`ui.select`; pass the whole control to `apply_sort`/`sort_description` so
-the direction is honoured, never just its `.value`. Never Quasar's `"sortable": True`
+**`bar.sort(SORT_OPTIONS, ...)`** on the page's `FilterBar` (next section
+-- the bar decides where the control goes, the page does not), and
+`apply_sort(rows, SORT_OPTIONS, sort_select)` where the page builds its
+visible rows. The rule used to read "the last control in the page's filter
+row", which is exactly the kind of instruction the bar replaces: it was
+true of some lists and not others, and nothing failed when it was broken.
+`bar.sort` returns a `SortControl` (select + ascending/descending arrow),
+not a bare `ui.select`; pass the whole control to
+`apply_sort`/`sort_description` so the direction is honoured, never just
+its `.value`. A page calling `render_sort_select` directly is a page
+building its own layout again, so `test_no_list_page_lays_its_own_filter_
+row_out_any_more` fails on it -- the one exemption is the metering-point
+sub-table on the LEG detail page, which is not a browsable list. Never Quasar's `"sortable": True`
 column headers — half the lists are cards and have no header to click, so
 clickable headers could never be the mechanism that works everywhere, and
 two mechanisms is exactly what the user complained about.
@@ -212,6 +219,479 @@ Detail sub-tables and history tables are exempt and have no control:
 Person and Standort detail pages. Each shows one context's rows in the
 one order that context implies, so there is no choice to offer.
 
+### The drawer: an accordion of rows, read top to bottom
+
+`NAV_GROUPS` in `app/gui/navigation.py` is the order of the administrator's
+year, not the order the pages were written in: what needs doing (Übersicht)
+→ who and what is in the LEG (Stammdaten) → what is moving (Vorgänge) → the
+quarter (Abrechnung) → looking back (Statistik) → sending (Kommunikation) →
+the tools (Einstellungen).
+
+**Exactly one chapter is open**, via Quasar's `group=leg-nav` on the
+expansions. That is the mechanism, not decoration: the open chapter *is* the
+answer to "which part of the app am I in", so a second chapter standing open
+beside it would make the drawer say two things. An earlier attempt marked
+the chapter heading in the primary colour instead and was rejected -- it
+made the heading look like a link, and three chapters could still be open at
+once. Browsing another chapter does hide the grey bar while it is open; that
+ends at the next click, because navigating re-renders the drawer with the
+new page's chapter open.
+
+**Entries are rows, not hyperlinks.** Blue and underlined reads as "this
+leaves the page". They keep `ui.link` (middle-click, keyboard, no JavaScript
+needed) and lose its colour and underline; the open one carries a grey bar
+across the **full drawer width** -- the same width for every label, which is
+what makes the drawer scannable rather than read. Chapter headings stay
+black like all the others.
+
+Two namings are load-bearing. **"Stammdaten" is the chapter, so the settings
+page is "Allgemein"**: the name used to mean both, and the administrator
+looked under it for the master-data lists and found the sender address and
+the electricity price. And **Auswertungen comes before Rechnungslauf**,
+because `quarter_energy_totals` is the control sheet read *before* the run
+-- it is what says whether a quarter is worth billing at all -- not a
+report read after it.
+
+**Stammdaten and Vorgänge are two chapters, not one "Verwaltung".** The
+first is what the LEG *is* and gets corrected; the second is work in
+progress and gets worked off. It is the same boundary the problem markers
+follow (next section): a half-filled onboarding is not a defect, so those
+two lists carry no triangle.
+
+### The filter bar: the page says what, the bar says where
+
+`app/gui/filter_bar.py` is the third member of the family `app/gui/sorting.py`
+and `app/gui/problem_markers.py` started, and it was built for the
+administrator's own diagnosis of the app: *"bei jeder neuen idee packen wir
+einfach nach etwas hinten an, aber es hat kein system"*. Each list used to
+lay its controls out in one `ui.row` of its own, so every new filter went on
+the end of whatever happened to be there -- three lists ended up with the
+problem filter before the sort control and two with it after, and the
+Debitoren page had six controls in one row.
+
+A page now says what it needs and nothing about placement:
+
+```python
+bar = FilterBar()
+search_input = bar.search("Name, Firma, Adresse")
+sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+show_inactive_switch = bar.filter("Deaktivierte Personen anzeigen")
+problem_filter = bar.problem_filter(lambda: apply_filter())
+```
+
+Wiring stays with the page (`.on_value_change(...)`, reading `.value` in
+its own filter function); the bar owns the layout only.
+
+**Two columns: search and sort left, filters stacked right.** Chosen over a
+single row and over chips, and the reason is the problem filter: it appears
+and disappears with the findings, and in one row that moved every control
+beside it -- the administrator toggled it and watched the sort control jump.
+Stacked in a column of their own, a filter that comes or goes moves nothing
+else on the screen.
+
+**A conditional filter renders last whatever order the page asks for it
+in**, because the bar keeps a separate container at the bottom of that
+column. Structure rather than a convention to remember, which is the whole
+point of having a component instead of a rule in this file.
+
+**A filter's text is clickable**, via Quasar's `label` *prop*. NiceGUI's
+`ui.switch(text)` puts the text in the element's default slot, which Quasar
+renders beside the switch but does not wire up -- so the administrator hit a
+word and nothing happened. Consequence for tests: a switch's caption is in
+`element._props["label"]`, not in `.text`.
+
+**No filter carries a count.** "Nur fehlerhafte Einträge (10)" was offered
+and declined, and the reason given is the better one: a number on one filter
+and not the others reads as though the others had nothing to count, and a
+number on all four makes the column unreadable. `test_no_filter_carries_a_count`
+pins it, because the next person to read the request would reasonably add it.
+
+**The search field's label is "Suche"** and the list of fields searched is
+its `hint`. The list used to *be* the label, and Quasar shrinks a label to
+caption size above the input as soon as anything is typed -- unreadable
+exactly while it is being used.
+
+Printing is an action and not a filter, so `render_print_button` does not
+belong among the switches; on Debitoren it sits in the bar's left column
+under the sort control.
+
+### The keyboard: one dispatcher, a stack of who owns it
+
+`app/gui/keyboard.py` holds one `ui.keyboard` per page (created in
+`page_frame`) and a stack of `KeyboardLayer`s. Whoever is on top answers the
+keys:
+
+| Key | Meaning |
+|---|---|
+| Enter | take the marked thing |
+| ↑ ↓ ← → | move the mark |
+| Escape | go back one step |
+| Tab | next field -- the browser's own, never intercepted |
+
+**Element bindings were tried first and are gone**, because they only work
+while that element holds the focus *and* the event bubbles out of it. A
+Quasar dialog renders its card in a portal and the address list floats with
+`no-focus`, so neither holds: Escape worked in one dialog and not the next,
+and the discard question could only be answered with the mouse. `ignore=[]`
+on the keyboard is equally deliberate -- NiceGUI ignores keys from inputs,
+selects and buttons by default, which would switch Escape off at the one
+moment it is wanted.
+
+**A layer claims only what it can answer.** A form dialog deliberately does
+*not* claim the arrows, so they stay caret movement in its fields; an
+address list and the discard question do claim them, for as long as they are
+open on top. That is the whole mechanism: the list pushes its layer above
+the dialog's, so the first Escape dismisses the list and only the second
+closes the form.
+
+**`on_typing` is why the stack exists rather than a flag per dialog.** The
+LEG dialog closed on Escape without asking: its name field carries
+`debounce=300` for the duplicate check, so what had been typed had not
+reached the server and the value snapshot still matched. "A key was pressed"
+needs no round trip, and it is what the question is actually about.
+`tests/test_form_dialog.py` drives that exact sequence through the page's own
+button, because the dialog does not exist until it is clicked -- which is
+why no earlier test saw it.
+
+The stack lives on the client, with a module-level fallback for code running
+outside a request. `tests/conftest.py` empties that fallback around every
+test (autouse) and offers the `press` fixture: no key is bound to an element
+any more, so pressing one in a test means going through the one dispatcher,
+which is also the only way to find out whether the right layer answered.
+
+### A dialog must not be able to lose what was typed into it
+
+`app/gui/form_dialog.py`'s `form_guard(dialog, on_save=...)` is applied to
+every dialog that holds typed-in data, once, after its body is built and
+before `dialog.open()`. Quasar closes a `q-dialog` on a click outside it and
+**none** of the 39 dialogs was `persistent`: the Person dialog holds
+seventeen inputs, and a click a few pixels off the card discarded a
+filled-in membership without a word. There is no undo, no draft and no
+notification anywhere in this app, so the click was the whole loss.
+
+Three behaviours, each answering one way of losing work:
+
+- **`persistent`** -- a click beside the card does nothing.
+- **Escape closes, but asks first when something was typed.** Making the
+  keyboard work must not make discarding easier than it was: Escape and a
+  stray click used to be the same gesture, and now Escape is the deliberate
+  one, so it is the one that has to be sure.
+- **Enter saves, from a single-line input only.** This one stays an element
+  binding, and that is the exception that proves the rule above: the
+  dispatcher cannot see which element has the focus, so it could not tell a
+  textarea (where Enter is a newline) from a one-line field. Bound per
+  field, it can -- and it skips any field carrying a lookup menu, where
+  Enter belongs to the list (`app.gui.address_input`).
+
+**Enter is wired per action, not per dialog.** `on_save` is passed where the
+primary action stores a record, and deliberately left out where it sends
+mail, bills a quarter, starts an exclusion or records a billing override:
+none of those can be taken back, and a stray Enter would be enough to set
+them off. Those dialogs keep `persistent` and the Escape guard.
+
+**Dirtiness is measured, not wired up.** The guard snapshots every
+`ValueElement` inside the dialog when it is applied and compares on Escape,
+which is why it needs no cooperation from the dialog it guards. The limit is
+worth knowing: a field created *after* the guard (a sub-editor that rebuilds
+itself) is not in the snapshot, so a change made only there reads as clean.
+The protection that matters for an accidental click is `persistent`, which
+has no such gap.
+
+**Three things only using it could have shown**, all three reported by the
+administrator within minutes of first opening a dialog:
+
+- The question appeared and vanished in one blink. The Escape keydown that
+  opens it goes on to reach the question itself, and Quasar closes a
+  non-persistent dialog on exactly that event. The question is therefore
+  `persistent` too, and Escape in it means "Weiter bearbeiten" -- which is
+  also the safe reading of pressing Escape twice. It is **two buttons and no
+  text**, so it is the one place where the arrows have nothing else to do:
+  they move the mark between the answers and Enter takes the marked one,
+  which starts on "Weiter bearbeiten" so that a hasty Enter keeps the work.
+  The mark is **exactly one filled button among flat ones**, the way every
+  operating system draws a default button. It started as a thin ring and the
+  administrator could not see it at all -- a mark that has to be looked for
+  is not a mark.
+- **Enter worked and looked broken.** The save handler ran, refused, and
+  wrote "Firma oder Vorname/Nachname sind erforderlich." underneath the
+  last field of a dialog taller than the window, so the message was never
+  seen. `form_guard` now pins the button row to the bottom edge of the
+  visible dialog (`position: sticky`), and the Person dialog puts its error
+  label *in* that row. Nothing in this app needs scrolling to reach an
+  action or to read why one was refused.
+- The Person dialog was simply too tall. Three paragraphs of justification
+  inside it -- why a first name may be blank, why both partners are named,
+  why the customer number is random -- came to about ten lines, and the
+  administrator has twice said that a hint needs no reasoning. They are one
+  short line or a field `hint` now, and the card is `max-w-3xl` so each row
+  holds its fields side by side. A dialog with seventeen inputs will never
+  fit a laptop screen, which is why the sticky row is the actual fix.
+
+**Read-only dialogs deliberately do not get this.** An invoice preview or a
+detail view holds nothing to lose, and clicking beside it is the fastest way
+to dismiss it. Consequence for tests: a switch inside a guarded dialog is
+found by `_props["label"]`, and the guard itself is driven through the
+registered `keydown.escape` handler -- rendering proves nothing here, which
+is the whole reason the defect survived 1'100 tests.
+
+**Checked when a field loses focus, not only at save.** The IBAN was the one
+field that said anything before the save button
+(`app.domain.iban_validation`); `app.domain.email_validation` now does the
+same for both addresses, because a mistyped one otherwise surfaces at send
+time, in the middle of a quarter going out, long after the dialog that knew
+it was closed. It reports only what is certainly wrong -- no `@`, nothing on
+one side of it, no dot in the domain, a space -- and nothing else. No
+pattern for the local part and no list of top-level domains: an address
+cannot be proved good the way an IBAN's check digits can, and a false
+complaint about an address that works trains the administrator to click past
+the warning, after which the IBAN warning beside it gets clicked past too.
+An empty value is valid. Both checks also run at save, because a field
+nobody clicked into never lost focus.
+
+Cross-field rules stay at save. "Firma oder Vorname/Nachname" cannot fire on
+blur: leaving the company empty is legitimate right up until the name is
+empty too, so on blur it would complain about a form that is merely
+unfinished -- the same mistake `verify` made when it greeted an empty
+Standort dialog with "Nicht im amtlichen Verzeichnis."
+
+### One wording for an amount, one for a date
+
+`app/formatting.py` holds `format_chf` and `format_date`, layer-neutral for
+the reason `app/format_size.py` and `app/sort_keys.py` are: the PDF layer must
+not import from `app/gui`, and an amount has to read the same on the screen
+and on the invoice.
+
+**Money** lives as integer Rappen everywhere and was turned into text by hand
+at sixteen places in the interface, each writing its own
+`f"{x / 100:.2f} CHF"` -- sixteen chances to divide by the wrong number, and
+no thousands separator anywhere, so `12345.60` was read wrongly at a glance
+on a Debitoren page. `format_chf` knows that a Rappen is a hundredth and that
+Switzerland groups with an apostrophe (`1'234.56`). Three `/ 100` remain and
+are right: two feed `ui.number`, which wants a number, and one is a numeric
+table column.
+
+**Dates** were German on most pages and ISO on one -- Zuordnungen printed
+`2026-10-04` beside neighbours printing `04.10.2026`. What `format_date`
+deliberately does *not* touch is an ISO string inside
+`ui.input(..., type=date)` or in a sort key: the browser's date field speaks
+ISO and sort keys compare text, so neither is display.
+
+Neither helper invents a value. `None` is an em dash, not `0.00` and not
+today -- "not recorded" and "zero" are different statements, the same rule
+the Ausgewogenheit view follows with its "—", and the same reason
+`Person.deactivated_at` stays `None` rather than carrying a made-up day.
+
+**A list says how many it shows** (`app/gui/list_footer.py`). A table says it
+already -- Quasar prints "1-50 von 92" -- so this is for the card lists,
+which said nothing: Debitoren could be filtered from ninety-two down to nine
+with no sign that it had been. `render_count` gives them that sentence.
+
+**An empty list offers the way out, when there is one.** "Keine passenden
+Austritte." is a statement, and the reader's next question is what to do
+about it. `FilterBar.is_filtering()` decides whether to offer "Filter
+zurücksetzen": with nothing filtered it would be a button that does nothing,
+and the list is simply empty -- which is why the message differs too ("Noch
+kein Austritt gestartet."). It compares a cleared input against `""` rather
+than against its value: Quasar's `clearable` sets an emptied box to `None`,
+so a search the administrator had just cleared with the X counted as a
+filter and the button came back offering to undo nothing. `FilterBar.reset(then)` puts every control back
+and calls the page **once**, rather than letting five controls fire five
+rebuilds. An empty Mahnwesen worklist deliberately gets no suggestion: it is
+good news.
+
+### One search box, for every Stammdaten record
+
+`app/domain/global_search.py` matches and `app/gui/global_search.py` is the
+box in the header, on every page. Until it existed a record could only be
+found from the list it lives on: a street could be a Standort or somebody's
+billing address, and a Messpunktbezeichnung meant going to Messpunkte first.
+That is knowledge about this app's filing, demanded of a reader who only
+wants to find a meter.
+
+**It searches what the lists already search**, no more. Those haystacks were
+built one at a time and each knows its own record, so this is a domain
+function over the models and the five lists keep their own filters untouched
+-- two search implementations would drift, and the one in the header would be
+the one nobody tested. A person's name therefore finds their metering point
+and a street finds both the Standort and the meters on it, exactly as the
+Messpunkte list already did.
+
+Three deliberate limits:
+
+- **Substring, folded, no fuzziness.** `app.domain.address_lookup` is fuzzy
+  because it compares typing against three million official addresses and has
+  to tolerate a typo; here the administrator is looking for something they
+  know exists, and a near miss would offer the wrong member. Folding goes
+  through `fold_for_sort`, so "Buhler" finds "Bühler" the way the lists
+  already sort it.
+- **No relevance score.** Groups come in the order of the data model
+  (Trafokreis → Standort → Messpunkt → LEG → Person), the same order the
+  drawer lists them in, and are sorted inside a group by the keys that
+  group's own list uses. A score would put a person above a metering point
+  for reasons nobody can see -- and it is why Enter on a surname opens the
+  **meter** and one ArrowDown opens the person, which the tests state
+  outright rather than work around.
+- **A group caps itself at six and says how many more.** A dropdown with
+  ninety entries is a list, and a worse one than the real page.
+
+The keys come from `app.gui.keyboard`, the same way the address suggestions
+take them: the list floats with `no-focus`, so a layer is pushed while it is
+open and given back when it closes -- otherwise it would answer Escape for
+the page underneath. The first hit is marked as soon as there are results, so
+Enter after typing is one keystroke to the obvious answer, and the mark is
+visible, which is the whole difference from guessing. Leaving for a hit
+empties the box: coming back to a page with yesterday's query in the header
+and no list under it reads as broken.
+
+A Trafokreis has no detail page, so its hits lead to the Trafokreise list --
+the one place those records can be opened.
+
+### The fix loop has to close
+
+See the triangle, open the record, correct it, come back. Two halves of that
+were missing, and they are the same gap:
+
+**A detail page can be edited from.** Only the Person page had a Bearbeiten
+button -- Standort, Messpunkt and LEG had none, so the eye led somewhere the
+pencil could not follow. `app/gui/detail_header.py`'s
+`render_detail_header` is the one header all four now start with, and it
+also replaces "← Zurück zu Standorten" with a breadcrumb: that line was a way
+back rather than a place, and a breadcrumb is both. The not-found branch keeps
+the plain link, because there is no record to name and nothing to edit.
+
+Saving from a detail page reloads it (`ui.navigate.reload()`), because a
+page still showing the values that were just corrected reads as a failed
+save. The "Gespeichert." toast is lost to that reload, and that is the
+accepted trade: the page coming back with the new values is the better
+confirmation of the two.
+
+The LEG dialog had to leave the page for this. A form nested inside
+`legs_page` can only be opened from there, so `app/gui/leg_form.py` now holds
+it with the same shape as `site_form`, `person_form` and
+`metering_point_form`: `open_leg_form(existing=..., on_saved=...)`. Nothing
+about the dialog changed in the move except reporting a save through
+`on_saved` instead of closing over the list's `refresh`.
+
+**A list comes back the way it was left.** `app/gui/list_state.py` keeps the
+search text, every filter, the sort key *and its direction*, and the page plus
+page size -- per route, so two lists cannot overwrite each other. Pages say
+nothing about it beyond their route: `FilterBar("/persons")` and
+`paged_table(route="/persons", ...)` restore and persist every control they
+hand out, which is the same bargain the bar already made about layout.
+
+It is a **module-level store, not `app.storage`**, on the premise this app is
+built on anyway: one native window for one administrator, the same reasoning
+behind `app.gui.address_register_task`. `app.storage.user` would need a
+`storage_secret` and a file on disk; `app.storage.tab` needs a connected
+client and an await. The costs are worth stating: the state dies with the
+process, which is right -- a filter from last week is not what anybody wants
+to return to -- and two windows would share it, which cannot happen here.
+
+Only the controls are kept, never the rows: a list always re-reads its
+records, so the correction that was just made shows up. `tests/conftest.py`
+empties the store around every test (autouse), for the reason it empties the
+keyboard stack: in one process a module-level store would leak from test to
+test, and xdist makes that unreproducible.
+
+### A long list is a table, and it pages
+
+`app/gui/table_list.py`'s `paged_table` builds **every Stammdaten list** --
+Trafokreise, Standorte, Messpunkte, LEGs and Personen -- with one page size
+for all of them, **Zuordnungen included**. The administrator's verdict after
+seeing the first one: *"eine solche tabellenansicht ist näher an einer
+datenbank als diese boubles"*.
+
+Zuordnungen was held back once, on the argument that its card-per-Messpunkt
+grouping would be lost. That was half right: the grouping carried one thing
+worth keeping -- a move reads as two rows in sequence rather than two
+unrelated lines -- and it survives without the card. The groups are still
+sorted as groups and only then flattened into rows, so a Messpunkt's
+assignments stay adjacent and in order. The printout is built in the same
+pass, so screen and paper cannot disagree. Its dates are German now
+(`01.01.2026`), where the card printed `2026-01-01`; the ISO strings stay in
+the row for the sort keys, which compare them as text.
+
+**Why Personen stopped being cards.** It drew 92 cards of 23 interface
+elements each, 2'108 in all, and the administrator reported the page taking
+close to a second to open. A Quasar table is **one** element with its rows
+as data, which is why Standorte was always fast. Measured against a copy of
+the live database: 337 ms and 2'108 elements before, **72 ms and 65
+elements** after, and the browser's share falls with the element count in
+the same way.
+
+That makes the number of *columns* free and the number of *cards* expensive,
+which is the whole trade. The list shows **Kunden-Nr., Name, Adresse** and
+the actions, on the administrator's own cut -- "alles andere dann hinter
+auge" -- and everything the card used to carry (second address, IBAN,
+Papierrechnung, BKW-Nummer, Bemerkung, the Genossenschaft badge) was already
+on the detail page. `tests/test_person_couple.py` checks that explicitly, so
+"moved one click away" cannot quietly become "dropped".
+
+Each list keeps the columns its reader needs and no more, and the rule for
+leaving one out is the same everywhere: a column that is empty for all but a
+handful of records is clutter. PV and battery capacity are therefore on the
+Messpunkt detail page, the LEG's Trafokreise are one cell rather than a
+status line with an indented list, and a Trafokreis keeps its Bemerkung
+because that column is usually filled. A Trafokreis has no detail page at
+all, so its finding is read in the **pencil** -- `render_problem_notes` in
+its form, without which the triangle on that one list pointed at nothing.
+
+Two details follow from the shape rather than from taste. A deactivated
+person is marked **in the name cell** (`Muster, Anna · inaktiv seit …`)
+because a status column would be empty for all but a handful of people, and
+an almost always empty column is clutter in a list of three. And the
+Genossenschafter badge is gone from the list: the "Nur Genossenschafter"
+filter is the members' list (there is no page of its own), the printout
+keeps its "Anteile" column, and `test_a_deactivated_member_drops_off_the_list_at_once`
+now watches the filter instead of a badge -- the same defect, one layer in.
+
+**No table may scroll sideways**, and that is a stronger rule than it looks:
+a horizontal scrollbar sits at the *bottom* of a long list, so reading the
+right-hand columns means scrolling down, across, and back up. The
+administrator's words: "das will ich auf keinen fall". Two things make it
+hold. Quasar keeps a cell on one line by default, so one 27-character
+Messpunktbezeichnung decided the whole table's width -- `wrap-cells` lets the
+row grow taller instead, and `word-break: break-word` lets a value with no
+spaces in it break at all. And the content area went from `max-w-5xl`
+(1024 px) to `max-w-screen-2xl` (1536 px): the old width was set when every
+list was cards, which wrap into whatever space they have. Still bounded
+rather than full width, because a settings form or a line of prose across
+1920 px is unreadable for the opposite reason.
+
+**A cell can be marked and copied.** Quasar renders a table inside
+`.non-selectable`, whose rule carries `!important`, so a Kunden-Nr. could be
+read and not pasted into a bank form -- the administrator hit that
+immediately. `paged_table` adds `leg-selectable` and `page_frame`'s
+stylesheet undoes the rule with the same weight, while the buttons in the
+actions column stay unselectable, as buttons should be. The class and the
+rule live in two modules, so `tests/test_persons_table.py` checks both: each
+alone passes while copying stays impossible.
+
+**An array prop has to reach the browser as an array.**
+`rows-per-page-options` went through `props()` at first, which parses a
+string, so Quasar received the literal text `"[30, 50, 100, 0]"` and the
+select had nothing to offer -- the 50 was unchangeable. It is assigned to
+`_props` as a list, and the test asserts the type rather than the value,
+because the wrong one stringifies to something that looks right.
+
+**Paging is Quasar's own, and that is a different decision from sorting.**
+Sorting may not use Quasar's `sortable: True` headers because half the lists
+are cards with no header to click, so clickable headers could never be the
+mechanism that works everywhere. Paging has no such split: only a table can
+page, every table can, and the footer Quasar already draws carries the
+arrows, the count and the rows-per-page select. 50 rows by default (the
+administrator's number: the deployment holds 92 persons and 92 sites, so 50
+is "most of it, twice"), with 30/50/100/alle offered. `0` is kept because a
+list short enough to read in one go should not have to be paged, and because
+printing is per filter rather than per page.
+
+**The search and the filters run over everything, never over the page.** The
+page filters and sorts all records and hands the whole result to the table,
+which shows a window onto it -- so a search finds a person on page four and
+the printout holds every filtered row. Paging the wrong collection is the
+obvious way to build this and looks right until the list is longer than one
+page, so `tests/test_persons_table.py` pins both with more rows than fit.
+
 ### Problems: one marker, one filter, every list
 
 Whenever a record is misconfigured or needs a decision, its list shows a
@@ -242,6 +722,26 @@ and `subject_id`, `problems_for(connection, kind)` groups them, and
 enumerations would drift until a list stayed unmarked for a finding the
 overview was already showing.
 
+**A list runs only the checks that could mark one of its own entries**, via
+`CHECK_SUBJECTS`/`checks_for`. Measured on the live deployment, where every
+list ran all eleven: `problems_for` cost 128 ms, of which
+`check_substation_area_one_sided` was 49 ms and `check_addresses` 41 ms --
+and on the Personen page the first of those cannot produce a single finding.
+The administrator reported the pages opening slowly and this was the
+server's share of it: the LEGs page went from 123 ms to 33 ms, Trafokreise
+from 174 to 109. The overview still runs everything, because it shows
+everything.
+
+The table is **declared, not discovered**: a check's subject is only known
+after running it, which is the cost being avoided. Drift is therefore the
+risk, and `tests/test_check_subjects.py` re-derives the table from the
+source with `ast` rather than from a run -- no test data triggers all eleven
+checks at once, so a run-based check would pass while the table was wrong.
+A check that gains a subject without a table entry would quietly stop
+reaching the list it belongs to: the overview would name the finding and the
+list would show no triangle, which is the exact gap the markers were built
+to close.
+
 This exists because summarising the overview took something away.
 "7 Messpunkte ohne LEG" with a link to the list replaced seven lines that
 each named their metering point, so the reader arrived at the list and could
@@ -258,11 +758,25 @@ them. Marking the worklist instead would complain about something that is
 simply not finished yet, which is how a list earns the habit of being
 skipped.
 
-A table marks differently from a card list, because Quasar renders a table
-cell as markup rather than as elements. `TABLE_MARKER_HTML` and
-`render_marker` sit side by side in the same module so the two renderings
-cannot drift; `app/gui/pages/sites.py` builds its action slot from the
-constant rather than writing the triangle out again.
+**The triangle is only half of it.** `render_problem_notes` spells the
+findings out on the detail page (the eye) and in the edit dialog (the
+pencil), so the marker is never a dead end. Without that the administrator
+meets a summary line, a link to a list, a triangle -- and still nothing
+saying what is wrong, which is exactly how it was reported. A dialog passes
+`AT_THE_FIELD` so the address finding is not repeated at the top: it is
+already rendered beside the input it is about.
+
+`summary_link` has to point at a list that **marks**. The feed-in finding
+pointed at Zuordnungen while its subject is a person, so the summary line
+landed on a page with no triangle and no filter. It points at Personen now.
+
+A table renders a cell as markup rather than as elements, so the triangle is
+`TABLE_MARKER_HTML` and each list builds its action slot from that constant
+rather than writing it out again. There used to be a second rendering as
+Python elements, for when these lists were cards; all five are tables now
+(see "A long list is a table, and it pages"), so it had no caller left and
+was removed rather than kept warm -- an unused second rendering of the same
+thing is exactly what drifts.
 
 ### Onboarding/offboarding-style trackers
 
@@ -690,7 +1204,7 @@ Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
 
 **Run the whole suite before a commit, not after every edit**, and run it
-as `pytest -n auto`. Two rounds of work got it from 8:27 to about 2:20:
+as `pytest -n auto`. Three rounds of work got it from 8:27 to about 1:15:
 
 - `create_demo_data` rebuilding 229'632 readings, once per test, 54 times
   over, was roughly half the runtime. `tests/conftest.py` now builds it
@@ -701,6 +1215,27 @@ as `pytest -n auto`. Two rounds of work got it from 8:27 to about 2:20:
   → 2:20. Less than the core count would suggest, because each worker is
   its own pytest session and so builds the template for itself — the two
   optimisations overlap, and that is the price of the first one.
+- **The template was built whether or not anything needed it**, and that
+  turned out to be most of what was left. `_demo_data_from_template` is
+  autouse and took `_demo_template` as an argument, so pytest created the
+  229'632 readings before the first test of *every* session — in all eight
+  workers, and for `pytest tests/test_filter_bar.py`, five tests that touch
+  no readings at all. **Ten of 1'248 tests need them.** Built on first use
+  instead: 2:20 → about 1:15, and a single file went from 4.5 s to 2.6 s.
+  The administrator noticed this as the CPU fan, while developing, which is
+  exactly when it was pure waste.
+
+Two traps in that last change, both worth knowing before touching it:
+the builder must hold the **real** `create_demo_data` captured at import
+time (`_REAL_CREATE_DEMO_DATA`), because building lazily means building
+*after* the autouse fixture has replaced that name — looking it up at call
+time makes the builder call the restore, which calls the builder. The first
+symptom was not a `RecursionError` but
+`'WindowsPath' object has no attribute '_str'`, from pathlib running out of
+stack halfway down. And it is a module-level cache rather than a session
+fixture, because reaching a fixture from inside another fixture's closure
+(`request.getfixturevalue`) trips pytest's own finalizer bookkeeping
+(`assert not self._finalizers`) as soon as a second test asks for it.
 
 **Treat a single timing as noise.** Four full runs on the same machine
 (4 physical cores, 8 logical) came out 2:03, 2:16, 2:28 and 2:45, and the
@@ -716,11 +1251,28 @@ app.
 `-n auto` is deliberately **not** in `pytest.ini`'s `addopts`. On the one
 file you are actually working on, xdist's process startup costs more than
 it saves, and it swallows `pdb` and `print`. Full run parallel, targeted
-run plain. While working, run the test files the change actually touches
-(`pytest tests/test_billing.py -q`) plus a render check when a page
-changed; save the full suite and the four gates for the point where the
-work is claimed to be done. Waiting for all 1'077 tests to learn that a
-one-line edit compiles is not verification, it is ceremony.
+run plain.
+
+**Three slices, and which to use when:**
+
+```
+pytest tests/test_billing.py -q        # while working: the file you changed
+pytest -m "not heavy" -n auto          # 1'238 of 1'248 tests, no demo data
+pytest -n auto                         # before a push, with the four gates
+```
+
+The `heavy` marker is **added automatically** from the fixtures a test asks
+for (`demo_data`, `real_demo_data`), in `tests/conftest.py`'s
+`pytest_collection_modifyitems` — a marker that has to be remembered on each
+test drifts, and the point of `-m "not heavy"` is that it stays true without
+anybody maintaining it.
+
+While working, run the test files the change actually touches plus a render
+check when a page changed; save the full suite and the four gates for the
+point where the work is claimed to be done. Waiting for all 1'248 tests to
+learn that a one-line edit compiles is not verification, it is ceremony —
+and a regression is dealt with then, before the push, not by running
+everything after every edit.
 
 Tests must therefore stay **order- and process-independent**: xdist hands
 each worker an arbitrary slice. Nothing may rely on another test having
@@ -893,9 +1445,9 @@ and claims nothing more; the dashboard states the fact and links there; and
 holding the value it would replace. The triangle is sized at `1.715em`
 because a bare `q-icon` inherits the surrounding `1em` and comes out
 visibly smaller than the icons in the flat buttons beside it. The Personen
-lists also carry the shared "Nur fehlerhafte Einträge" switch (see
+list also carries the shared "Nur fehlerhafte Einträge" switch (see
 "Problems: one marker, one filter, every list"), so the marked handful can
-be worked off without scrolling ninety cards.
+be worked off without paging through ninety-two rows.
 
 A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
 written by `store_dismissals` **after** the record is saved -- a new record
@@ -937,6 +1489,17 @@ control that can only ever empty the list is clutter, and leaving it on
 after the last correction would filter the list down to nothing from
 off-screen.
 
+**The list has a keyboard, and it refuses to guess.** Down and up walk the
+entries (wrapping), Enter takes the one they reached, and the highlighted
+entry carries the same grey bar the drawer marks the open chapter with. The
+keys are bound on the field being typed in rather than on the menu, for the
+reason Escape already was: the menu floats with `no-focus` and never holds
+the keyboard. **Enter takes nothing while no entry is highlighted** -- a
+street suggestion can be a correctly spelled *different* real street, so a
+blind Enter on the first entry is precisely the destructive case fixed
+above. For the same reason `form_guard` binds no Enter at all on a field
+that owns a lookup menu: there the key belongs to the list.
+
 **The suggestion list floats over the form** (a `ui.menu` anchored to the
 field, dismissable with Escape) rather than sitting in the layout, where it
 resized the dialog on every keystroke -- distracting at exactly the moment
@@ -972,7 +1535,7 @@ dependency, already used in `app/emailing/graph_client.py`) and
 `build_register` is a **generator** that hands control back every 5'000
 rows. Progress lives in a module-level object in
 `app/gui/address_register_task.py`, not on a client, and
-`app.gui.navigation.page_frame` shows it in the header of all 21 pages;
+`app.gui.navigation.page_frame` shows it in the header of all 31 routes;
 state on the page that started it would vanish the moment the administrator
 navigated away, which is the whole thing being fixed. A second click finds
 the phase set and returns.

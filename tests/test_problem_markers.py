@@ -89,14 +89,30 @@ def _switch(client: Client):
     matches = [
         element
         for element in client.elements.values()
-        if element.__class__.__name__ == "Switch" and getattr(element, "text", "") == FILTER_LABEL
+        if element.__class__.__name__ == "Switch" and element._props.get("label") == FILTER_LABEL
     ]
     assert len(matches) == 1, f"{len(matches)} Schalter mit {FILTER_LABEL!r}"
     return matches[0]
 
 
-def _cards(client: Client) -> int:
-    """How many person cards are rendered.
+def _table(client: Client):
+    """The list's table.
+
+    The Personen list is a table since the card version cost 2'108
+    interface elements for 92 people. A table is one element with its rows
+    as data, so what used to be counted on screen is counted in `rows`.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The first table element.
+    """
+    return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
+
+
+def _rows(client: Client) -> int:
+    """How many entries the list shows.
 
     Args:
         client: The rendered client.
@@ -104,15 +120,15 @@ def _cards(client: Client) -> int:
     Returns:
         The count.
     """
-    return sum(
-        1
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Label" and getattr(element, "text", "") == "Anna Muster"
-    )
+    return len(_table(client).rows)
 
 
 def _markers(client: Client) -> int:
-    """How many warning triangles are rendered.
+    """How many entries carry a warning triangle.
+
+    A table cell is markup, not an element, so the flag on the row is what
+    the slot reads -- see `TABLE_MARKER_HTML`. Card lists are still counted
+    by their icons.
 
     Args:
         client: The rendered client.
@@ -120,6 +136,9 @@ def _markers(client: Client) -> int:
     Returns:
         The count.
     """
+    tables = [element for element in client.elements.values() if element.__class__.__name__ == "Table"]
+    if tables:
+        return sum(1 for row in tables[0].rows if row.get("has_problem"))
     return sum(
         1
         for element in client.elements.values()
@@ -144,18 +163,15 @@ def test_the_marker_carries_no_text(address_register):
     A row cannot explain a finding, and a tooltip nobody hovers is not an
     explanation either -- the eye shows it and the pencil fixes it.
     """
+    from app.gui.problem_markers import TABLE_MARKER_HTML
+
     _person(street="Nirgendweg")
     client = _persons_page()
 
-    triangles = [
-        element
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Icon" and element._props.get("name") == "warning"
-    ]
-
-    assert triangles
-    for triangle in triangles:
-        assert not getattr(triangle, "text", ""), "das Dreieck trägt keinen Text"
+    assert _markers(client) == 1
+    # The table draws it from the shared constant, so that is where the
+    # absence of text has to hold.
+    assert ">" not in TABLE_MARKER_HTML.replace("/>", ""), TABLE_MARKER_HTML
 
 
 # --- The filter ------------------------------------------------------------
@@ -167,11 +183,11 @@ def test_the_filter_shows_only_the_marked_entries(address_register):
     _person(street="Nirgendweg")
     _person(street="Erstweg")
     client = _persons_page()
-    assert _cards(client) == 2
+    assert _rows(client) == 2
 
     _switch(client).value = True
 
-    assert _cards(client) == 1
+    assert _rows(client) == 1
 
 
 def test_switching_the_filter_off_shows_everybody_again(address_register):
@@ -184,7 +200,7 @@ def test_switching_the_filter_off_shows_everybody_again(address_register):
     switch.value = True
     switch.value = False
 
-    assert _cards(client) == 2
+    assert _rows(client) == 2
 
 
 def test_the_filter_is_hidden_when_nothing_is_marked(address_register):
@@ -215,7 +231,7 @@ def test_the_filter_switches_itself_off_when_the_last_finding_goes(address_regis
     second = _persons_page()
     assert _switch(second).visible is False
     assert _switch(second).value is False
-    assert _cards(second) == 1
+    assert _rows(second) == 1
 
 
 def test_nothing_is_marked_without_a_register():
@@ -468,3 +484,127 @@ def test_the_table_marker_comes_from_the_shared_constant():
     markup += str(table.slots["body-cell-actions"].template or "")
 
     assert TABLE_MARKER_HTML in markup
+
+
+# --- The eye and the pencil show what the triangle withholds ---------------
+
+
+def _labels(client: Client) -> list[str]:
+    """Every label text on a rendered page or dialog.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The non-empty texts.
+    """
+    return [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Label" and getattr(element, "text", "")
+    ]
+
+
+def test_the_detail_page_names_the_finding(address_register):
+    """The marker says "look at this one"; this is the looking.
+
+    Without it the triangle is a dead end -- which is how the administrator
+    met it: a summary line in the overview, a link to a list, and nothing
+    saying what was wrong or where.
+    """
+    person_id = _person(street="Nirgendweg")
+
+    from app.gui.pages import persons as persons_module
+
+    client = Client(ui.page("/probe-detail-notes")(lambda: None), request=None)
+    with client:
+        persons_module.person_detail_page(person_id)
+
+    texts = _labels(client)
+    assert "Zu prüfen" in texts
+    assert any("amtlichen Verzeichnis" in text for text in texts)
+
+
+def test_a_sound_record_shows_no_box_on_its_detail_page(address_register):
+    """Silence is the normal case; an empty box would be noise."""
+    person_id = _person(street="Erstweg")
+
+    from app.gui.pages import persons as persons_module
+
+    client = Client(ui.page("/probe-detail-clean")(lambda: None), request=None)
+    with client:
+        persons_module.person_detail_page(person_id)
+
+    assert "Zu prüfen" not in _labels(client)
+
+
+def test_the_dialog_leaves_the_address_finding_at_its_field(address_register):
+    """It is already shown beside the input it is about.
+
+    Repeating it in the block at the top would say the same thing twice,
+    once far from the field it concerns.
+    """
+    from app.db.connection import connection_scope as scope
+    from app.gui.person_form import open_person_form
+    from app.models import person as repo
+
+    person_id = _person(street="Nirgendweg")
+    with scope() as connection:
+        person = repo.get(connection, person_id)
+
+    client = Client(ui.page("/probe-dialog-address")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+
+    texts = _labels(client)
+    assert "Zu prüfen" not in texts, "der Adressbefund gehört ans Feld, nicht in den Kasten"
+    assert any("Meinten Sie" in text or "amtlichen Verzeichnis" in text for text in texts)
+
+
+def test_the_dialog_names_a_finding_that_has_no_field(address_register):
+    """Everything that is not shown beside an input belongs in the block.
+
+    A cooperative member with no shares has no field of its own in this
+    dialog, so without the block the pencil would say nothing.
+    """
+    from datetime import date
+
+    from app.db.connection import connection_scope as scope
+    from app.gui.person_form import open_person_form
+    from app.models import cooperative_membership as coop_repo
+    from app.models import person as repo
+    from app.models.cooperative_membership import CooperativeMembership
+
+    person_id = _person(street="Erstweg")
+    with scope() as connection:
+        coop_repo.create(
+            connection,
+            CooperativeMembership(
+                id=None,
+                person_id=person_id,
+                shares=0,
+                valid_from=date.today(),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+        person = repo.get(connection, person_id)
+
+    client = Client(ui.page("/probe-dialog-shares")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+
+    texts = _labels(client)
+    assert "Zu prüfen" in texts
+    assert any("Anteile" in text for text in texts)
+
+
+def test_a_new_record_shows_no_findings(address_register):
+    """There is nothing to have a finding about yet."""
+    from app.gui.person_form import open_person_form
+
+    client = Client(ui.page("/probe-dialog-new")(lambda: None), request=None)
+    with client:
+        open_person_form()
+
+    assert "Zu prüfen" not in _labels(client)

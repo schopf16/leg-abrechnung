@@ -32,8 +32,6 @@ how the administrator decides, and that sort already exists
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
 """
 
-from datetime import date
-
 from nicegui import ui
 
 from app.db.connection import connection_scope
@@ -42,10 +40,19 @@ from app.domain.participant_mix import (
     compute_participant_mix_for_leg,
 )
 from app.domain.quality_checks import SUBJECT_LEG
+from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
+from app.gui.leg_form import open_leg_form
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import (
+    TABLE_MARKER_HTML,
+    load_problems,
+    render_problem_notes,
+)
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
@@ -79,6 +86,33 @@ PRINT_COLUMNS = [
     ("Bemerkung", "note"),
 ]
 
+
+#: What the list shows. The Trafokreise a LEG spans are one cell rather than
+#: a list of labels: on a dedicated LEG it is one name, and the pooled one is
+#: exactly the case the detail page explains per metering point.
+COLUMNS = [
+    {"name": "name", "label": "Name", "field": "name", "align": "left"},
+    {
+        "name": "metering_points_count",
+        "label": "Messpunkte",
+        "field": "metering_points_count",
+        "align": "right",
+    },
+    {
+        "name": "producer_consumer",
+        "label": "Produzenten / Konsumenten",
+        "field": "producer_consumer",
+        "align": "left",
+    },
+    {
+        "name": "production_capacity",
+        "label": "Produktionsleistung",
+        "field": "production_capacity",
+        "align": "left",
+    },
+    {"name": "substation_areas", "label": "Trafokreise", "field": "substation_areas", "align": "left"},
+    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
 
 #: Orders the LEGs list offers, default first.
 SORT_OPTIONS = [
@@ -157,20 +191,15 @@ def _to_row(connection, leg: Leg, *, warn_percent: float) -> dict:
         "id": leg.id,
         "name": leg.name,
         "metering_points_count": leg_repo.count_metering_points(connection, leg.id),
-        # Flattened for the printout/CSV export (a single-cell text), see
-        # app.gui.print_list -- the on-screen card uses substation_areas_status/
-        # substation_areas_list instead, to list the substation areas one per line.
+        # One cell of text, for the printout and -- since the list became a
+        # table -- for the screen as well. The card drew a status line with
+        # the names indented underneath it, which a row has no room for.
         "substation_areas": (
             f"{substation_areas_status}: {substation_area_names}"
             if composition.substation_areas
             else substation_areas_status
         ),
         "substation_areas_status": substation_areas_status,
-        # Only listed on-screen for a single substation area -- a LEG can span
-        # a dozen or more, and the point of this card is a fast overview,
-        # not an exhaustive list (the full list of metering points with their
-        # substation area is one click away on this LEG's own detail page).
-        "substation_areas_list": substation_area_names_list if len(substation_area_names_list) <= 1 else [],
         "producer_consumer": _mix_badge(mix),
         "production_capacity": headroom.label
         + (
@@ -214,16 +243,27 @@ def legs_page() -> None:
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, Bemerkung, Trafokreis...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar("/legs")
+        search_input = bar.search("Name, Bemerkung, Trafokreis")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        list_container = ui.column().classes("w-full gap-2 mt-2")
+        table = paged_table(route="/legs", columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        # The marker comes from `app.gui.problem_markers`: a table renders
+        # its cells as markup while a card rendered elements, so the triangle
+        # exists twice and must not drift.
+        table.add_slot(
+            "body-cell-actions",
+            f"""
+            <q-td :props="props">
+                {TABLE_MARKER_HTML}
+                <q-btn dense flat icon="visibility" @click="() => $parent.$emit('view', props.row)" />
+                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
+                <q-btn dense flat icon="delete" color="negative"
+                       @click="() => $parent.$emit('remove', props.row)" />
+            </q-td>
+            """,
+        )
 
         #: Ids with an open finding, refreshed with the list so a
         #: correction makes the marker disappear.
@@ -231,43 +271,6 @@ def legs_page() -> None:
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
-
-        def render_card(row: dict) -> None:
-            """Render one LEG as a card with wrapping field groups.
-
-            Args:
-                row: Row dict from `_to_row`.
-
-            Returns:
-                None.
-            """
-            with ui.card().classes("w-full"):
-                with ui.row().classes("w-full items-center gap-4 flex-wrap"):
-                    ui.label(row["name"]).classes("font-bold")
-                    ui.label(f"{row['metering_points_count']} Messpunkt(e)").classes("text-body2")
-                    ui.label(row["producer_consumer"]).classes("text-body2")
-                    ui.label(row["production_capacity"]).classes(
-                        "text-body2 " + status_classes(row["production_capacity_status"])
-                    )
-                    with ui.row().classes("gap-1 ml-auto items-center"):
-                        if row["id"] in problems:
-                            # No text: the eye shows what is wrong, the pencil fixes
-                            # it. See `app.gui.problem_markers`.
-                            render_marker()
-                        ui.button(
-                            icon="visibility",
-                            on_click=lambda r=row: ui.navigate.to(f"/legs/{r['id']}"),
-                        ).props("dense flat")
-                        ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
-                        ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
-                            "dense flat color=negative"
-                        )
-                with ui.column().classes("w-full gap-0"):
-                    ui.label(row["substation_areas_status"]).classes("text-body2")
-                    for substation_area_name in row["substation_areas_list"]:
-                        ui.label(substation_area_name).classes("text-body2 text-grey-7 ml-4")
-                if row["note"]:
-                    ui.label(row["note"]).classes("w-full text-body2 text-grey-7")
 
         def apply_filter() -> None:
             """Filter the currently loaded rows by the search input's value.
@@ -281,12 +284,11 @@ def legs_page() -> None:
             if problem_filter.active:
                 visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
-            list_container.clear()
-            with list_container:
-                if not visible_rows:
-                    ui.label("Keine LEGs gefunden.").classes("text-grey-6")
-                for row in visible_rows:
-                    render_card(row)
+            # The whole filtered result goes to the table, which shows a
+            # window onto it: the search runs over every entry and the
+            # printout holds every filtered row, not the page on screen.
+            table.rows = [row | {"has_problem": row["id"] in problems} for row in visible_rows]
+            table.update()
 
         def refresh() -> None:
             """Reload all LEGs from the database and re-apply the filter.
@@ -316,157 +318,7 @@ def legs_page() -> None:
             Returns:
                 None.
             """
-            with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label("LEG bearbeiten" if existing else "Neue LEG").classes("text-lg font-bold")
-                name = (
-                    ui.input(
-                        "Name (Trafokreis-Bezeichnung oder eigener LEG-Name)",
-                        value=existing.name if existing else "",
-                    )
-                    .classes("w-full")
-                    .props("debounce=300")
-                )
-                duplicate_warning = ui.label("").classes("text-warning")
-                # No upper bound: Art. 19e sets only a minimum, and a LEG
-                # with a large producer and few consumers legitimately shows
-                # over 100% in the portal. `ui.number`'s max clamps silently
-                # on blur, so setting one would quietly corrupt such a value.
-                capacity_percent = ui.number(
-                    "Produktionsleistung (% der Anschlussleistung)",
-                    value=existing.production_capacity_percent if existing else None,
-                    min=0,
-                    step=0.1,
-                ).classes("w-full")
-                capacity_date = (
-                    ui.input(
-                        "Stand vom",
-                        value=(existing.production_capacity_recorded_at if existing else "")
-                        or date.today().isoformat(),
-                    )
-                    .props("type=date")
-                    .classes("w-full")
-                )
-
-                def _stamp_today() -> None:
-                    """Move the Stand to today whenever the percentage changes.
-
-                    A fresh figure carried an old date otherwise, and the
-                    date is the only staleness safeguard the feature has.
-                    Still editable afterwards, for entering an older
-                    reading on purpose.
-
-                    Returns:
-                        None.
-                    """
-                    previous = existing.production_capacity_percent if existing else None
-                    if capacity_percent.value != previous:
-                        capacity_date.value = date.today().isoformat()
-
-                capacity_percent.on_value_change(lambda _: _stamp_today())
-
-                ui.label(
-                    "Wert aus dem BKW-LEG-Portal, das ihn bei jeder Messpunkt-Anmeldung "
-                    "anzeigt („37.6 % tatsächlich / 5 % erforderlich“). Mindestens 5 % "
-                    "sind gesetzlich nötig (Art. 19e Abs. 1 StromVV). Die App kann den "
-                    "Wert nicht selbst berechnen -- die Anschlussleistung der Standorte "
-                    "ist ihr nicht bekannt."
-                ).classes("text-caption text-grey-6")
-                note = (
-                    ui.textarea(
-                        "Bemerkung (optional)",
-                        value=existing.note if existing else "",
-                    )
-                    .classes("w-full")
-                    .props("rows=3")
-                )
-                error_label = ui.label("").classes("text-negative")
-
-                def check_duplicate() -> bool:
-                    """Check whether the current name input is already used by another LEG.
-
-                    Updates `duplicate_warning` as a side effect.
-
-                    Returns:
-                        `True` if the name is a duplicate of a different LEG.
-                    """
-                    typed = name.value.strip()
-                    if not typed:
-                        duplicate_warning.text = ""
-                        return False
-                    with connection_scope() as connection:
-                        found = leg_repo.get_by_name(connection, typed)
-                    is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = "Dieser Name wird bereits verwendet." if is_duplicate else ""
-                    return is_duplicate
-
-                name.on_value_change(lambda _: check_duplicate())
-
-                def save() -> None:
-                    """Validate the form and persist the LEG.
-
-                    Returns:
-                        None.
-                    """
-                    if not name.value.strip():
-                        error_label.text = "Name darf nicht leer sein."
-                        return
-                    if check_duplicate():
-                        error_label.text = "Dieser Name wird bereits verwendet."
-                        return
-                    if capacity_percent.value is not None:
-                        if capacity_percent.value < 0:
-                            error_label.text = "Produktionsleistung darf nicht negativ sein."
-                            return
-                        if not capacity_date.value:
-                            error_label.text = (
-                                "Bitte das Datum angeben, an dem der Wert im BKW-Portal gelesen wurde."
-                            )
-                            return
-                    try:
-                        with connection_scope() as connection:
-                            if existing:
-                                updated = Leg(
-                                    id=existing.id,
-                                    name=name.value.strip(),
-                                    note=note.value.strip(),
-                                    created_at=existing.created_at,
-                                    production_capacity_percent=capacity_percent.value,
-                                    production_capacity_recorded_at=(
-                                        (capacity_date.value or None)
-                                        if capacity_percent.value is not None
-                                        else None
-                                    ),
-                                )
-                                leg_repo.update(connection, updated)
-                            else:
-                                new_leg = Leg(
-                                    id=None,
-                                    name=name.value.strip(),
-                                    note=note.value.strip(),
-                                    created_at="",
-                                    production_capacity_percent=capacity_percent.value,
-                                    production_capacity_recorded_at=(
-                                        (capacity_date.value or None)
-                                        if capacity_percent.value is not None
-                                        else None
-                                    ),
-                                )
-                                leg_repo.create(connection, new_leg)
-                    except Exception as exc:  # unique constraint race, etc.
-                        error_label.text = f"Fehler beim Speichern: {exc}"
-                        return
-                    dialog.close()
-                    # notify before refresh() -- see app.gui.safe_notify's
-                    # module docstring for why a plain ui.notify() here can
-                    # raise "parent element ... has been deleted" once the
-                    # card this dialog was opened from is gone.
-                    safe_notify("Gespeichert.", type="positive")
-                    refresh()
-
-                with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                    ui.button("Speichern", on_click=save)
-            dialog.open()
+            open_leg_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_edit(row: dict) -> None:
             """Card edit-button handler: open the edit dialog for this row.
@@ -513,6 +365,10 @@ def legs_page() -> None:
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
+
+        table.on("view", lambda event: ui.navigate.to(f"/legs/{event.args['id']}"))
+        table.on("edit", lambda event: on_edit(event.args))
+        table.on("remove", lambda event: on_remove(event.args))
 
         refresh()
 
@@ -691,6 +547,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
+    form_guard(dialog, on_save=save)
     dialog.open()
 
 
@@ -716,7 +573,16 @@ def leg_detail_page(leg_id: int) -> None:
             ui.link("← Zurück zu LEGs", "/legs")
             return
 
-        ui.link("← Zurück zu LEGs", "/legs")
+        render_detail_header(
+            list_route="/legs",
+            list_label="LEGs",
+            title=leg.name,
+            on_edit=lambda: open_leg_form(existing=leg, on_saved=lambda _: ui.navigate.reload()),
+        )
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_LEG).get(leg.id))
         ui.label(leg.name).classes("text-xl font-bold mt-2")
         if leg.note:
             ui.label(leg.note).classes("text-body2 text-grey-7")

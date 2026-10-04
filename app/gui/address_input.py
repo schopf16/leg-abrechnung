@@ -30,6 +30,7 @@ from typing import Optional
 from nicegui import ui
 
 from app.domain.address_check import address_signature
+from app.gui.keyboard import KeyboardLayer, push, remove
 from app.domain.address_lookup import (
     FIELD_HOUSE_NUMBER,
     FIELD_LOCALITY,
@@ -113,6 +114,24 @@ class SuggestionBox:
         # form instead and Escape dismisses it.
         self._menus: dict[ui.input, ui.menu] = {}
         self._active: Optional[ui.input] = None
+        #: Which suggestion the arrow keys have moved to, -1 for none.
+        #: Deliberately starts at none and stays there until an arrow is
+        #: pressed: Enter must never take a suggestion the administrator has
+        #: not looked at. A street suggestion can be a *different* real
+        #: street (see CLAUDE.md on `FIELD_POSTAL_CODE`), so a blind Enter
+        #: taking the first entry is exactly the destructive case this
+        #: project already fixed once.
+        self._highlight = -1
+        #: The list is the innermost thing open while it is showing, so it
+        #: takes the keys: the arrows walk it, Enter takes the marked entry
+        #: and Escape pushes it aside. Pushed above the dialog's own layer,
+        #: so Escape dismisses the list first and only closes the form on
+        #: the second press.
+        self._layer = KeyboardLayer(
+            on_escape=self.hide,
+            on_enter=self._take_highlighted,
+            on_move=self._move,
+        )
         for field in (street, postal_code, locality):
             with field:
                 menu = ui.menu().props("no-focus no-refocus fit auto-close=false")
@@ -120,7 +139,11 @@ class SuggestionBox:
             # Quasar only reacts to Escape while the menu holds focus, and
             # it deliberately does not take focus here, so the key is bound
             # on the field the administrator is actually typing in.
-            field.on("keydown.esc", lambda _=None: self.hide())
+            # No keys are bound here. The list floats with `no-focus` and
+            # a Quasar dialog renders its card in a portal, so an element
+            # binding depends on both the focus and the event bubbling out
+            # -- which is how Escape came to work in one dialog and not the
+            # next. `app.gui.keyboard` owns the keys instead.
 
         for field in (street, postal_code, locality, house_number):
             if field is not None:
@@ -157,6 +180,7 @@ class SuggestionBox:
             query, path=self._path, postal_code=(self._postal_code.value or "").strip()
         )
         self._active = self._street
+        self._highlight = -1
         self._render_list()
         self.refresh_hints()
 
@@ -171,8 +195,41 @@ class SuggestionBox:
         """
         self.suggestions = suggest_localities((source.value or "").strip(), path=self._path)
         self._active = source
+        self._highlight = -1
         self._render_list()
         self.refresh_hints()
+
+    def _move(self, step: int) -> None:
+        """Walk the open list by one entry.
+
+        Args:
+            step: `1` for down, `-1` for up.
+
+        Returns:
+            None.
+        """
+        if not self.suggestions:
+            return
+        if self._highlight < 0:
+            # The first arrow press lands on the first entry going down and
+            # on the last going up, rather than on entry 0 either way.
+            self._highlight = 0 if step > 0 else len(self.suggestions) - 1
+        else:
+            self._highlight = (self._highlight + step) % len(self.suggestions)
+        self._render_list()
+
+    def _take_highlighted(self) -> None:
+        """Apply whichever suggestion the arrows have reached.
+
+        Does nothing while none is highlighted. That is the point: the
+        street suggestions can be a correctly spelled *different* street, so
+        Enter only ever takes something that has been stepped onto and read.
+
+        Returns:
+            None.
+        """
+        if 0 <= self._highlight < len(self.suggestions):
+            self.apply(self.suggestions[self._highlight])
 
     def apply(self, suggestion: AddressSuggestion) -> None:
         """Fill the fields from one suggestion.
@@ -196,6 +253,7 @@ class SuggestionBox:
         self._postal_code.value = suggestion.postal_code
         self._locality.value = suggestion.locality
         self.suggestions = []
+        self._highlight = -1
         self._render_list()
         self.refresh_hints()
 
@@ -346,17 +404,31 @@ class SuggestionBox:
         Returns:
             None.
         """
+        if self.suggestions:
+            push(self._layer)
+        else:
+            remove(self._layer)
+
         for field, menu in self._menus.items():
             if field is not self._active or not self.suggestions:
                 menu.close()
                 continue
             menu.clear()
             with menu, ui.column().classes("gap-0 p-0"):
-                for suggestion in self.suggestions:
-                    ui.button(
-                        suggestion.label or f"{suggestion.postal_code} {suggestion.locality}",
-                        on_click=lambda _=None, chosen=suggestion: self.apply(chosen),
-                    ).props("flat dense align=left no-caps").classes("w-full")
+                for index, suggestion in enumerate(self.suggestions):
+                    button = (
+                        ui.button(
+                            suggestion.label or f"{suggestion.postal_code} {suggestion.locality}",
+                            on_click=lambda _=None, chosen=suggestion: self.apply(chosen),
+                        )
+                        .props("flat dense align=left no-caps")
+                        .classes("w-full")
+                    )
+                    if index == self._highlight:
+                        # The same grey bar the drawer marks the open entry
+                        # with, for the same reason: one mark, read at a
+                        # glance, not a second colour to learn.
+                        button.style("background: rgba(0,0,0,0.10);")
             menu.open()
 
 

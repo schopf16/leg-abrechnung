@@ -13,6 +13,9 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
+from app.gui.list_footer import render_count, render_empty
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -21,7 +24,6 @@ from app.gui.sorting import (
     SortOption,
     apply_sort,
     person_name_key,
-    render_sort_select,
     sort_description,
 )
 from app.models import person as person_repo
@@ -202,12 +204,10 @@ def onboardings_page() -> None:
                 )
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
-        with ui.row().classes("w-full items-center gap-4"):
-            show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
-            step_filter = ui.select(STEP_FILTER_OPTIONS, value=None, label="Schritt-Filter").classes(
-                "w-full max-w-sm"
-            )
-            sort_select = render_sort_select(sort_options({}), lambda: refresh())
+        bar = FilterBar("/onboardings")
+        sort_select = bar.sort(sort_options({}), lambda: refresh())
+        show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
+        step_filter = bar.choice(STEP_FILTER_OPTIONS, "Schritt-Filter")
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         visible_onboardings: list[PersonOnboarding] = []
@@ -281,6 +281,9 @@ def onboardings_page() -> None:
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
+            # Counted before the step filter narrows it, so "3 von 88" says
+            # what the reader expects it to say.
+            total_onboardings = len(onboardings)
             step_attr = step_filter.value
             if step_attr is not None:
                 # A tracker matches only while that one step's own date is
@@ -293,7 +296,15 @@ def onboardings_page() -> None:
             list_container.clear()
             with list_container:
                 if not onboardings:
-                    ui.label("Keine passenden Aufnahmen.")
+                    render_empty(
+                        "Keine passenden Aufnahmen."
+                        if bar.is_filtering()
+                        else "Noch keine Aufnahme gestartet.",
+                        action_label="Filter zurücksetzen" if bar.is_filtering() else None,
+                        on_action=(lambda: bar.reset(refresh)) if bar.is_filtering() else None,
+                    )
+                else:
+                    render_count(visible=len(onboardings), total=total_onboardings, noun="Aufnahmen")
                 for onboarding in onboardings:
                     person = persons.get(onboarding.person_id)
                     if person is None:
@@ -397,6 +408,7 @@ def onboardings_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Starten", on_click=start)
+            form_guard(dialog, on_save=start)
             dialog.open()
 
         refresh()

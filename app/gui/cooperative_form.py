@@ -20,6 +20,7 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import cooperative_membership as cooperative_membership_repo
 from app.models.cooperative_membership import CooperativeMembership
@@ -260,6 +261,7 @@ class CooperativeEditor:
             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                 ui.button("Abbrechen", on_click=dialog.close).props("flat")
                 ui.button("Übernehmen", on_click=save)
+        form_guard(dialog, on_save=save)
         dialog.open()
 
     def _open_delete_dialog(self, membership: CooperativeMembership) -> None:
