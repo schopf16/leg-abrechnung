@@ -41,7 +41,9 @@ from app.domain.leg_composition import compute_leg_composition
 from app.domain.participant_mix import (
     compute_participant_mix_for_leg,
 )
+from app.domain.quality_checks import SUBJECT_LEG
 from app.gui.navigation import page_frame
+from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import (
@@ -219,8 +221,13 @@ def legs_page() -> None:
                 .props("debounce=300 clearable")
             )
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+            problem_filter = ProblemFilter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
+
+        #: Ids with an open finding, refreshed with the list so a
+        #: correction makes the marker disappear.
+        problems: dict = {}
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
@@ -242,7 +249,11 @@ def legs_page() -> None:
                     ui.label(row["production_capacity"]).classes(
                         "text-body2 " + status_classes(row["production_capacity_status"])
                     )
-                    with ui.row().classes("gap-1 ml-auto"):
+                    with ui.row().classes("gap-1 ml-auto items-center"):
+                        if row["id"] in problems:
+                            # No text: the eye shows what is wrong, the pencil fixes
+                            # it. See `app.gui.problem_markers`.
+                            render_marker()
                         ui.button(
                             icon="visibility",
                             on_click=lambda r=row: ui.navigate.to(f"/legs/{r['id']}"),
@@ -267,6 +278,8 @@ def legs_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
+            if problem_filter.active:
+                visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
@@ -287,6 +300,9 @@ def legs_page() -> None:
                 warn_percent = settings.production_capacity_warn_percent
                 legs = leg_repo.list_all(connection)
                 all_rows = [_to_row(connection, leg, warn_percent=warn_percent) for leg in legs]
+            problems.clear()
+            problems.update(load_problems(SUBJECT_LEG))
+            problem_filter.update(set(problems))
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())

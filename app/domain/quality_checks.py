@@ -43,6 +43,15 @@ from app.domain.production_capacity import (
 #: Expected number of 15-minute readings per MeteringPoint per full calendar day.
 _EXPECTED_READINGS_PER_DAY = 96
 
+#: The kinds of record a finding can be about, and therefore the lists that
+#: can mark an entry. Plain strings like `QualityWarning.category`, and the
+#: same values the pages pass to `problems_for`.
+SUBJECT_METERING_POINT = "metering_point"
+SUBJECT_PERSON = "person"
+SUBJECT_SITE = "site"
+SUBJECT_LEG = "leg"
+SUBJECT_SUBSTATION_AREA = "substation_area"
+
 
 @dataclass
 class QualityWarning:
@@ -60,6 +69,10 @@ class QualityWarning:
             instead of just naming it in text -- `None` if no detail page
             exists for that kind of object, or the specific record could
             not be resolved.
+        subject_kind: Which list the finding belongs in (`SUBJECT_*`), so
+            that list can mark the entry. Empty when the finding is about
+            no single record -- an open billing quarter belongs to no row.
+        subject_id: Primary key of that record.
     """
 
     category: str
@@ -67,6 +80,8 @@ class QualityWarning:
     link: Optional[str] = None
     summary: str = ""
     summary_link: Optional[str] = None
+    subject_kind: str = ""
+    subject_id: Optional[int] = None
 
 
 def summarise_warnings(warnings: list[QualityWarning]) -> list[QualityWarning]:
@@ -143,6 +158,8 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
                     category=category,
                     message=assignment_warning.message,
                     link=f"/metering-points/{metering_point.id}",
+                    subject_kind=SUBJECT_METERING_POINT,
+                    subject_id=metering_point.id,
                 )
             )
     return warnings
@@ -254,6 +271,8 @@ def check_reading_completeness(
             ),
             summary="Tage mit unvollständigen Messwerten",
             summary_link="/import",
+            subject_kind=SUBJECT_METERING_POINT,
+            subject_id=gap.metering_point_id,
             link=f"/metering-points/{gap.metering_point_id}",
         )
         for gap in find_reading_gaps(connection, year, quarter)
@@ -326,6 +345,8 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
                 link=f"/metering-points/{metering_point.id}",
                 summary="Messpunkte ohne LEG",
                 summary_link="/metering-points",
+                subject_kind=SUBJECT_METERING_POINT,
+                subject_id=metering_point.id,
             )
         )
 
@@ -371,6 +392,8 @@ def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> li
                 ),
                 summary="abgeschlossene Austritte, Person noch aktiv",
                 summary_link="/offboardings",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id,
                 link=f"/persons/{person.id}",
             )
         )
@@ -420,6 +443,8 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
                 ),
                 summary="Anschlüsse speisen ein, ohne zu beziehen",
                 summary_link="/assignments",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id if person is not None else None,
                 link=f"/persons/{person.id}" if person is not None else None,
             )
         )
@@ -460,6 +485,8 @@ def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> 
                 ),
                 summary="Genossenschafter ohne erfasste Anteile",
                 summary_link="/persons",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id if person is not None else None,
                 link=f"/persons/{person.id}" if person is not None else None,
             )
         )
@@ -501,6 +528,8 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
                 link=f"/persons/{person.id}" if person is not None else None,
                 summary="Aufnahmen hängen zu lange auf einem Schritt",
                 summary_link="/onboardings",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id if person is not None else None,
             )
         )
 
@@ -630,6 +659,8 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                         "Wert im BKW-Portal neu ablesen."
                     ),
                     link="/legs",
+                    subject_kind=SUBJECT_LEG,
+                    subject_id=leg.id,
                 )
             )
         if headroom.status == STATUS_BELOW:
@@ -643,6 +674,8 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                         "Verbrauchsstellen in eine andere LEG verschieben."
                     ),
                     link="/legs",
+                    subject_kind=SUBJECT_LEG,
+                    subject_id=leg.id,
                 )
             )
         elif headroom.status == STATUS_TIGHT:
@@ -657,6 +690,8 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
                         "vorerst einer anderen LEG zuweisen."
                     ),
                     link="/legs",
+                    subject_kind=SUBJECT_LEG,
+                    subject_id=leg.id,
                 )
             )
     return warnings
@@ -705,6 +740,8 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
                 link="/substation-areas",
                 summary="Trafokreise mit nur einer Richtung",
                 summary_link="/substation-areas",
+                subject_kind=SUBJECT_SUBSTATION_AREA,
+                subject_id=substation_area.id,
             )
         )
     return warnings
@@ -741,6 +778,70 @@ def check_addresses(connection: sqlite3.Connection) -> list[QualityWarning]:
                     else "Personen-Adressen sollten geprüft werden"
                 ),
                 summary_link=where,
+                subject_kind=(SUBJECT_SITE if issue.kind == KIND_SITE else SUBJECT_PERSON),
+                subject_id=issue.object_id,
             )
         )
     return warnings
+
+
+#: Every check the overview runs, in display order. One list rather than a
+#: sequence written out per caller: the list pages mark exactly what the
+#: overview complains about, and two enumerations would drift until a list
+#: stayed unmarked for a finding the overview was already showing.
+#:
+#: `find_reading_gaps` is deliberately absent -- it needs a year and a
+#: quarter, so it belongs to the billing run rather than to a page load.
+ALL_CHECKS = (
+    check_assignment_consistency,
+    check_leg_assignment,
+    check_onboarding_progress,
+    check_offboarding_completed_but_active,
+    check_cooperative_members_without_shares,
+    check_feed_in_without_consumption,
+    check_open_billing_cycle,
+    check_unresolved_bank_transactions,
+    check_substation_area_one_sided,
+    check_leg_production_capacity,
+    check_addresses,
+)
+
+
+def all_warnings(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Run every check, in the order the overview shows them.
+
+    Args:
+        connection: Open SQLite connection.
+
+    Returns:
+        Every finding, uncollapsed.
+    """
+    warnings: list[QualityWarning] = []
+    for check in ALL_CHECKS:
+        warnings.extend(check(connection))
+    return warnings
+
+
+def problems_for(connection: sqlite3.Connection, subject_kind: str) -> dict[int, list[QualityWarning]]:
+    """Which entries of one list have something wrong with them.
+
+    What a list does with this is deliberately minimal: a warning triangle
+    beside the other icons, carrying **no text**. It says "look at this one"
+    and nothing more, exactly like the eye and the pencil beside it -- the
+    eye then shows what is wrong, and the pencil lets it be fixed. A row has
+    no room to explain a finding, and a tooltip nobody hovers is not an
+    explanation either.
+
+    Args:
+        connection: Open SQLite connection.
+        subject_kind: One of the `SUBJECT_*` constants.
+
+    Returns:
+        `{record id: findings}`, holding only the records that have one.
+    """
+    found: dict[int, list[QualityWarning]] = {}
+    for warning in all_warnings(connection):
+        if warning.subject_kind != subject_kind or warning.subject_id is None:
+            continue
+        found.setdefault(warning.subject_id, []).append(warning)
+    return found

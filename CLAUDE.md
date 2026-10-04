@@ -212,6 +212,58 @@ Detail sub-tables and history tables are exempt and have no control:
 Person and Standort detail pages. Each shows one context's rows in the
 one order that context implies, so there is no choice to offer.
 
+### Problems: one marker, one filter, every list
+
+Whenever a record is misconfigured or needs a decision, its list shows a
+**warning triangle** beside the eye and the pencil, and the list offers a
+**"Nur fehlerhafte Einträge"** switch. One mechanism for all of it, in
+`app/gui/problem_markers.py` -- the same reasoning as `app/gui/sorting.py`,
+and the same consequence: a list that marks its broken entries differently
+from the next list is a second mechanism to learn.
+
+**The triangle carries no text.** It says "look at this one" and nothing
+more, exactly like the two icons beside it. The eye then shows what is
+wrong and the pencil shows it and lets it be fixed -- the division the rest
+of the app already follows. The first attempt put the explanation in the
+list and proved why it cannot live there: a name beside "Meinten Sie: Untere
+Zollgasse?" said neither which field was meant nor what stood in it. A
+tooltip would be no better, because nobody hovers a row they have not been
+given a reason to hover.
+
+**The filter is hidden while nothing is marked**, and switches itself off
+when the last finding goes: a control that can only ever empty the list is
+clutter, and one left on after the final correction filters the list down to
+nothing from off-screen.
+
+What makes this possible is that every check names its subject.
+`QualityWarning` carries `subject_kind` (one of the `SUBJECT_*` constants)
+and `subject_id`, `problems_for(connection, kind)` groups them, and
+`ALL_CHECKS` is the single list both the overview and the lists run -- two
+enumerations would drift until a list stayed unmarked for a finding the
+overview was already showing.
+
+This exists because summarising the overview took something away.
+"7 Messpunkte ohne LEG" with a link to the list replaced seven lines that
+each named their metering point, so the reader arrived at the list and could
+not tell which. The marker is the other half of that change, and the
+administrator reported the gap before it was noticed here.
+
+Five lists carry markers, and the boundary is the administrator's own
+rule: Personen, Standorte, Messpunkte, LEGs and Trafokreise. **Aufnahmen and
+Austritte are deliberately not marked.** Those are work in progress -- a
+membership is still being assembled there, and a half-filled record is not
+a defect. A finding belongs to data that has been *adopted*: once the person,
+the site and the metering points exist, their lists say what is wrong with
+them. Marking the worklist instead would complain about something that is
+simply not finished yet, which is how a list earns the habit of being
+skipped.
+
+A table marks differently from a card list, because Quasar renders a table
+cell as markup rather than as elements. `TABLE_MARKER_HTML` and
+`render_marker` sit side by side in the same module so the two renderings
+cannot drift; `app/gui/pages/sites.py` builds its action slot from the
+constant rather than writing the triangle out again.
+
 ### Onboarding/offboarding-style trackers
 
 `app/models/person_onboarding.py` and `app/models/person_offboarding.py`
@@ -841,7 +893,8 @@ and claims nothing more; the dashboard states the fact and links there; and
 holding the value it would replace. The triangle is sized at `1.715em`
 because a bare `q-icon` inherits the surrounding `1em` and comes out
 visibly smaller than the icons in the flat buttons beside it. The Personen
-list also has a "Nur fehlerhafte Adressen" switch, so the marked handful can
+lists also carry the shared "Nur fehlerhafte Einträge" switch (see
+"Problems: one marker, one filter, every list"), so the marked handful can
 be worked off without scrolling ninety cards.
 
 A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
