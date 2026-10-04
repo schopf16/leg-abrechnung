@@ -80,3 +80,15 @@ def test_no_date_is_not_today():
 def test_something_unparseable_is_shown_rather_than_swallowed():
     """A stored value nobody expected should be visible."""
     assert format_date("irgendwas") == "irgendwas"
+
+
+def test_a_stray_float_is_rounded_rather_than_truncated():
+    """Amounts are integer Rappen by convention; this is about when one is not.
+
+    `int()` would turn 1234.9 Rappen into 12.34 and lose a Rappen without a
+    word, and in an invoice a wrong number is a wrong invoice to a real
+    person.
+    """
+    assert format_chf(1234.9) == "12.35"
+    assert format_chf(-1234.9) == "-12.35"
+    assert format_chf(1234.0) == "12.34"

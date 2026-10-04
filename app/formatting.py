@@ -47,7 +47,12 @@ def format_chf(rappen: Optional[int], *, with_unit: bool = False) -> str:
     if rappen is None:
         return MISSING
     negative = rappen < 0
-    francs, remainder = divmod(abs(int(rappen)), 100)
+    # `round`, not `int`: a stray float would be truncated by `int`, so
+    # 1234.9 Rappen would print as 12.34 and lose a Rappen silently. Amounts
+    # are integers by convention everywhere in this app (CLAUDE.md on money
+    # handling) -- this is about what happens when one is not, and in an
+    # invoice a wrong number is a wrong invoice to a real person.
+    francs, remainder = divmod(abs(round(rappen)), 100)
     # `f"{n:,}"` groups with commas; Switzerland groups with an apostrophe,
     # and the decimal separator stays a point (unlike German-German).
     text = f"{francs:,}".replace(",", "'") + f".{remainder:02d}"
