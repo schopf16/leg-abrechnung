@@ -87,8 +87,25 @@ def db() -> sqlite3.Connection:
     return connection
 
 
-@pytest.fixture(scope="session")
-def _demo_template(_migrated_template, tmp_path_factory) -> tuple[Path, DemoDataSummary]:
+#: The demo database, built once per process on first use. A module-level
+#: cache rather than a session fixture, because the only caller is the
+#: closure inside `_demo_data_from_template` and reaching a fixture from
+#: there (`request.getfixturevalue`) trips pytest's own finalizer
+#: bookkeeping -- `assert not self._finalizers` -- as soon as a second test
+#: asks for it.
+_DEMO_TEMPLATE: list = []
+
+#: The genuine generator, captured at import time. Building the template
+#: lazily means building it *after* `_demo_data_from_template` has already
+#: replaced `create_demo_data` with the restore -- so looking the name up at
+#: call time makes the builder call the restore, which calls the builder.
+#: The first symptom was not a RecursionError but
+#: `'WindowsPath' object has no attribute '_str'`, from pathlib running out
+#: of stack halfway down.
+_REAL_CREATE_DEMO_DATA = demo_data_module.create_demo_data
+
+
+def _demo_template(migrated: Path) -> tuple[Path, DemoDataSummary]:
     """Build the demo data once, into a file the tests then copy.
 
     Produced by the **real** `create_demo_data`, so what the tests work on
@@ -97,26 +114,36 @@ def _demo_template(_migrated_template, tmp_path_factory) -> tuple[Path, DemoData
     function directly (see `_demo_data_from_template`), so the generator
     itself stays under test.
 
+    **Built on first use, not before the first test.** As a fixture argument
+    it was created in every session, so `pytest tests/test_filter_bar.py` --
+    five tests that touch no readings -- paid for 229'632 of them, and so did
+    each of the eight xdist workers. Only 10 of 1'193 tests need it.
+
+    Args:
+        migrated: The migrated template to start from.
+
     Returns:
         `(path, summary)`: the template file, never opened for writing by
         tests, and the `DemoDataSummary` the real call produced, so a
         restore can hand back the same object the real call would have.
     """
-    template = tmp_path_factory.mktemp("demo") / "demo.sqlite3"
-    shutil.copy2(_migrated_template, template)
-    connection = sqlite3.connect(template)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    try:
-        summary = demo_data_module.create_demo_data(connection)
-        connection.commit()
-    finally:
-        connection.close()
-    return template, summary
+    if not _DEMO_TEMPLATE:
+        template = Path(tempfile.mkdtemp(prefix="leg-demo-")) / "demo.sqlite3"
+        shutil.copy2(migrated, template)
+        connection = sqlite3.connect(template)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        try:
+            summary = _REAL_CREATE_DEMO_DATA(connection)
+            connection.commit()
+        finally:
+            connection.close()
+        _DEMO_TEMPLATE.append((template, summary))
+    return _DEMO_TEMPLATE[0]
 
 
 @pytest.fixture(autouse=True)
-def _demo_data_from_template(request, _demo_template, monkeypatch):
+def _demo_data_from_template(request, _migrated_template, monkeypatch):
     """Serve `create_demo_data` from the session template.
 
     Replaced in every test module that imported the name, because they
@@ -130,6 +157,12 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
     whole job is checking what the generator produces, including the
     `DemoDataAlreadyExists` guard, which a restore cannot raise.
 
+    **The template is built inside `restore`, on first use.** Taken as a
+    fixture argument it was created in every session, so
+    `pytest tests/test_filter_bar.py` -- five tests that touch no readings at
+    all -- paid 2.7 seconds for 229'632 of them, and so did each of the eight
+    xdist workers. That is the fan the administrator heard while developing.
+
     Safe to swap in because a restore replaces the whole database: no test
     writes rows before calling it (checked), and none uses the return
     value outside `test_demo_data.py`.
@@ -141,9 +174,6 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
         yield
         return
 
-    template_path, template_summary = _demo_template
-    source_uri = f"{template_path.resolve().as_uri()}?mode=ro"
-
     def restore(connection: sqlite3.Connection):
         """Copy the template over this connection's database.
 
@@ -153,6 +183,8 @@ def _demo_data_from_template(request, _demo_template, monkeypatch):
         Returns:
             The `DemoDataSummary` the real call would have returned.
         """
+        template_path, template_summary = _demo_template(_migrated_template)
+        source_uri = f"{template_path.resolve().as_uri()}?mode=ro"
         source = sqlite3.connect(source_uri, uri=True)
         try:
             source.backup(connection)
@@ -360,3 +392,30 @@ def press():
         handle_key(_key_event(name))
 
     return _press
+
+
+#: Fixtures whose tests need the demo database. Carrying 229'632 readings
+#: around is the one genuinely expensive thing in this suite, so the tests
+#: that do are marked and can be left out while developing.
+_HEAVY_FIXTURES = frozenset({"demo_data", "real_demo_data"})
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Mark every test that needs the demo database as `heavy`.
+
+    Derived from the fixtures a test asks for rather than written on each
+    test by hand: a marker that has to be remembered drifts, and the point
+    of `-m "not heavy"` is that it stays true without anybody maintaining
+    it. `real_demo_data` counts too -- it builds the data for real, which is
+    the most expensive case of all.
+
+    Args:
+        items: The collected tests, modified in place.
+
+    Returns:
+        None.
+    """
+    for item in items:
+        names = set(getattr(item, "fixturenames", ()))
+        if names & _HEAVY_FIXTURES or item.get_closest_marker("real_demo_data"):
+            item.add_marker(pytest.mark.heavy)

@@ -1063,7 +1063,7 @@ Formatting is `ruff format` (line length 110, see `pyproject.toml`) and is
 enforced in CI; run `ruff format app tests run.py` before committing.
 
 **Run the whole suite before a commit, not after every edit**, and run it
-as `pytest -n auto`. Two rounds of work got it from 8:27 to about 2:20:
+as `pytest -n auto`. Three rounds of work got it from 8:27 to about 1:15:
 
 - `create_demo_data` rebuilding 229'632 readings, once per test, 54 times
   over, was roughly half the runtime. `tests/conftest.py` now builds it
@@ -1074,6 +1074,27 @@ as `pytest -n auto`. Two rounds of work got it from 8:27 to about 2:20:
   → 2:20. Less than the core count would suggest, because each worker is
   its own pytest session and so builds the template for itself — the two
   optimisations overlap, and that is the price of the first one.
+- **The template was built whether or not anything needed it**, and that
+  turned out to be most of what was left. `_demo_data_from_template` is
+  autouse and took `_demo_template` as an argument, so pytest created the
+  229'632 readings before the first test of *every* session — in all eight
+  workers, and for `pytest tests/test_filter_bar.py`, five tests that touch
+  no readings at all. **Ten of 1'193 tests need them.** Built on first use
+  instead: 2:20 → about 1:15, and a single file went from 4.5 s to 2.6 s.
+  The administrator noticed this as the CPU fan, while developing, which is
+  exactly when it was pure waste.
+
+Two traps in that last change, both worth knowing before touching it:
+the builder must hold the **real** `create_demo_data` captured at import
+time (`_REAL_CREATE_DEMO_DATA`), because building lazily means building
+*after* the autouse fixture has replaced that name — looking it up at call
+time makes the builder call the restore, which calls the builder. The first
+symptom was not a `RecursionError` but
+`'WindowsPath' object has no attribute '_str'`, from pathlib running out of
+stack halfway down. And it is a module-level cache rather than a session
+fixture, because reaching a fixture from inside another fixture's closure
+(`request.getfixturevalue`) trips pytest's own finalizer bookkeeping
+(`assert not self._finalizers`) as soon as a second test asks for it.
 
 **Treat a single timing as noise.** Four full runs on the same machine
 (4 physical cores, 8 logical) came out 2:03, 2:16, 2:28 and 2:45, and the
@@ -1089,11 +1110,28 @@ app.
 `-n auto` is deliberately **not** in `pytest.ini`'s `addopts`. On the one
 file you are actually working on, xdist's process startup costs more than
 it saves, and it swallows `pdb` and `print`. Full run parallel, targeted
-run plain. While working, run the test files the change actually touches
-(`pytest tests/test_billing.py -q`) plus a render check when a page
-changed; save the full suite and the four gates for the point where the
-work is claimed to be done. Waiting for all 1'077 tests to learn that a
-one-line edit compiles is not verification, it is ceremony.
+run plain.
+
+**Three slices, and which to use when:**
+
+```
+pytest tests/test_billing.py -q        # while working: the file you changed
+pytest -m "not heavy" -n auto          # 1'183 of 1'193 tests, no demo data
+pytest -n auto                         # before a push, with the four gates
+```
+
+The `heavy` marker is **added automatically** from the fixtures a test asks
+for (`demo_data`, `real_demo_data`), in `tests/conftest.py`'s
+`pytest_collection_modifyitems` — a marker that has to be remembered on each
+test drifts, and the point of `-m "not heavy"` is that it stays true without
+anybody maintaining it.
+
+While working, run the test files the change actually touches plus a render
+check when a page changed; save the full suite and the four gates for the
+point where the work is claimed to be done. Waiting for all 1'193 tests to
+learn that a one-line edit compiles is not verification, it is ceremony —
+and a regression is dealt with then, before the push, not by running
+everything after every edit.
 
 Tests must therefore stay **order- and process-independent**: xdist hands
 each worker an arbitrary slice. Nothing may rely on another test having
