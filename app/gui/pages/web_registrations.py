@@ -207,7 +207,7 @@ def web_registrations_page() -> None:
                 )
                 ui.button("Registrierungen abrufen", on_click=lambda: do_sync())
 
-        bar = FilterBar()
+        bar = FilterBar("/web-registrations")
         sort_select = bar.sort(SORT_OPTIONS, lambda: refresh())
         show_complete_switch = bar.filter("Auch vollständig übernommene anzeigen")
 

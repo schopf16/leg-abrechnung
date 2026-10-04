@@ -15,6 +15,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.quality_checks import SUBJECT_SITE
 from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
     TABLE_MARKER_HTML,
@@ -175,12 +176,12 @@ def sites_page() -> None:
                 )
                 ui.button("+ Neuer Standort", on_click=lambda: open_form(None))
 
-        bar = FilterBar()
+        bar = FilterBar("/sites")
         search_input = bar.search("Adresse, PLZ, Ort, Trafokreis")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
+        table = paged_table(route="/sites", columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         # The marker comes from `app.gui.problem_markers` rather than being
         # written out here: a table renders its cells as markup while a card
         # renders elements, so the triangle exists twice and must not drift.
@@ -331,7 +332,12 @@ def site_detail_page(site_id: int) -> None:
             ui.link("← Zurück zu Standorten", "/sites")
             return
 
-        ui.link("← Zurück zu Standorten", "/sites")
+        render_detail_header(
+            list_route="/sites",
+            list_label="Standorte",
+            title=site.full_address,
+            on_edit=lambda: open_site_form(existing=site, on_saved=lambda _: ui.navigate.reload()),
+        )
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.

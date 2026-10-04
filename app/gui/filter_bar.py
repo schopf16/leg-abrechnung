@@ -33,6 +33,7 @@ from typing import Callable, Optional, Sequence
 
 from nicegui import ui
 
+from app.gui.list_state import recall, remember
 from app.gui.problem_markers import ProblemFilter
 from app.gui.sorting import SortControl, SortOption, render_sort_select
 
@@ -45,12 +46,19 @@ class FilterBar:
             something else to put there.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, route: str = "") -> None:
         """Lay the bar out, before any control is asked for.
+
+        Args:
+            route: The list's route. Given one, every control the bar hands
+                out comes back set the way it was left -- see
+                `app.gui.list_state` for why that matters and what it costs.
+                Empty for a bar whose state should not outlive the page.
 
         Returns:
             None.
         """
+        self._route = route
         with ui.row().classes("w-full items-start justify-between gap-6"):
             self.left = ui.column().classes("gap-2 grow")
             with ui.column().classes("gap-1 items-start shrink-0"):
@@ -78,11 +86,13 @@ class FilterBar:
         """
         assert '"' not in fields, fields
         with self.left:
-            return (
-                ui.input("Suche")
+            field = (
+                ui.input("Suche", value=self._recall("search", ""))
                 .classes("w-full max-w-md")
                 .props(f'debounce=300 clearable dense hint="{fields}"')
             )
+        self._keep(field, "search")
+        return field
 
     def sort(self, options: Sequence[SortOption], on_change: Callable[[], None]) -> SortControl:
         """Render the sort control below the search field.
@@ -95,7 +105,14 @@ class FilterBar:
             The `SortControl`, to be passed whole to `apply_sort`.
         """
         with self.left:
-            return render_sort_select(options, on_change)
+            control = render_sort_select(options, on_change)
+        remembered = self._recall("sort")
+        if remembered is not None:
+            key, descending = remembered
+            if any(option.key == key for option in options):
+                control.set_value(key, descending=descending)
+        control.on_any_change(lambda: self._store("sort", (control.value, control.descending)))
+        return control
 
     def filter(self, label: str, *, value: bool = False) -> ui.switch:
         """Render one permanent filter, with a clickable label.
@@ -110,7 +127,11 @@ class FilterBar:
         """
         assert '"' not in label, label
         with self._filters:
-            return ui.switch(value=value).props(f'label="{label}" dense')
+            switch = ui.switch(value=bool(self._recall(f"filter:{label}", value))).props(
+                f'label="{label}" dense'
+            )
+        self._keep(switch, f"filter:{label}")
+        return switch
 
     def choice(
         self,
@@ -130,7 +151,13 @@ class FilterBar:
             The select, for the page to read and wire up.
         """
         with self._filters:
-            return ui.select(options, value=value, label=label).classes("w-60").props("dense")
+            select = (
+                ui.select(options, value=self._recall(f"choice:{label}", value), label=label)
+                .classes("w-60")
+                .props("dense")
+            )
+        self._keep(select, f"choice:{label}")
+        return select
 
     def problem_filter(self, on_change: Callable[[], None]) -> ProblemFilter:
         """Render "Nur fehlerhafte Einträge", always at the bottom.
@@ -142,4 +169,58 @@ class FilterBar:
             The filter, for the page to `update()` with each refresh.
         """
         with self._conditional:
-            return ProblemFilter(on_change)
+            problem_filter = ProblemFilter(on_change)
+        # Restored like the others, but it can only be *on* while something
+        # is marked: `ProblemFilter.update` switches it off when the last
+        # finding goes, and a correction is exactly what the administrator
+        # was away doing.
+        if self._recall("filter:problems", False):
+            problem_filter.switch.value = True
+        self._keep(problem_filter.switch, "filter:problems")
+        return problem_filter
+
+    # -- remembering --------------------------------------------------------
+
+    def _recall(self, name: str, default=None):
+        """What this control was set to last time, if the bar has a route.
+
+        Args:
+            name: The control's name within the list.
+            default: Used for a list that has not been visited.
+
+        Returns:
+            The remembered value or `default`.
+        """
+        if not self._route:
+            return default
+        return recall(self._route, name, default)
+
+    def _store(self, name: str, value) -> None:
+        """Keep one value, if the bar has a route.
+
+        Args:
+            name: The control's name within the list.
+            value: What to keep.
+
+        Returns:
+            None.
+        """
+        if self._route:
+            remember(self._route, name, value)
+
+    def _keep(self, element, name: str) -> None:
+        """Keep this element's value whenever it changes.
+
+        Args:
+            element: Any NiceGUI value element.
+            name: The control's name within the list.
+
+        Returns:
+            None.
+        """
+        if not self._route:
+            return
+        # Reads the element rather than the event: the element is the
+        # source of truth either way, and a handler that only works when
+        # NiceGUI supplies the arguments cannot be driven from a test.
+        element.on_value_change(lambda _=None: self._store(name, element.value))

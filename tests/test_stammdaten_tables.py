@@ -406,3 +406,95 @@ def test_the_content_area_is_wide_enough_for_a_seven_column_table():
 
     assert "max-w-screen-2xl" in content._classes
     assert "max-w-5xl" not in content._classes
+
+
+# --- The pencil on a detail page -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "module, function, route, label",
+    [
+        ("sites", "site_detail_page", "/sites", "Standorte"),
+        ("metering_points", "metering_point_detail_page", "/metering-points", "Messpunkte"),
+        ("legs", "leg_detail_page", "/legs", "LEGs"),
+        ("persons", "persons_page", "/persons", "Personen"),
+    ],
+)
+def test_a_detail_page_says_where_it_is_and_can_be_edited(module, function, route, label, address_register):
+    """Three of the four had no edit button at all.
+
+    So the loop the markers were built for -- see it in the list, look at it,
+    correct it -- ended in a dead end on sites, metering points and LEGs: the
+    eye led somewhere the pencil could not follow. And "← Zurück zu
+    Standorten" is a way back rather than a place; a breadcrumb is both.
+    """
+    import importlib
+
+    ids = _deployment()
+    if function == "persons_page":
+        # Persons already had its button; the breadcrumb is what is new, and
+        # its detail page needs a person to exist.
+        from app.models import person as person_repo
+        from app.models.person import Person
+
+        with connection_scope() as connection:
+            record_id = person_repo.create(
+                connection,
+                Person(
+                    id=None,
+                    salutation="",
+                    company="",
+                    first_name="Anna",
+                    last_name="Muster",
+                    contact_email="",
+                    contact_phone="",
+                    billing_street="Erstweg",
+                    billing_house_number="4",
+                    billing_postal_code="3048",
+                    billing_city="Musterdorf",
+                    billing_country="CH",
+                    iban="",
+                    paper_invoice=False,
+                    note="",
+                    customer_number=None,
+                    bkw_customer_number=None,
+                    active=True,
+                    created_at="",
+                ),
+            )
+        function = "person_detail_page"
+    else:
+        record_id = {
+            "/sites": ids["site"],
+            "/metering-points": ids["metering_point"],
+            "/legs": ids["leg"],
+        }[route]
+
+    page_module = importlib.import_module(f"app.gui.pages.{module}")
+    client = Client(ui.page(f"/probe-detail-header-{route}")(lambda: None), request=None)
+    with client:
+        getattr(page_module, function)(record_id)
+
+    links = [
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Link" and element.text == label
+    ]
+    assert links, f"keine Brotkrume auf {label}"
+
+    buttons = [
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Button" and element.text == "Bearbeiten"
+    ]
+    assert len(buttons) == 1, f"{label}: {len(buttons)} Bearbeiten-Knöpfe"
+
+    # Driven, because a button that opens nothing looks the same.
+    before = sum(1 for element in client.elements.values() if element.__class__.__name__ == "Dialog")
+    with client:
+        handler = next(
+            listener.handler for listener in buttons[0]._event_listeners.values() if listener.type == "click"
+        )
+        handler(None)
+    after = sum(1 for element in client.elements.values() if element.__class__.__name__ == "Dialog")
+    assert after > before, f"{label}: der Stift öffnet keinen Dialog"

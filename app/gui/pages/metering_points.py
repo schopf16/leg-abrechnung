@@ -10,6 +10,7 @@ from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
 from app.domain.quality_checks import SUBJECT_METERING_POINT
 from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
     TABLE_MARKER_HTML,
@@ -231,13 +232,15 @@ def metering_points_page() -> None:
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
-        bar = FilterBar()
+        bar = FilterBar("/metering-points")
         search_input = bar.search("Bezeichnung, Richtung, Standort, LEG, Person")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         without_assignment_switch = bar.filter("Nur ohne Zuordnung (auch nicht künftig)")
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table = paged_table(route="/metering-points", columns=COLUMNS, rows=[], row_key="id").classes(
+            "w-full mt-2"
+        )
         # The marker comes from `app.gui.problem_markers`: a table renders
         # its cells as markup while a card rendered elements, so the triangle
         # exists twice and must not drift.
@@ -396,7 +399,12 @@ def metering_point_detail_page(metering_point_id: int) -> None:
             ui.link("← Zurück zu Messpunkten", "/metering-points")
             return
 
-        ui.link("← Zurück zu Messpunkten", "/metering-points")
+        render_detail_header(
+            list_route="/metering-points",
+            list_label="Messpunkte",
+            title=mp.designation,
+            on_edit=lambda: open_metering_point_form(existing=mp, on_saved=lambda _: ui.navigate.reload()),
+        )
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.

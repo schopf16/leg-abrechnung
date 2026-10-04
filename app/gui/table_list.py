@@ -27,6 +27,8 @@ this and looks right until the list is longer than one page.
 
 from nicegui import ui
 
+from app.gui.list_state import recall, remember
+
 #: Rows per page. 50 is the administrator's choice: the live deployment has
 #: 92 persons and 92 sites, so 50 is "most of it, twice" rather than an
 #: arbitrary round number.
@@ -39,16 +41,28 @@ DEFAULT_PAGE_SIZE = 50
 PAGE_SIZE_OPTIONS = [30, 50, 100, 0]
 
 
-def paged_table(**kwargs) -> ui.table:
+def paged_table(*, route: str = "", **kwargs) -> ui.table:
     """Build a list table that pages, with German labels.
 
     Args:
+        route: The list's route. Given one, the page the administrator was
+            on and the page size they chose come back with it -- correcting
+            a record on page four and returning to page one is the thing
+            this answers (see `app.gui.list_state`).
         **kwargs: Passed to `ui.table` (`columns`, `rows`, `row_key`, ...).
 
     Returns:
         The table.
     """
-    table = ui.table(pagination={"rowsPerPage": DEFAULT_PAGE_SIZE}, **kwargs)
+    pagination = {"rowsPerPage": DEFAULT_PAGE_SIZE}
+    if route:
+        pagination = dict(recall(route, "pagination", pagination))
+    table = ui.table(pagination=pagination, **kwargs)
+    if route:
+        # Quasar reports the whole pagination object -- page, rowsPerPage,
+        # sortBy -- so keeping it whole keeps the page *and* the page size,
+        # which is the other half of what was being re-chosen every visit.
+        table.on_pagination_change(lambda event: remember(route, "pagination", event.value))
     # Assigned, not passed through `props()`: that parses a string, so
     # Quasar received the literal text "[30, 50, 100, 0]" and the select had
     # nothing to offer -- the administrator found the 50 unchangeable. An

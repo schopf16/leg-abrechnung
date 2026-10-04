@@ -120,7 +120,7 @@ def receivables_page() -> None:
             "möglich ist -- alles andere wird nur als Vorschlag angezeigt."
         ).classes("text-body2 text-grey-8")
 
-        bar = FilterBar()
+        bar = FilterBar("/receivables")
         search_input = bar.search("Name, Kunden-Nr.")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         only_forderung_switch = bar.filter("Nur offene Forderungen")

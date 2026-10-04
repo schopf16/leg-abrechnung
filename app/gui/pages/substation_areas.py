@@ -170,12 +170,14 @@ def substation_areas_page() -> None:
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
-        bar = FilterBar()
+        bar = FilterBar("/substation-areas")
         search_input = bar.search("Name, BKW-Bezeichnung, Bemerkung")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table = paged_table(route="/substation-areas", columns=COLUMNS, rows=[], row_key="id").classes(
+            "w-full mt-2"
+        )
         # The marker comes from `app.gui.problem_markers`: a table renders
         # its cells as markup while a card rendered elements, so the triangle
         # exists twice and must not drift.

@@ -19,6 +19,7 @@ from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.filter_bar import FilterBar
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
     TABLE_MARKER_HTML,
@@ -322,7 +323,7 @@ def persons_page() -> None:
                 )
                 ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
-        bar = FilterBar()
+        bar = FilterBar("/persons")
         search_input = bar.search("Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         show_inactive_switch = bar.filter("Deaktivierte Personen anzeigen")
@@ -335,7 +336,7 @@ def persons_page() -> None:
         # permanent filters because it comes and goes with the findings.
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table = paged_table(route="/persons", columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         # The marker comes from `app.gui.problem_markers`: a table renders
         # its cells as markup while a card renders elements, so the triangle
         # exists twice and must not drift. The last button is delete for an
@@ -617,7 +618,12 @@ def person_detail_page(person_id: int) -> None:
             ui.link("← Zurück zu Personen", "/persons")
             return
 
-        ui.link("← Zurück zu Personen", "/persons")
+        render_detail_header(
+            list_route="/persons",
+            list_label="Personen",
+            title=person.display_name,
+            on_edit=lambda: open_person_form(existing=person, on_saved=lambda _: ui.navigate.reload()),
+        )
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.

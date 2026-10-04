@@ -454,6 +454,47 @@ empty too, so on blur it would complain about a form that is merely
 unfinished -- the same mistake `verify` made when it greeted an empty
 Standort dialog with "Nicht im amtlichen Verzeichnis."
 
+### The fix loop has to close
+
+See the triangle, open the record, correct it, come back. Two halves of that
+were missing, and they are the same gap:
+
+**A detail page can be edited from.** Only the Person page had a Bearbeiten
+button -- Standort, Messpunkt and LEG had none, so the eye led somewhere the
+pencil could not follow. `app/gui/detail_header.py`'s
+`render_detail_header` is the one header all four now start with, and it
+also replaces "← Zurück zu Standorten" with a breadcrumb: that line was a way
+back rather than a place, and a breadcrumb is both. The not-found branch keeps
+the plain link, because there is no record to name and nothing to edit.
+
+The LEG dialog had to leave the page for this. A form nested inside
+`legs_page` can only be opened from there, so `app/gui/leg_form.py` now holds
+it with the same shape as `site_form`, `person_form` and
+`metering_point_form`: `open_leg_form(existing=..., on_saved=...)`. Nothing
+about the dialog changed in the move except reporting a save through
+`on_saved` instead of closing over the list's `refresh`.
+
+**A list comes back the way it was left.** `app/gui/list_state.py` keeps the
+search text, every filter, the sort key *and its direction*, and the page plus
+page size -- per route, so two lists cannot overwrite each other. Pages say
+nothing about it beyond their route: `FilterBar("/persons")` and
+`paged_table(route="/persons", ...)` restore and persist every control they
+hand out, which is the same bargain the bar already made about layout.
+
+It is a **module-level store, not `app.storage`**, on the premise this app is
+built on anyway: one native window for one administrator, the same reasoning
+behind `app.gui.address_register_task`. `app.storage.user` would need a
+`storage_secret` and a file on disk; `app.storage.tab` needs a connected
+client and an await. The costs are worth stating: the state dies with the
+process, which is right -- a filter from last week is not what anybody wants
+to return to -- and two windows would share it, which cannot happen here.
+
+Only the controls are kept, never the rows: a list always re-reads its
+records, so the correction that was just made shows up. `tests/conftest.py`
+empties the store around every test (autouse), for the reason it empties the
+keyboard stack: in one process a module-level store would leak from test to
+test, and xdist makes that unreproducible.
+
 ### A long list is a table, and it pages
 
 `app/gui/table_list.py`'s `paged_table` builds **every Stammdaten list** --

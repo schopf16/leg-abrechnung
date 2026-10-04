@@ -203,7 +203,7 @@ def onboardings_page() -> None:
                 )
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
-        bar = FilterBar()
+        bar = FilterBar("/onboardings")
         sort_select = bar.sort(sort_options({}), lambda: refresh())
         show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
         step_filter = bar.choice(STEP_FILTER_OPTIONS, "Schritt-Filter")

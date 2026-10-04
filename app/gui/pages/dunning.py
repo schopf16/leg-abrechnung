@@ -98,7 +98,7 @@ def dunning_page() -> None:
         # The worklist leads with its own urgency order and has nothing to
         # filter, but it uses the same bar so the control sits where it does
         # on every other list.
-        sort_select = FilterBar().sort(SORT_OPTIONS, lambda: refresh_candidates())
+        sort_select = FilterBar("/dunning").sort(SORT_OPTIONS, lambda: refresh_candidates())
         candidates_container = ui.column().classes("w-full gap-2 mt-2")
         current_candidates: list[dunning.DunningCandidate] = []
 

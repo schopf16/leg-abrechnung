@@ -133,7 +133,7 @@ def assignments_page() -> None:
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 
-        bar = FilterBar()
+        bar = FilterBar("/assignments")
         search_input = bar.search("Messpunkt, Person, Adresse")
         sort_select = bar.sort(SORT_OPTIONS, lambda: refresh())
         only_current_switch = bar.filter("Nur laufende oder künftige Zuordnungen")
@@ -142,7 +142,9 @@ def assignments_page() -> None:
         only_current_switch.on_value_change(lambda _: refresh())
 
         warnings_column = ui.column().classes("w-full")
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table = paged_table(route="/assignments", columns=COLUMNS, rows=[], row_key="id").classes(
+            "w-full mt-2"
+        )
         table.add_slot(
             "body-cell-actions",
             """

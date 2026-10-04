@@ -32,8 +32,6 @@ how the administrator decides, and that sort already exists
 on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
 """
 
-from datetime import date
-
 from nicegui import ui
 
 from app.db.connection import connection_scope
@@ -44,6 +42,8 @@ from app.domain.participant_mix import (
 from app.domain.quality_checks import SUBJECT_LEG
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
+from app.gui.leg_form import open_leg_form
+from app.gui.detail_header import render_detail_header
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
     TABLE_MARKER_HTML,
@@ -243,12 +243,12 @@ def legs_page() -> None:
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
-        bar = FilterBar()
+        bar = FilterBar("/legs")
         search_input = bar.search("Name, Bemerkung, Trafokreis")
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table = paged_table(route="/legs", columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         # The marker comes from `app.gui.problem_markers`: a table renders
         # its cells as markup while a card rendered elements, so the triangle
         # exists twice and must not drift.
@@ -318,158 +318,7 @@ def legs_page() -> None:
             Returns:
                 None.
             """
-            with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
-                ui.label("LEG bearbeiten" if existing else "Neue LEG").classes("text-lg font-bold")
-                name = (
-                    ui.input(
-                        "Name (Trafokreis-Bezeichnung oder eigener LEG-Name)",
-                        value=existing.name if existing else "",
-                    )
-                    .classes("w-full")
-                    .props("debounce=300")
-                )
-                duplicate_warning = ui.label("").classes("text-warning")
-                # No upper bound: Art. 19e sets only a minimum, and a LEG
-                # with a large producer and few consumers legitimately shows
-                # over 100% in the portal. `ui.number`'s max clamps silently
-                # on blur, so setting one would quietly corrupt such a value.
-                capacity_percent = ui.number(
-                    "Produktionsleistung (% der Anschlussleistung)",
-                    value=existing.production_capacity_percent if existing else None,
-                    min=0,
-                    step=0.1,
-                ).classes("w-full")
-                capacity_date = (
-                    ui.input(
-                        "Stand vom",
-                        value=(existing.production_capacity_recorded_at if existing else "")
-                        or date.today().isoformat(),
-                    )
-                    .props("type=date")
-                    .classes("w-full")
-                )
-
-                def _stamp_today() -> None:
-                    """Move the Stand to today whenever the percentage changes.
-
-                    A fresh figure carried an old date otherwise, and the
-                    date is the only staleness safeguard the feature has.
-                    Still editable afterwards, for entering an older
-                    reading on purpose.
-
-                    Returns:
-                        None.
-                    """
-                    previous = existing.production_capacity_percent if existing else None
-                    if capacity_percent.value != previous:
-                        capacity_date.value = date.today().isoformat()
-
-                capacity_percent.on_value_change(lambda _: _stamp_today())
-
-                ui.label(
-                    "Wert aus dem BKW-LEG-Portal, das ihn bei jeder Messpunkt-Anmeldung "
-                    "anzeigt („37.6 % tatsächlich / 5 % erforderlich“). Mindestens 5 % "
-                    "sind gesetzlich nötig (Art. 19e Abs. 1 StromVV). Die App kann den "
-                    "Wert nicht selbst berechnen -- die Anschlussleistung der Standorte "
-                    "ist ihr nicht bekannt."
-                ).classes("text-caption text-grey-6")
-                note = (
-                    ui.textarea(
-                        "Bemerkung (optional)",
-                        value=existing.note if existing else "",
-                    )
-                    .classes("w-full")
-                    .props("rows=3")
-                )
-                error_label = ui.label("").classes("text-negative")
-
-                def check_duplicate() -> bool:
-                    """Check whether the current name input is already used by another LEG.
-
-                    Updates `duplicate_warning` as a side effect.
-
-                    Returns:
-                        `True` if the name is a duplicate of a different LEG.
-                    """
-                    typed = name.value.strip()
-                    if not typed:
-                        duplicate_warning.text = ""
-                        return False
-                    with connection_scope() as connection:
-                        found = leg_repo.get_by_name(connection, typed)
-                    is_duplicate = found is not None and (existing is None or found.id != existing.id)
-                    duplicate_warning.text = "Dieser Name wird bereits verwendet." if is_duplicate else ""
-                    return is_duplicate
-
-                name.on_value_change(lambda _: check_duplicate())
-
-                def save() -> None:
-                    """Validate the form and persist the LEG.
-
-                    Returns:
-                        None.
-                    """
-                    if not name.value.strip():
-                        error_label.text = "Name darf nicht leer sein."
-                        return
-                    if check_duplicate():
-                        error_label.text = "Dieser Name wird bereits verwendet."
-                        return
-                    if capacity_percent.value is not None:
-                        if capacity_percent.value < 0:
-                            error_label.text = "Produktionsleistung darf nicht negativ sein."
-                            return
-                        if not capacity_date.value:
-                            error_label.text = (
-                                "Bitte das Datum angeben, an dem der Wert im BKW-Portal gelesen wurde."
-                            )
-                            return
-                    try:
-                        with connection_scope() as connection:
-                            if existing:
-                                updated = Leg(
-                                    id=existing.id,
-                                    name=name.value.strip(),
-                                    note=note.value.strip(),
-                                    created_at=existing.created_at,
-                                    production_capacity_percent=capacity_percent.value,
-                                    production_capacity_recorded_at=(
-                                        (capacity_date.value or None)
-                                        if capacity_percent.value is not None
-                                        else None
-                                    ),
-                                )
-                                leg_repo.update(connection, updated)
-                            else:
-                                new_leg = Leg(
-                                    id=None,
-                                    name=name.value.strip(),
-                                    note=note.value.strip(),
-                                    created_at="",
-                                    production_capacity_percent=capacity_percent.value,
-                                    production_capacity_recorded_at=(
-                                        (capacity_date.value or None)
-                                        if capacity_percent.value is not None
-                                        else None
-                                    ),
-                                )
-                                leg_repo.create(connection, new_leg)
-                    except Exception as exc:  # unique constraint race, etc.
-                        error_label.text = f"Fehler beim Speichern: {exc}"
-                        return
-                    dialog.close()
-                    # notify before refresh() -- see app.gui.safe_notify's
-                    # module docstring for why a plain ui.notify() here can
-                    # raise "parent element ... has been deleted" once the
-                    # card this dialog was opened from is gone.
-                    safe_notify("Gespeichert.", type="positive")
-                    refresh()
-
-                with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                    ui.button("Abbrechen", on_click=dialog.close).props("flat")
-                    ui.button("Speichern", on_click=save)
-            form_guard(dialog, on_save=save)
-            dialog.open()
+            open_leg_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_edit(row: dict) -> None:
             """Card edit-button handler: open the edit dialog for this row.
@@ -724,7 +573,12 @@ def leg_detail_page(leg_id: int) -> None:
             ui.link("← Zurück zu LEGs", "/legs")
             return
 
-        ui.link("← Zurück zu LEGs", "/legs")
+        render_detail_header(
+            list_route="/legs",
+            list_label="LEGs",
+            title=leg.name,
+            on_edit=lambda: open_leg_form(existing=leg, on_saved=lambda _: ui.navigate.reload()),
+        )
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.

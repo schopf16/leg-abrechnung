@@ -157,7 +157,7 @@ def offboardings_page() -> None:
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
-        bar = FilterBar()
+        bar = FilterBar("/offboardings")
         sort_select = bar.sort(sort_options({}), lambda: refresh())
         show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
 

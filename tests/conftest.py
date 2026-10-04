@@ -349,6 +349,26 @@ def _key_event(name: str, *, code: str = "", keydown: bool = True):
 
 
 @pytest.fixture(autouse=True)
+def _no_list_state_outlives_its_test():
+    """Empty the remembered filters around every test.
+
+    `app.gui.list_state` keeps what a list was showing in a module-level
+    store, deliberately -- this is one native window for one administrator.
+    In a test process that means one test's search text would filter
+    another's list, and xdist hands each worker an arbitrary slice, so the
+    failure would not even be reproducible.
+
+    Yields:
+        None.
+    """
+    from app.gui import list_state
+
+    list_state.forget_everything()
+    yield
+    list_state.forget_everything()
+
+
+@pytest.fixture(autouse=True)
 def _no_keyboard_layer_outlives_its_test():
     """Empty the keyboard stack around every test.
 
