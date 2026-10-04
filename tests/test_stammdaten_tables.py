@@ -236,3 +236,173 @@ def test_a_trafokreis_finding_can_be_read_in_the_pencil(address_register):
     assert "Zu prüfen" in texts, texts
     # One feed-in meter and no consumption: nothing can be shared there.
     assert any("Produzenten" in text for text in texts), texts
+
+
+# --- Zuordnungen, and the width every table has to live within -------------
+
+
+def _two_assignments() -> dict:
+    """One Messpunkt with two people in sequence, which is a move.
+
+    Returns:
+        The ids from `_deployment`, plus `"person"`.
+    """
+    from datetime import date
+
+    from app.models import assignment as assignment_repo
+    from app.models import person as person_repo
+    from app.models.assignment import Assignment
+    from app.models.person import Person
+
+    ids = _deployment()
+    with connection_scope() as connection:
+        people = []
+        for last_name in ("Vorher", "Nachher"):
+            people.append(
+                person_repo.create(
+                    connection,
+                    Person(
+                        id=None,
+                        salutation="",
+                        company="",
+                        first_name="Anna",
+                        last_name=last_name,
+                        contact_email="",
+                        contact_phone="",
+                        billing_street="Erstweg",
+                        billing_house_number="4",
+                        billing_postal_code="3048",
+                        billing_city="Musterdorf",
+                        billing_country="CH",
+                        iban="",
+                        paper_invoice=False,
+                        note="",
+                        customer_number=None,
+                        bkw_customer_number=None,
+                        active=True,
+                        created_at="",
+                    ),
+                )
+            )
+        assignment_repo.create(
+            connection,
+            Assignment(
+                id=None,
+                metering_point_id=ids["metering_point"],
+                person_id=people[0],
+                valid_from=date(2026, 1, 1),
+                valid_to=date(2026, 6, 30),
+                created_at="",
+            ),
+        )
+        assignment_repo.create(
+            connection,
+            Assignment(
+                id=None,
+                metering_point_id=ids["metering_point"],
+                person_id=people[1],
+                valid_from=date(2026, 7, 1),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+    return ids
+
+
+def test_zuordnungen_is_a_table_with_one_row_per_assignment():
+    """It was a card per Messpunkt with its assignments listed inside."""
+    _two_assignments()
+
+    _, table = _table("assignments", "assignments_page", "/probe-st-assign")
+
+    assert [column["label"] for column in table.columns] == [
+        "Messpunkt",
+        "Standort",
+        "Person",
+        "Gültig von",
+        "Gültig bis",
+        "",
+    ]
+    assert len(table.rows) == 2
+
+
+def test_the_rows_of_one_messpunkt_stay_together_and_in_sequence():
+    """That is the part of the grouping worth keeping.
+
+    A move reads as two rows in order; shuffled into a flat sort they would
+    be two unrelated lines.
+    """
+    _two_assignments()
+
+    _, table = _table("assignments", "assignments_page", "/probe-st-assign-order")
+
+    names = [row["person_name"] for row in table.rows]
+    assert names == ["Anna Vorher", "Anna Nachher"]
+    assert len({row["metering_point"] for row in table.rows}) == 1
+
+
+def test_the_dates_are_written_the_way_the_rest_of_the_app_writes_them():
+    """The card printed `2026-01-01`; every other page prints 01.01.2026."""
+    _two_assignments()
+
+    _, table = _table("assignments", "assignments_page", "/probe-st-assign-dates")
+
+    assert table.rows[0]["valid_from"] == "01.01.2026"
+    assert table.rows[0]["valid_to"] == "30.06.2026"
+    assert table.rows[1]["valid_to"] == "offen"
+
+
+def test_the_pencil_on_a_zuordnung_opens_its_dialog():
+    """Driven, because an unwired slot looks the same as a wired one."""
+    _two_assignments()
+
+    client, table = _table("assignments", "assignments_page", "/probe-st-assign-edit")
+    before = sum(1 for element in client.elements.values() if element.__class__.__name__ == "Dialog")
+
+    with client:
+        handler = next(
+            listener.handler for listener in table._event_listeners.values() if listener.type == "edit"
+        )
+        handler(type("Event", (), {"args": table.rows[0]})())
+
+    after = sum(1 for element in client.elements.values() if element.__class__.__name__ == "Dialog")
+    assert after > before
+
+
+@pytest.mark.parametrize(
+    "module, function, probe",
+    [
+        ("substation_areas", "substation_areas_page", "/probe-st-wrap-areas"),
+        ("legs", "legs_page", "/probe-st-wrap-legs"),
+        ("metering_points", "metering_points_page", "/probe-st-wrap-mp"),
+        ("assignments", "assignments_page", "/probe-st-wrap-assign"),
+        ("sites", "sites_page", "/probe-st-wrap-sites"),
+        ("persons", "persons_page", "/probe-st-wrap-persons"),
+    ],
+)
+def test_no_table_pushes_itself_wider_than_the_window(module, function, probe, address_register):
+    """A sideways scrollbar sits at the *bottom* of a long list.
+
+    So reading the right-hand columns means scrolling down, across, and back
+    up -- "das will ich auf keinen fall". Quasar keeps a cell on one line by
+    default, which lets one 27-character Messpunktbezeichnung decide the
+    whole table's width; `wrap-cells` lets the row grow taller instead.
+    """
+    _deployment()
+
+    _, table = _table(module, function, probe)
+
+    assert table._props.get("wrap-cells") is True
+
+
+def test_the_content_area_is_wide_enough_for_a_seven_column_table():
+    """1024 px was set when every list was cards that wrapped freely."""
+    from app.gui.navigation import page_frame
+
+    client = Client(ui.page("/probe-st-width")(lambda: None), request=None)
+    with client:
+        with page_frame("/metering-points", "Messpunkte") as content:
+            ui.label("Inhalt")
+
+    assert "max-w-screen-2xl" in content._classes
+    assert "max-w-5xl" not in content._classes

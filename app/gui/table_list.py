@@ -62,4 +62,10 @@ def paged_table(**kwargs) -> ui.table:
     # copied -- and a Kunden-Nr. is there to be pasted somewhere else. The
     # buttons in the actions column stay unselectable, as buttons are.
     table.classes("leg-selectable")
+    # Quasar keeps a cell on one line by default, so one long value decides
+    # the whole table's width -- a Messpunktbezeichnung is 27 characters and
+    # unbreakable, and seven columns of that scrolled sideways. `wrap-cells`
+    # lets a row grow taller instead, which is the trade the administrator
+    # asked for: "wenn die breite nicht platz hat kürze den inhalt".
+    table.props("wrap-cells")
     return table

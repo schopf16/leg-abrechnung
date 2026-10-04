@@ -458,11 +458,19 @@ Standort dialog with "Nicht im amtlichen Verzeichnis."
 
 `app/gui/table_list.py`'s `paged_table` builds **every Stammdaten list** --
 Trafokreise, Standorte, Messpunkte, LEGs and Personen -- with one page size
-for all of them. The administrator's verdict after seeing the first one:
-*"eine solche tabellenansicht ist näher an einer datenbank als diese
-boubles"*. Zuordnungen is the deliberate exception: it groups its rows per
-metering point, and a flat row per assignment would lose the grouping that
-makes a move legible.
+for all of them, **Zuordnungen included**. The administrator's verdict after
+seeing the first one: *"eine solche tabellenansicht ist näher an einer
+datenbank als diese boubles"*.
+
+Zuordnungen was held back once, on the argument that its card-per-Messpunkt
+grouping would be lost. That was half right: the grouping carried one thing
+worth keeping -- a move reads as two rows in sequence rather than two
+unrelated lines -- and it survives without the card. The groups are still
+sorted as groups and only then flattened into rows, so a Messpunkt's
+assignments stay adjacent and in order. The printout is built in the same
+pass, so screen and paper cannot disagree. Its dates are German now
+(`01.01.2026`), where the card printed `2026-01-01`; the ISO strings stay in
+the row for the sort keys, which compare them as text.
 
 **Why Personen stopped being cards.** It drew 92 cards of 23 interface
 elements each, 2'108 in all, and the administrator reported the page taking
@@ -497,6 +505,19 @@ Genossenschafter badge is gone from the list: the "Nur Genossenschafter"
 filter is the members' list (there is no page of its own), the printout
 keeps its "Anteile" column, and `test_a_deactivated_member_drops_off_the_list_at_once`
 now watches the filter instead of a badge -- the same defect, one layer in.
+
+**No table may scroll sideways**, and that is a stronger rule than it looks:
+a horizontal scrollbar sits at the *bottom* of a long list, so reading the
+right-hand columns means scrolling down, across, and back up. The
+administrator's words: "das will ich auf keinen fall". Two things make it
+hold. Quasar keeps a cell on one line by default, so one 27-character
+Messpunktbezeichnung decided the whole table's width -- `wrap-cells` lets the
+row grow taller instead, and `word-break: break-word` lets a value with no
+spaces in it break at all. And the content area went from `max-w-5xl`
+(1024 px) to `max-w-screen-2xl` (1536 px): the old width was set when every
+list was cards, which wrap into whatever space they have. Still bounded
+rather than full width, because a settings form or a line of prose across
+1920 px is unreadable for the opposite reason.
 
 **A cell can be marked and copied.** Quasar renders a table inside
 `.non-selectable`, whose rule carries `!important`, so a Kunden-Nr. could be

@@ -19,6 +19,7 @@ from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
@@ -37,6 +38,20 @@ from app.models.assignment import Assignment
 
 #: `(label, field)` pairs for the printed table -- one row per Assignment,
 #: flattened out of the on-screen per-MeteringPoint card grouping.
+#: What the list shows. One row per Zuordnung rather than a card per
+#: Messpunkt: the grouping was presentation, and the default order still
+#: keeps a Messpunkt's rows together, so the sequence that makes a move
+#: legible is intact.
+COLUMNS = [
+    {"name": "metering_point", "label": "Messpunkt", "field": "metering_point", "align": "left"},
+    {"name": "site", "label": "Standort", "field": "site", "align": "left"},
+    {"name": "person_name", "label": "Person", "field": "person_name", "align": "left"},
+    {"name": "valid_from", "label": "Gültig von", "field": "valid_from", "align": "left"},
+    {"name": "valid_to", "label": "Gültig bis", "field": "valid_to", "align": "left"},
+    {"name": "actions", "label": "", "field": "actions", "align": "right"},
+]
+
+
 PRINT_COLUMNS = [
     ("Messpunkt", "metering_point"),
     ("Person", "person_name"),
@@ -127,7 +142,17 @@ def assignments_page() -> None:
         only_current_switch.on_value_change(lambda _: refresh())
 
         warnings_column = ui.column().classes("w-full")
-        list_container = ui.column().classes("w-full gap-2 mt-2")
+        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
+        table.add_slot(
+            "body-cell-actions",
+            """
+            <q-td :props="props">
+                <q-btn dense flat icon="edit" @click="() => $parent.$emit('edit', props.row)" />
+                <q-btn dense flat icon="delete" color="negative"
+                       @click="() => $parent.$emit('remove', props.row)" />
+            </q-td>
+            """,
+        )
 
         print_rows: list[dict] = []
 
@@ -143,33 +168,6 @@ def assignments_page() -> None:
             if only_current_switch.value:
                 parts.append("nur laufende oder künftige Zuordnungen")
             return ", ".join(parts) if parts else None
-
-        def render_group(metering_point_label: str, group: list[dict]) -> None:
-            """Render one MeteringPoint's card with all of its assignments.
-
-            Args:
-                metering_point_label: Display label for the MeteringPoint heading.
-                group: Row dicts (see `refresh`) belonging to that MeteringPoint,
-                    already sorted by `valid_from`.
-
-            Returns:
-                None.
-            """
-            with ui.card().classes("w-full"):
-                ui.label(metering_point_label).classes("font-bold")
-                for row in group:
-                    with ui.row().classes("w-full items-center gap-4 flex-wrap"):
-                        ui.label(row["person_name"]).classes("min-w-[180px]")
-                        ui.label(f"ab {row['valid_from']}").classes("min-w-[120px] text-grey-7")
-                        ui.label(f"bis {row['valid_to']}").classes("min-w-[120px] text-grey-7")
-                        with ui.row().classes("gap-1 ml-auto"):
-                            ui.button(icon="edit", on_click=lambda z=row["assignment"]: on_edit(z)).props(
-                                "dense flat"
-                            )
-                            ui.button(
-                                icon="delete",
-                                on_click=lambda z=row["assignment"]: on_remove(z),
-                            ).props("dense flat color=negative")
 
         def refresh() -> None:
             """Reload the assignments list (grouped by MeteringPoint) and
@@ -197,8 +195,12 @@ def assignments_page() -> None:
                     {
                         "assignment": z,
                         "person_name": persons[z.person_id].display_name if z.person_id in persons else "?",
+                        # ISO for the sort keys below, German for reading:
+                        # `latest_valid_from` compares these as text.
                         "valid_from": z.valid_from.isoformat(),
                         "valid_to": z.valid_to.isoformat() if z.valid_to else "offen",
+                        "valid_from_display": z.valid_from.strftime("%d.%m.%Y"),
+                        "valid_to_display": (z.valid_to.strftime("%d.%m.%Y") if z.valid_to else "offen"),
                     }
                 )
 
@@ -215,6 +217,7 @@ def assignments_page() -> None:
                         "label": label,
                         "rows": rows,
                         "designation": mp.designation if mp else label,
+                        "address": site.full_address if site else "?",
                         "street": site.street if site else "",
                         "house_number": site.house_number if site else "",
                         # Every person on this MeteringPoint, so sorting by
@@ -247,23 +250,35 @@ def assignments_page() -> None:
             ]
 
             print_rows = []
-            list_container.clear()
-            with list_container:
-                if not groups:
-                    ui.label("Noch keine Zuordnungen erfasst.").classes("text-grey-6")
-                elif not visible:
-                    ui.label("Keine Zuordnungen für diesen Filter.").classes("text-grey-6")
-                for group in apply_sort(visible, SORT_OPTIONS, sort_select):
-                    render_group(group["label"], group["rows"])
-                    for row in group["rows"]:
-                        print_rows.append(
-                            {
-                                "metering_point": group["label"],
-                                "person_name": row["person_name"],
-                                "valid_from": row["valid_from"],
-                                "valid_to": row["valid_to"],
-                            }
-                        )
+            table_rows = []
+            # Sorted as groups and then flattened, so the order is exactly
+            # what the cards had: a Messpunkt's assignments stay adjacent and
+            # in sequence, which is the part worth keeping about the
+            # grouping. The printout is built from the same pass, so screen
+            # and paper cannot disagree.
+            for group in apply_sort(visible, SORT_OPTIONS, sort_select):
+                for row in group["rows"]:
+                    table_rows.append(
+                        {
+                            "id": row["assignment"].id,
+                            "metering_point": group["designation"],
+                            "site": group["address"],
+                            "person_name": row["person_name"],
+                            "valid_from": row["valid_from_display"],
+                            "valid_to": row["valid_to_display"],
+                        }
+                    )
+                    print_rows.append(
+                        {
+                            "metering_point": group["label"],
+                            "person_name": row["person_name"],
+                            "valid_from": row["valid_from_display"],
+                            "valid_to": row["valid_to_display"],
+                        }
+                    )
+
+            table.rows = table_rows
+            table.update()
 
             warnings_column.clear()
             with warnings_column:
@@ -497,5 +512,40 @@ def assignments_page() -> None:
 
                     ui.button("Löschen", on_click=do_delete, color="negative")
             confirm.open()
+
+        def _with_assignment(action):
+            """Wrap a handler so it receives the Zuordnung, not the row.
+
+            The slot emits the row, which is data sent to the browser and
+            back, so the record is re-read rather than trusted from it.
+
+            Args:
+                action: `on_edit` or `on_remove`.
+
+            Returns:
+                A callable for `table.on(...)`.
+            """
+
+            def handle(event) -> None:
+                """Resolve the clicked row and run the action.
+
+                Args:
+                    event: NiceGUI generic event carrying the row.
+
+                Returns:
+                    None.
+                """
+                with connection_scope() as connection:
+                    existing = assignment_repo.get(connection, event.args["id"])
+                if existing is None:
+                    safe_notify("Diese Zuordnung gibt es nicht mehr.", type="warning")
+                    refresh()
+                    return
+                action(existing)
+
+            return handle
+
+        table.on("edit", _with_assignment(on_edit))
+        table.on("remove", _with_assignment(on_remove))
 
         refresh()

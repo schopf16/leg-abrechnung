@@ -164,6 +164,10 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
         "{ -webkit-user-select: text !important; user-select: text !important; }"
         ".leg-selectable .q-btn { -webkit-user-select: none !important;"
         " user-select: none !important; }"
+        # `wrap-cells` wraps between words; "CH1018000000000000000000001"
+        # has none, so without this it still forces the table wider than
+        # the window.
+        ".leg-selectable td { word-break: break-word; }"
         "</style>"
     )
     ui.add_head_html(PRINT_STYLE)
@@ -212,7 +216,14 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
             "position: absolute; bottom: 0; left: 0;"
         )
 
-    with ui.column().classes("w-full max-w-5xl mx-auto p-4") as content:
+    # `max-w-5xl` was 1024 px, set when every list was cards that wrapped
+    # into whatever space they had. A table cannot wrap: too narrow and it
+    # scrolls sideways, and a sideways scrollbar sits at the *bottom* of a
+    # long list -- so reading the right-hand columns means scrolling down,
+    # across, and back up. Still bounded rather than full width, because a
+    # settings form or a detail page with a line of text across 1920 px is
+    # unreadable for the opposite reason.
+    with ui.column().classes("w-full max-w-screen-2xl mx-auto p-4") as content:
         yield content
 
 
