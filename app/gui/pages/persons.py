@@ -19,7 +19,12 @@ from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import (
+    ProblemFilter,
+    load_problems,
+    render_marker,
+    render_problem_notes,
+)
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
@@ -577,6 +582,10 @@ def person_detail_page(person_id: int) -> None:
             return
 
         ui.link("← Zurück zu Personen", "/persons")
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
         ui.label(person.display_name).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             if not person.active:

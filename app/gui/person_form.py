@@ -16,6 +16,8 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.quality_checks import SUBJECT_PERSON
+from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.iban_validation import normalize_iban, validate_iban
 from app.gui.cooperative_form import CooperativeEditor
@@ -88,6 +90,10 @@ def open_person_form(
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-2xl"):
         ui.label("Person bearbeiten" if existing else "Neue Person").classes("text-lg font-bold")
+        # The findings for this record, except the ones rendered
+        # beside their own field further down.
+        if existing is not None:
+            render_problem_notes(load_problems(SUBJECT_PERSON).get(existing.id), exclude=AT_THE_FIELD)
         company = (
             ui.input(
                 "Firma (optional -- leer lassen für eine Privatperson)",

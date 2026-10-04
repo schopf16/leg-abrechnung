@@ -442,7 +442,11 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
                     "aber keine Bezugs-Zuordnung -- fehlt der Messpunkt für den Bezug?"
                 ),
                 summary="Anschlüsse speisen ein, ohne zu beziehen",
-                summary_link="/assignments",
+                # Personen, not Zuordnungen: that is where the finding is
+                # marked, and a summary line that lands on a list with no
+                # triangle leaves the reader hunting -- which is exactly
+                # what it did.
+                summary_link="/persons",
                 subject_kind=SUBJECT_PERSON,
                 subject_id=person.id if person is not None else None,
                 link=f"/persons/{person.id}" if person is not None else None,

@@ -116,7 +116,17 @@ class ProblemFilter:
             self.switch.value = False
 
 
-def render_problem_notes(warnings: Optional[list[QualityWarning]]) -> None:
+#: Findings an edit dialog already shows at the field itself. Repeating them
+#: in the block at the top would say the same thing twice, once far from the
+#: input it is about.
+AT_THE_FIELD = frozenset({"address_not_official"})
+
+
+def render_problem_notes(
+    warnings: Optional[list[QualityWarning]],
+    *,
+    exclude: frozenset = frozenset(),
+) -> None:
     """Spell the findings out, for a detail page or an edit dialog.
 
     This is where the text belongs: the eye shows it, the pencil shows it
@@ -124,10 +134,13 @@ def render_problem_notes(warnings: Optional[list[QualityWarning]]) -> None:
 
     Args:
         warnings: The findings for this record, or `None`.
+        exclude: Categories to leave out -- a dialog passes `AT_THE_FIELD`
+            because it renders those beside the input they are about.
 
     Returns:
         None.
     """
+    warnings = [w for w in (warnings or []) if w.category not in exclude]
     if not warnings:
         return
     with ui.card().classes("w-full bg-orange-1"):

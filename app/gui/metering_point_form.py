@@ -10,6 +10,8 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.quality_checks import SUBJECT_METERING_POINT
+from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.domain.production_capacity import compute_headroom, status_classes
 from app.domain.metering_point_validation import (
     assemble_metering_point_designation,
@@ -79,6 +81,10 @@ def open_metering_point_form(
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
         ui.label("Messpunkt bearbeiten" if existing else "Neuer Messpunkt").classes("text-lg font-bold")
+        # The findings for this record, except the ones rendered
+        # beside their own field further down.
+        if existing is not None:
+            render_problem_notes(load_problems(SUBJECT_METERING_POINT).get(existing.id), exclude=AT_THE_FIELD)
         ui.label(
             "Messpunkt-Bezeichnung: Land + Identifikator sind bei "
             "allen Messpunkten dieser LEG gleich (Vorgabe aus den "

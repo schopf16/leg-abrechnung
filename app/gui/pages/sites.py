@@ -15,7 +15,12 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.quality_checks import SUBJECT_SITE
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import TABLE_MARKER_HTML, ProblemFilter, load_problems
+from app.gui.problem_markers import (
+    TABLE_MARKER_HTML,
+    ProblemFilter,
+    load_problems,
+    render_problem_notes,
+)
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
@@ -331,6 +336,10 @@ def site_detail_page(site_id: int) -> None:
             return
 
         ui.link("← Zurück zu Standorten", "/sites")
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_SITE).get(site.id))
         ui.label(site.full_address).classes("text-xl font-bold mt-2")
         with ui.card().classes("w-full max-w-lg"):
             ui.label(f"Lage: {site.address_detail or '-'}")

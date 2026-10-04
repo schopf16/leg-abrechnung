@@ -10,6 +10,8 @@ from typing import Callable, Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.quality_checks import SUBJECT_SITE
+from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.gui.safe_notify import safe_notify
 from app.models import site as site_repo
@@ -74,6 +76,10 @@ def open_site_form(
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
         ui.label("Standort bearbeiten" if existing else "Neuer Standort").classes("text-lg font-bold")
+        # The findings for this record, except the ones rendered
+        # beside their own field further down.
+        if existing is not None:
+            render_problem_notes(load_problems(SUBJECT_SITE).get(existing.id), exclude=AT_THE_FIELD)
         with ui.row().classes("w-full gap-2"):
             street = (
                 ui.input("Adresse", value=_initial(existing, "street", prefill, "street"))

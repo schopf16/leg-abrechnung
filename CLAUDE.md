@@ -206,6 +206,10 @@ selected is printed on the printout's own "Sortierung:" line, via
 `render_print_button`'s `get_sort_description` — never folded into the
 filter line, because a sort order is not a filter.
 
+The drawer marks the **chapter** as well as the entry: expanding the right
+group is not the same as marking it, since three can be open at once if the
+administrator opened them, and the entry alone never answered "where am I".
+
 Detail sub-tables and history tables are exempt and have no control:
 `billing.py` (runs and items), `backup.py`, `import_page.py`,
 `reports.py`, `dashboard.py`, and the metering-point tables on the
@@ -257,6 +261,18 @@ the site and the metering points exist, their lists say what is wrong with
 them. Marking the worklist instead would complain about something that is
 simply not finished yet, which is how a list earns the habit of being
 skipped.
+
+**The triangle is only half of it.** `render_problem_notes` spells the
+findings out on the detail page (the eye) and in the edit dialog (the
+pencil), so the marker is never a dead end. Without that the administrator
+meets a summary line, a link to a list, a triangle -- and still nothing
+saying what is wrong, which is exactly how it was reported. A dialog passes
+`AT_THE_FIELD` so the address finding is not repeated at the top: it is
+already rendered beside the input it is about.
+
+`summary_link` has to point at a list that **marks**. The feed-in finding
+pointed at Zuordnungen while its subject is a person, so the summary line
+landed on a page with no triangle and no filter. It points at Personen now.
 
 A table marks differently from a card list, because Quasar renders a table
 cell as markup rather than as elements. `TABLE_MARKER_HTML` and

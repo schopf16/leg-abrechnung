@@ -43,7 +43,12 @@ from app.domain.participant_mix import (
 )
 from app.domain.quality_checks import SUBJECT_LEG
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import (
+    ProblemFilter,
+    load_problems,
+    render_marker,
+    render_problem_notes,
+)
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import (
@@ -717,6 +722,10 @@ def leg_detail_page(leg_id: int) -> None:
             return
 
         ui.link("← Zurück zu LEGs", "/legs")
+
+        # What the triangle in the list withheld: the eye shows it,
+        # the pencil fixes it. See `app.gui.problem_markers`.
+        render_problem_notes(load_problems(SUBJECT_LEG).get(leg.id))
         ui.label(leg.name).classes("text-xl font-bold mt-2")
         if leg.note:
             ui.label(leg.note).classes("text-body2 text-grey-7")

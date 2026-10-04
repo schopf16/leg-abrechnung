@@ -468,3 +468,127 @@ def test_the_table_marker_comes_from_the_shared_constant():
     markup += str(table.slots["body-cell-actions"].template or "")
 
     assert TABLE_MARKER_HTML in markup
+
+
+# --- The eye and the pencil show what the triangle withholds ---------------
+
+
+def _labels(client: Client) -> list[str]:
+    """Every label text on a rendered page or dialog.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The non-empty texts.
+    """
+    return [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Label" and getattr(element, "text", "")
+    ]
+
+
+def test_the_detail_page_names_the_finding(address_register):
+    """The marker says "look at this one"; this is the looking.
+
+    Without it the triangle is a dead end -- which is how the administrator
+    met it: a summary line in the overview, a link to a list, and nothing
+    saying what was wrong or where.
+    """
+    person_id = _person(street="Nirgendweg")
+
+    from app.gui.pages import persons as persons_module
+
+    client = Client(ui.page("/probe-detail-notes")(lambda: None), request=None)
+    with client:
+        persons_module.person_detail_page(person_id)
+
+    texts = _labels(client)
+    assert "Zu prüfen" in texts
+    assert any("amtlichen Verzeichnis" in text for text in texts)
+
+
+def test_a_sound_record_shows_no_box_on_its_detail_page(address_register):
+    """Silence is the normal case; an empty box would be noise."""
+    person_id = _person(street="Erstweg")
+
+    from app.gui.pages import persons as persons_module
+
+    client = Client(ui.page("/probe-detail-clean")(lambda: None), request=None)
+    with client:
+        persons_module.person_detail_page(person_id)
+
+    assert "Zu prüfen" not in _labels(client)
+
+
+def test_the_dialog_leaves_the_address_finding_at_its_field(address_register):
+    """It is already shown beside the input it is about.
+
+    Repeating it in the block at the top would say the same thing twice,
+    once far from the field it concerns.
+    """
+    from app.db.connection import connection_scope as scope
+    from app.gui.person_form import open_person_form
+    from app.models import person as repo
+
+    person_id = _person(street="Nirgendweg")
+    with scope() as connection:
+        person = repo.get(connection, person_id)
+
+    client = Client(ui.page("/probe-dialog-address")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+
+    texts = _labels(client)
+    assert "Zu prüfen" not in texts, "der Adressbefund gehört ans Feld, nicht in den Kasten"
+    assert any("Meinten Sie" in text or "amtlichen Verzeichnis" in text for text in texts)
+
+
+def test_the_dialog_names_a_finding_that_has_no_field(address_register):
+    """Everything that is not shown beside an input belongs in the block.
+
+    A cooperative member with no shares has no field of its own in this
+    dialog, so without the block the pencil would say nothing.
+    """
+    from datetime import date
+
+    from app.db.connection import connection_scope as scope
+    from app.gui.person_form import open_person_form
+    from app.models import cooperative_membership as coop_repo
+    from app.models import person as repo
+    from app.models.cooperative_membership import CooperativeMembership
+
+    person_id = _person(street="Erstweg")
+    with scope() as connection:
+        coop_repo.create(
+            connection,
+            CooperativeMembership(
+                id=None,
+                person_id=person_id,
+                shares=0,
+                valid_from=date.today(),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+        person = repo.get(connection, person_id)
+
+    client = Client(ui.page("/probe-dialog-shares")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+
+    texts = _labels(client)
+    assert "Zu prüfen" in texts
+    assert any("Anteile" in text for text in texts)
+
+
+def test_a_new_record_shows_no_findings(address_register):
+    """There is nothing to have a finding about yet."""
+    from app.gui.person_form import open_person_form
+
+    client = Client(ui.page("/probe-dialog-new")(lambda: None), request=None)
+    with client:
+        open_person_form()
+
+    assert "Zu prüfen" not in _labels(client)

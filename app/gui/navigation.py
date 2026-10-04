@@ -129,6 +129,10 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
         ".leg-nav-active { font-weight: 700; }"
         ".leg-nav-group .q-item { padding: 6px 12px; min-height: 0; }"
         ".leg-nav-group .q-item__label { font-size: 13px; font-weight: 600; }"
+        # The open entry was already bold, but the chapter it sits in was
+        # not -- so the drawer never said which part of the app you were in.
+        ".leg-nav-open-group > .q-expansion-item__container > .q-item "
+        ".q-item__label { font-weight: 800; color: var(--q-primary); }"
         "</style>"
     )
     ui.add_head_html(PRINT_STYLE)
@@ -149,7 +153,7 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
             is_active_group = any(route == active_route for route, _ in items)
             with (
                 ui.expansion(group_label, value=is_active_group)
-                .classes("w-full leg-nav-group")
+                .classes("w-full leg-nav-group" + (" leg-nav-open-group" if is_active_group else ""))
                 .props("dense")
             ):
                 for route, label in items:
