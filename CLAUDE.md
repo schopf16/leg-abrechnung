@@ -454,6 +454,54 @@ empty too, so on blur it would complain about a form that is merely
 unfinished -- the same mistake `verify` made when it greeted an empty
 Standort dialog with "Nicht im amtlichen Verzeichnis."
 
+### A long list is a table, and it pages
+
+`app/gui/table_list.py`'s `paged_table` builds the lists that are tables --
+Personen and Standorte -- with one page size for both.
+
+**Why Personen stopped being cards.** It drew 92 cards of 23 interface
+elements each, 2'108 in all, and the administrator reported the page taking
+close to a second to open. A Quasar table is **one** element with its rows
+as data, which is why Standorte was always fast. Measured against a copy of
+the live database: 337 ms and 2'108 elements before, **72 ms and 65
+elements** after, and the browser's share falls with the element count in
+the same way.
+
+That makes the number of *columns* free and the number of *cards* expensive,
+which is the whole trade. The list shows **Kunden-Nr., Name, Adresse** and
+the actions, on the administrator's own cut -- "alles andere dann hinter
+auge" -- and everything the card used to carry (second address, IBAN,
+Papierrechnung, BKW-Nummer, Bemerkung, the Genossenschaft badge) was already
+on the detail page. `tests/test_person_couple.py` checks that explicitly, so
+"moved one click away" cannot quietly become "dropped".
+
+Two details follow from the shape rather than from taste. A deactivated
+person is marked **in the name cell** (`Muster, Anna · inaktiv seit …`)
+because a status column would be empty for all but a handful of people, and
+an almost always empty column is clutter in a list of three. And the
+Genossenschafter badge is gone from the list: the "Nur Genossenschafter"
+filter is the members' list (there is no page of its own), the printout
+keeps its "Anteile" column, and `test_a_deactivated_member_drops_off_the_list_at_once`
+now watches the filter instead of a badge -- the same defect, one layer in.
+
+**Paging is Quasar's own, and that is a different decision from sorting.**
+Sorting may not use Quasar's `sortable: True` headers because half the lists
+are cards with no header to click, so clickable headers could never be the
+mechanism that works everywhere. Paging has no such split: only a table can
+page, every table can, and the footer Quasar already draws carries the
+arrows, the count and the rows-per-page select. 50 rows by default (the
+administrator's number: the deployment holds 92 persons and 92 sites, so 50
+is "most of it, twice"), with 30/50/100/alle offered. `0` is kept because a
+list short enough to read in one go should not have to be paged, and because
+printing is per filter rather than per page.
+
+**The search and the filters run over everything, never over the page.** The
+page filters and sorts all records and hands the whole result to the table,
+which shows a window onto it -- so a search finds a person on page four and
+the printout holds every filtered row. Paging the wrong collection is the
+obvious way to build this and looks right until the list is longer than one
+page, so `tests/test_persons_table.py` pins both with more rows than fit.
+
 ### Problems: one marker, one filter, every list
 
 Whenever a record is misconfigured or needs a decision, its list shows a
@@ -1167,9 +1215,9 @@ and claims nothing more; the dashboard states the fact and links there; and
 holding the value it would replace. The triangle is sized at `1.715em`
 because a bare `q-icon` inherits the surrounding `1em` and comes out
 visibly smaller than the icons in the flat buttons beside it. The Personen
-lists also carry the shared "Nur fehlerhafte Einträge" switch (see
+list also carries the shared "Nur fehlerhafte Einträge" switch (see
 "Problems: one marker, one filter, every list"), so the marked handful can
-be worked off without scrolling ninety cards.
+be worked off without paging through ninety-two rows.
 
 A "Nein" taken in a dialog is collected in `SuggestionBox.dismissals` and
 written by `store_dismissals` **after** the record is saved -- a new record

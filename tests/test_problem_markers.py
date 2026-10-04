@@ -95,8 +95,24 @@ def _switch(client: Client):
     return matches[0]
 
 
-def _cards(client: Client) -> int:
-    """How many person cards are rendered.
+def _table(client: Client):
+    """The list's table.
+
+    The Personen list is a table since the card version cost 2'108
+    interface elements for 92 people. A table is one element with its rows
+    as data, so what used to be counted on screen is counted in `rows`.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The first table element.
+    """
+    return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
+
+
+def _rows(client: Client) -> int:
+    """How many entries the list shows.
 
     Args:
         client: The rendered client.
@@ -104,15 +120,15 @@ def _cards(client: Client) -> int:
     Returns:
         The count.
     """
-    return sum(
-        1
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Label" and getattr(element, "text", "") == "Anna Muster"
-    )
+    return len(_table(client).rows)
 
 
 def _markers(client: Client) -> int:
-    """How many warning triangles are rendered.
+    """How many entries carry a warning triangle.
+
+    A table cell is markup, not an element, so the flag on the row is what
+    the slot reads -- see `TABLE_MARKER_HTML`. Card lists are still counted
+    by their icons.
 
     Args:
         client: The rendered client.
@@ -120,6 +136,9 @@ def _markers(client: Client) -> int:
     Returns:
         The count.
     """
+    tables = [element for element in client.elements.values() if element.__class__.__name__ == "Table"]
+    if tables:
+        return sum(1 for row in tables[0].rows if row.get("has_problem"))
     return sum(
         1
         for element in client.elements.values()
@@ -144,18 +163,15 @@ def test_the_marker_carries_no_text(address_register):
     A row cannot explain a finding, and a tooltip nobody hovers is not an
     explanation either -- the eye shows it and the pencil fixes it.
     """
+    from app.gui.problem_markers import TABLE_MARKER_HTML
+
     _person(street="Nirgendweg")
     client = _persons_page()
 
-    triangles = [
-        element
-        for element in client.elements.values()
-        if element.__class__.__name__ == "Icon" and element._props.get("name") == "warning"
-    ]
-
-    assert triangles
-    for triangle in triangles:
-        assert not getattr(triangle, "text", ""), "das Dreieck trägt keinen Text"
+    assert _markers(client) == 1
+    # The table draws it from the shared constant, so that is where the
+    # absence of text has to hold.
+    assert ">" not in TABLE_MARKER_HTML.replace("/>", ""), TABLE_MARKER_HTML
 
 
 # --- The filter ------------------------------------------------------------
@@ -167,11 +183,11 @@ def test_the_filter_shows_only_the_marked_entries(address_register):
     _person(street="Nirgendweg")
     _person(street="Erstweg")
     client = _persons_page()
-    assert _cards(client) == 2
+    assert _rows(client) == 2
 
     _switch(client).value = True
 
-    assert _cards(client) == 1
+    assert _rows(client) == 1
 
 
 def test_switching_the_filter_off_shows_everybody_again(address_register):
@@ -184,7 +200,7 @@ def test_switching_the_filter_off_shows_everybody_again(address_register):
     switch.value = True
     switch.value = False
 
-    assert _cards(client) == 2
+    assert _rows(client) == 2
 
 
 def test_the_filter_is_hidden_when_nothing_is_marked(address_register):
@@ -215,7 +231,7 @@ def test_the_filter_switches_itself_off_when_the_last_finding_goes(address_regis
     second = _persons_page()
     assert _switch(second).visible is False
     assert _switch(second).value is False
-    assert _cards(second) == 1
+    assert _rows(second) == 1
 
 
 def test_nothing_is_marked_without_a_register():

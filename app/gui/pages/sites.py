@@ -24,6 +24,7 @@ from app.gui.problem_markers import (
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.site_form import open_site_form
+from app.gui.table_list import paged_table
 from app.gui.sorting import (
     SortOption,
     address_key,
@@ -179,7 +180,7 @@ def sites_page() -> None:
         sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
         problem_filter = bar.problem_filter(lambda: apply_filter())
 
-        table = ui.table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
+        table = paged_table(columns=COLUMNS, rows=[], row_key="id").classes("w-full")
         # The marker comes from `app.gui.problem_markers` rather than being
         # written out here: a table renders its cells as markup while a card
         # renders elements, so the triangle exists twice and must not drift.
