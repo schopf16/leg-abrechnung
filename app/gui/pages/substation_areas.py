@@ -17,7 +17,9 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.participant_mix import compute_participant_mix_for_substation_area
+from app.domain.quality_checks import SUBJECT_SUBSTATION_AREA
 from app.gui.navigation import page_frame
+from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import SortOption, apply_sort, render_sort_select, sort_description, text_key
@@ -155,8 +157,13 @@ def substation_areas_page() -> None:
                 .props("debounce=300 clearable")
             )
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+            problem_filter = ProblemFilter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
+
+        #: Ids with an open finding, refreshed with the list so a
+        #: correction makes the marker disappear.
+        problems: dict = {}
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
@@ -178,7 +185,11 @@ def substation_areas_page() -> None:
                             ui.label(row["bkw_designation"]).classes("text-caption text-grey-6")
                     ui.label(f"{row['sites_count']} Standort(e)").classes("text-body2")
                     ui.label(row["producer_consumer"]).classes("text-body2")
-                    with ui.row().classes("gap-1 ml-auto"):
+                    with ui.row().classes("gap-1 ml-auto items-center"):
+                        if row["id"] in problems:
+                            # No text: the eye shows what is wrong, the pencil fixes
+                            # it. See `app.gui.problem_markers`.
+                            render_marker()
                         ui.button(icon="edit", on_click=lambda r=row: on_edit(r)).props("dense flat")
                         ui.button(icon="delete", on_click=lambda r=row: on_remove(r)).props(
                             "dense flat color=negative"
@@ -197,6 +208,8 @@ def substation_areas_page() -> None:
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
+            if problem_filter.active:
+                visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
@@ -222,6 +235,9 @@ def substation_areas_page() -> None:
                     )
                     for substation_area in substation_area_repo.list_all(connection)
                 ]
+            problems.clear()
+            problems.update(load_problems(SUBJECT_SUBSTATION_AREA))
+            problem_filter.update(set(problems))
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())

@@ -17,8 +17,9 @@ from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
-from app.domain.address_check import KIND_PERSON, issue_ids
+from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.navigation import page_frame
+from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
@@ -318,15 +319,17 @@ def persons_page() -> None:
             # Hidden while there is nothing to filter: a control that can
             # only ever empty the list is clutter, and the filter row
             # already carries three.
-            only_address_issues_switch = ui.switch("Nur fehlerhafte Adressen")
-            only_address_issues_switch.visible = False
+            # Scrolling ninety cards to find the handful that are marked is
+            # the work this saves. The same control on every list, from
+            # `app.gui.problem_markers`.
+            problem_filter = ProblemFilter(lambda: apply_filter())
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         #: Person ids the address register disagrees with, refreshed with the
         #: list so a correction makes the marker disappear.
-        address_warnings: set[int] = set()
+        problems: dict = {}
 
         all_entries: list[tuple[Person, str]] = []
         visible_persons: list[Person] = []
@@ -399,19 +402,10 @@ def persons_page() -> None:
                             "text-grey-7"
                         )
                     with ui.row().classes("gap-1 ml-auto items-center"):
-                        if person.id in address_warnings:
-                            # A marker, not a question: the list cannot show
-                            # what a suggestion would replace, so it only
-                            # says "look at this one". The question is asked
-                            # at the field in the edit dialog.
-                            #
-                            # Sized explicitly: a bare q-icon inherits the
-                            # surrounding 1em and comes out visibly smaller
-                            # than the icons in the flat buttons next to it,
-                            # which Quasar renders at 1.715em.
-                            ui.icon("warning", color="warning", size="1.715em").classes("q-px-sm").tooltip(
-                                "Adresse weicht vom amtlichen Verzeichnis ab"
-                            )
+                        if person.id in problems:
+                            # No text: the eye shows what is wrong and the
+                            # pencil fixes it. See `app.gui.problem_markers`.
+                            render_marker()
                         ui.button(icon="visibility", on_click=lambda: on_view(person)).props("dense flat")
                         ui.button(icon="edit", on_click=lambda: on_edit(person)).props("dense flat")
                         if person.active:
@@ -441,7 +435,7 @@ def persons_page() -> None:
                 for person, search_text in all_entries
                 if (person.active or show_inactive_switch.value)
                 and (not only_cooperative_switch.value or person.id in memberships_by_person)
-                and (not only_address_issues_switch.value or person.id in address_warnings)
+                and (not problem_filter.active or person.id in problems)
                 and (not needle or needle in search_text)
             ]
             visible_persons = apply_sort(visible_persons, SORT_OPTIONS, sort_select)
@@ -458,8 +452,6 @@ def persons_page() -> None:
             """
             nonlocal all_entries, memberships_by_person
             with connection_scope() as connection:
-                address_warnings.clear()
-                address_warnings.update(issue_ids(connection, KIND_PERSON))
                 persons = person_repo.list_all(connection)
                 all_entries = [(p, _search_text_for_person(connection, p)) for p in persons]
                 # Today's roll, strictly -- see `app.models.
@@ -470,18 +462,13 @@ def persons_page() -> None:
                     for m in cooperative_membership_repo.list_all(connection)
                     if m.covers(date.today())
                 }
-            # A control that can only ever empty the list is clutter, and the
-            # filter row already carries three.
-            only_address_issues_switch.visible = bool(address_warnings)
-            if not address_warnings:
-                # Correcting the last one must not leave the list filtered
-                # down to nothing by a switch that is no longer on screen.
-                only_address_issues_switch.value = False
+            problems.clear()
+            problems.update(load_problems(SUBJECT_PERSON))
+            problem_filter.update(set(problems))
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
         show_inactive_switch.on_value_change(lambda _: apply_filter())
-        only_address_issues_switch.on_value_change(lambda _: apply_filter())
         only_cooperative_switch.on_value_change(lambda _: apply_filter())
 
         def on_view(person: Person) -> None:

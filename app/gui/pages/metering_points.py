@@ -8,7 +8,9 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
+from app.domain.quality_checks import SUBJECT_METERING_POINT
 from app.gui.navigation import page_frame
+from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import (
@@ -217,8 +219,13 @@ def metering_points_page() -> None:
             )
             without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
             sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+            problem_filter = ProblemFilter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
+
+        #: Ids with an open finding, refreshed with the list so a
+        #: correction makes the marker disappear.
+        problems: dict = {}
 
         all_rows: list[dict] = []
         visible_rows: list[dict] = []
@@ -255,7 +262,11 @@ def metering_points_page() -> None:
                             extras.append(f"Speicher {row['battery_capacity_kwh']:g} kWh")
                         if extras:
                             ui.label(", ".join(extras)).classes("text-grey-7 text-caption")
-                    with ui.row().classes("gap-1 ml-auto"):
+                    with ui.row().classes("gap-1 ml-auto items-center"):
+                        if row["id"] in problems:
+                            # No text: the eye shows what is wrong, the pencil fixes
+                            # it. See `app.gui.problem_markers`.
+                            render_marker()
                         ui.button(
                             icon="visibility",
                             on_click=lambda r=row: ui.navigate.to(f"/metering-points/{r['id']}"),
@@ -283,6 +294,8 @@ def metering_points_page() -> None:
             visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             if without_assignment_switch.value:
                 visible_rows = [r for r in visible_rows if r["person"] == "-"]
+            if problem_filter.active:
+                visible_rows = [r for r in visible_rows if r["id"] in problems]
             visible_rows = apply_sort(visible_rows, SORT_OPTIONS, sort_select)
             list_container.clear()
             with list_container:
@@ -304,6 +317,9 @@ def metering_points_page() -> None:
                 all_rows = [
                     _to_row(connection, mp, sites, legs) for mp in metering_point_repo.list_all(connection)
                 ]
+            problems.clear()
+            problems.update(load_problems(SUBJECT_METERING_POINT))
+            problem_filter.update(set(problems))
             apply_filter()
 
         search_input.on_value_change(lambda _: apply_filter())
