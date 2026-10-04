@@ -17,6 +17,7 @@ from app.db.connection import connection_scope
 from app.domain import dunning
 from app.emailing import graph_client
 from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
@@ -180,6 +181,7 @@ def dunning_page() -> None:
                     ui.button("Nicht jetzt", on_click=dialog.close).props("flat")
                     ui.link("Zu „Austritte“", "/offboardings").classes("self-center")
                     ui.button("Ausschluss-Prozess starten", on_click=start, color="negative")
+            form_guard(dialog)
             dialog.open()
 
         def open_send_dialog(candidate: dunning.DunningCandidate) -> None:
@@ -237,6 +239,7 @@ def dunning_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-4"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     send_button = ui.button("Senden", on_click=do_send)
+            form_guard(dialog)
             dialog.open()
 
         ui.separator().classes("my-4")

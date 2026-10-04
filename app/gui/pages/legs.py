@@ -43,6 +43,7 @@ from app.domain.participant_mix import (
 )
 from app.domain.quality_checks import SUBJECT_LEG
 from app.gui.filter_bar import FilterBar
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
     load_problems,
@@ -467,6 +468,7 @@ def legs_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Speichern", on_click=save)
+            form_guard(dialog, on_save=save)
             dialog.open()
 
         def on_edit(row: dict) -> None:
@@ -692,6 +694,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
+    form_guard(dialog, on_save=save)
     dialog.open()
 
 

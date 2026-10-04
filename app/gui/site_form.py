@@ -13,6 +13,7 @@ from app.db.connection import connection_scope
 from app.domain.quality_checks import SUBJECT_SITE
 from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
+from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
@@ -201,4 +202,5 @@ def open_site_form(
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
+    form_guard(dialog, on_save=save)
     dialog.open()

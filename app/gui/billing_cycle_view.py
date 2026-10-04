@@ -25,6 +25,7 @@ from app.domain.billing_checks import (
     run_control_points,
 )
 from app.gui.print_list import render_print_button
+from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import billing_cycle as billing_cycle_repo
 from app.models import billing_run as billing_run_repo
@@ -308,6 +309,7 @@ def _render_override_button(cycle: BillingCycle, on_changed: Callable[[], None])
             with ui.row().classes("w-full justify-end gap-2 mt-2"):
                 ui.button("Abbrechen", on_click=dialog.close).props("flat")
                 ui.button("Umgehung festhalten", on_click=confirm).props("color=warning")
+        form_guard(dialog)
         dialog.open()
 
     ui.button("Trotzdem fortfahren", on_click=open_dialog).props("outline color=warning").classes("mt-2")

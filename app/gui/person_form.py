@@ -19,8 +19,10 @@ from app.db.connection import connection_scope
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
+from app.domain.email_validation import validate_email
 from app.domain.iban_validation import normalize_iban, validate_iban
 from app.gui.cooperative_form import CooperativeEditor
+from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
 from app.models.person import SALUTATION_OPTIONS, Person
@@ -94,6 +96,8 @@ def open_person_form(
         # beside their own field further down.
         if existing is not None:
             render_problem_notes(load_problems(SUBJECT_PERSON).get(existing.id), exclude=AT_THE_FIELD)
+
+        ui.label("Name").classes("text-body1 font-bold")
         company = (
             ui.input(
                 "Firma (optional -- leer lassen für eine Privatperson)",
@@ -119,6 +123,8 @@ def open_person_form(
             last_name = ui.input(
                 "Nachname", value=_initial(existing, "last_name", prefill, "last_name")
             ).classes("flex-grow")
+        ui.separator().classes("my-2")
+        ui.label("Rechnungsadresse").classes("text-body1 font-bold")
         with ui.row().classes("w-full gap-2"):
             street = ui.input(
                 "Adresse: Strasse",
@@ -216,6 +222,7 @@ def open_person_form(
                 format="%.0f",
             ).classes("w-48")
         iban_error = ui.label("").classes("text-negative text-caption")
+        email_error = ui.label("").classes("text-negative text-caption")
 
         def check_iban() -> None:
             """Validate the IBAN once the field loses focus (not on every keystroke).
@@ -226,6 +233,20 @@ def open_person_form(
             iban_error.text = validate_iban(iban.value) or ""
 
         iban.on("blur", check_iban)
+
+        def check_emails() -> None:
+            """Report a certainly-wrong address when a field loses focus.
+
+            Both addresses go into the one message to this contract party
+            (`Person.contact_emails`), so both are checked the same way.
+
+            Returns:
+                None.
+            """
+            email_error.text = validate_email(email.value) or validate_email(second_email.value) or ""
+
+        email.on("blur", check_emails)
+        second_email.on("blur", check_emails)
         paper_invoice = ui.checkbox(
             "Papierrechnung (statt elektronisch, kostenpflichtig)",
             value=existing.paper_invoice if existing else False,
@@ -262,6 +283,13 @@ def open_person_form(
             if iban_problem:
                 iban_error.text = iban_problem
                 error_label.text = iban_problem
+                return
+            # A field nobody clicked into never lost focus, so the blur
+            # check alone would let a pasted-in form through.
+            email_problem = validate_email(email.value) or validate_email(second_email.value)
+            if email_problem:
+                email_error.text = email_problem
+                error_label.text = email_problem
                 return
             cooperative_problem = cooperative.validate()
             if cooperative_problem:
@@ -348,4 +376,5 @@ def open_person_form(
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
+    form_guard(dialog, on_save=save)
     dialog.open()

@@ -15,6 +15,7 @@ from app.emailing.templates import (
     find_unknown_placeholders,
 )
 from app.gui.billing_cycle_view import render_billing_cycle
+from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
 from app.gui.period_selector import QUARTER_LABELS
 from app.gui.safe_notify import safe_notify
@@ -197,6 +198,7 @@ def billing_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-2"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     ui.button("Rechnungslauf starten", on_click=create)
+            form_guard(dialog)
             dialog.open()
 
         with ui.row().classes("items-end gap-2") as cycle_row:
@@ -749,6 +751,7 @@ def billing_page() -> None:
                 with ui.row().classes("w-full justify-end gap-2 mt-4"):
                     ui.button("Abbrechen", on_click=dialog.close).props("flat")
                     send_button = ui.button("Senden", on_click=do_send)
+            form_guard(dialog)
             dialog.open()
 
         def run_billing() -> None:

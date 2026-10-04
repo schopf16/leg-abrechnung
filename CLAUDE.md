@@ -315,6 +315,69 @@ Printing is an action and not a filter, so `render_print_button` does not
 belong among the switches; on Debitoren it sits in the bar's left column
 under the sort control.
 
+### A dialog must not be able to lose what was typed into it
+
+`app/gui/form_dialog.py`'s `form_guard(dialog, on_save=...)` is applied to
+every dialog that holds typed-in data, once, after its body is built and
+before `dialog.open()`. Quasar closes a `q-dialog` on a click outside it and
+**none** of the 39 dialogs was `persistent`: the Person dialog holds
+seventeen inputs, and a click a few pixels off the card discarded a
+filled-in membership without a word. There is no undo, no draft and no
+notification anywhere in this app, so the click was the whole loss.
+
+Three behaviours, each answering one way of losing work:
+
+- **`persistent`** -- a click beside the card does nothing.
+- **Escape closes, but asks first when something was typed.** Making the
+  keyboard work must not make discarding easier than it was: Escape and a
+  stray click used to be the same gesture, and now Escape is the deliberate
+  one, so it is the one that has to be sure.
+- **Enter saves, from a single-line input only.** Not from a textarea, where
+  Enter is a newline, and not from a field carrying a lookup menu -- an
+  address field anchors its suggestion list to itself
+  (`app.gui.address_input`), and there Enter belongs to the list.
+
+**Enter is wired per action, not per dialog.** `on_save` is passed where the
+primary action stores a record, and deliberately left out where it sends
+mail, bills a quarter, starts an exclusion or records a billing override:
+none of those can be taken back, and a stray Enter would be enough to set
+them off. Those dialogs keep `persistent` and the Escape guard.
+
+**Dirtiness is measured, not wired up.** The guard snapshots every
+`ValueElement` inside the dialog when it is applied and compares on Escape,
+which is why it needs no cooperation from the dialog it guards. The limit is
+worth knowing: a field created *after* the guard (a sub-editor that rebuilds
+itself) is not in the snapshot, so a change made only there reads as clean.
+The protection that matters for an accidental click is `persistent`, which
+has no such gap.
+
+**Read-only dialogs deliberately do not get this.** An invoice preview or a
+detail view holds nothing to lose, and clicking beside it is the fastest way
+to dismiss it. Consequence for tests: a switch inside a guarded dialog is
+found by `_props["label"]`, and the guard itself is driven through the
+registered `keydown.escape` handler -- rendering proves nothing here, which
+is the whole reason the defect survived 1'100 tests.
+
+**Checked when a field loses focus, not only at save.** The IBAN was the one
+field that said anything before the save button
+(`app.domain.iban_validation`); `app.domain.email_validation` now does the
+same for both addresses, because a mistyped one otherwise surfaces at send
+time, in the middle of a quarter going out, long after the dialog that knew
+it was closed. It reports only what is certainly wrong -- no `@`, nothing on
+one side of it, no dot in the domain, a space -- and nothing else. No
+pattern for the local part and no list of top-level domains: an address
+cannot be proved good the way an IBAN's check digits can, and a false
+complaint about an address that works trains the administrator to click past
+the warning, after which the IBAN warning beside it gets clicked past too.
+An empty value is valid. Both checks also run at save, because a field
+nobody clicked into never lost focus.
+
+Cross-field rules stay at save. "Firma oder Vorname/Nachname" cannot fire on
+blur: leaving the company empty is legitimate right up until the name is
+empty too, so on blur it would complain about a form that is merely
+unfinished -- the same mistake `verify` made when it greeted an empty
+Standort dialog with "Nicht im amtlichen Verzeichnis."
+
 ### Problems: one marker, one filter, every list
 
 Whenever a record is misconfigured or needs a decision, its list shows a

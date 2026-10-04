@@ -17,6 +17,7 @@ from app.domain.metering_point_validation import (
     assemble_metering_point_designation,
     validate_metering_point_designation,
 )
+from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
@@ -246,4 +247,5 @@ def open_metering_point_form(
         with ui.row().classes("w-full justify-end gap-2 mt-2"):
             ui.button("Abbrechen", on_click=dialog.close).props("flat")
             ui.button("Speichern", on_click=save)
+    form_guard(dialog, on_save=save)
     dialog.open()
