@@ -14,6 +14,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.offboarding_form import open_offboarding_form, open_remove_person_dialog
 from app.gui.print_list import render_print_button
@@ -22,7 +23,6 @@ from app.gui.sorting import (
     SortOption,
     apply_sort,
     person_name_key,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -156,9 +156,9 @@ def offboardings_page() -> None:
                 )
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
-        with ui.row().classes("w-full items-center gap-4"):
-            show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
-            sort_select = render_sort_select(sort_options({}), lambda: refresh())
+        bar = FilterBar()
+        sort_select = bar.sort(sort_options({}), lambda: refresh())
+        show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

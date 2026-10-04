@@ -18,9 +18,9 @@ from app.domain.iban_validation import format_iban
 from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
-    ProblemFilter,
     load_problems,
     render_marker,
     render_problem_notes,
@@ -37,7 +37,6 @@ from app.gui.sorting import (
     apply_sort,
     number_key,
     person_name_key,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -307,28 +306,18 @@ def persons_page() -> None:
                 )
                 ui.button("+ Neue Person", on_click=lambda: open_person_form(on_saved=lambda _: refresh()))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            show_inactive_switch = ui.switch("Deaktivierte Personen anzeigen")
-            # The members' list the cooperative needs is this list, filtered
-            # and printed -- not a page of its own.
-            only_cooperative_switch = ui.switch("Nur Genossenschafter")
-            # Scrolling 91 cards to find the handful that are marked is the
-            # work this saves. Named after what it shows, not after the
-            # register, because that is what the reader is looking for.
-            #
-            # Hidden while there is nothing to filter: a control that can
-            # only ever empty the list is clutter, and the filter row
-            # already carries three.
-            # Scrolling ninety cards to find the handful that are marked is
-            # the work this saves. The same control on every list, from
-            # `app.gui.problem_markers`.
-            problem_filter = ProblemFilter(lambda: apply_filter())
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+        bar = FilterBar()
+        search_input = bar.search("Name, Firma, Kunden-Nr., Kontakt, Adresse, Messpunkt")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        show_inactive_switch = bar.filter("Deaktivierte Personen anzeigen")
+        # The members' list the cooperative needs is this list, filtered
+        # and printed -- not a page of its own.
+        only_cooperative_switch = bar.filter("Nur Genossenschafter")
+        # Scrolling ninety cards to find the handful that are marked is the
+        # work this saves. The same control on every list, from
+        # `app.gui.problem_markers`, and the bar keeps it below the
+        # permanent filters because it comes and goes with the findings.
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

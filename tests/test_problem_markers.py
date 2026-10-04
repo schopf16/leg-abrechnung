@@ -89,7 +89,7 @@ def _switch(client: Client):
     matches = [
         element
         for element in client.elements.values()
-        if element.__class__.__name__ == "Switch" and getattr(element, "text", "") == FILTER_LABEL
+        if element.__class__.__name__ == "Switch" and element._props.get("label") == FILTER_LABEL
     ]
     assert len(matches) == 1, f"{len(matches)} Schalter mit {FILTER_LABEL!r}"
     return matches[0]

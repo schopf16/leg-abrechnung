@@ -128,12 +128,19 @@ this pattern rather than reading the live setting at render time.
 Every *browsable* list — the CRUD pages and worklists under
 `app/gui/pages/` — sorts through `app/gui/sorting.py` and nothing else: a
 module-level `SORT_OPTIONS` list of `SortOption`s (default first), a
-`render_sort_select(SORT_OPTIONS, ...)` as the **last control in the
-page's filter row**, and `apply_sort(rows, SORT_OPTIONS, sort_select)`
-where the page builds its visible rows. `render_sort_select` returns a
-`SortControl` (select + ascending/descending arrow), not a bare
-`ui.select`; pass the whole control to `apply_sort`/`sort_description` so
-the direction is honoured, never just its `.value`. Never Quasar's `"sortable": True`
+**`bar.sort(SORT_OPTIONS, ...)`** on the page's `FilterBar` (next section
+-- the bar decides where the control goes, the page does not), and
+`apply_sort(rows, SORT_OPTIONS, sort_select)` where the page builds its
+visible rows. The rule used to read "the last control in the page's filter
+row", which is exactly the kind of instruction the bar replaces: it was
+true of some lists and not others, and nothing failed when it was broken.
+`bar.sort` returns a `SortControl` (select + ascending/descending arrow),
+not a bare `ui.select`; pass the whole control to
+`apply_sort`/`sort_description` so the direction is honoured, never just
+its `.value`. A page calling `render_sort_select` directly is a page
+building its own layout again, so `test_no_list_page_lays_its_own_filter_
+row_out_any_more` fails on it -- the one exemption is the metering-point
+sub-table on the LEG detail page, which is not a browsable list. Never Quasar's `"sortable": True`
 column headers — half the lists are cards and have no header to click, so
 clickable headers could never be the mechanism that works everywhere, and
 two mechanisms is exactly what the user complained about.
@@ -206,15 +213,107 @@ selected is printed on the printout's own "Sortierung:" line, via
 `render_print_button`'s `get_sort_description` — never folded into the
 filter line, because a sort order is not a filter.
 
-The drawer marks the **chapter** as well as the entry: expanding the right
-group is not the same as marking it, since three can be open at once if the
-administrator opened them, and the entry alone never answered "where am I".
-
 Detail sub-tables and history tables are exempt and have no control:
 `billing.py` (runs and items), `backup.py`, `import_page.py`,
 `reports.py`, `dashboard.py`, and the metering-point tables on the
 Person and Standort detail pages. Each shows one context's rows in the
 one order that context implies, so there is no choice to offer.
+
+### The drawer: an accordion of rows, read top to bottom
+
+`NAV_GROUPS` in `app/gui/navigation.py` is the order of the administrator's
+year, not the order the pages were written in: what needs doing (Übersicht)
+→ who and what is in the LEG (Stammdaten) → what is moving (Vorgänge) → the
+quarter (Abrechnung) → looking back (Statistik) → sending (Kommunikation) →
+the tools (Einstellungen).
+
+**Exactly one chapter is open**, via Quasar's `group=leg-nav` on the
+expansions. That is the mechanism, not decoration: the open chapter *is* the
+answer to "which part of the app am I in", so a second chapter standing open
+beside it would make the drawer say two things. An earlier attempt marked
+the chapter heading in the primary colour instead and was rejected -- it
+made the heading look like a link, and three chapters could still be open at
+once. Browsing another chapter does hide the grey bar while it is open; that
+ends at the next click, because navigating re-renders the drawer with the
+new page's chapter open.
+
+**Entries are rows, not hyperlinks.** Blue and underlined reads as "this
+leaves the page". They keep `ui.link` (middle-click, keyboard, no JavaScript
+needed) and lose its colour and underline; the open one carries a grey bar
+across the **full drawer width** -- the same width for every label, which is
+what makes the drawer scannable rather than read. Chapter headings stay
+black like all the others.
+
+Two namings are load-bearing. **"Stammdaten" is the chapter, so the settings
+page is "Allgemein"**: the name used to mean both, and the administrator
+looked under it for the master-data lists and found the sender address and
+the electricity price. And **Auswertungen comes before Rechnungslauf**,
+because `quarter_energy_totals` is the control sheet read *before* the run
+-- it is what says whether a quarter is worth billing at all -- not a
+report read after it.
+
+**Stammdaten and Vorgänge are two chapters, not one "Verwaltung".** The
+first is what the LEG *is* and gets corrected; the second is work in
+progress and gets worked off. It is the same boundary the problem markers
+follow (next section): a half-filled onboarding is not a defect, so those
+two lists carry no triangle.
+
+### The filter bar: the page says what, the bar says where
+
+`app/gui/filter_bar.py` is the third member of the family `app/gui/sorting.py`
+and `app/gui/problem_markers.py` started, and it was built for the
+administrator's own diagnosis of the app: *"bei jeder neuen idee packen wir
+einfach nach etwas hinten an, aber es hat kein system"*. Each list used to
+lay its controls out in one `ui.row` of its own, so every new filter went on
+the end of whatever happened to be there -- three lists ended up with the
+problem filter before the sort control and two with it after, and the
+Debitoren page had six controls in one row.
+
+A page now says what it needs and nothing about placement:
+
+```python
+bar = FilterBar()
+search_input = bar.search("Name, Firma, Adresse")
+sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+show_inactive_switch = bar.filter("Deaktivierte Personen anzeigen")
+problem_filter = bar.problem_filter(lambda: apply_filter())
+```
+
+Wiring stays with the page (`.on_value_change(...)`, reading `.value` in
+its own filter function); the bar owns the layout only.
+
+**Two columns: search and sort left, filters stacked right.** Chosen over a
+single row and over chips, and the reason is the problem filter: it appears
+and disappears with the findings, and in one row that moved every control
+beside it -- the administrator toggled it and watched the sort control jump.
+Stacked in a column of their own, a filter that comes or goes moves nothing
+else on the screen.
+
+**A conditional filter renders last whatever order the page asks for it
+in**, because the bar keeps a separate container at the bottom of that
+column. Structure rather than a convention to remember, which is the whole
+point of having a component instead of a rule in this file.
+
+**A filter's text is clickable**, via Quasar's `label` *prop*. NiceGUI's
+`ui.switch(text)` puts the text in the element's default slot, which Quasar
+renders beside the switch but does not wire up -- so the administrator hit a
+word and nothing happened. Consequence for tests: a switch's caption is in
+`element._props["label"]`, not in `.text`.
+
+**No filter carries a count.** "Nur fehlerhafte Einträge (10)" was offered
+and declined, and the reason given is the better one: a number on one filter
+and not the others reads as though the others had nothing to count, and a
+number on all four makes the column unreadable. `test_no_filter_carries_a_count`
+pins it, because the next person to read the request would reasonably add it.
+
+**The search field's label is "Suche"** and the list of fields searched is
+its `hint`. The list used to *be* the label, and Quasar shrinks a label to
+caption size above the input as soon as anything is typed -- unreadable
+exactly while it is being used.
+
+Printing is an action and not a filter, so `render_print_button` does not
+belong among the switches; on Debitoren it sits in the bar's left column
+under the sort control.
 
 ### Problems: one marker, one filter, every list
 

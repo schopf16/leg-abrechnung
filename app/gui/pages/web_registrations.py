@@ -44,6 +44,7 @@ from app.config import ConfigError, get_leg_api_token
 from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
 from app.domain.address_lookup import verify
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.person_form import open_person_form
 from app.gui.print_list import render_print_button
@@ -54,7 +55,6 @@ from app.gui.sorting import (
     address_key,
     apply_sort,
     person_name_key,
-    render_sort_select,
     sort_description,
 )
 from app.importers.cloudflare_client import (
@@ -207,9 +207,9 @@ def web_registrations_page() -> None:
                 )
                 ui.button("Registrierungen abrufen", on_click=lambda: do_sync())
 
-        with ui.row().classes("w-full items-center gap-4"):
-            show_complete_switch = ui.switch("Auch vollständig übernommene anzeigen")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
+        bar = FilterBar()
+        sort_select = bar.sort(SORT_OPTIONS, lambda: refresh())
+        show_complete_switch = bar.filter("Auch vollständig übernommene anzeigen")
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

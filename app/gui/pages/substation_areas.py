@@ -18,11 +18,12 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain.participant_mix import compute_participant_mix_for_substation_area
 from app.domain.quality_checks import SUBJECT_SUBSTATION_AREA
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
-from app.gui.problem_markers import ProblemFilter, load_problems, render_marker
+from app.gui.problem_markers import load_problems, render_marker
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
-from app.gui.sorting import SortOption, apply_sort, render_sort_select, sort_description, text_key
+from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
@@ -150,14 +151,10 @@ def substation_areas_page() -> None:
                 )
                 ui.button("+ Neuer Trafokreis", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, BKW-Bezeichnung, Bemerkung...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar()
+        search_input = bar.search("Name, BKW-Bezeichnung, Bemerkung")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

@@ -21,6 +21,7 @@ from nicegui import events, ui
 from app.db.connection import connection_scope
 from app.domain import bank_reconciliation, dunning, person_ledger
 from app.gui.invoice_detail import open_invoice_detail
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
@@ -29,7 +30,6 @@ from app.gui.sorting import (
     apply_sort,
     number_key,
     person_name_key,
-    render_sort_select,
     sort_description,
 )
 from app.importers.base import ImportValidationError
@@ -120,17 +120,18 @@ def receivables_page() -> None:
             "möglich ist -- alles andere wird nur als Vorschlag angezeigt."
         ).classes("text-body2 text-grey-8")
 
-        with ui.row().classes("w-full items-center gap-4 mt-2"):
-            search_input = (
-                ui.input("Suche (Name, Kunden-Nr.)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            only_forderung_switch = ui.switch("Nur offene Forderungen")
-            only_guthaben_switch = ui.switch("Nur Guthaben")
-            only_dunning_switch = ui.switch("Nur fällige Mahnungen")
-            only_offboarding_switch = ui.switch("Nur laufende Austritte")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
+        bar = FilterBar()
+        search_input = bar.search("Name, Kunden-Nr.")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        only_forderung_switch = bar.filter("Nur offene Forderungen")
+        only_guthaben_switch = bar.filter("Nur Guthaben")
+        only_dunning_switch = bar.filter("Nur fällige Mahnungen")
+        only_offboarding_switch = bar.filter("Nur laufende Austritte")
+
+        # Printing is an action, not a filter, so it sits under the search
+        # and the sort control rather than at the end of four switches --
+        # this is the page that had the most crowded filter row in the app.
+        with bar.left:
             render_print_button(
                 heading="Debitoren",
                 get_columns=lambda: PRINT_COLUMNS,

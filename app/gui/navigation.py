@@ -13,16 +13,22 @@ from nicegui import app, ui
 from app.gui.print_list import PRINT_STYLE
 from app.version import APP_VERSION
 
-#: Side navigation, grouped by where each page sits in the actual
-#: workflow (master data -> billing -> analysis -> configuration) rather
-#: than the chronological order pages were added in. Each entry is
-#: ``(group_label, [(route, label), ...])``; ``group_label`` of ``None``
-#: renders its items without a collapsible section (used for the single
-#: top-level "Übersicht" entry).
+#: Side navigation. Read top to bottom it is the administrator's year:
+#: what needs doing -> who and what is in the LEG -> what is moving ->
+#: the quarter's billing -> looking back -> sending -> the tools. Each
+#: entry is ``(group_label, [(route, label), ...])``; ``group_label`` of
+#: ``None`` renders its items without a collapsible section (used for the
+#: single top-level "Übersicht" entry).
+#:
+#: "Stammdaten" and "Vorgänge" are deliberately two chapters rather than
+#: one "Verwaltung": the first is what the LEG *is* and is corrected, the
+#: second is work in progress and is worked off. That is also the boundary
+#: the problem markers follow (see `app.gui.problem_markers`) -- a
+#: half-filled onboarding is not a defect, so those two lists carry none.
 NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
     (None, [("/", "Übersicht")]),
     (
-        "Verwaltung",
+        "Stammdaten",
         [
             ("/substation-areas", "Trafokreise"),
             ("/sites", "Standorte"),
@@ -30,19 +36,29 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/metering-points", "Messpunkte"),
             ("/persons", "Personen"),
             ("/assignments", "Zuordnungen"),
+        ],
+    ),
+    (
+        "Vorgänge",
+        [
             ("/web-registrations", "Web-Registrierungen"),
             ("/onboardings", "Aufnahmen"),
             ("/offboardings", "Austritte"),
         ],
     ),
     (
+        # The order of the quarter: import, check what the import contains,
+        # bill it, book the payments, chase what is missing. "Auswertungen"
+        # used to sit last although it is the control sheet read *before*
+        # the run -- `quarter_energy_totals` is what says whether a quarter
+        # is worth billing at all.
         "Abrechnung",
         [
             ("/import", "Import"),
+            ("/reports", "Auswertungen"),
             ("/billing", "Rechnungslauf"),
             ("/receivables", "Debitoren"),
             ("/dunning", "Mahnwesen"),
-            ("/reports", "Auswertungen"),
         ],
     ),
     (
@@ -65,7 +81,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
     (
         "Einstellungen",
         [
-            ("/settings", "Stammdaten"),
+            ("/settings", "Allgemein"),
             ("/address-register", "Adressregister"),
             ("/backup", "Backup"),
         ],
@@ -86,7 +102,7 @@ def _nav_link(route: str, label: str, active_route: str, *, indent: bool) -> Non
     Returns:
         None.
     """
-    classes = "w-full" + (" leg-nav-active text-primary" if route == active_route else "")
+    classes = "w-full leg-nav-item" + (" leg-nav-active" if route == active_route else "")
     padding = "6px 12px 6px 28px" if indent else "6px 12px"
     ui.link(label, route).classes(classes).style(f"display:block; padding:{padding};")
 
@@ -126,13 +142,18 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
     """
     ui.add_head_html(
         "<style>"
-        ".leg-nav-active { font-weight: 700; }"
+        # An entry is navigation, not a link inside a text: blue and
+        # underlined reads as "this leaves the page". They are rows.
+        ".leg-nav-item { color: rgba(0,0,0,0.75); text-decoration: none; }"
+        ".leg-nav-item:hover { background: rgba(0,0,0,0.04); }"
+        # The open entry carries one grey bar across the full drawer width,
+        # the same width for every label -- which is what makes the drawer
+        # scannable instead of read. The chapter headings stay black like
+        # all the others; colouring the open one made it look like a link.
+        ".leg-nav-active { background: rgba(0,0,0,0.10); font-weight: 700;"
+        " color: rgba(0,0,0,0.87); }"
         ".leg-nav-group .q-item { padding: 6px 12px; min-height: 0; }"
         ".leg-nav-group .q-item__label { font-size: 13px; font-weight: 600; }"
-        # The open entry was already bold, but the chapter it sits in was
-        # not -- so the drawer never said which part of the app you were in.
-        ".leg-nav-open-group > .q-expansion-item__container > .q-item "
-        ".q-item__label { font-weight: 800; color: var(--q-primary); }"
         "</style>"
     )
     ui.add_head_html(PRINT_STYLE)
@@ -153,8 +174,14 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
             is_active_group = any(route == active_route for route, _ in items)
             with (
                 ui.expansion(group_label, value=is_active_group)
-                .classes("w-full leg-nav-group" + (" leg-nav-open-group" if is_active_group else ""))
-                .props("dense")
+                .classes("w-full leg-nav-group")
+                # An accordion: opening one chapter closes the rest, so the
+                # open chapter *is* the answer to "which part am I in" and
+                # needs no second mark of its own. Browsing another chapter
+                # hides the grey bar for as long as it stays open, which
+                # ends at the next click -- navigating re-renders the drawer
+                # with the chapter of the new page open.
+                .props("dense group=leg-nav")
             ):
                 for route, label in items:
                     _nav_link(route, label, active_route, indent=True)

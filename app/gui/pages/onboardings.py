@@ -13,6 +13,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -21,7 +22,6 @@ from app.gui.sorting import (
     SortOption,
     apply_sort,
     person_name_key,
-    render_sort_select,
     sort_description,
 )
 from app.models import person as person_repo
@@ -202,12 +202,10 @@ def onboardings_page() -> None:
                 )
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
-        with ui.row().classes("w-full items-center gap-4"):
-            show_complete_switch = ui.switch("Auch abgeschlossene anzeigen")
-            step_filter = ui.select(STEP_FILTER_OPTIONS, value=None, label="Schritt-Filter").classes(
-                "w-full max-w-sm"
-            )
-            sort_select = render_sort_select(sort_options({}), lambda: refresh())
+        bar = FilterBar()
+        sort_select = bar.sort(sort_options({}), lambda: refresh())
+        show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
+        step_filter = bar.choice(STEP_FILTER_OPTIONS, "Schritt-Filter")
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
         visible_onboardings: list[PersonOnboarding] = []

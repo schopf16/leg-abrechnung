@@ -16,10 +16,11 @@ from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
 from app.domain import dunning
 from app.emailing import graph_client
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
-from app.gui.sorting import SortOption, apply_sort, person_name_key, render_sort_select, sort_description
+from app.gui.sorting import SortOption, apply_sort, person_name_key, sort_description
 from app.models import dunning_log as dunning_log_repo
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
@@ -93,7 +94,10 @@ def dunning_page() -> None:
                 get_sort_description=lambda: sort_description(SORT_OPTIONS, sort_select),
             )
 
-        sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh_candidates())
+        # The worklist leads with its own urgency order and has nothing to
+        # filter, but it uses the same bar so the control sits where it does
+        # on every other list.
+        sort_select = FilterBar().sort(SORT_OPTIONS, lambda: refresh_candidates())
         candidates_container = ui.column().classes("w-full gap-2 mt-2")
         current_candidates: list[dunning.DunningCandidate] = []
 

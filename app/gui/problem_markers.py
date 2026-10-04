@@ -87,7 +87,9 @@ class ProblemFilter:
         Returns:
             None.
         """
-        self.switch = ui.switch(FILTER_LABEL)
+        # Quasar wires up the `label` *prop*; text in the default slot
+        # renders beside the switch and does nothing when clicked.
+        self.switch = ui.switch().props(f'label="{FILTER_LABEL}" dense')
         self.switch.visible = False
         self.switch.on_value_change(lambda _: on_change())
 

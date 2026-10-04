@@ -14,6 +14,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.leg_composition import compute_leg_composition
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
@@ -22,7 +23,6 @@ from app.gui.sorting import (
     address_key,
     apply_sort,
     fold_for_sort,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -117,14 +117,10 @@ def assignments_page() -> None:
                 )
                 ui.button("+ Neue Zuordnung", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Messpunkt, Person, Adresse...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            only_current_switch = ui.switch("Nur laufende oder künftige Zuordnungen")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: refresh())
+        bar = FilterBar()
+        search_input = bar.search("Messpunkt, Person, Adresse")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: refresh())
+        only_current_switch = bar.filter("Nur laufende oder künftige Zuordnungen")
 
         search_input.on_value_change(lambda _: refresh())
         only_current_switch.on_value_change(lambda _: refresh())

@@ -42,9 +42,9 @@ from app.domain.participant_mix import (
     compute_participant_mix_for_leg,
 )
 from app.domain.quality_checks import SUBJECT_LEG
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
-    ProblemFilter,
     load_problems,
     render_marker,
     render_problem_notes,
@@ -219,14 +219,10 @@ def legs_page() -> None:
                 )
                 ui.button("+ Neue LEG", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Name, Bemerkung, Trafokreis...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar()
+        search_input = bar.search("Name, Bemerkung, Trafokreis")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 

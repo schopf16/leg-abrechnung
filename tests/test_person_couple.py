@@ -275,8 +275,9 @@ def _switch(client: Client, label: str):
     matches = [
         element
         for element in client.elements.values()
-        # A switch keeps its caption in `.text`, not in `_props["label"]`.
-        if element.__class__.__name__ == "Switch" and getattr(element, "text", None) == label
+        # The caption lives in the `label` prop, which is the half Quasar
+        # makes clickable -- see `app.gui.filter_bar`.
+        if element.__class__.__name__ == "Switch" and element._props.get("label") == label
     ]
     assert len(matches) == 1, f"Schalter {label!r} nicht eindeutig: {len(matches)}"
     return matches[0]

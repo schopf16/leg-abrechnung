@@ -9,9 +9,9 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.metering_point_form import open_metering_point_form
 from app.domain.quality_checks import SUBJECT_METERING_POINT
+from app.gui.filter_bar import FilterBar
 from app.gui.navigation import page_frame
 from app.gui.problem_markers import (
-    ProblemFilter,
     load_problems,
     render_marker,
     render_problem_notes,
@@ -22,7 +22,6 @@ from app.gui.sorting import (
     SortOption,
     address_key,
     apply_sort,
-    render_sort_select,
     sort_description,
     text_key,
 )
@@ -216,15 +215,11 @@ def metering_points_page() -> None:
                 )
                 ui.button("+ Neuer Messpunkt", on_click=lambda: open_form(None))
 
-        with ui.row().classes("w-full items-center gap-4"):
-            search_input = (
-                ui.input("Suche (Bezeichnung, Richtung, Standort, LEG, Person...)")
-                .classes("w-full max-w-md")
-                .props("debounce=300 clearable")
-            )
-            without_assignment_switch = ui.switch("Nur ohne Zuordnung (auch nicht künftig)")
-            sort_select = render_sort_select(SORT_OPTIONS, lambda: apply_filter())
-            problem_filter = ProblemFilter(lambda: apply_filter())
+        bar = FilterBar()
+        search_input = bar.search("Bezeichnung, Richtung, Standort, LEG, Person")
+        sort_select = bar.sort(SORT_OPTIONS, lambda: apply_filter())
+        without_assignment_switch = bar.filter("Nur ohne Zuordnung (auch nicht künftig)")
+        problem_filter = bar.problem_filter(lambda: apply_filter())
 
         list_container = ui.column().classes("w-full gap-2 mt-2")
 
