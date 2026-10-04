@@ -10,6 +10,7 @@ from typing import Iterator, Optional
 
 from nicegui import app, ui
 
+from app.gui.global_search import render_global_search
 from app.gui.keyboard import install as install_keyboard
 from app.gui.print_list import PRINT_STYLE
 from app.version import APP_VERSION
@@ -179,6 +180,11 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
     with ui.header().classes("items-center justify-between bg-primary text-white"):
         ui.label("LEG-Abrechnung").classes("text-lg font-bold")
         ui.label(title).classes("text-md")
+        # One box that reaches every Stammdaten record, on every page: a
+        # record used to be findable only from the list it lives on, which
+        # asked the reader to know this app's filing before looking
+        # anything up. See `app.gui.global_search`.
+        render_global_search()
         _render_address_register_progress()
 
     with ui.left_drawer(fixed=True).classes("bg-grey-1 q-pa-none").props("width=240"):

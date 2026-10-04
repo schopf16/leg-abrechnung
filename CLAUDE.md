@@ -496,6 +496,53 @@ and calls the page **once**, rather than letting five controls fire five
 rebuilds. An empty Mahnwesen worklist deliberately gets no suggestion: it is
 good news.
 
+### One search box, for every Stammdaten record
+
+`app/domain/global_search.py` matches and `app/gui/global_search.py` is the
+box in the header, on every page. Until it existed a record could only be
+found from the list it lives on: a street could be a Standort or somebody's
+billing address, and a Messpunktbezeichnung meant going to Messpunkte first.
+That is knowledge about this app's filing, demanded of a reader who only
+wants to find a meter.
+
+**It searches what the lists already search**, no more. Those haystacks were
+built one at a time and each knows its own record, so this is a domain
+function over the models and the five lists keep their own filters untouched
+-- two search implementations would drift, and the one in the header would be
+the one nobody tested. A person's name therefore finds their metering point
+and a street finds both the Standort and the meters on it, exactly as the
+Messpunkte list already did.
+
+Three deliberate limits:
+
+- **Substring, folded, no fuzziness.** `app.domain.address_lookup` is fuzzy
+  because it compares typing against three million official addresses and has
+  to tolerate a typo; here the administrator is looking for something they
+  know exists, and a near miss would offer the wrong member. Folding goes
+  through `fold_for_sort`, so "Buhler" finds "Bühler" the way the lists
+  already sort it.
+- **No relevance score.** Groups come in the order of the data model
+  (Trafokreis → Standort → Messpunkt → LEG → Person), the same order the
+  drawer lists them in, and are sorted inside a group by the keys that
+  group's own list uses. A score would put a person above a metering point
+  for reasons nobody can see -- and it is why Enter on a surname opens the
+  **meter** and one ArrowDown opens the person, which the tests state
+  outright rather than work around.
+- **A group caps itself at six and says how many more.** A dropdown with
+  ninety entries is a list, and a worse one than the real page.
+
+The keys come from `app.gui.keyboard`, the same way the address suggestions
+take them: the list floats with `no-focus`, so a layer is pushed while it is
+open and given back when it closes -- otherwise it would answer Escape for
+the page underneath. The first hit is marked as soon as there are results, so
+Enter after typing is one keystroke to the obvious answer, and the mark is
+visible, which is the whole difference from guessing. Leaving for a hit
+empties the box: coming back to a page with yesterday's query in the header
+and no list under it reads as broken.
+
+A Trafokreis has no detail page, so its hits lead to the Trafokreise list --
+the one place those records can be opened.
+
 ### The fix loop has to close
 
 See the triangle, open the record, correct it, come back. Two halves of that
