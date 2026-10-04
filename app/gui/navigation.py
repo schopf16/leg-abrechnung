@@ -10,6 +10,7 @@ from typing import Iterator, Optional
 
 from nicegui import app, ui
 
+from app.gui.keyboard import install as install_keyboard
 from app.gui.print_list import PRINT_STYLE
 from app.version import APP_VERSION
 
@@ -158,6 +159,9 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
     )
     ui.add_head_html(PRINT_STYLE)
     ui.page_title(f"LEG-Abrechnung – {title}")
+    # One keyboard for the window; who owns the keys is decided by the
+    # stack in `app.gui.keyboard`, not by which element has the focus.
+    install_keyboard()
 
     with ui.header().classes("items-center justify-between bg-primary text-white"):
         ui.label("LEG-Abrechnung").classes("text-lg font-bold")

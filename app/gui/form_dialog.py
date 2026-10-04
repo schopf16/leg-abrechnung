@@ -49,6 +49,8 @@ from typing import Callable, Optional
 from nicegui import ui
 from nicegui.elements.mixins.value_element import ValueElement
 
+from app.gui.keyboard import KeyboardLayer, push, remove
+
 
 class FormGuard:
     """Protects one dialog's typed-in data.
@@ -71,11 +73,22 @@ class FormGuard:
         self._on_save = on_save
         self._fields = [element for element in dialog.descendants() if isinstance(element, ValueElement)]
         self._snapshot = self._values()
+        #: Set by the first key that would change text. The value snapshot
+        #: alone was not enough and the administrator found it on the LEG
+        #: dialog: that field carries `debounce=300` for its duplicate
+        #: check, so what was typed had not reached the server yet and
+        #: Escape closed the dialog without asking. "A key was pressed" is
+        #: the thing we actually want to know, and it needs no round trip.
+        self._typed = False
 
         dialog.props("persistent")
-        # With `persistent`, Quasar stops handling Escape itself, so the
-        # dialog would become unclosable by keyboard without this.
-        dialog.on("keydown.escape", lambda _: self._escape())
+
+        #: What this dialog does with the keys while it is the innermost
+        #: thing open. The arrows are deliberately not claimed: in a form
+        #: they move the caret, and a list or a question opened on top of
+        #: this one takes them over for as long as it is open.
+        self._layer = KeyboardLayer(on_escape=self._escape, on_typing=self._note_typing)
+        dialog.on_value_change(lambda event: self._follow_the_dialog(bool(event.value)))
 
         if on_save is not None:
             for field in self._fields:
@@ -84,6 +97,12 @@ class FormGuard:
 
         self._confirm = self._build_confirm()
         self._keep_the_footer_in_view()
+        # Hung on the dialog so a test can ask any dialog in the app
+        # whether it notices a change, rather than each page having to hand
+        # its guard out. The LEG dialog closed on Escape without asking
+        # because its fields were not in the snapshot, and nothing could
+        # see that from outside.
+        dialog.form_guard = self
 
     @staticmethod
     def _enter_belongs_to_the_form(field: ValueElement) -> bool:
@@ -112,13 +131,35 @@ class FormGuard:
         """
         return [field.value for field in self._fields]
 
+    def _note_typing(self) -> None:
+        """Remember that a key was pressed inside this dialog.
+
+        Returns:
+            None.
+        """
+        self._typed = True
+
+    def _follow_the_dialog(self, is_open: bool) -> None:
+        """Take the keys while the dialog is open, and give them back after.
+
+        Args:
+            is_open: The dialog's new state.
+
+        Returns:
+            None.
+        """
+        if is_open:
+            push(self._layer)
+        else:
+            remove(self._layer)
+
     def dirty(self) -> bool:
         """Whether anything has been typed or picked since the dialog opened.
 
         Returns:
-            `True` when at least one field's value differs.
+            `True` when a key was pressed or a field's value differs.
         """
-        return self._values() != self._snapshot
+        return self._typed or self._values() != self._snapshot
 
     def _build_confirm(self) -> ui.dialog:
         """The question asked when Escape would discard something.
@@ -135,17 +176,84 @@ class FormGuard:
         with ui.dialog() as confirm, ui.card():
             ui.label("Eingaben verwerfen?")
             with ui.row().classes("w-full justify-end gap-2"):
-                ui.button("Weiter bearbeiten", on_click=lambda: confirm.close()).props("flat")
-                ui.button("Verwerfen", on_click=discard, color="negative")
+                keep = ui.button("Weiter bearbeiten", on_click=lambda: self._answer(0)).props("flat")
+                throw_away = ui.button("Verwerfen", on_click=lambda: self._answer(1), color="negative")
         # Persistent for a reason found by using it: the Escape keystroke
         # that opens this question goes on to reach the question itself,
         # and a non-persistent dialog is closed by Quasar on that same
-        # event -- so it appeared and vanished in one blink. Escape here
-        # therefore means "Weiter bearbeiten", which is also the safe
-        # reading of pressing it twice.
+        # event -- so it appeared and vanished in one blink.
         confirm.props("persistent")
-        confirm.on("keydown.escape", lambda _: confirm.close())
+
+        #: The question is two buttons and no text, so it is the one place
+        #: where the arrows have nothing else to do: they move between the
+        #: answers and Enter takes the marked one. Escape means "Weiter
+        #: bearbeiten", which is also the safe reading of pressing it twice.
+        self._answers = [(keep, lambda: confirm.close()), (throw_away, discard)]
+        self._marked = 0
+        self._confirm_layer = KeyboardLayer(
+            on_escape=lambda: self._answer(0),
+            on_enter=lambda: self._answer(self._marked),
+            on_move=self._move_mark,
+        )
+        confirm.on_value_change(lambda event: self._follow_the_question(bool(event.value)))
         return confirm
+
+    def _follow_the_question(self, is_open: bool) -> None:
+        """Take the keys while the question is open.
+
+        It is pushed above the form's own layer, so Escape answers the
+        question rather than closing the form behind it.
+
+        Args:
+            is_open: The question's new state.
+
+        Returns:
+            None.
+        """
+        if is_open:
+            self._marked = 0
+            self._show_the_mark()
+            push(self._confirm_layer)
+        else:
+            remove(self._confirm_layer)
+
+    def _move_mark(self, step: int) -> None:
+        """Move the mark between the two answers.
+
+        Args:
+            step: `-1` or `+1`.
+
+        Returns:
+            None.
+        """
+        self._marked = (self._marked + step) % len(self._answers)
+        self._show_the_mark()
+
+    def _show_the_mark(self) -> None:
+        """Draw the mark on the answer the keys would take.
+
+        The same grey bar the drawer marks the open chapter with, rather
+        than a third way of saying "this one".
+
+        Returns:
+            None.
+        """
+        for index, (button, _) in enumerate(self._answers):
+            if index == self._marked:
+                button.style("outline: 2px solid rgba(0,0,0,0.45); outline-offset: 2px;")
+            else:
+                button.style("outline: none;")
+
+    def _answer(self, index: int) -> None:
+        """Take one of the two answers.
+
+        Args:
+            index: `0` to keep editing, `1` to discard.
+
+        Returns:
+            None.
+        """
+        self._answers[index][1]()
 
     def _keep_the_footer_in_view(self) -> None:
         """Pin the button row to the bottom of the visible dialog.

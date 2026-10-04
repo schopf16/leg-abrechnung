@@ -14,9 +14,14 @@ from app.gui.form_dialog import form_guard
 def _listener(element, event_type: str):
     """The handler registered for one event type.
 
+    Only the clicks and the per-element Enter are looked up this way. The
+    keys a dialog owns come from `app.gui.keyboard`'s stack and are pressed
+    through the `press` fixture, because that is how they arrive in the
+    running app.
+
     Args:
         element: The element to look at.
-        event_type: e.g. "keydown.escape".
+        event_type: e.g. "click".
 
     Returns:
         The handler, callable with one argument.
@@ -60,18 +65,18 @@ def test_a_guarded_dialog_does_not_close_on_a_click_beside_it():
     assert dialog._props.get("persistent") is True
 
 
-def test_escape_closes_a_dialog_nothing_was_typed_into():
+def test_escape_closes_a_dialog_nothing_was_typed_into(press):
     """Making the keyboard work must not make the dialog unclosable."""
     client, dialog, guard, _, _ = _dialog("/probe-guard-escape-clean")
 
     assert guard.dirty() is False
     with client:
-        _listener(dialog, "keydown.escape")(None)
+        press("Escape")
 
     assert dialog.value is False
 
 
-def test_escape_asks_before_throwing_typed_input_away():
+def test_escape_asks_before_throwing_typed_input_away(press):
     """Escape used to be the same gesture as a stray click.
 
     Now it is the deliberate one, which is exactly why it has to be sure:
@@ -83,19 +88,19 @@ def test_escape_asks_before_throwing_typed_input_away():
     assert guard.dirty() is True
 
     with client:
-        _listener(dialog, "keydown.escape")(None)
+        press("Escape")
 
-    assert dialog.value is not False, "der Dialog darf sich nicht einfach schliessen"
+    assert dialog.value is True, "der Dialog darf sich nicht einfach schliessen"
     assert guard._confirm.value is True, "die Rückfrage muss offen sein"
 
 
-def test_discarding_from_the_question_closes_both():
+def test_discarding_from_the_question_closes_both(press):
     """Otherwise the question stays on screen over a closed form."""
     client, dialog, guard, fields, _ = _dialog("/probe-guard-escape-discard")
 
     fields["text"].value = "Muster"
     with client:
-        _listener(dialog, "keydown.escape")(None)
+        press("Escape")
         discard = next(
             element
             for element in client.elements.values()
@@ -176,7 +181,7 @@ def test_the_real_edit_dialogs_are_guarded(module, function, address_register):
 # --- What using it exposed -------------------------------------------------
 
 
-def test_the_question_survives_the_keystroke_that_opened_it():
+def test_the_question_survives_the_keystroke_that_opened_it(press):
     """It appeared and vanished in one blink.
 
     The Escape keydown that opens the question goes on to reach the
@@ -188,13 +193,13 @@ def test_the_question_survives_the_keystroke_that_opened_it():
 
     fields["text"].value = "Muster"
     with client:
-        _listener(dialog, "keydown.escape")(None)
+        press("Escape")
 
     assert guard._confirm._props.get("persistent") is True
     assert guard._confirm.value is True
 
     with client:
-        _listener(guard._confirm, "keydown.escape")(None)
+        press("Escape")
 
     assert guard._confirm.value is False
     assert dialog.value is True, "zurück zum Bearbeiten, nicht verworfen"
@@ -252,3 +257,113 @@ def test_the_person_dialog_shows_its_error_beside_the_save_button(address_regist
     ]
 
     assert any("erforderlich" in message for message in messages), messages
+
+
+# --- The question is a keyboard thing too ---------------------------------
+
+
+def test_the_question_can_be_answered_without_the_mouse(press):
+    """Reported from use: "bei escape kann ich die pfeiltasten links rechts
+    nicht brauchen, auch enter nicht".
+
+    The question is two buttons and no text, so it is the one place where
+    the arrows have nothing else to do.
+    """
+    client, dialog, guard, fields, _ = _dialog("/probe-guard-question-keys")
+
+    fields["text"].value = "Muster"
+    with client:
+        press("Escape")
+        assert guard._marked == 0, "die sichere Antwort ist vormarkiert"
+
+        press("ArrowRight")
+        assert guard._marked == 1
+
+        press("ArrowLeft")
+        assert guard._marked == 0
+
+        press("ArrowDown")
+        assert guard._marked == 1, "alle vier Pfeile markieren"
+
+        press("Enter")
+
+    assert dialog.value is False, "Enter nimmt die markierte Antwort"
+
+
+def test_enter_on_the_safe_answer_goes_back_to_editing(press):
+    """The mark starts there, so a hasty Enter keeps the work."""
+    client, dialog, guard, fields, _ = _dialog("/probe-guard-question-safe")
+
+    fields["text"].value = "Muster"
+    with client:
+        press("Escape")
+        press("Enter")
+
+    assert guard._confirm.value is False
+    assert dialog.value is True
+
+
+def test_a_key_counts_as_typing_even_before_the_value_arrives(press):
+    """The defect the administrator found on the LEG dialog.
+
+    That field carries `debounce=300` for its duplicate check, so what was
+    typed had not reached the server yet -- the value snapshot still matched
+    and Escape closed the dialog without asking. A key press needs no round
+    trip.
+    """
+    client, dialog, guard, _, _ = _dialog("/probe-guard-typed-flag")
+
+    assert guard.dirty() is False
+    with client:
+        press("t")
+
+    assert guard.dirty() is True, "ein Tastendruck zählt als Änderung"
+
+    with client:
+        press("Escape")
+
+    assert dialog.value is True
+    assert guard._confirm.value is True
+
+
+def test_the_leg_dialog_asks_before_discarding_what_was_typed(address_register, press):
+    """The exact sequence the administrator reported.
+
+    "neues leg öffnen / test eintippen / neben das popup klicken (schliesst
+    nicht) / esc drücken schliesst ohne rückmeldung". Driven through the
+    page's own button, because the dialog only exists once that is clicked
+    -- which is why no earlier test saw it.
+    """
+    from app.gui.pages import legs as legs_page
+
+    client = Client(ui.page("/probe-guard-leg")(lambda: None), request=None)
+    with client:
+        legs_page.legs_page()
+
+        new_leg = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and element.text == "+ Neue LEG"
+        )
+        _listener(new_leg, "click")(None)
+
+        dialog = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Dialog" and hasattr(element, "form_guard")
+        )
+        guard = dialog.form_guard
+
+        assert dialog._props.get("persistent") is True, "der Klick daneben darf nichts verwerfen"
+
+        # Typing "test": the name field carries debounce=300, so in the real
+        # app the value had not reached the server when Escape was pressed.
+        for character in "test":
+            press(character)
+
+        assert guard.dirty() is True
+
+        press("Escape")
+
+    assert dialog.value is True, "der Dialog darf nicht stillschweigend zugehen"
+    assert guard._confirm.value is True, "es muss gefragt werden"

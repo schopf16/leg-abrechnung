@@ -288,3 +288,75 @@ def address_register(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(address_lookup_module, "ADDRESS_REGISTER_PATH", target)
     monkeypatch.setattr(address_register_module, "ADDRESS_REGISTER_PATH", target)
     return target
+
+
+def _key_event(name: str, *, code: str = "", keydown: bool = True):
+    """Build one key press, as NiceGUI's keyboard would deliver it.
+
+    The app binds no keys to elements any more (see `app.gui.keyboard`), so
+    a test that wants to press a key has to go through the one dispatcher --
+    which is also the only way to find out whether the right layer answered.
+
+    Args:
+        name: The browser's key name, e.g. "Enter", "Escape", "ArrowDown".
+        code: The key code, defaulting to `name`.
+        keydown: False for a key release.
+
+    Returns:
+        A `KeyEventArguments` ready for `app.gui.keyboard.handle_key`.
+    """
+    from nicegui.events import KeyboardAction, KeyboardKey, KeyboardModifiers, KeyEventArguments
+
+    return KeyEventArguments(
+        sender=None,
+        client=None,
+        action=KeyboardAction(keydown=keydown, keyup=not keydown, repeat=False),
+        key=KeyboardKey(name=name, code=code or name, location=0),
+        modifiers=KeyboardModifiers(alt=False, ctrl=False, meta=False, shift=False),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_keyboard_layer_outlives_its_test():
+    """Empty the keyboard stack around every test.
+
+    Without a client to hang it on the stack is module-level (see
+    `app.gui.keyboard`), so a layer left behind by one test would answer
+    another test's keys -- and xdist hands each worker an arbitrary slice,
+    so that failure would not even be reproducible.
+
+    Yields:
+        None.
+    """
+    from app.gui import keyboard
+
+    keyboard._FALLBACK.clear()
+    yield
+    keyboard._FALLBACK.clear()
+
+
+@pytest.fixture
+def press():
+    """Press keys through the app's one dispatcher.
+
+    No key is bound to an element any more (see `app.gui.keyboard`), so this
+    is the only way to press one -- and it is also the only way to find out
+    whether the right layer answered.
+
+    Returns:
+        `press("ArrowDown")`, `press("Enter")`, ...
+    """
+    from app.gui.keyboard import handle_key
+
+    def _press(name: str) -> None:
+        """Press one key.
+
+        Args:
+            name: The browser's key name.
+
+        Returns:
+            None.
+        """
+        handle_key(_key_event(name))
+
+    return _press

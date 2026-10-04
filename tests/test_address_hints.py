@@ -39,6 +39,7 @@ from app.gui.address_input import (
     SuggestionBox,
     store_dismissals,
 )
+from app.gui.keyboard import layers
 from app.models import person as person_repo
 from app.models import site as site_repo
 from app.models.person import Person
@@ -579,28 +580,14 @@ def test_a_form_without_a_house_number_field_is_not_written_into(address_registe
 #
 # Reported from use: "beim enter in einem feld mit vorschläge öffnet die
 # vorschläge, ich kann dann aber mit pfeil hoch runter nicht durchscrollen
-# oder mit enter auswählen". The list could only ever be used with a mouse,
-# because it floats without taking focus (`no-focus`) -- so the keys have to
-# be bound on the field being typed in, the same reason Escape already was.
+# oder mit enter auswählen". No key is bound to an element any more: the
+# list floats with `no-focus` and a Quasar dialog renders its card in a
+# portal, so an element binding depends on both the focus and the event
+# bubbling out of it. `app.gui.keyboard` owns the keys and the list takes
+# them while it is open.
 #
 # Driven through the postal code, because that is the field whose query
 # returns more than one entry from the test register.
-
-
-def _key(element, event_type: str):
-    """The handler registered for one key on one element.
-
-    Args:
-        element: The input the key is bound on.
-        event_type: e.g. "keydown.down".
-
-    Returns:
-        The handler, callable with no argument.
-    """
-    for listener in element._event_listeners.values():
-        if listener.type == event_type:
-            return listener.handler
-    raise AssertionError(f"kein Listener fuer {event_type}")
 
 
 def _open_locality_list(register):
@@ -619,45 +606,81 @@ def _open_locality_list(register):
     return box, street, postal_code, locality
 
 
-def test_the_arrows_walk_the_open_list(address_register):
-    """Down lands on the first entry, up from nothing on the last."""
-    box, _, postal_code, _ = _open_locality_list(address_register)
+def test_the_open_list_is_the_innermost_thing_and_owns_the_keys(address_register):
+    """It takes the keys when it opens and gives them back when it closes.
 
-    _key(postal_code, "keydown.down")()
+    Pushed above the dialog's own layer on purpose: Escape dismisses the
+    list first, and only a second press closes the form behind it.
+    """
+    box, _, _, _ = _open_locality_list(address_register)
+
+    assert layers()[-1] is box._layer
+
+    box.hide()
+
+    assert box._layer not in layers()
+
+
+def test_the_arrows_walk_the_open_list(address_register, press):
+    """Down lands on the first entry, up from nothing on the last."""
+    box, _, _, _ = _open_locality_list(address_register)
+
+    press("ArrowDown")
     assert box._highlight == 0
 
-    _key(postal_code, "keydown.down")()
+    press("ArrowDown")
     assert box._highlight == 1
 
     box._highlight = -1
-    _key(postal_code, "keydown.up")()
+    press("ArrowUp")
     assert box._highlight == len(box.suggestions) - 1
 
 
-def test_the_arrows_wrap_rather_than_stopping(address_register):
+def test_left_and_right_walk_it_too(address_register, press):
+    """All four arrows mark, which is what the administrator asked for."""
+    box, _, _, _ = _open_locality_list(address_register)
+
+    press("ArrowRight")
+    assert box._highlight == 0
+
+    press("ArrowLeft")
+    assert box._highlight == len(box.suggestions) - 1
+
+
+def test_the_arrows_wrap_rather_than_stopping(address_register, press):
     """A short list is walked round faster than back."""
-    box, _, postal_code, _ = _open_locality_list(address_register)
+    box, _, _, _ = _open_locality_list(address_register)
     box._highlight = len(box.suggestions) - 1
 
-    _key(postal_code, "keydown.down")()
+    press("ArrowDown")
 
     assert box._highlight == 0
 
 
-def test_enter_takes_the_entry_the_arrows_reached(address_register):
+def test_enter_takes_the_entry_the_arrows_reached(address_register, press):
     """The other half of the report: Enter did nothing."""
     box, _, postal_code, locality = _open_locality_list(address_register)
-    _key(postal_code, "keydown.down")()
+    press("ArrowDown")
     chosen = box.suggestions[0]
 
-    _key(postal_code, "keydown.enter")()
+    press("Enter")
 
     assert postal_code.value == chosen.postal_code
     assert locality.value == chosen.locality
     assert box.suggestions == []
 
 
-def test_enter_takes_nothing_that_was_not_stepped_onto(address_register):
+def test_escape_pushes_the_list_aside_and_keeps_the_text(address_register, press):
+    """One press dismisses the list; the form behind it stays open."""
+    box, _, postal_code, _ = _open_locality_list(address_register)
+
+    press("Escape")
+
+    assert box.suggestions == []
+    assert postal_code.value == "30"
+
+
+def test_enter_takes_nothing_that_was_not_stepped_onto(address_register, press):
     """Deliberate, and the project has already paid for the lesson.
 
     A street suggestion can be a correctly spelled *different* real street
@@ -667,16 +690,16 @@ def test_enter_takes_nothing_that_was_not_stepped_onto(address_register):
     box, _, postal_code, locality = _open_locality_list(address_register)
     assert box._highlight == -1
 
-    _key(postal_code, "keydown.enter")()
+    press("Enter")
 
     assert postal_code.value == "30", "nichts darf übernommen worden sein"
     assert not locality.value
 
 
-def test_a_new_search_forgets_where_the_arrows_were(address_register):
+def test_a_new_search_forgets_where_the_arrows_were(address_register, press):
     """Otherwise the index points into the previous set of suggestions."""
-    box, street, postal_code, _ = _open_locality_list(address_register)
-    _key(postal_code, "keydown.down")()
+    box, street, _, _ = _open_locality_list(address_register)
+    press("ArrowDown")
     assert box._highlight == 0
 
     street.value = "Erstweg"

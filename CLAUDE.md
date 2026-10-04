@@ -315,6 +315,50 @@ Printing is an action and not a filter, so `render_print_button` does not
 belong among the switches; on Debitoren it sits in the bar's left column
 under the sort control.
 
+### The keyboard: one dispatcher, a stack of who owns it
+
+`app/gui/keyboard.py` holds one `ui.keyboard` per page (created in
+`page_frame`) and a stack of `KeyboardLayer`s. Whoever is on top answers the
+keys:
+
+| Key | Meaning |
+|---|---|
+| Enter | take the marked thing |
+| ↑ ↓ ← → | move the mark |
+| Escape | go back one step |
+| Tab | next field -- the browser's own, never intercepted |
+
+**Element bindings were tried first and are gone**, because they only work
+while that element holds the focus *and* the event bubbles out of it. A
+Quasar dialog renders its card in a portal and the address list floats with
+`no-focus`, so neither holds: Escape worked in one dialog and not the next,
+and the discard question could only be answered with the mouse. `ignore=[]`
+on the keyboard is equally deliberate -- NiceGUI ignores keys from inputs,
+selects and buttons by default, which would switch Escape off at the one
+moment it is wanted.
+
+**A layer claims only what it can answer.** A form dialog deliberately does
+*not* claim the arrows, so they stay caret movement in its fields; an
+address list and the discard question do claim them, for as long as they are
+open on top. That is the whole mechanism: the list pushes its layer above
+the dialog's, so the first Escape dismisses the list and only the second
+closes the form.
+
+**`on_typing` is why the stack exists rather than a flag per dialog.** The
+LEG dialog closed on Escape without asking: its name field carries
+`debounce=300` for the duplicate check, so what had been typed had not
+reached the server and the value snapshot still matched. "A key was pressed"
+needs no round trip, and it is what the question is actually about.
+`tests/test_form_dialog.py` drives that exact sequence through the page's own
+button, because the dialog does not exist until it is clicked -- which is
+why no earlier test saw it.
+
+The stack lives on the client, with a module-level fallback for code running
+outside a request. `tests/conftest.py` empties that fallback around every
+test (autouse) and offers the `press` fixture: no key is bound to an element
+any more, so pressing one in a test means going through the one dispatcher,
+which is also the only way to find out whether the right layer answered.
+
 ### A dialog must not be able to lose what was typed into it
 
 `app/gui/form_dialog.py`'s `form_guard(dialog, on_save=...)` is applied to
@@ -332,10 +376,12 @@ Three behaviours, each answering one way of losing work:
   keyboard work must not make discarding easier than it was: Escape and a
   stray click used to be the same gesture, and now Escape is the deliberate
   one, so it is the one that has to be sure.
-- **Enter saves, from a single-line input only.** Not from a textarea, where
-  Enter is a newline, and not from a field carrying a lookup menu -- an
-  address field anchors its suggestion list to itself
-  (`app.gui.address_input`), and there Enter belongs to the list.
+- **Enter saves, from a single-line input only.** This one stays an element
+  binding, and that is the exception that proves the rule above: the
+  dispatcher cannot see which element has the focus, so it could not tell a
+  textarea (where Enter is a newline) from a one-line field. Bound per
+  field, it can -- and it skips any field carrying a lookup menu, where
+  Enter belongs to the list (`app.gui.address_input`).
 
 **Enter is wired per action, not per dialog.** `on_save` is passed where the
 primary action stores a record, and deliberately left out where it sends
@@ -357,8 +403,11 @@ administrator within minutes of first opening a dialog:
 - The question appeared and vanished in one blink. The Escape keydown that
   opens it goes on to reach the question itself, and Quasar closes a
   non-persistent dialog on exactly that event. The question is therefore
-  `persistent` too, with its own Escape meaning "Weiter bearbeiten" --
-  which is also the safe reading of pressing Escape twice.
+  `persistent` too, and Escape in it means "Weiter bearbeiten" -- which is
+  also the safe reading of pressing Escape twice. It is **two buttons and no
+  text**, so it is the one place where the arrows have nothing else to do:
+  they move the mark between the answers and Enter takes the marked one,
+  which starts on "Weiter bearbeiten" so that a hasty Enter keeps the work.
 - **Enter worked and looked broken.** The save handler ran, refused, and
   wrote "Firma oder Vorname/Nachname sind erforderlich." underneath the
   last field of a dialog taller than the window, so the message was never

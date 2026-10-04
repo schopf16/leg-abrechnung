@@ -30,6 +30,7 @@ from typing import Optional
 from nicegui import ui
 
 from app.domain.address_check import address_signature
+from app.gui.keyboard import KeyboardLayer, push, remove
 from app.domain.address_lookup import (
     FIELD_HOUSE_NUMBER,
     FIELD_LOCALITY,
@@ -121,6 +122,16 @@ class SuggestionBox:
         #: taking the first entry is exactly the destructive case this
         #: project already fixed once.
         self._highlight = -1
+        #: The list is the innermost thing open while it is showing, so it
+        #: takes the keys: the arrows walk it, Enter takes the marked entry
+        #: and Escape pushes it aside. Pushed above the dialog's own layer,
+        #: so Escape dismisses the list first and only closes the form on
+        #: the second press.
+        self._layer = KeyboardLayer(
+            on_escape=self.hide,
+            on_enter=self._take_highlighted,
+            on_move=self._move,
+        )
         for field in (street, postal_code, locality):
             with field:
                 menu = ui.menu().props("no-focus no-refocus fit auto-close=false")
@@ -128,15 +139,11 @@ class SuggestionBox:
             # Quasar only reacts to Escape while the menu holds focus, and
             # it deliberately does not take focus here, so the key is bound
             # on the field the administrator is actually typing in.
-            field.on("keydown.esc", lambda _=None: self.hide())
-            # The list floats and takes no focus (`no-focus`), so the keys
-            # that walk it have to be bound on the field being typed in --
-            # the same reason Escape is bound here. Without this the list
-            # could only be used with the mouse: it opened, and neither the
-            # arrows nor Enter did anything.
-            field.on("keydown.down", lambda _=None: self._move(1))
-            field.on("keydown.up", lambda _=None: self._move(-1))
-            field.on("keydown.enter", lambda _=None: self._take_highlighted())
+            # No keys are bound here. The list floats with `no-focus` and
+            # a Quasar dialog renders its card in a portal, so an element
+            # binding depends on both the focus and the event bubbling out
+            # -- which is how Escape came to work in one dialog and not the
+            # next. `app.gui.keyboard` owns the keys instead.
 
         for field in (street, postal_code, locality, house_number):
             if field is not None:
@@ -397,6 +404,11 @@ class SuggestionBox:
         Returns:
             None.
         """
+        if self.suggestions:
+            push(self._layer)
+        else:
+            remove(self._layer)
+
         for field, menu in self._menus.items():
             if field is not self._active or not self.suggestions:
                 menu.close()
