@@ -31,8 +31,10 @@ from nicegui import ui
 
 from app.domain.address_check import address_signature
 from app.domain.address_lookup import (
+    FIELD_HOUSE_NUMBER,
     FIELD_LOCALITY,
     FIELD_POSTAL_CODE,
+    FIELD_STREET,
     AddressFinding,
     AddressSuggestion,
     suggest_addresses,
@@ -268,12 +270,27 @@ class SuggestionBox:
         """
         if not finding.suggestion:
             return
-        if finding.field == FIELD_LOCALITY:
-            self._locality.value = finding.suggestion
-        elif finding.field == FIELD_POSTAL_CODE:
-            self._postal_code.value = finding.suggestion
-        else:
-            self._street.value = finding.suggestion
+        # An explicit mapping, never "everything that is not the locality is
+        # the street". That shape put a postal-code suggestion into the
+        # street field once, and the if/elif that replaced it did the same
+        # to a house number: correcting "4a" to "4" overwrote the street
+        # with "4" and left the number wrong. A field this does not know is
+        # left alone rather than written somewhere plausible.
+        target = {
+            FIELD_STREET: self._street,
+            # No fallback to the street: the settings page keeps street and
+            # number in one field, so writing a number suggestion there
+            # would replace "Strasse 4" with "4". Unreachable today --
+            # `findings` passes an empty number when there is no field, and
+            # `verify` skips the check for an empty number -- and left
+            # unreachable rather than given a plausible-looking fallback.
+            FIELD_HOUSE_NUMBER: self._house_number,
+            FIELD_POSTAL_CODE: self._postal_code,
+            FIELD_LOCALITY: self._locality,
+        }.get(finding.field)
+        if target is None:
+            return
+        target.value = finding.suggestion
         self.refresh_hints()
 
     def dismiss(self, finding: AddressFinding) -> None:
