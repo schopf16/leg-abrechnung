@@ -414,10 +414,14 @@ def press():
     return _press
 
 
-#: Fixtures whose tests need the demo database. Carrying 229'632 readings
+#: The fixture whose tests need the demo database. Carrying 229'632 readings
 #: around is the one genuinely expensive thing in this suite, so the tests
 #: that do are marked and can be left out while developing.
-_HEAVY_FIXTURES = frozenset({"demo_data", "real_demo_data"})
+#:
+#: `real_demo_data` is a *marker*, not a fixture, and is checked separately
+#: below -- it builds the data for real, which is the most expensive case of
+#: all.
+_HEAVY_FIXTURES = frozenset({"demo_data"})
 
 
 def pytest_collection_modifyitems(items) -> None:

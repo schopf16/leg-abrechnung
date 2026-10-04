@@ -198,7 +198,14 @@ class FilterBar:
         Returns:
             `True` if at least one control is away from its default.
         """
-        return any(element.value != default for element, default in self._defaults)
+        # `clearable` sets a cleared input to `None`, not to `""`, so a
+        # search box the administrator emptied with the X looked filtered --
+        # and the empty list then offered "Filter zurücksetzen" for a button
+        # that would change nothing.
+        return any(
+            (element.value or "") != (default or "") if isinstance(default, str) else element.value != default
+            for element, default in self._defaults
+        )
 
     def reset(self, then: Optional[Callable[[], None]] = None) -> None:
         """Put every control back to its default.

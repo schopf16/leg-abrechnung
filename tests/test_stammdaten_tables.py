@@ -498,3 +498,51 @@ def test_a_detail_page_says_where_it_is_and_can_be_edited(module, function, rout
         handler(None)
     after = sum(1 for element in client.elements.values() if element.__class__.__name__ == "Dialog")
     assert after > before, f"{label}: der Stift öffnet keinen Dialog"
+
+
+def test_saving_from_a_detail_page_reloads_it(address_register, monkeypatch):
+    """The whole loop, end to end, because its last step is easy to miss.
+
+    The pencil opens the dialog and the dialog saves -- but a detail page
+    that does not reload afterwards keeps showing the values that were just
+    corrected, which reads as the save having failed.
+    """
+    from app.gui.pages.sites import site_detail_page
+    from app.models import site as site_repo
+
+    ids = _deployment()
+    reloaded: list[bool] = []
+    monkeypatch.setattr(ui.navigate, "reload", lambda: reloaded.append(True))
+
+    client = Client(ui.page("/probe-detail-save")(lambda: None), request=None)
+    with client:
+        site_detail_page(ids["site"])
+
+        pencil = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and element.text == "Bearbeiten"
+        )
+        next(listener.handler for listener in pencil._event_listeners.values() if listener.type == "click")(
+            None
+        )
+
+        detail = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Input" and element.label == "Lage (optional, z. B. Stockwerk)"
+        )
+        detail.value = "2. OG"
+
+        save = [
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and element.text == "Speichern"
+        ][-1]
+        next(listener.handler for listener in save._event_listeners.values() if listener.type == "click")(
+            None
+        )
+
+    with connection_scope() as connection:
+        assert site_repo.get(connection, ids["site"]).address_detail == "2. OG"
+    assert reloaded == [True], "die Detailseite muss sich neu aufbauen"

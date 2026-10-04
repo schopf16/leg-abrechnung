@@ -49,23 +49,12 @@ def load_problems(subject_kind: str) -> dict[int, list[QualityWarning]]:
         return problems_for(connection, subject_kind)
 
 
-def render_marker() -> None:
-    """Draw the warning triangle beside a list entry's other icons.
-
-    Sized explicitly: a bare `q-icon` inherits the surrounding `1em` and
-    comes out visibly smaller than the icons inside the flat buttons next to
-    it, which Quasar renders at 1.715em.
-
-    Returns:
-        None.
-    """
-    ui.icon("warning", color="warning", size="1.715em").classes("q-px-sm")
-
-
-#: The same marker for a Quasar table's action slot. Tables render their
-#: cells as HTML rather than as elements, so the triangle has to exist twice
-#: -- once as Python, once as markup. Kept side by side here so the two
-#: cannot drift apart.
+#: The marker, for a Quasar table's action slot. There used to be a second
+#: rendering as Python elements (`render_marker`), for when the lists that
+#: carry markers were cards. All five are tables now -- see CLAUDE.md on
+#: tables and paging -- so that one had no caller left and is gone rather
+#: than kept warm: an unused second rendering of the same thing is exactly
+#: what drifts.
 TABLE_MARKER_HTML = (
     '<q-icon v-if="props.row.has_problem" name="warning" color="warning" size="1.715em" class="q-px-sm" />'
 )

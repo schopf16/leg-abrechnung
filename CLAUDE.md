@@ -491,7 +491,10 @@ Austritte." is a statement, and the reader's next question is what to do
 about it. `FilterBar.is_filtering()` decides whether to offer "Filter
 zurücksetzen": with nothing filtered it would be a button that does nothing,
 and the list is simply empty -- which is why the message differs too ("Noch
-kein Austritt gestartet."). `FilterBar.reset(then)` puts every control back
+kein Austritt gestartet."). It compares a cleared input against `""` rather
+than against its value: Quasar's `clearable` sets an emptied box to `None`,
+so a search the administrator had just cleared with the X counted as a
+filter and the button came back offering to undo nothing. `FilterBar.reset(then)` puts every control back
 and calls the page **once**, rather than letting five controls fire five
 rebuilds. An empty Mahnwesen worklist deliberately gets no suggestion: it is
 good news.
@@ -555,6 +558,12 @@ pencil could not follow. `app/gui/detail_header.py`'s
 also replaces "← Zurück zu Standorten" with a breadcrumb: that line was a way
 back rather than a place, and a breadcrumb is both. The not-found branch keeps
 the plain link, because there is no record to name and nothing to edit.
+
+Saving from a detail page reloads it (`ui.navigate.reload()`), because a
+page still showing the values that were just corrected reads as a failed
+save. The "Gespeichert." toast is lost to that reload, and that is the
+accepted trade: the page coming back with the new values is the better
+confirmation of the two.
 
 The LEG dialog had to leave the page for this. A form nested inside
 `legs_page` can only be opened from there, so `app/gui/leg_form.py` now holds
@@ -761,11 +770,13 @@ already rendered beside the input it is about.
 pointed at Zuordnungen while its subject is a person, so the summary line
 landed on a page with no triangle and no filter. It points at Personen now.
 
-A table marks differently from a card list, because Quasar renders a table
-cell as markup rather than as elements. `TABLE_MARKER_HTML` and
-`render_marker` sit side by side in the same module so the two renderings
-cannot drift; `app/gui/pages/sites.py` builds its action slot from the
-constant rather than writing the triangle out again.
+A table renders a cell as markup rather than as elements, so the triangle is
+`TABLE_MARKER_HTML` and each list builds its action slot from that constant
+rather than writing it out again. There used to be a second rendering as
+Python elements, for when these lists were cards; all five are tables now
+(see "A long list is a table, and it pages"), so it had no caller left and
+was removed rather than kept warm -- an unused second rendering of the same
+thing is exactly what drifts.
 
 ### Onboarding/offboarding-style trackers
 
@@ -1209,7 +1220,7 @@ as `pytest -n auto`. Three rounds of work got it from 8:27 to about 1:15:
   autouse and took `_demo_template` as an argument, so pytest created the
   229'632 readings before the first test of *every* session — in all eight
   workers, and for `pytest tests/test_filter_bar.py`, five tests that touch
-  no readings at all. **Ten of 1'193 tests need them.** Built on first use
+  no readings at all. **Ten of 1'248 tests need them.** Built on first use
   instead: 2:20 → about 1:15, and a single file went from 4.5 s to 2.6 s.
   The administrator noticed this as the CPU fan, while developing, which is
   exactly when it was pure waste.
@@ -1246,7 +1257,7 @@ run plain.
 
 ```
 pytest tests/test_billing.py -q        # while working: the file you changed
-pytest -m "not heavy" -n auto          # 1'183 of 1'193 tests, no demo data
+pytest -m "not heavy" -n auto          # 1'238 of 1'248 tests, no demo data
 pytest -n auto                         # before a push, with the four gates
 ```
 
@@ -1258,7 +1269,7 @@ anybody maintaining it.
 
 While working, run the test files the change actually touches plus a render
 check when a page changed; save the full suite and the four gates for the
-point where the work is claimed to be done. Waiting for all 1'193 tests to
+point where the work is claimed to be done. Waiting for all 1'248 tests to
 learn that a one-line edit compiles is not verification, it is ceremony —
 and a regression is dealt with then, before the push, not by running
 everything after every edit.
@@ -1524,7 +1535,7 @@ dependency, already used in `app/emailing/graph_client.py`) and
 `build_register` is a **generator** that hands control back every 5'000
 rows. Progress lives in a module-level object in
 `app/gui/address_register_task.py`, not on a client, and
-`app.gui.navigation.page_frame` shows it in the header of all 21 pages;
+`app.gui.navigation.page_frame` shows it in the header of all 31 routes;
 state on the page that started it would vanish the moment the administrator
 navigated away, which is the whole thing being fixed. A second click finds
 the phase set and returns.
