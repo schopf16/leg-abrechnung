@@ -1901,4 +1901,35 @@ Freundliche Grüsse',
                  70, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '');
         """,
     ),
+    Migration(
+        version=56,
+        description="Say how a logged message reached the person. The feature "
+        "arrives on a deployment where 77 of 91 participants already hold the "
+        "signed Gesellschaftsvertrag, handed over on paper -- the log starts "
+        "empty, so every one of those cards would offer to send the welcome "
+        "mail again. Marking one done without sending needs a row in the log, "
+        "and such a row must not claim a mail went out: 'manual' is the "
+        "difference, and the card prints 'von Hand' rather than a bare date. "
+        "Existing rows are 'email', which is what they were.",
+        sql="""
+            ALTER TABLE person_message_log
+                ADD COLUMN channel TEXT NOT NULL DEFAULT 'email';
+        """,
+    ),
+    Migration(
+        version=57,
+        description="Let a Textbaustein carry a signature, the same named "
+        "ones the Rundmail already offers (`signatures`). A reference and not "
+        "a copy of the text: a signature that changes has to change "
+        "everywhere, which is the whole reason those rows are named and "
+        "reusable -- and it is the opposite of the 'frozen at the time of "
+        "the action' pattern, because nothing has been communicated yet when "
+        "a template is edited. What *was* sent stays frozen in "
+        "`person_message_log`, which stores the composed body. NULL means no "
+        "signature, which is where every existing template starts.",
+        sql="""
+            ALTER TABLE message_template
+                ADD COLUMN signature_id INTEGER REFERENCES signatures(id);
+        """,
+    ),
 ]

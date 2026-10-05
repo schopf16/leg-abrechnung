@@ -13,6 +13,7 @@ from app.format_size import format_size
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
     PERSON_PLACEHOLDERS,
+    compose_with_signature,
     find_invalid_email_addresses,
     find_unknown_placeholders,
     person_placeholder_values,
@@ -32,11 +33,6 @@ from app.models.person import Person
 #: Shown as a hint above the subject/body fields.
 PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in PERSON_PLACEHOLDERS)
 
-#: Classic plain-text signature delimiter (RFC 3676) -- some mail clients
-#: recognize "-- " on its own line and render/strip a trailing signature
-#: specially (e.g. dimmed, or omitted from a reply quote).
-_SIGNATURE_DELIMITER = "\n\n-- \n"
-
 
 def attachments_too_large(attachments: list[tuple[str, bytes]]) -> bool:
     """Whether this set exceeds what one Graph request can carry."""
@@ -52,13 +48,6 @@ def describe_attachments(attachments: list[tuple[str, bytes]]) -> str:
     if len(attachments) == 1:
         return f"Mit 1 Anhang ({total}): {names}"
     return f"Mit {len(attachments)} Anhängen ({total}): {names}"
-
-
-def _compose_body(body: str, signature_content: str) -> str:
-    """Append a signature to a message body, if one was chosen."""
-    if not signature_content.strip():
-        return body
-    return f"{body}{_SIGNATURE_DELIMITER}{signature_content}"
 
 
 def _validation_warnings(
@@ -327,7 +316,7 @@ def email_dispatch_page() -> None:
                     validation_container.clear()
                     subject = subject_input.value
                     signature = signatures_by_id.get(signature_select.value)
-                    body = _compose_body(body_textarea.value, signature.content if signature else "")
+                    body = compose_with_signature(body_textarea.value, signature.content if signature else "")
                     unknown, invalid_emails, missing = _validation_warnings(subject, body, recipients)
                     with validation_container:
                         ui.label(f"Empfänger: {len(recipients)}").classes("font-bold")
@@ -436,7 +425,9 @@ def email_dispatch_page() -> None:
                         progress_label.text = f"{done} von {total} gesendet"
 
                     signature = signatures_by_id.get(signature_select.value)
-                    final_body = _compose_body(body_textarea.value, signature.content if signature else "")
+                    final_body = compose_with_signature(
+                        body_textarea.value, signature.content if signature else ""
+                    )
 
                     # Written to disk only for the duration of this one
                     # send -- graph_client.send_email expects a Path (the

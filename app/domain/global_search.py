@@ -84,6 +84,30 @@ def _matches(needle: str, *parts: Optional[str]) -> bool:
     return any(needle in fold_for_sort(part or "") for part in parts)
 
 
+def person_matches(person, query: str) -> bool:
+    """Whether every word of the query occurs somewhere in a person's names.
+
+    Word-wise, which is the whole point: "Michael Test" is two words and no
+    single field holds both, so a plain substring search over the fields
+    finds nothing -- while the administrator reasonably types the name the
+    way they say it. Order does not matter either.
+
+    An empty query matches everybody, so a caller needs no special case.
+    Used by the Aufnahmen and Austritte worklists, which search a person's
+    name and nothing else (their `hint` says so); the Personen list keeps
+    its own, wider haystack.
+    """
+    parts = (
+        person.company,
+        person.first_name,
+        person.last_name,
+        person.second_first_name,
+        person.second_last_name,
+        person.formatted_customer_number,
+    )
+    return all(_matches(fold_for_sort(word), *parts) for word in (query or "").split())
+
+
 def search(connection: sqlite3.Connection, query: str) -> list[SearchGroup]:
     """Find every Stammdaten record matching one query."""
     needle = fold_for_sort((query or "").strip())

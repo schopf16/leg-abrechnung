@@ -6,6 +6,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.global_search import person_matches
 from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
@@ -150,6 +151,7 @@ def onboardings_page() -> None:
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
         bar = FilterBar("/onboardings")
+        search_input = bar.search("Name, Firma, Kunden-Nr.")
         sort_select = bar.sort(sort_options({}), lambda: refresh())
         show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
         step_filter = bar.choice(STEP_FILTER_OPTIONS, "Schritt-Filter")
@@ -163,6 +165,8 @@ def onboardings_page() -> None:
         def _filter_description() -> str | None:
             """Build a short description of the currently active filters."""
             parts = []
+            if search_input.value:
+                parts.append(f'Suche "{search_input.value}"')
             if show_complete_switch.value:
                 parts.append("inkl. abgeschlossene")
             if step_filter.value is not None:
@@ -195,7 +199,7 @@ def onboardings_page() -> None:
                         person,
                         due_messages.get(onboarding.person_id, []),
                         OCCASION_ONBOARDING,
-                        on_sent=refresh,
+                        on_changed=refresh,
                     )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
@@ -220,6 +224,14 @@ def onboardings_page() -> None:
             # Counted before the step filter narrows it, so "3 von 88" says
             # what the reader expects it to say.
             total_onboardings = len(onboardings)
+            query = search_input.value or ""
+            if query.strip():
+                onboardings = [
+                    tracker
+                    for tracker in onboardings
+                    if (candidate := persons.get(tracker.person_id)) is not None
+                    and person_matches(candidate, query)
+                ]
             step_attr = step_filter.value
             if step_attr is not None:
                 # A tracker matches only while that one step's own date is
@@ -247,6 +259,7 @@ def onboardings_page() -> None:
                         continue
                     render_card(onboarding, person, threshold_days)
 
+        search_input.on_value_change(lambda _: refresh())
         show_complete_switch.on_value_change(lambda _: refresh())
         step_filter.on_value_change(lambda _: refresh())
 

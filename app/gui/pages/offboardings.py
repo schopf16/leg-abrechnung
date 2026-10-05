@@ -6,6 +6,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.global_search import person_matches
 from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
@@ -124,6 +125,7 @@ def offboardings_page() -> None:
                 ui.button("+ Austritt starten", on_click=lambda: on_start())
 
         bar = FilterBar("/offboardings")
+        search_input = bar.search("Name, Firma, Kunden-Nr.")
         sort_select = bar.sort(sort_options({}), lambda: refresh())
         show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
 
@@ -135,16 +137,20 @@ def offboardings_page() -> None:
 
         def _filter_description() -> str | None:
             """Build a short description of the currently active filter."""
+            parts = []
+            if search_input.value:
+                parts.append(f'Suche "{search_input.value}"')
             if show_complete_switch.value:
-                return "inkl. abgeschlossene"
-            needs_removal = sum(
-                1
-                for o in visible_offboardings
-                if o.is_complete and (p := persons.get(o.person_id)) is not None and p.active
-            )
-            if needs_removal:
-                return f"offene Austritte, inkl. {needs_removal} mit noch aktiver Person"
-            return None
+                parts.append("inkl. abgeschlossene")
+            else:
+                needs_removal = sum(
+                    1
+                    for o in visible_offboardings
+                    if o.is_complete and (p := persons.get(o.person_id)) is not None and p.active
+                )
+                if needs_removal:
+                    parts.append(f"offene Austritte, inkl. {needs_removal} mit noch aktiver Person")
+            return ", ".join(parts) if parts else None
 
         def render_card(offboarding: PersonOffboarding, person: Person) -> None:
             """Render one offboarding tracker as a card."""
@@ -175,7 +181,7 @@ def offboardings_page() -> None:
                         person,
                         due_messages.get(offboarding.person_id, []),
                         OCCASION_OFFBOARDING,
-                        on_sent=refresh,
+                        on_changed=refresh,
                     )
                     with ui.row().classes("gap-1 ml-auto"):
                         if offboarding.is_complete and person.active:
@@ -217,6 +223,14 @@ def offboardings_page() -> None:
                         if not o.is_complete
                         or (persons.get(o.person_id) is not None and persons[o.person_id].active)
                     ]
+            query = search_input.value or ""
+            if query.strip():
+                offboardings = [
+                    tracker
+                    for tracker in offboardings
+                    if (candidate := persons.get(tracker.person_id)) is not None
+                    and person_matches(candidate, query)
+                ]
             visible_offboardings = apply_sort(offboardings, sort_options(persons), sort_select)
             list_container.clear()
             with list_container:
@@ -240,6 +254,7 @@ def offboardings_page() -> None:
                         continue
                     render_card(offboarding, person)
 
+        search_input.on_value_change(lambda _: refresh())
         show_complete_switch.on_value_change(lambda _: refresh())
 
         def on_edit(offboarding: PersonOffboarding, person: Person) -> None:

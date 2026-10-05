@@ -1,26 +1,38 @@
-"""A button per due baustein -- or the date it already went out.
+"""A button per due baustein -- or the date it was settled.
 
 The administrator's problem, in their words: *"ich möchte verhindern dass die
 mails zweimal rausgehen. ich möchte einen button haben zum starten, nach
 erfolgreichem senden möchte ich dann das datum sehen damit ich weiss dieser
 person habe ich das schon einmal gesendet."*
 
-So the button **becomes** the date. Sending again stays possible, as a quiet
-second control that asks first -- `person_message_log` is what the two states
-are read from, never a flag on the tracker.
+So the button **becomes** the date, and `person_message_log` is what the
+states are read from -- never a flag on the tracker.
 
-One renderer for Aufnahmen and Austritte both: two would drift, and the
-decision which to show is the same decision on both pages.
+Three states, because this feature arrives on a deployment where most
+participants were already written to on paper: not settled (a send button and
+a way to mark it done without sending), really sent (the date, and a quiet
+"nochmals senden" that asks first), or marked by hand (the date, labelled
+"von Hand", with the mark removable in one click).
+
+Marking is **not** guarded by a question, deliberately: it sends nothing and
+it can be taken back, so an undo is the better answer than a confirmation.
+A send cannot be taken back, which is why that one asks.
 """
 
 from typing import Callable, Optional
 
 from nicegui import ui
 
-from app.domain.message_templates import DueMessage
+from app.db.connection import connection_scope
+from app.domain.message_templates import DueMessage, mark_done
 from app.formatting import format_date
 from app.gui.message_send_dialog import open_message_send_dialog
+from app.gui.safe_notify import safe_notify
+from app.models import person_message_log as log_repo
 from app.models.person import Person
+
+#: The small grey controls beside a settled baustein.
+_QUIET = "dense flat size=sm color=grey-7"
 
 
 def render_due_messages(
@@ -28,60 +40,102 @@ def render_due_messages(
     due: list[DueMessage],
     occasion: str,
     *,
-    on_sent: Optional[Callable[[], None]] = None,
+    on_changed: Optional[Callable[[], None]] = None,
 ) -> None:
     """Render one control per due baustein for this person."""
     if not due:
         return
-    with ui.column().classes("gap-0 min-w-[240px]"):
+    with ui.column().classes("gap-0 min-w-[260px]"):
         for message in due:
-            _render_one(person, message, occasion, on_sent)
+            _render_one(person, message, occasion, on_changed)
 
 
 def _render_one(
     person: Person,
     message: DueMessage,
     occasion: str,
-    on_sent: Optional[Callable[[], None]],
+    on_changed: Optional[Callable[[], None]],
 ) -> None:
-    """Either the send button, or the date plus a way to send again."""
+    """One baustein, in whichever of the three states it is in."""
     name = message.template.name
     if not message.was_sent:
         with ui.row().classes("items-center gap-1"):
             ui.button(
                 f"{name} senden",
-                on_click=lambda: open_message_send_dialog(person, message, occasion, on_sent=on_sent),
+                on_click=lambda: open_message_send_dialog(person, message, occasion, on_sent=on_changed),
             ).props("dense flat color=primary")
             if message.days_waiting is not None:
                 # Why this button is here at all: the step has been open
                 # longer than the baustein's deadline.
                 ui.label(f"seit {message.days_waiting} Tagen offen").classes("text-caption text-grey-6")
+            ui.button(
+                "erledigt ohne Versand",
+                on_click=lambda: _mark(person, message, occasion, on_changed),
+            ).props(_QUIET)
         return
+
+    suffix = " (von Hand)" if message.by_hand else ""
     with ui.row().classes("items-center gap-2"):
-        ui.label(f"{name}: {format_date(message.sent_on)}").classes("text-caption text-grey-7")
+        ui.label(f"{name}: {format_date(message.sent_on)}{suffix}").classes("text-caption text-grey-7")
         ui.button(
-            "nochmals senden",
-            on_click=lambda: _ask_again(person, message, occasion, on_sent),
-        ).props("dense flat size=sm color=grey-7")
+            "senden" if message.by_hand else "nochmals senden",
+            on_click=lambda: _ask_again(person, message, occasion, on_changed),
+        ).props(_QUIET)
+        if message.by_hand:
+            ui.button(
+                "Markierung entfernen",
+                on_click=lambda: _unmark(person, message, on_changed),
+            ).props(_QUIET)
+
+
+def _mark(
+    person: Person,
+    message: DueMessage,
+    occasion: str,
+    on_changed: Optional[Callable[[], None]],
+) -> None:
+    """Settle a baustein that was dealt with on paper, without sending."""
+    with connection_scope() as connection:
+        mark_done(connection, person.id, message.template, occasion)
+    # notify before the refresh -- see app.gui.safe_notify for why
+    safe_notify(f'"{message.template.name}" als erledigt markiert, ohne Versand.', type="positive")
+    if on_changed:
+        on_changed()
+
+
+def _unmark(person: Person, message: DueMessage, on_changed: Optional[Callable[[], None]]) -> None:
+    """Take back a mark, so the send button comes back."""
+    if message.log is None or message.log.id is None:
+        return
+    with connection_scope() as connection:
+        log_repo.delete(connection, message.log.id)
+    safe_notify("Markierung entfernt.", type="warning")
+    if on_changed:
+        on_changed()
 
 
 def _ask_again(
     person: Person,
     message: DueMessage,
     occasion: str,
-    on_sent: Optional[Callable[[], None]],
+    on_changed: Optional[Callable[[], None]],
 ) -> None:
-    """Ask before offering a second send of something already sent."""
+    """Ask before offering a send of something already settled."""
+    settled = (
+        f"Am {format_date(message.sent_on)} ohne Versand als erledigt markiert."
+        if message.by_hand
+        else f"Bereits am {format_date(message.sent_on)} gesendet."
+    )
     with ui.dialog() as confirm, ui.card():
-        ui.label(f'"{message.template.name}" nochmals an {person.display_name} senden?').classes("text-body1")
-        ui.label(f"Bereits gesendet am {format_date(message.sent_on)}.").classes("text-caption text-grey-7")
+        ui.label(f'"{message.template.name}" an {person.display_name} senden?').classes("text-body1")
+        ui.label(settled).classes("text-caption text-grey-7")
         with ui.row().classes("w-full justify-end gap-2"):
             ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
             def again() -> None:
-                """Close the question and show the mail once more."""
+                """Close the question and show the mail."""
                 confirm.close()
-                open_message_send_dialog(person, message, occasion, on_sent=on_sent)
+                open_message_send_dialog(person, message, occasion, on_sent=on_changed)
 
             ui.button("Mail öffnen", on_click=again)
     confirm.open()

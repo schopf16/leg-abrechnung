@@ -20,6 +20,7 @@ from app.gui.upload import read_uploaded_file
 from app.models import leg_document as leg_document_repo
 from app.models import message_template as template_repo
 from app.models import person_offboarding, person_onboarding
+from app.models import signature as signature_repo
 from app.models.message_template import (
     OCCASION_DUNNING1,
     OCCASION_DUNNING2,
@@ -260,6 +261,24 @@ def message_templates_page() -> None:
                 )
                 placeholder_hint = ui.label("").classes("text-caption text-grey-6")
 
+                # The same named signatures the Rundmail offers, so a
+                # Textbaustein can sign off exactly like one. Appended when
+                # the mail is composed, not stored in the text -- a changed
+                # signature has to change everywhere.
+                with connection_scope() as connection:
+                    signatures = signature_repo.list_all(connection)
+                signature_options = {None: "Keine Signatur", **{s.id: s.name for s in signatures}}
+                stored_signature = existing.signature_id if existing else None
+                signature = ui.select(
+                    signature_options,
+                    label="Signatur",
+                    value=stored_signature if stored_signature in signature_options else None,
+                ).classes("w-full")
+                if not signatures:
+                    ui.label("Noch keine Signatur hinterlegt -- Kommunikation → Signaturen.").classes(
+                        "text-caption text-grey-6"
+                    )
+
                 def show_placeholders() -> None:
                     """List the placeholders this occasion actually offers."""
                     names = (
@@ -445,6 +464,7 @@ def message_templates_page() -> None:
                             for key in (existing.auto_attachments if existing else [])
                             if key not in auto_attachments.BY_KEY
                         ],
+                        signature_id=signature.value,
                     )
                     with connection_scope() as connection:
                         if existing:

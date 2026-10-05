@@ -15,14 +15,19 @@ from nicegui import Client, ui
 from app.config import GraphConfig
 from app.db.connection import connection_scope
 from app.domain import message_attachments
-from app.domain.message_templates import due_by_person, due_templates
+from app.domain.message_templates import DueMessage, due_by_person, due_templates, mark_done
 from app.emailing.person_send import send_person_message
+from app.emailing.templates import SIGNATURE_DELIMITER
+from app.gui.message_send_dialog import open_message_send_dialog
 from app.models import leg_document as leg_document_repo
 from app.models import message_template as template_repo
 from app.models import person as person_repo
 from app.models import person_message_log as log_repo
 from app.models import person_offboarding as offboarding_repo
 from app.models import person_onboarding as onboarding_repo
+from app.models import signature as signature_repo
+from app.models.person_message_log import CHANNEL_MANUAL
+from app.models.signature import Signature
 from app.models.message_template import (
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
@@ -367,6 +372,141 @@ def test_an_invoice_cannot_be_attached_outside_a_billing_run(db, tmp_path):
 
     assert not prepared[0].is_ready
     assert "Rechnungsversand" in prepared[0].problem
+
+
+# --- The signature, shared with the Rundmail -------------------------------
+
+
+def test_a_template_remembers_its_signature(db, no_drafts):
+    """A reference, so a changed signature changes everywhere at once."""
+    signature_id = signature_repo.create(
+        db, Signature(id=None, name="Vorstand", content="Freundliche Grüsse\nDer Vorstand", created_at="")
+    )
+    template_id = _template(db, "Willkommen")
+    stored = template_repo.get(db, template_id)
+    stored.signature_id = signature_id
+    template_repo.update(db, stored)
+
+    assert template_repo.get(db, template_id).signature_id == signature_id
+
+
+def test_a_template_without_a_signature_keeps_none(db, no_drafts):
+    """The state every existing template starts in."""
+    assert template_repo.get(db, _template(db, "Willkommen")).signature_id is None
+
+
+def _dialog_body(person: Person, template: MessageTemplate, route: str) -> str:
+    """Open the send dialog and read the text it would send."""
+    due = DueMessage(template=template, step_label="Einteilung in LEG", days_waiting=None)
+    client = Client(ui.page(route)(lambda: None), request=None)
+    with client:
+        open_message_send_dialog(person, due, OCCASION_ONBOARDING)
+        return next(
+            element.value
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Textarea" and element.label == "Text"
+        )
+
+
+def test_the_dialog_shows_the_signature_it_will_send():
+    """What is read in the dialog is what goes out, signature included."""
+    with connection_scope() as connection:
+        person = _person(connection)
+        signature_id = signature_repo.create(
+            connection,
+            Signature(id=None, name="Vorstand", content="Freundliche Grüsse\nDer Vorstand", created_at=""),
+        )
+        template_id = _template(connection, "Mit Signatur")
+        stored = template_repo.get(connection, template_id)
+        stored.signature_id = signature_id
+        template_repo.update(connection, stored)
+        template = template_repo.get(connection, template_id)
+
+    body = _dialog_body(person, template, "/probe-send-signature")
+
+    assert body.endswith("Der Vorstand")
+    assert SIGNATURE_DELIMITER in body
+
+
+def test_without_a_signature_nothing_is_appended():
+    """No stray delimiter on a template that signs off in its own text."""
+    with connection_scope() as connection:
+        person = _person(connection)
+        template = template_repo.get(connection, _template(connection, "Ohne Signatur"))
+
+    body = _dialog_body(person, template, "/probe-send-no-signature")
+
+    assert SIGNATURE_DELIMITER not in body
+
+
+# --- Marked done without sending -------------------------------------------
+
+
+def test_marking_done_claims_no_mail_went_out(db, no_drafts):
+    """77 participants already hold the paper contract; the log must not lie."""
+    person = _person(db)
+    template = template_repo.get(db, _template(db, "Willkommen"))
+
+    mark_done(db, person.id, template, OCCASION_ONBOARDING)
+
+    entry = log_repo.list_for_person(db, person.id)[0]
+    assert entry.channel == CHANNEL_MANUAL
+    assert entry.by_hand
+    assert entry.recipient_emails == [], "niemand hat etwas erhalten"
+    assert entry.subject == "" and entry.body == "", "es gab keinen Text"
+
+
+def test_a_marked_baustein_shows_a_date_and_says_it_was_by_hand(db, no_drafts):
+    """The card must not print a bare date, which would read as "sent"."""
+    person = _person(db)
+    _template(db, "Willkommen", step="leg_assigned_at")
+    tracker = onboarding_repo.start_for_person(db, person.id, registered_at=date(2026, 1, 1))
+    tracker.leg_assigned_at = date(2026, 1, 2)
+    onboarding_repo.update(db, tracker)
+    tracker = onboarding_repo.get_by_person(db, person.id)
+    template = due_templates(db, tracker, OCCASION_ONBOARDING)[0].template
+
+    mark_done(db, person.id, template, OCCASION_ONBOARDING)
+
+    settled = due_templates(db, tracker, OCCASION_ONBOARDING)[0]
+    assert settled.was_sent, "der Knopf ist weg"
+    assert settled.by_hand, "und die Karte sagt warum"
+    assert len(settled.sent_on) == 10
+
+
+def test_a_mark_can_be_taken_back(db, no_drafts):
+    """A wrong click costs one click, which is why it asks no question."""
+    person = _person(db)
+    _template(db, "Willkommen", step="leg_assigned_at")
+    tracker = onboarding_repo.start_for_person(db, person.id, registered_at=date(2026, 1, 1))
+    tracker.leg_assigned_at = date(2026, 1, 2)
+    onboarding_repo.update(db, tracker)
+    tracker = onboarding_repo.get_by_person(db, person.id)
+    template = due_templates(db, tracker, OCCASION_ONBOARDING)[0].template
+    log_id = mark_done(db, person.id, template, OCCASION_ONBOARDING)
+
+    log_repo.delete(db, log_id)
+
+    assert not due_templates(db, tracker, OCCASION_ONBOARDING)[0].was_sent
+
+
+def test_a_real_send_is_not_marked_by_hand(db, no_drafts):
+    """The two states have to be distinguishable, or the label is noise."""
+    person = _person(db)
+    template_id = _template(db, "Willkommen")
+    log_repo.record(
+        db,
+        person_id=person.id,
+        template_id=template_id,
+        occasion=OCCASION_ONBOARDING,
+        step="leg_assigned_at",
+        subject="s",
+        body="b",
+        recipient_emails=["muster@example.invalid"],
+        attachment_filenames=[],
+    )
+
+    assert not log_repo.list_for_person(db, person.id)[0].by_hand
 
 
 # --- The promise of this feature -------------------------------------------

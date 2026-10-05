@@ -24,6 +24,7 @@ from app.emailing.graph_client import GraphApiError, GraphAuthError
 from app.emailing.person_send import send_person_message
 from app.emailing.templates import (
     PERSON_PLACEHOLDERS,
+    compose_with_signature,
     find_unknown_placeholders,
     person_placeholder_values,
     render_template,
@@ -31,6 +32,7 @@ from app.emailing.templates import (
 from app.format_size import format_size
 from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
+from app.models import signature as signature_repo
 from app.models.person import Person
 from app.paths import OUTPUT_DIR
 
@@ -54,6 +56,13 @@ def open_message_send_dialog(
         prepared = message_attachments.prepare(
             connection, person, template.auto_attachments, directory=SEND_DIR
         )
+        chosen = signature_repo.get(connection, template.signature_id) if template.signature_id else None
+
+    # Composed before it is shown, not on the way out: the promise of this
+    # dialog is that what is read is what goes out, signature included.
+    rendered_body = compose_with_signature(
+        render_template(template.body, values), chosen.content if chosen else ""
+    )
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-3xl"):
         ui.label(f"{template.name} an {person.display_name}").classes("text-lg font-bold")
@@ -61,11 +70,9 @@ def open_message_send_dialog(
         ui.label(f"An: {recipients}").classes("text-caption text-grey-7")
 
         subject_input = ui.input("Betreff", value=render_template(template.subject, values)).classes("w-full")
-        body_input = (
-            ui.textarea("Text", value=render_template(template.body, values))
-            .props("autogrow outlined")
-            .classes("w-full")
-        )
+        body_input = ui.textarea("Text", value=rendered_body).props("autogrow outlined").classes("w-full")
+        if chosen is not None:
+            ui.label(f"Signatur: {chosen.name}").classes("text-caption text-grey-7")
 
         _render_placeholder_note(template.subject + "\n" + template.body)
         _render_attachments(prepared)

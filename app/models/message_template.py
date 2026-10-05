@@ -61,6 +61,7 @@ class MessageTemplate:
     sort_order: int
     created_at: str
     auto_attachments: list[str] = field(default_factory=list)
+    signature_id: Optional[int] = None
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "MessageTemplate":
@@ -77,6 +78,7 @@ class MessageTemplate:
             sort_order=row["sort_order"],
             created_at=row["created_at"],
             auto_attachments=[key for key in (row["auto_attachments"] or "").splitlines() if key],
+            signature_id=row["signature_id"],
         )
 
     @property
@@ -116,7 +118,7 @@ _KEY_SEPARATOR = "\n"
 
 _SELECT = """
     SELECT id, name, occasion, step, trigger_kind, deadline_days,
-           subject, body, sort_order, created_at, auto_attachments
+           subject, body, sort_order, created_at, auto_attachments, signature_id
     FROM message_template
 """
 
@@ -153,8 +155,9 @@ def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
         """
         INSERT INTO message_template
             (name, occasion, step, trigger_kind, deadline_days,
-             subject, body, sort_order, created_at, auto_attachments)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             subject, body, sort_order, created_at, auto_attachments,
+             signature_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             template.name,
@@ -167,6 +170,7 @@ def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
             template.sort_order,
             datetime.now(timezone.utc).isoformat(),
             _KEY_SEPARATOR.join(template.auto_attachments),
+            template.signature_id,
         ),
     )
     if commit:
@@ -181,7 +185,7 @@ def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
         UPDATE message_template
         SET name = ?, occasion = ?, step = ?, trigger_kind = ?,
             deadline_days = ?, subject = ?, body = ?, sort_order = ?,
-            auto_attachments = ?
+            auto_attachments = ?, signature_id = ?
         WHERE id = ?
         """,
         (
@@ -194,6 +198,7 @@ def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
             template.body,
             template.sort_order,
             _KEY_SEPARATOR.join(template.auto_attachments),
+            template.signature_id,
             template.id,
         ),
     )

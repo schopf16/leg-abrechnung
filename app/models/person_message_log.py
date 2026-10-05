@@ -1,9 +1,17 @@
-"""What has been sent to whom, and when."""
+"""What has been sent to whom, when, and by which route."""
 
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
+
+
+#: The message really went out as an email.
+CHANNEL_EMAIL = "email"
+#: The administrator marked the baustein done without sending anything,
+#: because the letter had already been handed over on paper. Such a row
+#: carries no text and no recipients, because there was no message.
+CHANNEL_MANUAL = "manual"
 
 
 @dataclass
@@ -20,6 +28,12 @@ class PersonMessageLog:
     body: str
     recipient_emails: list[str] = field(default_factory=list)
     attachment_filenames: list[str] = field(default_factory=list)
+    channel: str = CHANNEL_EMAIL
+
+    @property
+    def by_hand(self) -> bool:
+        """Whether this was marked done rather than actually sent."""
+        return self.channel == CHANNEL_MANUAL
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "PersonMessageLog":
@@ -35,6 +49,7 @@ class PersonMessageLog:
             body=row["body"],
             recipient_emails=_lines(row["recipient_emails"]),
             attachment_filenames=_lines(row["attachment_filenames"]),
+            channel=row["channel"],
         )
 
     @property
@@ -50,7 +65,7 @@ def _lines(value: Optional[str]) -> list[str]:
 
 _SELECT = """
     SELECT id, sent_at, person_id, template_id, occasion, step,
-           subject, body, recipient_emails, attachment_filenames
+           subject, body, recipient_emails, attachment_filenames, channel
     FROM person_message_log
 """
 
@@ -66,15 +81,16 @@ def record(
     body: str,
     recipient_emails: list[str],
     attachment_filenames: list[str],
+    channel: str = CHANNEL_EMAIL,
     commit: bool = True,
 ) -> int:
-    """Record one completed send."""
+    """Record one completed send, or one marked done without sending."""
     cursor = connection.execute(
         """
         INSERT INTO person_message_log
             (sent_at, person_id, template_id, occasion, step,
-             subject, body, recipient_emails, attachment_filenames)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             subject, body, recipient_emails, attachment_filenames, channel)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now(timezone.utc).isoformat(),
@@ -86,6 +102,7 @@ def record(
             body,
             "\n".join(recipient_emails),
             "\n".join(attachment_filenames),
+            channel,
         ),
     )
     if commit:
@@ -108,32 +125,45 @@ def last_sent(connection: sqlite3.Connection, person_id: int, template_id: int) 
     return PersonMessageLog.from_row(row) if row else None
 
 
-def sent_dates_all(connection: sqlite3.Connection) -> dict[tuple[int, int], str]:
-    """When each template was last sent, for every person, in one query.
-
-    A worklist renders one card per tracker and each card asks the same
-    question, so asking per card is how a list of ninety gets slow.
-    """
-    rows = connection.execute(
-        """
-        SELECT person_id, template_id, MAX(sent_at) AS sent_at
-        FROM person_message_log
+#: The newest row per (person, template). `MAX(id)` rather than
+#: `MAX(sent_at)`: marking several bausteine done in one go writes
+#: timestamps that can tie, and an id cannot. Written out rather than
+#: assembled from `_SELECT`, so nothing here builds SQL from strings.
+_SELECT_LATEST = """
+    SELECT id, sent_at, person_id, template_id, occasion, step,
+           subject, body, recipient_emails, attachment_filenames, channel
+    FROM person_message_log
+    WHERE id IN (
+        SELECT MAX(id) FROM person_message_log
         WHERE template_id IS NOT NULL
         GROUP BY person_id, template_id
-        """
-    ).fetchall()
-    return {(row["person_id"], row["template_id"]): row["sent_at"] for row in rows}
+    )
+"""
 
 
-def sent_dates_by_template(connection: sqlite3.Connection, person_id: int) -> dict[int, str]:
-    """When each template was last sent to one person."""
-    rows = connection.execute(
-        """
-        SELECT template_id, MAX(sent_at) AS sent_at
-        FROM person_message_log
-        WHERE person_id = ? AND template_id IS NOT NULL
-        GROUP BY template_id
-        """,
-        (person_id,),
-    ).fetchall()
-    return {row["template_id"]: row["sent_at"] for row in rows}
+def latest_everywhere(connection: sqlite3.Connection) -> dict[tuple[int, int], PersonMessageLog]:
+    """The last message per person and template, for a whole worklist.
+
+    One query, because a worklist renders one card per tracker and each card
+    asks the same question -- asking per card is how a list of ninety gets
+    slow.
+    """
+    rows = connection.execute(_SELECT_LATEST).fetchall()
+    return {(row["person_id"], row["template_id"]): PersonMessageLog.from_row(row) for row in rows}
+
+
+def latest_by_template(connection: sqlite3.Connection, person_id: int) -> dict[int, PersonMessageLog]:
+    """The last message per template for one person."""
+    rows = connection.execute(_SELECT_LATEST + " AND person_id = ?", (person_id,)).fetchall()
+    return {row["template_id"]: PersonMessageLog.from_row(row) for row in rows}
+
+
+def delete(connection: sqlite3.Connection, log_id: int, *, commit: bool = True) -> None:
+    """Remove one log row, which undoes a marked-done.
+
+    Only ever used for that: a message that really went out is a fact, and
+    the card offers no way to unsay it.
+    """
+    connection.execute("DELETE FROM person_message_log WHERE id = ?", (log_id,))
+    if commit:
+        connection.commit()

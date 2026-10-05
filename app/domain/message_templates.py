@@ -20,6 +20,7 @@ from app.models.message_template import (
     TRIGGER_STEP_PENDING,
     MessageTemplate,
 )
+from app.models.person_message_log import CHANNEL_MANUAL, PersonMessageLog
 from app.models.person_offboarding import STEPS as OFFBOARDING_STEPS
 from app.models.person_onboarding import STEPS as ONBOARDING_STEPS
 
@@ -37,13 +38,23 @@ class DueMessage:
 
     template: MessageTemplate
     step_label: str
-    sent_on: str
     days_waiting: Optional[int]
+    log: Optional[PersonMessageLog] = None
 
     @property
     def was_sent(self) -> bool:
-        """Whether this baustein already went to this person."""
-        return bool(self.sent_on)
+        """Whether this baustein is settled -- really sent, or marked done."""
+        return self.log is not None
+
+    @property
+    def sent_on(self) -> str:
+        """The day it was settled, or `""`."""
+        return self.log.sent_on if self.log else ""
+
+    @property
+    def by_hand(self) -> bool:
+        """Whether it was marked done rather than sent, so the card can say so."""
+        return self.log.by_hand if self.log else False
 
 
 def text_for(connection: sqlite3.Connection, occasion: str) -> tuple[str, str]:
@@ -77,7 +88,7 @@ def due_templates(
         tracker,
         occasion,
         template_repo.list_for_occasion(connection, occasion),
-        log_repo.sent_dates_by_template(connection, tracker.person_id),
+        log_repo.latest_by_template(connection, tracker.person_id),
         today or date.today(),
     )
 
@@ -91,24 +102,51 @@ def due_by_person(
 ) -> dict[int, list[DueMessage]]:
     """The same answer for a whole worklist, with two queries instead of two per card."""
     templates = template_repo.list_for_occasion(connection, occasion)
-    everything = log_repo.sent_dates_all(connection)
+    everything = log_repo.latest_everywhere(connection)
     day = today or date.today()
     result: dict[int, list[DueMessage]] = {}
     for tracker in trackers:
-        sent = {
-            template_id: sent_at
-            for (person_id, template_id), sent_at in everything.items()
+        latest = {
+            template_id: entry
+            for (person_id, template_id), entry in everything.items()
             if person_id == tracker.person_id
         }
-        result[tracker.person_id] = _due_for(tracker, occasion, templates, sent, day)
+        result[tracker.person_id] = _due_for(tracker, occasion, templates, latest, day)
     return result
+
+
+def mark_done(
+    connection: sqlite3.Connection,
+    person_id: int,
+    template: MessageTemplate,
+    occasion: str,
+) -> int:
+    """Settle one baustein without sending anything.
+
+    For the letter that was handed over on paper before this feature existed.
+    The row carries no text and no recipients, because there was no message
+    -- `channel` is what the card reads to print "von Hand" rather than a
+    bare date that would claim a mail went out.
+    """
+    return log_repo.record(
+        connection,
+        person_id=person_id,
+        template_id=template.id,
+        occasion=occasion,
+        step=template.step,
+        subject="",
+        body="",
+        recipient_emails=[],
+        attachment_filenames=[],
+        channel=CHANNEL_MANUAL,
+    )
 
 
 def _due_for(
     tracker,
     occasion: str,
     templates: list[MessageTemplate],
-    sent_dates: dict[int, str],
+    latest: dict[int, PersonMessageLog],
     day: date,
 ) -> list[DueMessage]:
     """Apply the two triggers to one tracker against already-loaded templates."""
@@ -139,8 +177,8 @@ def _due_for(
             DueMessage(
                 template=template,
                 step_label=labels[template.step],
-                sent_on=(sent_dates.get(template.id) or "")[:10],
                 days_waiting=waiting,
+                log=latest.get(template.id),
             )
         )
     return due

@@ -50,6 +50,24 @@ def render_template(template: str, values: dict) -> str:
     return template.format_map(_SafeDict(values))
 
 
+#: Classic plain-text signature delimiter (RFC 3676) -- some mail clients
+#: recognize "-- " on its own line and render or strip a trailing signature
+#: specially (dimmed, or omitted from a reply quote).
+SIGNATURE_DELIMITER = "\n\n-- \n"
+
+
+def compose_with_signature(body: str, signature_content: str) -> str:
+    """Append a signature to a message body, if one was chosen.
+
+    Shared by the Rundmail and by a Textbaustein, so the same signature comes
+    out looking the same either way -- it used to live in
+    `app.gui.pages.email_dispatch`, where only that one page could reach it.
+    """
+    if not signature_content.strip():
+        return body
+    return f"{body}{SIGNATURE_DELIMITER}{signature_content}"
+
+
 def find_unknown_placeholders(template: str, known_keys) -> set[str]:
     """Find `{placeholder}`s in a template that aren't in `known_keys`."""
     known = set(known_keys)
