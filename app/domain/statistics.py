@@ -16,7 +16,11 @@ from app.domain.period import (
     quarter_bounds,
     trailing_months,
 )
+from app.models import assignment as assignment_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person_onboarding as person_onboarding_repo
+from app.models import site as site_repo
+from app.models import substation_area as substation_area_repo
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.person_onboarding import STEPS as ONBOARDING_STEPS
 from app.sort_keys import text_key
@@ -695,3 +699,124 @@ def leg_balance(connection: sqlite3.Connection) -> list[LegBalance]:
         return (0, -float("inf") if ratio is None else -ratio, text_key(balance.name))
 
     return sorted(balances, key=order)
+
+
+@dataclass
+class AreaPotential:
+    """How much of one Trafokreis is already in, and how much is not.
+
+    The counted Wohneinheiten come from `site.dwelling_count`, typed in while
+    walking the neighbourhood. They cannot be derived: a metering point only
+    exists once somebody has signed up, so the meters answer who is already
+    in and never how many there could be.
+    """
+
+    substation_area_id: int
+    name: str
+    bkw_designation: str
+    sites: int
+    sites_counted: int
+    dwellings: int
+    participating: int
+
+    @property
+    def sites_open(self) -> int:
+        """Addresses in this Trafokreis nobody has counted yet."""
+        return self.sites - self.sites_counted
+
+    @property
+    def is_counted(self) -> bool:
+        """Whether anything at all has been counted here."""
+        return self.sites_counted > 0
+
+    @property
+    def open_dwellings(self) -> Optional[int]:
+        """Counted Wohneinheiten that are not participating yet.
+
+        `None` while nothing is counted -- that is "unknown", not "none
+        left", and the two must not look alike. Floored at zero: a
+        participant can hold a meter at an address counted lower than the
+        number of parties actually signed up, and a negative potential is
+        not a statement about anything.
+        """
+        if not self.is_counted:
+            return None
+        return max(0, self.dwellings - self.participating)
+
+    @property
+    def participating_share(self) -> Optional[float]:
+        """Participating as a percentage of the counted Wohneinheiten."""
+        if not self.dwellings:
+            return None
+        return self.participating / self.dwellings * 100
+
+
+def substation_area_potential(connection: sqlite3.Connection) -> list[AreaPotential]:
+    """What each Trafokreis holds, and how much of it is not in yet.
+
+    Reports and grades nothing, like `leg_balance`: no threshold, no colour
+    and no verdict word. What stands in for a verdict is the **ordering** --
+    most uncounted-for Wohneinheiten first, so the Trafokreis with the most
+    left to win is where the eye lands. A Trafokreis nobody has counted is
+    pushed past every counted one but named, because one nobody surveyed
+    otherwise looks exactly like one with no potential.
+
+    `participating` is a **proxy**: one party per person holding a consumption
+    assignment at an address in this Trafokreis that has not ended. A
+    household that signed up with two meters counts once; two households
+    sharing one contract party count once too.
+
+    **Not ended, not `covers(today)`** -- and only the real data showed why.
+    All 123 assignments in the live deployment start in the *future* (114 on
+    2027-01-01, 9 on 2026-12-01), because the LEG has not begun operating.
+    Judged on today, every single participant would have counted as
+    untouched potential, and the view would have sent the administrator
+    knocking on the doors of people who had already signed.
+    """
+    areas = substation_area_repo.list_all(connection)
+    sites = site_repo.list_all(connection)
+    points = {point.id: point for point in metering_point_repo.list_all(connection)}
+    now = datetime.now()
+
+    sites_by_area: dict[Optional[int], list] = {}
+    for site in sites:
+        sites_by_area.setdefault(site.substation_area_id, []).append(site)
+
+    # One party per person per Trafokreis: the same person at two addresses
+    # in one area is one participating household there.
+    persons_by_area: dict[Optional[int], set[int]] = {}
+    site_area = {site.id: site.substation_area_id for site in sites}
+    for assignment in assignment_repo.list_all(connection):
+        if not assignment.is_current_or_upcoming(now):
+            continue
+        point = points.get(assignment.metering_point_id)
+        if point is None or point.direction != DIRECTION_CONSUMPTION:
+            continue
+        area_id = site_area.get(point.site_id)
+        if area_id is None:
+            continue
+        persons_by_area.setdefault(area_id, set()).add(assignment.person_id)
+
+    potentials = []
+    for area in areas:
+        own = sites_by_area.get(area.id, [])
+        counted = [site.dwelling_count for site in own if site.dwelling_count is not None]
+        potentials.append(
+            AreaPotential(
+                substation_area_id=area.id,
+                name=area.name,
+                bkw_designation=area.bkw_designation or "",
+                sites=len(own),
+                sites_counted=len(counted),
+                dwellings=sum(counted),
+                participating=len(persons_by_area.get(area.id, set())),
+            )
+        )
+
+    def order(potential: AreaPotential) -> tuple:
+        """Most left to win first; an uncounted Trafokreis last but named."""
+        if potential.open_dwellings is None:
+            return (1, 0, text_key(potential.name))
+        return (0, -potential.open_dwellings, text_key(potential.name))
+
+    return sorted(potentials, key=order)

@@ -16,9 +16,11 @@ from app.domain.period import (
     shift_window_one_year,
 )
 from app.domain.production_capacity import format_factor, format_percent
+from app.formatting import MISSING
 from app.domain.statistics import (
     distribution_by_leg,
     leg_balance,
+    substation_area_potential,
     energy_series,
     energy_unit,
     monthly_growth_counts,
@@ -477,3 +479,99 @@ def statistics_balance_page() -> None:
     """Render the Ausgewogenheit view: how each LEG's two sides compare."""
     with page_frame("/statistics/balance", "Statistik: Ausgewogenheit"):
         _render_balance_panel()
+
+
+def _render_potential_panel() -> None:
+    """Draw the Potenzial view: what each Trafokreis holds and what is left."""
+    with connection_scope() as connection:
+        potentials = substation_area_potential(connection)
+
+    with _panel("Potenzial je Trafokreis"):
+        if not potentials:
+            _empty_note("Noch kein Trafokreis erfasst.")
+            return
+
+        counted = [potential for potential in potentials if potential.is_counted]
+        if not counted:
+            _empty_note(
+                "Noch keine Wohneinheiten erfasst. Die Zahl wird beim Standort "
+                "eingetragen (Stammdaten → Standorte → Bearbeiten) und lässt sich "
+                "nicht aus den Messpunkten ableiten: ein Messpunkt entsteht erst, "
+                "wenn sich jemand anmeldet."
+            )
+            return
+
+        # Reversed for the chart: an ECharts category axis puts index 0 at
+        # the bottom, so the Trafokreis with the most left to win appears at
+        # the top -- the same order the table below reads in.
+        for_chart = list(reversed(counted))
+        ui.echart(
+            {
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                "legend": {"data": ["Dabei", "Noch offen"]},
+                "grid": {"left": "3%", "right": "4%", "bottom": "3%", "containLabel": True},
+                "xAxis": {"type": "value", "name": "Wohneinheiten", "minInterval": 1},
+                "yAxis": {"type": "category", "data": [p.name for p in for_chart]},
+                "series": [
+                    {
+                        "name": "Dabei",
+                        "type": "bar",
+                        "stack": "total",
+                        "data": [p.participating for p in for_chart],
+                    },
+                    {
+                        "name": "Noch offen",
+                        "type": "bar",
+                        "stack": "total",
+                        "data": [p.open_dwellings or 0 for p in for_chart],
+                    },
+                ],
+            }
+        ).classes("w-full").style(_CHART_HEIGHT)
+
+        ui.table(
+            columns=[
+                {"name": "name", "label": "Trafokreis", "field": "name", "align": "left"},
+                {"name": "sites", "label": "Standorte", "field": "sites", "align": "right"},
+                {"name": "dwellings", "label": "Wohneinheiten", "field": "dwellings", "align": "right"},
+                {"name": "participating", "label": "Dabei", "field": "participating", "align": "right"},
+                {"name": "open", "label": "Noch offen", "field": "open", "align": "right"},
+                {"name": "share", "label": "Anteil dabei", "field": "share", "align": "right"},
+            ],
+            rows=[_potential_row(potential) for potential in potentials],
+            row_key="name",
+        ).classes("w-full mt-4").props("dense")
+
+        unsurveyed = sum(potential.sites_open for potential in potentials)
+        if unsurveyed:
+            _empty_note(
+                f"{unsurveyed} Standorte ohne Angabe — ihre Wohneinheiten fehlen "
+                "in diesen Zahlen. „Dabei“ zählt eine Partei je Person mit "
+                "laufender Bezugs-Zuordnung, ist also eine Annäherung."
+            )
+        else:
+            _empty_note(
+                "Alle Standorte sind erfasst. „Dabei“ zählt eine Partei je Person "
+                "mit laufender Bezugs-Zuordnung, ist also eine Annäherung."
+            )
+
+
+def _potential_row(potential) -> dict:
+    """Build one row of the Potenzial table."""
+    return {
+        "name": potential.name,
+        "sites": (
+            f"{potential.sites}" + (f" ({potential.sites_open} offen)" if potential.sites_open else "")
+        ),
+        "dwellings": potential.dwellings if potential.is_counted else MISSING,
+        "participating": potential.participating,
+        "open": MISSING if potential.open_dwellings is None else potential.open_dwellings,
+        "share": _optional_percent(potential.participating_share),
+    }
+
+
+@ui.page("/statistics/potential")
+def statistics_potential_page() -> None:
+    """Render the Potenzial view: how much of each Trafokreis is not in yet."""
+    with page_frame("/statistics/potential", "Statistik: Potenzial"):
+        _render_potential_panel()

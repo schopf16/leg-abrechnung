@@ -3,6 +3,7 @@
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.formatting import MISSING
 from app.domain.participant_mix import compute_participant_mix_for_substation_area
 from app.domain.quality_checks import SUBJECT_SUBSTATION_AREA
 from app.gui.filter_bar import FilterBar
@@ -14,6 +15,7 @@ from app.gui.safe_notify import safe_notify
 from app.gui.table_list import paged_table
 from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
 from app.models import site as site_repo
+from app.models.site import Site
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
 
@@ -36,6 +38,7 @@ COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
     {"name": "bkw_designation", "label": "BKW-Bezeichnung", "field": "bkw_designation", "align": "left"},
     {"name": "sites_count", "label": "Standorte", "field": "sites_count", "align": "right"},
+    {"name": "dwellings", "label": "Wohneinheiten", "field": "dwellings", "align": "right"},
     {
         "name": "producer_consumer",
         "label": "Produzenten / Konsumenten",
@@ -80,10 +83,24 @@ def _mix_badge(mix) -> str:
     return text
 
 
+def _dwellings_cell(sites: list[Site]) -> str:
+    """The Wohneinheiten of this Trafokreis, saying how complete the count is.
+
+    The sum alone would read as the whole answer while half the addresses
+    have never been walked. "48 (3 offen)" says what it is, and an area with
+    nothing counted yet says so instead of claiming zero.
+    """
+    counted = [site.dwelling_count for site in sites if site.dwelling_count is not None]
+    missing = len(sites) - len(counted)
+    if not counted:
+        return MISSING if missing else ""
+    return f"{sum(counted)}" + (f" ({missing} offen)" if missing else "")
+
+
 def _to_row(
     connection,
     substation_area: SubstationArea,
-    site_ids: set[int],
+    own_sites: list[Site],
 ) -> dict:
     """Convert a `substation area` into a row dict backing both the card and the printout."""
     mix = compute_participant_mix_for_substation_area(connection, substation_area.id)
@@ -100,7 +117,8 @@ def _to_row(
         "id": substation_area.id,
         "name": substation_area.name,
         "bkw_designation": substation_area.bkw_designation,
-        "sites_count": len(site_ids),
+        "sites_count": len(own_sites),
+        "dwellings": _dwellings_cell(own_sites),
         "producer_consumer": producer_consumer,
         "hint": mix.hint,
         "note": substation_area.note,
@@ -187,7 +205,7 @@ def substation_areas_page() -> None:
                     _to_row(
                         connection,
                         substation_area,
-                        {s.id for s in sites if s.substation_area_id == substation_area.id},
+                        [s for s in sites if s.substation_area_id == substation_area.id],
                     )
                     for substation_area in substation_area_repo.list_all(connection)
                 ]

@@ -21,6 +21,8 @@ class Site:
     created_at: str
     address_confirmed: str = ""
     locality_confirmed: str = ""
+    #: Wohneinheiten at this address, `None` while nobody has counted them.
+    dwelling_count: Optional[int] = None
 
     @property
     def full_address(self) -> str:
@@ -43,6 +45,7 @@ class Site:
             created_at=row["created_at"],
             address_confirmed=row["address_confirmed"],
             locality_confirmed=row["locality_confirmed"],
+            dwelling_count=row["dwelling_count"],
         )
 
 
@@ -83,8 +86,9 @@ def create(connection: sqlite3.Connection, site: Site) -> int:
     cursor = connection.execute(
         """
         INSERT INTO site
-            (street, house_number, postal_code, municipality, address_detail, substation_area_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (street, house_number, postal_code, municipality, address_detail, substation_area_id,
+             created_at, dwelling_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             site.street,
@@ -94,6 +98,7 @@ def create(connection: sqlite3.Connection, site: Site) -> int:
             site.address_detail,
             site.substation_area_id,
             datetime.now(timezone.utc).isoformat(),
+            site.dwelling_count,
         ),
     )
     connection.commit()
@@ -108,7 +113,7 @@ def update(connection: sqlite3.Connection, site: Site) -> None:
         """
         UPDATE site SET
             street = ?, house_number = ?, postal_code = ?, municipality = ?, address_detail = ?,
-            substation_area_id = ?
+            substation_area_id = ?, dwelling_count = ?
         WHERE id = ?
         """,
         (
@@ -118,6 +123,7 @@ def update(connection: sqlite3.Connection, site: Site) -> None:
             site.municipality,
             site.address_detail,
             site.substation_area_id,
+            site.dwelling_count,
             site.id,
         ),
     )

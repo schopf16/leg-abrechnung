@@ -88,7 +88,15 @@ def _table(module: str, function: str, probe: str):
             "substation_areas",
             "substation_areas_page",
             "/probe-st-areas",
-            ["Name", "BKW-Bezeichnung", "Standorte", "Produzenten / Konsumenten", "Bemerkung", ""],
+            [
+                "Name",
+                "BKW-Bezeichnung",
+                "Standorte",
+                "Wohneinheiten",
+                "Produzenten / Konsumenten",
+                "Bemerkung",
+                "",
+            ],
         ),
         (
             "legs",

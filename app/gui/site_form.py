@@ -89,6 +89,14 @@ def open_site_form(
         address_detail = ui.input(
             "Lage (optional, z. B. Stockwerk)", value=existing.address_detail if existing else ""
         ).classes("w-full")
+        dwelling_count = ui.number(
+            "Wohneinheiten (optional)",
+            value=existing.dwelling_count if existing else None,
+            min=0,
+            step=1,
+            precision=0,
+        ).classes("w-full")
+        dwelling_count.props('hint="1 bei einem Einfamilienhaus, sonst die Zahl der Wohnungen"')
         substation_area_select = ui.select(
             substation_area_options,
             label="Trafokreis",
@@ -96,6 +104,20 @@ def open_site_form(
             with_input=True,
         ).classes("w-full")
         error_label = ui.label("").classes("text-negative")
+
+        def _dwellings() -> Optional[int]:
+            """The Wohneinheiten as a whole number, or `None` if left empty.
+
+            `ui.number` hands back a float, and an empty box is `None` --
+            which has to stay `None` rather than become 0, because "not
+            counted yet" and "nobody lives here" are different statements.
+            """
+            if dwelling_count.value in (None, ""):
+                return None
+            try:
+                return max(0, int(float(dwelling_count.value)))
+            except (TypeError, ValueError):
+                return None
 
         def check_duplicate() -> bool:
             """Check whether address/Hausnummer/PLZ already match another site."""
@@ -136,6 +158,7 @@ def open_site_form(
                         address_detail=address_detail.value.strip(),
                         substation_area_id=substation_area_select.value,
                         created_at=existing.created_at,
+                        dwelling_count=_dwellings(),
                     )
                     site_repo.update(connection, saved)
                 else:
@@ -148,6 +171,7 @@ def open_site_form(
                         address_detail=address_detail.value.strip(),
                         substation_area_id=substation_area_select.value,
                         created_at="",
+                        dwelling_count=_dwellings(),
                     )
                     new_id = site_repo.create(connection, saved)
                     saved.id = new_id

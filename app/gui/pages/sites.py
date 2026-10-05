@@ -6,6 +6,7 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.formatting import MISSING
 from app.domain.quality_checks import SUBJECT_SITE
 from app.gui.filter_bar import FilterBar
 from app.gui.detail_header import render_detail_header
@@ -38,6 +39,7 @@ COLUMNS = [
     {"name": "address", "label": "Adresse", "field": "address", "align": "left"},
     {"name": "plz_municipality", "label": "PLZ / Ort", "field": "plz_municipality", "align": "left"},
     {"name": "address_detail", "label": "Lage", "field": "address_detail", "align": "left"},
+    {"name": "dwellings", "label": "Wohneinheiten", "field": "dwellings", "align": "right"},
     {"name": "substation_area", "label": "Trafokreis", "field": "substation_area", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
@@ -103,6 +105,8 @@ def _to_row(site: Site, substation_areas: dict, problems: dict) -> dict:
         "address": f"{site.street} {site.house_number}".strip(),
         "plz_municipality": f"{site.postal_code} {site.municipality}".strip(),
         "address_detail": site.address_detail,
+        # An em dash, not a 0: nobody has counted this address yet.
+        "dwellings": MISSING if site.dwelling_count is None else site.dwelling_count,
         "substation_area": substation_area_name,
         # Only a marker, carrying no text: the eye shows what is wrong and
         # the pencil fixes it. See `app.gui.problem_markers`.

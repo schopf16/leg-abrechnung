@@ -1932,4 +1932,21 @@ Freundliche Grüsse',
                 ADD COLUMN signature_id INTEGER REFERENCES signatures(id);
         """,
     ),
+    Migration(
+        version=58,
+        description="How many Wohneinheiten a Standort has, typed in by "
+        "hand. It cannot be derived: a metering point only exists once "
+        "somebody has signed up, so counting those answers who is already "
+        "in, never how many could be -- and the administrator walks the "
+        "neighbourhoods to find out. One for a Einfamilienhaus, several for "
+        "a Mehrfamilienhaus. "
+        "NULL and not 0 for a Standort nobody has counted yet: 'not "
+        "surveyed' and 'nobody lives here' are different statements, and "
+        "`app.domain.statistics.substation_area_potential` has to report the "
+        "first one rather than quietly adding nothing.",
+        sql="""
+            ALTER TABLE site
+                ADD COLUMN dwelling_count INTEGER;
+        """,
+    ),
 ]

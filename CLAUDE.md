@@ -459,6 +459,7 @@ accept BKW's German spellings (`app.importers.base.validate_direction`).
 | Bezeichnung (frei, z. B. „Whg. 3. OG") | `MeteringPoint.label` |
 | Genossenschaft / Genossenschafter | `CooperativeMembership` / member |
 | Anteile | `shares` |
+| Wohneinheiten (am Standort) | `Site.dwelling_count` |
 | Bemerkung (intern, Person) | `Person.note` |
 | Zweite Person (Paar) | `second_first_name`, `named_persons` |
 | Briefanrede | `letter_salutation` / `{briefanrede}` |
