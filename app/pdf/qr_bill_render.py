@@ -115,7 +115,11 @@ def build_qr_bill(
             account=settings.qr_iban,
             creditor={
                 "name": leg.name,
+                # Street and house number separately, as the Swiss
+                # standard has them and `qrbill` takes them: this
+                # used to cram both into "street".
                 "street": settings.address_street,
+                "house_num": settings.address_house_number,
                 "pcode": settings.address_zip,
                 "city": settings.address_city,
                 "country": settings.address_country or "CH",

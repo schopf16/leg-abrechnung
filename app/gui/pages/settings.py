@@ -48,16 +48,20 @@ def settings_page() -> None:
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
 
-        ui.label("Einstellungen").classes("text-lg font-bold")
         ui.label(
-            "Diese Angaben gelten für alle LEGs (Absender und "
-            "Zahlungsempfänger der QR-Rechnung, interner Strompreis, "
-            "Gebühren). Der Name auf der Rechnung wird von der "
-            "jeweiligen LEG bezogen -- siehe „LEGs“."
+            "Diese Angaben gelten für alle LEGs. Der Name auf der Rechnung "
+            "kommt von der jeweiligen LEG -- siehe „LEGs“."
+        ).classes("text-body2 text-grey-8")
+
+        ui.label("Absender und Abrechnung").classes("text-lg font-bold mt-4")
+        ui.label(
+            "Absender und Zahlungsempfänger jeder QR-Rechnung, interner Strompreis und Gebühren."
         ).classes("text-body2 text-grey-8")
 
         with ui.card().classes("w-full max-w-lg"):
-            street = ui.input("Strasse", value=current.address_street).classes("w-full")
+            with ui.row().classes("w-full gap-2"):
+                street = ui.input("Strasse", value=current.address_street).classes("flex-grow")
+                house_number = ui.input("Hausnummer", value=current.address_house_number).classes("w-28")
             street_hint = ui.column().classes("w-full gap-0")
             with ui.row().classes("w-full gap-2"):
                 zip_code = ui.input("PLZ", value=current.address_zip).classes("w-24")
@@ -67,12 +71,17 @@ def settings_page() -> None:
             # The most consequential address in the app: it is the creditor
             # on every QR-bill (app/pdf/qr_bill_render.py) and the letterhead
             # of every document, entered once and never looked at again.
-            # Street and house number share one field here, so no separate
-            # number input is passed.
+            #
+            # The house number is its own field since migration 54. With both
+            # in one box the check compared "Im Feld 3" against street names,
+            # found nothing, offered "Im Feld" -- and accepting that wrote it
+            # over the whole value, so the number was gone. Passed to the
+            # box now, exactly as the Standort and Person dialogs do.
             SuggestionBox(
                 street,
                 zip_code,
                 city,
+                house_number,
                 street_hint=street_hint,
                 locality_hint=locality_hint,
             )
@@ -149,6 +158,7 @@ def settings_page() -> None:
                 with connection_scope() as connection:
                     updated = settings_repo.get_settings(connection)
                     updated.address_street = street.value.strip()
+                    updated.address_house_number = house_number.value.strip()
                     updated.address_zip = zip_code.value.strip()
                     updated.address_city = city.value.strip()
                     updated.address_country = country.value.strip() or "CH"
@@ -213,6 +223,11 @@ def settings_page() -> None:
 
         ui.label("Aufnahmeprozess").classes("text-lg font-bold")
         ui.label(
+            "Wie lange ein Schritt offen sein darf, und die Formulare, die beim Aufnehmen mitgehen."
+        ).classes("text-body2 text-grey-8")
+
+        ui.label("Überfällige Schritte").classes("text-body1 font-bold mt-2")
+        ui.label(
             "Ab wie vielen Tagen ohne Fortschritt beim aktuellen Schritt "
             "einer Aufnahme (siehe „Aufnahmen“) diese in den Auswertungen "
             "und auf der Übersicht als überfällig gemeldet wird."
@@ -245,56 +260,7 @@ def settings_page() -> None:
 
             ui.button("Speichern", on_click=save_onboarding_threshold).classes("mt-2")
 
-        ui.separator().classes("my-6")
-
-        ui.separator().classes("my-6")
-
-        ui.label("Produktionsleistung").classes("text-lg font-bold")
-        ui.label(
-            "Eine LEG braucht laut Art. 19e Abs. 1 StromVV eine "
-            "Produktionsleistung von mindestens 5 % der Anschlussleistung "
-            "aller Teilnehmenden. Diese 5 % sind gesetzlich und nicht "
-            "änderbar. Hier legen Sie nur fest, ab welchem Wert die App "
-            "schon vorher warnt, damit ein neuer Bezüger rechtzeitig einer "
-            "anderen LEG zugewiesen werden kann, statt erst beim "
-            "Unterschreiten. Den aktuellen Prozentwert tragen Sie pro LEG "
-            "ein; er stammt aus dem BKW-LEG-Portal."
-        ).classes("text-body2 text-grey-8")
-        with ui.card().classes("w-full max-w-lg"):
-            production_capacity_warn_percent = ui.number(
-                "Warnen unterhalb von (%)",
-                value=current.production_capacity_warn_percent,
-                min=5.5,
-                step=0.5,
-            ).classes("w-full")
-            capacity_error = ui.label("").classes("text-negative")
-
-            def save_production_capacity_warn_percent() -> None:
-                """Validate and persist the production-capacity warning threshold.
-
-                Returns:
-                    None.
-                """
-                value = production_capacity_warn_percent.value
-                # Exactly 5 would empty the warning band entirely: a LEG
-                # sitting on the legal floor would show a green tick.
-                if value is None or value <= 5:
-                    capacity_error.text = (
-                        "Muss über 5 % liegen -- 5 % ist die gesetzliche Grenze selbst, keine Vorwarnung."
-                    )
-                    return
-                with connection_scope() as connection:
-                    settings = settings_repo.get_settings(connection)
-                    settings.production_capacity_warn_percent = float(value)
-                    settings_repo.update_settings(connection, settings)
-                capacity_error.text = ""
-                ui.notify("Warnschwelle gespeichert.", type="positive")
-
-            ui.button("Speichern", on_click=save_production_capacity_warn_percent).classes("mt-2")
-
-        ui.separator().classes("my-6")
-
-        ui.label("LEG-Dokumente").classes("text-lg font-bold")
+        ui.label("LEG-Dokumente").classes("text-body1 font-bold mt-4")
         ui.label(
             "Formulare, die ein Textbaustein anfügen kann (siehe "
             "„Textbausteine“). Einmal hier hinterlegt, gilt für alle "
@@ -385,6 +351,51 @@ def settings_page() -> None:
             render_documents()
 
         render_documents()
+
+        ui.separator().classes("my-6")
+
+        ui.label("Produktionsleistung").classes("text-lg font-bold")
+        ui.label(
+            "Eine LEG braucht laut Art. 19e Abs. 1 StromVV eine "
+            "Produktionsleistung von mindestens 5 % der Anschlussleistung "
+            "aller Teilnehmenden. Diese 5 % sind gesetzlich und nicht "
+            "änderbar. Hier legen Sie nur fest, ab welchem Wert die App "
+            "schon vorher warnt, damit ein neuer Bezüger rechtzeitig einer "
+            "anderen LEG zugewiesen werden kann, statt erst beim "
+            "Unterschreiten. Den aktuellen Prozentwert tragen Sie pro LEG "
+            "ein; er stammt aus dem BKW-LEG-Portal."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            production_capacity_warn_percent = ui.number(
+                "Warnen unterhalb von (%)",
+                value=current.production_capacity_warn_percent,
+                min=5.5,
+                step=0.5,
+            ).classes("w-full")
+            capacity_error = ui.label("").classes("text-negative")
+
+            def save_production_capacity_warn_percent() -> None:
+                """Validate and persist the production-capacity warning threshold.
+
+                Returns:
+                    None.
+                """
+                value = production_capacity_warn_percent.value
+                # Exactly 5 would empty the warning band entirely: a LEG
+                # sitting on the legal floor would show a green tick.
+                if value is None or value <= 5:
+                    capacity_error.text = (
+                        "Muss über 5 % liegen -- 5 % ist die gesetzliche Grenze selbst, keine Vorwarnung."
+                    )
+                    return
+                with connection_scope() as connection:
+                    settings = settings_repo.get_settings(connection)
+                    settings.production_capacity_warn_percent = float(value)
+                    settings_repo.update_settings(connection, settings)
+                capacity_error.text = ""
+                ui.notify("Warnschwelle gespeichert.", type="positive")
+
+            ui.button("Speichern", on_click=save_production_capacity_warn_percent).classes("mt-2")
 
         ui.separator().classes("my-6")
 

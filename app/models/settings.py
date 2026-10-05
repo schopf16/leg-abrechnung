@@ -14,7 +14,14 @@ class LegSettings:
     every LEG in this deployment.
 
     Attributes:
-        address_street: Street and house number of the sender address.
+        address_street: Street of the sender address, without the
+            house number -- that is `address_house_number`. They were
+            one field until migration 54, which cost the
+            administrator the number: the address check compares the
+            field against street names, so a value with a number in
+            it matched nothing and accepting the suggestion wrote the
+            bare street over the whole thing.
+        address_house_number: House number of the sender address.
         address_zip: Postal code of the sender address.
         address_city: City of the sender address.
         address_country: ISO-3166 alpha-2 country code, e.g. ``"CH"``.
@@ -102,6 +109,7 @@ class LegSettings:
     """
 
     address_street: str
+    address_house_number: str
     address_zip: str
     address_city: str
     address_country: str
@@ -127,6 +135,23 @@ class LegSettings:
     dunning2_email_body: str
     updated_at: str
 
+    @property
+    def address_street_with_number(self) -> str:
+        """`"Strasse Hausnummer"`, with either part omitted if empty.
+
+        Mirrors `Person.billing_street_with_number`, and for the same
+        reason: the two parts are stored apart so each can be checked and
+        corrected on its own, and joined again wherever an address is
+        *printed* -- the letterhead of every document
+        (`app.pdf.layout.draw_sender_block`). The QR-bill is the exception
+        that proves it: the Swiss standard has the two fields separately,
+        so `app.pdf.qr_bill_render` passes them unjoined.
+
+        Returns:
+            The sender address's street line, or `""` if both are empty.
+        """
+        return " ".join(part for part in (self.address_street, self.address_house_number) if part)
+
     @staticmethod
     def from_row(row: sqlite3.Row) -> "LegSettings":
         """Build a `LegSettings` instance from a `sqlite3.Row`.
@@ -139,6 +164,7 @@ class LegSettings:
         """
         return LegSettings(
             address_street=row["address_street"],
+            address_house_number=row["address_house_number"],
             address_zip=row["address_zip"],
             address_city=row["address_city"],
             address_country=row["address_country"],
@@ -199,7 +225,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
     connection.execute(
         """
         UPDATE leg_settings SET
-            address_street = ?, address_zip = ?, address_city = ?,
+            address_street = ?, address_house_number = ?,
+            address_zip = ?, address_city = ?,
             address_country = ?, qr_iban = ?, price_rp_per_kwh = ?,
             admin_fee_consumption_rp_per_kwh = ?, admin_fee_feed_in_rp_per_kwh = ?,
             paper_invoice_rappen = ?,
@@ -214,6 +241,7 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
         """,
         (
             settings.address_street,
+            settings.address_house_number,
             settings.address_zip,
             settings.address_city,
             settings.address_country,

@@ -53,7 +53,7 @@ def draw_sender_block(canvas: Canvas, settings: LegSettings, leg: Leg) -> None:
     canvas.setFont("Helvetica", 8)
     for line in (
         leg.name,
-        settings.address_street,
+        settings.address_street_with_number,
         f"{settings.address_zip} {settings.address_city}",
     ):
         canvas.drawString(_LEFT_MARGIN, y, line)

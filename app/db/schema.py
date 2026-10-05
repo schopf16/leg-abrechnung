@@ -113,6 +113,7 @@ def initialize_database(connection: sqlite3.Connection) -> int:
     version = migrate_to_latest(connection)
     _seed_default_settings(connection)
     _seed_message_templates(connection)
+    _split_sender_house_number(connection)
     return version
 
 
@@ -230,4 +231,55 @@ def _seed_message_templates(connection: sqlite3.Connection) -> None:
                 now,
             ),
         )
+    connection.commit()
+
+
+def _split_sender_house_number(connection: sqlite3.Connection) -> None:
+    """Move a trailing house number out of the LEG's street field.
+
+    Until migration 54 the sender address had street and number in one box
+    labelled "Strasse", which cost the administrator the number: the address
+    check compares that box against street names, so "Im Feld 3" matched
+    nothing, it offered "Im Feld", and accepting the suggestion wrote that
+    over the whole value.
+
+    Not done in the migration because "the last word, if it starts with a
+    digit" needs a `reverse()` SQLite does not have -- and this is one row.
+
+    Runs only while the new field is empty, so it cannot undo a correction.
+    It converges by itself: once the number sits in its own field the street
+    no longer ends in a digit, so a second pass finds nothing. A street
+    deliberately typed as "Hauptstrasse 7" with the number field left empty
+    is split too, which is the helpful reading of that state.
+
+    Args:
+        connection: Open SQLite connection, already migrated.
+
+    Returns:
+        None.
+    """
+    has_column = any(
+        row[1] == "address_house_number" for row in connection.execute("PRAGMA table_info(leg_settings)")
+    )
+    if not has_column:
+        # A deliberately half-migrated database, as when an old backup is
+        # replayed -- see `_seed_message_templates` on the same point.
+        return
+
+    row = connection.execute(
+        "SELECT address_street, address_house_number FROM leg_settings WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        return
+    street, house_number = (row[0] or "").strip(), (row[1] or "").strip()
+    if house_number or not street:
+        return
+
+    parts = street.rsplit(maxsplit=1)
+    if len(parts) != 2 or not parts[1][:1].isdigit():
+        return
+    connection.execute(
+        "UPDATE leg_settings SET address_street = ?, address_house_number = ? WHERE id = 1",
+        (parts[0], parts[1]),
+    )
     connection.commit()

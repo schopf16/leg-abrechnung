@@ -1808,4 +1808,26 @@ Freundliche Grüsse';
             );
         """,
     ),
+    Migration(
+        version=54,
+        description="Give the LEG's own address a house number field of its "
+        "own. It had street and number in one box labelled 'Strasse', and "
+        "that cost the administrator the number: the address check compares "
+        "the box against street names, so 'Im Feld 3' matched nothing, it "
+        "offered 'Im Feld', and clicking Ja wrote that over the whole value. "
+        "One field, one meaning -- the same shape `person.billing_house_number` "
+        "and `site.house_number` already have, which is also why the address "
+        "check now works here exactly as it does there. "
+        "The QR-bill gains by it too: the Swiss standard has separate street "
+        "and house-number fields and `qrbill` takes them separately, while "
+        "this crammed both into `street`. "
+        "The existing value is moved by `app.db.schema."
+        "_split_sender_house_number` rather than here, because 'the last word "
+        "if it starts with a digit' is not something SQLite can express "
+        "without a reverse() it does not have -- and it is one row.",
+        sql="""
+            ALTER TABLE leg_settings
+                ADD COLUMN address_house_number TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 ]

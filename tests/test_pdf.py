@@ -122,7 +122,8 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1",
+        address_street="Weg",
+        address_house_number="1",
         address_zip="3000",
         address_city="Bern",
         address_country="CH",
@@ -194,7 +195,8 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1",
+        address_street="Weg",
+        address_house_number="1",
         address_zip="3000",
         address_city="Bern",
         address_country="CH",

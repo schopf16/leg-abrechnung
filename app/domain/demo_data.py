@@ -842,7 +842,8 @@ def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
         None.
     """
     settings = settings_repo.get_settings(connection)
-    settings.address_street = "Sonnenweg 10"
+    settings.address_street = "Sonnenweg"
+    settings.address_house_number = "10"
     settings.address_zip = "3000"
     settings.address_city = "Bern"
     settings.address_country = "CH"
