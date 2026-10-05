@@ -77,6 +77,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
         "Kommunikation",
         [
             ("/email-dispatch", "E-Mail versenden"),
+            ("/message-templates", "Textbausteine"),
             ("/signatures", "Signaturen"),
         ],
     ),

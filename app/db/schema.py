@@ -101,7 +101,8 @@ def initialize_database(connection: sqlite3.Connection) -> int:
 
     Creates the bookkeeping table if needed and migrates the schema to the
     latest known version. Also seeds the single ``leg_settings`` row if it
-    does not exist yet.
+    does not exist yet, and carries the three email texts that used to live
+    on it into ``message_template`` (see ``_seed_message_templates``).
 
     Args:
         connection: Open SQLite connection.
@@ -111,6 +112,7 @@ def initialize_database(connection: sqlite3.Connection) -> int:
     """
     version = migrate_to_latest(connection)
     _seed_default_settings(connection)
+    _seed_message_templates(connection)
     return version
 
 
@@ -135,3 +137,97 @@ def _seed_default_settings(connection: sqlite3.Connection) -> None:
             (datetime.now(timezone.utc).isoformat(),),
         )
         connection.commit()
+
+
+#: The three texts that used to be column pairs on `leg_settings`, with the
+#: `occasion` each becomes and the column they come from. Order is the order
+#: they appear in the Textbausteine list.
+_CARRIED_OVER_TEMPLATES = (
+    ("Rechnung", "invoice", "invoice_email_subject", "invoice_email_body", 10),
+    ("1. Mahnung", "dunning1", "dunning1_email_subject", "dunning1_email_body", 20),
+    ("2. Mahnung", "dunning2", "dunning2_email_subject", "dunning2_email_body", 30),
+)
+
+
+def _seed_message_templates(connection: sqlite3.Connection) -> None:
+    """Carry the invoice and dunning texts into `message_template`.
+
+    Not done in migration 52, and the reason is worth keeping: on a fresh
+    database the `leg_settings` row does not exist while migrations run --
+    `_seed_default_settings` above inserts it afterwards -- so an
+    `INSERT .. SELECT FROM leg_settings` inside the migration copied nothing
+    and a new installation ended up with no invoice text at all. Here, after
+    both the migration and the settings row, one code path serves the
+    existing database (which has the administrator's real texts) and a fresh
+    one (which has the column defaults).
+
+    Runs only while the table is empty, so it cannot overwrite a text that
+    has since been edited, and it does not come back after a template is
+    deliberately deleted... except that an empty table is indistinguishable
+    from "deleted them all", which is a state nobody reaches by accident.
+
+    Args:
+        connection: Open SQLite connection, already migrated.
+
+    Returns:
+        None.
+    """
+    from datetime import datetime, timezone
+
+    # `initialize_database` is called on deliberately half-migrated
+    # databases too: `tests/test_master_data.py` replays only the
+    # migrations below 21 to reproduce an old customer number, and
+    # restoring an old backup does the same thing for real. Neither has
+    # this table yet, and neither is an error.
+    has_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'message_template'"
+    ).fetchone()
+    if not has_table:
+        return
+    if connection.execute("SELECT 1 FROM message_template LIMIT 1").fetchone():
+        return
+    # Read positionally, not by column name: `initialize_database` is called
+    # with whatever connection the caller has, and only some of them set
+    # `row_factory = sqlite3.Row`. `_seed_default_settings` above never
+    # noticed because it only tests the row for truth.
+    settings = connection.execute(
+        "SELECT invoice_email_subject, invoice_email_body, "
+        "dunning1_email_subject, dunning1_email_body, "
+        "dunning2_email_subject, dunning2_email_body "
+        "FROM leg_settings WHERE id = 1"
+    ).fetchone()
+    if settings is None:
+        return
+    texts = dict(
+        zip(
+            (
+                "invoice_email_subject",
+                "invoice_email_body",
+                "dunning1_email_subject",
+                "dunning1_email_body",
+                "dunning2_email_subject",
+                "dunning2_email_body",
+            ),
+            tuple(settings),
+        )
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    for name, occasion, subject_column, body_column, order in _CARRIED_OVER_TEMPLATES:
+        connection.execute(
+            """
+            INSERT INTO message_template
+                (name, occasion, step, trigger_kind, deadline_days,
+                 subject, body, sort_order, created_at)
+            VALUES (?, ?, '', '', NULL, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                occasion,
+                texts[subject_column] or "",
+                texts[body_column] or "",
+                order,
+                now,
+            ),
+        )
+    connection.commit()

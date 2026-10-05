@@ -1691,4 +1691,86 @@ Freundliche Grüsse';
             ALTER TABLE person ADD COLUMN billing_city_confirmed TEXT NOT NULL DEFAULT '';
         """,
     ),
+    Migration(
+        version=52,
+        description="Message templates (Textbausteine) with attachments, a "
+        "per-person send log, and the Wallbox capacity the membership "
+        "contract asks for. Email texts used to live as column pairs on "
+        "leg_settings -- three of them, one each for the invoice and the two "
+        "dunning notices -- while the broadcast had no stored text at all "
+        "and was retyped every time. That shape cannot hold what the "
+        "administrator needs next: a text per step of the Aufnahme and "
+        "Austritt processes, and **several per step**, because a reminder "
+        "is a second text about the same step. "
+        "`trigger_kind` is the whole vocabulary: a template is due either "
+        "'step_done' (the step has a date, so the mail reports something "
+        "that happened) or 'step_pending' (the step is still open, which is "
+        "where `deadline_days` lives -- 30 days for a contract that has not "
+        "come back). Nothing sends by itself: the trigger decides when a "
+        "button appears, never when a mail goes out. "
+        "An attachment's `role` is why the filled-in membership contract is "
+        "declared in data rather than recognised by filename: that one is "
+        "not attached but **generated** -- page 1 from the person's own "
+        "record, pages 2 onward from the stored original. "
+        "person_message_log is dunning_log's shape applied to this, and it "
+        "is also what the interface reads: it answers 'have I already sent "
+        "this to this person, and when', which is the administrator's own "
+        "safeguard against sending twice. "
+        "The three existing texts are carried over by "
+        "app.db.schema._seed_message_templates, not by this migration: on a "
+        "fresh database the leg_settings row does not exist yet when "
+        "migrations run (it is seeded afterwards), so an INSERT..SELECT here "
+        "copied nothing and a new installation ended up with no invoice text "
+        "at all. Seeding sits beside _seed_default_settings and handles both "
+        "cases with one code path. The six columns stay where they are, "
+        "unread, exactly as leg_settings.leg_founding_min_persons does -- old "
+        "migrations are never rewritten.",
+        sql="""
+            CREATE TABLE message_template (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                occasion TEXT NOT NULL,
+                step TEXT NOT NULL DEFAULT '',
+                trigger_kind TEXT NOT NULL DEFAULT '',
+                deadline_days INTEGER,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE message_template_attachment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id INTEGER NOT NULL
+                    REFERENCES message_template(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL,
+                role TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_message_template_attachment_template
+                ON message_template_attachment(template_id);
+
+            CREATE TABLE person_message_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at TEXT NOT NULL,
+                person_id INTEGER NOT NULL
+                    REFERENCES person(id) ON DELETE CASCADE,
+                template_id INTEGER
+                    REFERENCES message_template(id) ON DELETE SET NULL,
+                occasion TEXT NOT NULL,
+                step TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                recipient_emails TEXT NOT NULL,
+                attachment_filenames TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX idx_person_message_log_person
+                ON person_message_log(person_id);
+
+            ALTER TABLE metering_point ADD COLUMN wallbox_capacity_kw REAL;
+        """,
+    ),
 ]

@@ -1,0 +1,431 @@
+"""Textbausteine: the store, the carried-over texts, and the page.
+
+Nothing here sends anything, and that is the point of this stage: the texts
+and their attachments exist and can be maintained before a single mail is
+wired up. `graph_client.send_email` is not even imported.
+"""
+
+import sqlite3
+
+import pytest
+from nicegui import Client, ui
+
+from app.db.connection import connection_scope
+from app.db.schema import initialize_database
+from app.models import message_template as template_repo
+from app.models.message_template import (
+    OCCASION_DUNNING1,
+    OCCASION_DUNNING2,
+    OCCASION_INVOICE,
+    OCCASION_OFFBOARDING,
+    OCCASION_ONBOARDING,
+    ROLE_MEMBERSHIP_CONTRACT,
+    TRIGGER_STEP_DONE,
+    TRIGGER_STEP_PENDING,
+    MessageTemplate,
+)
+
+
+def _template(
+    name: str = "Willkommen",
+    *,
+    occasion: str = OCCASION_ONBOARDING,
+    step: str = "registered_at",
+    trigger_kind: str = TRIGGER_STEP_DONE,
+    deadline_days: int | None = None,
+    subject: str = "Willkommen in der LEG",
+    body: str = "{briefanrede}\n\nSchön, dass Sie dabei sind.",
+) -> MessageTemplate:
+    """Build a template to insert.
+
+    Args:
+        name: Its name.
+        occasion: One of the `OCCASION_*` constants.
+        step: The step attribute it belongs to.
+        trigger_kind: One of the `TRIGGER_*` constants.
+        deadline_days: Days before a pending step becomes due.
+        subject: Subject template.
+        body: Body template.
+
+    Returns:
+        The unsaved template.
+    """
+    return MessageTemplate(
+        id=None,
+        name=name,
+        occasion=occasion,
+        step=step,
+        trigger_kind=trigger_kind,
+        deadline_days=deadline_days,
+        subject=subject,
+        body=body,
+        sort_order=100,
+        created_at="",
+    )
+
+
+# --- The store -------------------------------------------------------------
+
+
+def test_a_template_survives_a_round_trip(db):
+    """Every field comes back as it went in, `None` deadline included."""
+    template_id = template_repo.create(db, _template())
+
+    loaded = template_repo.get(db, template_id)
+
+    assert loaded is not None
+    assert loaded.name == "Willkommen"
+    assert loaded.occasion == OCCASION_ONBOARDING
+    assert loaded.step == "registered_at"
+    assert loaded.trigger_kind == TRIGGER_STEP_DONE
+    assert loaded.deadline_days is None
+    assert loaded.body.startswith("{briefanrede}")
+    assert loaded.created_at, "created_at wird beim Einfügen gesetzt"
+
+
+def test_several_templates_can_share_one_step(db):
+    """The whole reason this is a table and not a column pair.
+
+    A reminder is a second text about the same step -- the administrator's
+    own case: the welcome mail and, 30 days later, the reminder that the
+    contract has not come back.
+    """
+    template_repo.create(db, _template("Willkommen", step="contract_signed_at"))
+    template_repo.create(
+        db,
+        _template(
+            "Erinnerung Vertrag",
+            step="contract_signed_at",
+            trigger_kind=TRIGGER_STEP_PENDING,
+            deadline_days=30,
+        ),
+    )
+
+    found = template_repo.list_for_occasion(db, OCCASION_ONBOARDING, "contract_signed_at")
+
+    assert [t.name for t in found] == ["Erinnerung Vertrag", "Willkommen"]
+    assert {t.trigger_kind for t in found} == {TRIGGER_STEP_DONE, TRIGGER_STEP_PENDING}
+
+
+def test_the_two_processes_do_not_see_each_others_templates(db):
+    """An Austritt step and an Aufnahme step can carry the same attribute
+    name, so the occasion has to narrow it."""
+    template_repo.create(db, _template("Aufnahme-Text", occasion=OCCASION_ONBOARDING))
+    template_repo.create(db, _template("Austritt-Text", occasion=OCCASION_OFFBOARDING, step="decided_at"))
+
+    assert [t.name for t in template_repo.list_for_occasion(db, OCCASION_ONBOARDING)] == ["Aufnahme-Text"]
+    assert [t.name for t in template_repo.list_for_occasion(db, OCCASION_OFFBOARDING)] == ["Austritt-Text"]
+
+
+def test_an_attachment_keeps_its_bytes_and_its_role(db):
+    """The contract is stored, not referenced: it rides along in backups and
+    it stays knowable which version was sent."""
+    template_id = template_repo.create(db, _template())
+
+    template_repo.add_attachment(
+        db,
+        template_id,
+        "Beitrittserklaerung.pdf",
+        b"%PDF-1.7 ...",
+        role=ROLE_MEMBERSHIP_CONTRACT,
+    )
+    template_repo.add_attachment(db, template_id, "Merkblatt.pdf", b"%PDF-1.7 other")
+
+    attachments = template_repo.list_attachments(db, template_id)
+
+    assert [a.filename for a in attachments] == ["Beitrittserklaerung.pdf", "Merkblatt.pdf"]
+    assert attachments[0].content == b"%PDF-1.7 ..."
+    assert attachments[0].is_generated is True
+    assert attachments[1].is_generated is False, "nur die Beitrittserklärung wird erzeugt"
+
+
+def test_deleting_a_template_takes_its_attachments_with_it(db):
+    """`ON DELETE CASCADE`, so no orphaned blob stays in the database."""
+    template_id = template_repo.create(db, _template())
+    template_repo.add_attachment(db, template_id, "Vertrag.pdf", b"x")
+
+    template_repo.delete(db, template_id)
+
+    assert template_repo.get(db, template_id) is None
+    assert template_repo.list_attachments(db, template_id) == []
+
+
+def test_a_deadline_only_makes_sense_with_a_pending_trigger(db):
+    """Stored as given; the meaning is the trigger's.
+
+    Pinned because the dialog is what enforces the pairing, and a reader of
+    the model should not conclude the column is free-standing.
+    """
+    template_id = template_repo.create(
+        db,
+        _template("Erinnerung", trigger_kind=TRIGGER_STEP_PENDING, deadline_days=30),
+    )
+
+    loaded = template_repo.get(db, template_id)
+
+    assert loaded.trigger_kind == TRIGGER_STEP_PENDING
+    assert loaded.deadline_days == 30
+
+
+# --- The three texts that moved ---------------------------------------------
+
+
+def _fresh_database() -> sqlite3.Connection:
+    """A database migrated and seeded from scratch.
+
+    Returns:
+        The open connection.
+    """
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    initialize_database(connection)
+    return connection
+
+
+def test_a_fresh_database_comes_with_the_three_carried_over_texts():
+    """They used to be column pairs on `leg_settings`.
+
+    Seeded in `app.db.schema` rather than in migration 52, because on a
+    fresh database the settings row does not exist while migrations run --
+    an `INSERT .. SELECT` inside the migration copied nothing and a new
+    installation ended up with no invoice text at all.
+    """
+    connection = _fresh_database()
+
+    templates = template_repo.list_all(connection)
+
+    assert [t.occasion for t in templates] == [
+        OCCASION_INVOICE,
+        OCCASION_DUNNING1,
+        OCCASION_DUNNING2,
+    ]
+    assert [t.name for t in templates] == ["Rechnung", "1. Mahnung", "2. Mahnung"]
+
+
+def test_an_existing_text_is_carried_over_word_for_word():
+    """The administrator's own wording, not a default."""
+    connection = _fresh_database()
+    connection.execute("DELETE FROM message_template")
+    connection.execute(
+        "UPDATE leg_settings SET invoice_email_subject = ?, invoice_email_body = ? WHERE id = 1",
+        ("Ihre Abrechnung {quartal}", "Guten Tag\n\nim Anhang Ihre Abrechnung."),
+    )
+    connection.commit()
+
+    initialize_database(connection)
+
+    invoice = template_repo.list_for_occasion(connection, OCCASION_INVOICE)[0]
+    assert invoice.subject == "Ihre Abrechnung {quartal}"
+    assert invoice.body == "Guten Tag\n\nim Anhang Ihre Abrechnung."
+
+
+def test_seeding_does_not_run_twice():
+    """Opening the app again must not duplicate the three texts, and must
+    not overwrite one that has since been edited."""
+    connection = _fresh_database()
+    invoice = template_repo.list_for_occasion(connection, OCCASION_INVOICE)[0]
+    invoice.subject = "Von Hand geändert"
+    template_repo.update(connection, invoice)
+
+    initialize_database(connection)
+
+    templates = template_repo.list_all(connection)
+    assert len(templates) == 3
+    assert template_repo.get(connection, invoice.id).subject == "Von Hand geändert"
+
+
+def test_a_half_migrated_database_is_not_an_error():
+    """Restoring an old backup replays migrations from where it stopped.
+
+    `tests/test_master_data.py` does the same on purpose to reproduce an old
+    customer number, and the seeding ran into a table that did not exist yet
+    -- which is not a fault, it is the replay this app is built to allow.
+    """
+    from app.db import schema as schema_module
+
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    early = [m for m in schema_module.MIGRATIONS if m.version < 21]
+    original = schema_module.MIGRATIONS
+    try:
+        schema_module.MIGRATIONS = early
+        schema_module.initialize_database(connection)
+    finally:
+        schema_module.MIGRATIONS = original
+
+    assert (
+        connection.execute("SELECT 1 FROM sqlite_master WHERE name = 'message_template'").fetchone() is None
+    )
+
+
+# --- The page ---------------------------------------------------------------
+
+
+def _page(probe: str) -> Client:
+    """Render the Textbausteine list.
+
+    Args:
+        probe: A unique probe route -- every `ui.page` registers itself.
+
+    Returns:
+        The client.
+    """
+    from app.gui.pages import message_templates as page_module
+
+    client = Client(ui.page(probe)(lambda: None), request=None)
+    with client:
+        page_module.message_templates_page()
+    return client
+
+
+def _row(client: Client, name: str) -> dict:
+    """One row of the list, by the template's name.
+
+    A migrated database already holds the three carried-over texts
+    (Rechnung, 1./2. Mahnung), so position zero is whichever of those sorts
+    first -- not the template the test just created.
+
+    Args:
+        client: The rendered client.
+        name: The template's name.
+
+    Returns:
+        Its row.
+    """
+    return next(row for row in _table(client).rows if row["name"] == name)
+
+
+def _open_pencil(client: Client, name: str) -> None:
+    """Click the pencil on one row, as the list's action slot does.
+
+    Args:
+        client: The rendered client.
+        name: The template's name.
+
+    Returns:
+        None.
+    """
+    table = _table(client)
+    row = next(candidate for candidate in table.rows if candidate["name"] == name)
+    with client:
+        handler = next(
+            listener.handler for listener in table._event_listeners.values() if listener.type == "edit"
+        )
+        handler(type("Event", (), {"args": row})())
+
+
+def _table(client: Client):
+    """The list's table.
+
+    Args:
+        client: The rendered client.
+
+    Returns:
+        The table element.
+    """
+    return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
+
+
+def test_the_list_shows_every_template_with_its_trigger():
+    """ "Fällig" is the column that says when a button will appear, which is
+    the only thing a trigger does."""
+    with connection_scope() as connection:
+        template_repo.create(connection, _template("Willkommen", step="registered_at"))
+        template_repo.create(
+            connection,
+            _template(
+                "Erinnerung Vertrag",
+                step="contract_signed_at",
+                trigger_kind=TRIGGER_STEP_PENDING,
+                deadline_days=30,
+            ),
+        )
+
+    rows = _table(_page("/probe-templates-list")).rows
+
+    by_name = {row["name"]: row for row in rows}
+    assert "Willkommen" in by_name and "Erinnerung Vertrag" in by_name
+    assert "Anmeldung bei uns" in by_name["Willkommen"]["trigger"]
+    assert "30 Tage" in by_name["Erinnerung Vertrag"]["trigger"]
+
+
+def test_the_columns_are_the_ones_the_reader_needs():
+    """Pinned like every other list's columns."""
+    columns = [column["label"] for column in _table(_page("/probe-templates-columns")).columns]
+
+    assert columns == ["Name", "Anlass", "Fällig", "Betreff", "Anhänge", ""]
+
+
+def test_an_attachment_is_named_in_the_list_and_says_if_it_is_filled_in():
+    """The contract is the one attachment that is generated per person, and
+    the list says so rather than leaving it to be remembered."""
+    with connection_scope() as connection:
+        template_id = template_repo.create(connection, _template())
+        template_repo.add_attachment(
+            connection,
+            template_id,
+            "Beitrittserklaerung.pdf",
+            b"%PDF",
+            role=ROLE_MEMBERSHIP_CONTRACT,
+        )
+
+    row = _row(_page("/probe-templates-attachment"), "Willkommen")
+
+    assert "Beitrittserklaerung.pdf" in row["attachments"]
+    assert "Seite 1 ausgefüllt" in row["attachments"]
+
+
+def test_the_pencil_opens_the_dialog_with_the_stored_text():
+    """Driven, because a slot that emits an event nobody listens for looks
+    exactly like one that works."""
+    with connection_scope() as connection:
+        template_repo.create(connection, _template(subject="Willkommen in der LEG"))
+
+    client = _page("/probe-templates-edit")
+    _open_pencil(client, "Willkommen")
+
+    subjects = [
+        element.value
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Input" and element.label == "Betreff"
+    ]
+    assert "Willkommen in der LEG" in subjects
+
+
+@pytest.mark.parametrize(
+    "occasion, expect_step_select",
+    [(OCCASION_ONBOARDING, True), (OCCASION_INVOICE, False)],
+)
+def test_the_step_and_trigger_only_appear_where_they_mean_something(occasion, expect_step_select):
+    """The invoice text is used when an invoice is sent, which is not
+    something this page decides -- so it has no step and no trigger."""
+    with connection_scope() as connection:
+        template_repo.create(
+            connection,
+            _template(occasion=occasion, step="registered_at" if expect_step_select else ""),
+        )
+
+    client = _page(f"/probe-templates-fields-{occasion}")
+    _open_pencil(client, "Willkommen")
+
+    step_select = next(
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Select" and element.label == "Schritt"
+    )
+    assert step_select.visible is expect_step_select
+
+
+def test_nothing_on_this_page_can_send_a_mail():
+    """The promise of this stage, as a test rather than as an intention.
+
+    The texts and their attachments can be maintained before any send path
+    exists, and this page must not be the thing that grows one.
+    """
+    from pathlib import Path
+
+    source = Path("app/gui/pages/message_templates.py").read_text(encoding="utf-8")
+
+    assert "send_email" not in source
+    assert "bulk_send" not in source
+    assert "GraphConfig" not in source

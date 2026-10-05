@@ -44,6 +44,7 @@ from app.emailing.templates import (
     validate_person_placeholders,
 )
 from app.gui.navigation import page_frame
+from app.gui.upload import read_uploaded_file
 from app.gui.person_form import open_person_form
 from app.gui.safe_notify import safe_notify
 from app.models import email_log as email_log_repo
@@ -59,26 +60,6 @@ PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in PERSON_PLACEHOLDERS)
 #: recognize "-- " on its own line and render/strip a trailing signature
 #: specially (e.g. dimmed, or omitted from a reply quote).
 _SIGNATURE_DELIMITER = "\n\n-- \n"
-
-
-async def read_uploaded_file(file) -> tuple[str, bytes]:
-    """Read one uploaded file into the `(name, content)` pair this page keeps.
-
-    Deliberately a module-level function rather than inline in the upload
-    handler: reading the event is exactly where this page broke silently
-    once already. NiceGUI 3.16 replaced `event.name`/`event.content.read()`
-    with `event.file.name`/`await event.file.read()`; the old call raised
-    `AttributeError` inside the handler, which NiceGUI logs and swallows,
-    so every broadcast went out without its attachment and nothing said so.
-
-    Args:
-        file: NiceGUI `FileUpload` (`UploadEventArguments.file`) -- needs
-            `.name` and an awaitable `.read()`.
-
-    Returns:
-        `(filename, content bytes)`.
-    """
-    return file.name, await file.read()
 
 
 def attachments_too_large(attachments: list[tuple[str, bytes]]) -> bool:

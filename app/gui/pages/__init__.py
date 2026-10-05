@@ -16,6 +16,7 @@ from app.gui.pages import (  # noqa: F401
     import_page,
     legs,
     dunning,
+    message_templates,
     metering_points,
     persons,
     signatures,
