@@ -178,6 +178,11 @@ def open_metering_point_form(
                 value=existing.battery_capacity_kwh if existing else None,
                 step=0.1,
             ).classes("flex-grow")
+            wallbox = ui.number(
+                "Wallbox max. Leistung (kW, optional)",
+                value=existing.wallbox_capacity_kw if existing else None,
+                step=0.1,
+            ).classes("flex-grow")
         label_input = ui.input(
             "Bezeichnung (optional)",
             value=existing.label if existing else "",
@@ -215,6 +220,7 @@ def open_metering_point_form(
                             leg_id=leg_select.value,
                             pv_capacity_kwp=pv_leistung.value,
                             battery_capacity_kwh=batteriespeicher.value,
+                            wallbox_capacity_kw=wallbox.value,
                             created_at=existing.created_at,
                             label=label_input.value or "",
                         )
@@ -228,6 +234,7 @@ def open_metering_point_form(
                             leg_id=leg_select.value,
                             pv_capacity_kwp=pv_leistung.value,
                             battery_capacity_kwh=batteriespeicher.value,
+                            wallbox_capacity_kw=wallbox.value,
                             created_at="",
                             label=label_input.value or "",
                         )

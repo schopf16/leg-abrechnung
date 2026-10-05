@@ -3,6 +3,13 @@ wsproto==1.3.2
 qrbill==1.2.0
 reportlab==5.0.1
 svglib==2.2.0
+# Only to append the Gesellschaftsvertrag's unchanged pages behind the page
+# this app draws itself (app/pdf/membership_contract.py). reportlab can
+# create a PDF but not read one. BSD-3-Clause, pure Python and -- on 3.11
+# and up -- no dependencies of its own, which is what let it in: see
+# CLAUDE.md on why GPL-2 was ruled out and every other dependency is MIT or
+# BSD.
+pypdf==6.19.0
 lxml==6.1.3
 python-dateutil==2.9.0.post0
 pywebview==6.2.1

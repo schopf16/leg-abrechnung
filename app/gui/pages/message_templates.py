@@ -18,6 +18,8 @@ from app.domain import auto_attachments
 from app.emailing import graph_client
 from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.format_size import format_size
+from app.formatting import format_date
+from app.gui.contract_preview import open_contract_preview
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
@@ -350,6 +352,10 @@ def message_templates_page() -> None:
                     ticked = {key for key, switch in auto_switches.items() if switch.value} or set(
                         existing.auto_attachments if existing else []
                     )
+                    with connection_scope() as connection:
+                        stored = {
+                            document.key: document for document in leg_document_repo.list_all(connection)
+                        }
                     auto_column.clear()
                     auto_switches.clear()
                     entries = auto_attachments.for_occasion(occasion.value)
@@ -364,6 +370,31 @@ def message_templates_page() -> None:
                             auto_switches[entry.key] = switch
                             if entry.hint:
                                 ui.label(entry.hint).classes("text-caption text-grey-6 q-ml-lg")
+                            # Which file is behind the tick, named here rather
+                            # than only on the Einstellungen page: the
+                            # administrator asked "wie weiss ich welches
+                            # dokument angezeigt wird", and a checkbox that
+                            # does not say what it attaches is a promise you
+                            # have to go and look up.
+                            document = stored.get(entry.key)
+                            if entry.needs_source:
+                                with ui.row().classes("w-full items-center gap-2 q-ml-lg"):
+                                    if document is not None:
+                                        ui.label(
+                                            f"Vorlage: {document.filename} "
+                                            f"({format_size(len(document.content))}, "
+                                            f"{format_date(document.updated_at)})"
+                                        ).classes("text-caption text-grey-7")
+                                    # The answer to "wie kann ich prüfen dass
+                                    # die erste seite korrekt ausgefüllt
+                                    # wird": build it for a real person and
+                                    # look. Nothing is sent.
+                                    ui.button(
+                                        "Ansehen",
+                                        on_click=lambda _=None, key=entry.key: open_contract_preview(
+                                            document_key=key
+                                        ),
+                                    ).props("flat dense color=primary")
                     note_missing_sources()
 
                 def note_missing_sources() -> None:
