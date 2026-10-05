@@ -1811,4 +1811,94 @@ Freundliche Grüsse';
                 ADD COLUMN address_house_number TEXT NOT NULL DEFAULT '';
         """,
     ),
+    Migration(
+        version=55,
+        description="Seed the four Textbausteine that had no text anywhere to "
+        "carry over. Migration 52 moved the invoice and the two Mahnungen out "
+        "of `leg_settings`, but the Aufnahme and Austritt mails had never "
+        "existed as stored texts -- they were typed by hand each time, which "
+        "is the whole reason this feature exists. Drafts, deliberately: the "
+        "administrator overwrites them on the Textbausteine page. "
+        "Seeded here rather than in `app.db.schema` because a migration runs "
+        "exactly once per database, so a draft that gets deleted stays "
+        "deleted -- a seeding routine that checks for absence on every start "
+        "would resurrect it. "
+        "The steps they hang off are `person_onboarding.STEPS` and "
+        "`person_offboarding.STEPS` attribute names; the welcome mail hangs "
+        "off 'leg_assigned_at' and not 'registered_at' because the attached "
+        "Beitrittserklärung prints the Trafokreis, which is blank until the "
+        "person is assigned.",
+        sql="""
+            INSERT INTO message_template
+                (name, occasion, step, trigger_kind, deadline_days,
+                 subject, body, sort_order, created_at, auto_attachments)
+            VALUES
+                ('Willkommen', 'onboarding', 'leg_assigned_at', 'step_done',
+                 NULL,
+                 'Willkommen in der LEG',
+                 '{briefanrede}
+
+schön, dass Sie bei unserer lokalen Elektrizitätsgemeinschaft mitmachen. Ihr
+Messpunkt ist einem Trafokreis zugeteilt, damit sind die Vorbereitungen
+abgeschlossen.
+
+Im Anhang finden Sie die Beitrittserklärung und den Gesellschaftsvertrag. Die
+erste Seite haben wir mit Ihren Angaben ausgefüllt. Bitte prüfen Sie diese,
+unterschreiben Sie das Blatt und senden Sie es uns zurück.
+
+Ihre Kundennummer lautet {kundennummer}. Bitte geben Sie sie bei Rückfragen an.
+
+Freundliche Grüsse',
+                 40, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 'membership_contract'),
+
+                ('Erinnerung Gesellschaftsvertrag', 'onboarding',
+                 'contract_signed_at', 'step_pending', 30,
+                 'Erinnerung: Gesellschaftsvertrag',
+                 '{briefanrede}
+
+vor einiger Zeit haben wir Ihnen die Beitrittserklärung und den
+Gesellschaftsvertrag zugestellt. Das unterschriebene Exemplar ist bei uns
+noch nicht eingetroffen.
+
+Bitte senden Sie es uns zu -- ohne Ihre Unterschrift können wir die Teilnahme
+nicht abschliessen. Sollten die Unterlagen nicht mehr auffindbar sein, melden
+Sie sich kurz bei uns, wir stellen sie erneut zu.
+
+Freundliche Grüsse',
+                 50, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ''),
+
+                ('Bei der BKW angemeldet', 'onboarding', 'bkw_registered_at',
+                 'step_done', NULL,
+                 'Ihre Anmeldung bei der BKW',
+                 '{briefanrede}
+
+wir haben Ihren Messpunkt bei der BKW für die Elektrizitätsgemeinschaft
+angemeldet.
+
+Ein Schritt fehlt noch, und den können nur Sie selbst machen: Bitte melden Sie
+sich unter my.bkw.ch an und bestätigen Sie dort in Ihrem Profil die Teilnahme.
+Erst danach gibt die BKW den Messpunkt frei.
+
+Sobald die Bestätigung bei der BKW eingetroffen ist, sind Sie dabei, und Sie
+hören es von uns.
+
+Freundliche Grüsse',
+                 60, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ''),
+
+                ('Austritt bestätigt', 'offboarding',
+                 'metering_point_exit_at', 'step_done', NULL,
+                 'Ihr Austritt aus der Elektrizitätsgemeinschaft',
+                 '{briefanrede}
+
+wir bestätigen Ihren Austritt. Das Austrittsdatum Ihres Messpunkts ist
+festgelegt und der BKW gemeldet.
+
+Bis zu diesem Datum rechnen wir wie gewohnt ab. Die letzte Abrechnung erhalten
+Sie nach Ablauf des laufenden Quartals.
+
+Freundliche Grüsse',
+                 70, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '');
+        """,
+    ),
 ]

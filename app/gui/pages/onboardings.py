@@ -6,9 +6,11 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.list_footer import render_count, render_empty
+from app.gui.message_buttons import render_due_messages
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -22,6 +24,7 @@ from app.gui.sorting import (
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
+from app.models.message_template import OCCASION_ONBOARDING
 from app.models.person import Person
 from app.models.person_onboarding import STEPS, PersonOnboarding
 
@@ -154,6 +157,7 @@ def onboardings_page() -> None:
 
         visible_onboardings: list[PersonOnboarding] = []
         persons: dict[int, Person] = {}
+        due_messages: dict[int, list[DueMessage]] = {}
         threshold_days = 30
 
         def _filter_description() -> str | None:
@@ -187,6 +191,12 @@ def onboardings_page() -> None:
                             if value:
                                 text += f" ({value.isoformat()})"
                             ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
+                    render_due_messages(
+                        person,
+                        due_messages.get(onboarding.person_id, []),
+                        OCCASION_ONBOARDING,
+                        on_sent=refresh,
+                    )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
                             "dense flat"
@@ -197,7 +207,7 @@ def onboardings_page() -> None:
 
         def refresh() -> None:
             """Reload the onboarding list according to the current filters."""
-            nonlocal visible_onboardings, persons, threshold_days
+            nonlocal visible_onboardings, persons, due_messages, threshold_days
             with connection_scope() as connection:
                 onboardings = (
                     person_onboarding_repo.list_all(connection)
@@ -206,6 +216,7 @@ def onboardings_page() -> None:
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
+                due_messages = due_by_person(connection, onboardings, OCCASION_ONBOARDING)
             # Counted before the step filter narrows it, so "3 von 88" says
             # what the reader expects it to say.
             total_onboardings = len(onboardings)

@@ -108,6 +108,23 @@ def last_sent(connection: sqlite3.Connection, person_id: int, template_id: int) 
     return PersonMessageLog.from_row(row) if row else None
 
 
+def sent_dates_all(connection: sqlite3.Connection) -> dict[tuple[int, int], str]:
+    """When each template was last sent, for every person, in one query.
+
+    A worklist renders one card per tracker and each card asks the same
+    question, so asking per card is how a list of ninety gets slow.
+    """
+    rows = connection.execute(
+        """
+        SELECT person_id, template_id, MAX(sent_at) AS sent_at
+        FROM person_message_log
+        WHERE template_id IS NOT NULL
+        GROUP BY person_id, template_id
+        """
+    ).fetchall()
+    return {(row["person_id"], row["template_id"]): row["sent_at"] for row in rows}
+
+
 def sent_dates_by_template(connection: sqlite3.Connection, person_id: int) -> dict[int, str]:
     """When each template was last sent to one person."""
     rows = connection.execute(

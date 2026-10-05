@@ -102,7 +102,15 @@ def _seed_message_templates(connection: sqlite3.Connection) -> None:
     ).fetchone()
     if not has_table:
         return
-    if connection.execute("SELECT 1 FROM message_template LIMIT 1").fetchone():
+    # Scoped to the occasions this function owns, not "is the table empty".
+    # Migration 55 seeds the Aufnahme and Austritt drafts, and it runs
+    # before this does -- so an unscoped check found those rows and skipped
+    # the carry-over altogether. On a database where 52 and 55 are applied
+    # in the same run (restoring an older backup) that silently lost the
+    # administrator's own invoice and Mahnung wording.
+    # Read positionally again, for the row_factory reason below.
+    present = {row[0] for row in connection.execute("SELECT DISTINCT occasion FROM message_template")}
+    if any(occasion in present for _, occasion, _, _, _ in _CARRIED_OVER_TEMPLATES):
         return
     # Read positionally, not by column name: `initialize_database` is called
     # with whatever connection the caller has, and only some of them set

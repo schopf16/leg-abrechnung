@@ -6,9 +6,11 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.list_footer import render_count, render_empty
+from app.gui.message_buttons import render_due_messages
 from app.gui.navigation import page_frame
 from app.gui.offboarding_form import open_offboarding_form, open_remove_person_dialog
 from app.gui.print_list import render_print_button
@@ -22,6 +24,7 @@ from app.gui.sorting import (
 )
 from app.models import person as person_repo
 from app.models import person_offboarding as person_offboarding_repo
+from app.models.message_template import OCCASION_OFFBOARDING
 from app.models.person import Person
 from app.models.person_offboarding import REASON_OPTIONS, STEPS, PersonOffboarding
 
@@ -128,6 +131,7 @@ def offboardings_page() -> None:
 
         visible_offboardings: list[PersonOffboarding] = []
         persons: dict[int, Person] = {}
+        due_messages: dict[int, list[DueMessage]] = {}
 
         def _filter_description() -> str | None:
             """Build a short description of the currently active filter."""
@@ -167,6 +171,12 @@ def offboardings_page() -> None:
                             if value:
                                 text += f" ({value.isoformat()})"
                             ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
+                    render_due_messages(
+                        person,
+                        due_messages.get(offboarding.person_id, []),
+                        OCCASION_OFFBOARDING,
+                        on_sent=refresh,
+                    )
                     with ui.row().classes("gap-1 ml-auto"):
                         if offboarding.is_complete and person.active:
                             ui.button(
@@ -187,10 +197,11 @@ def offboardings_page() -> None:
 
         def refresh() -> None:
             """Reload the offboarding list according to the current filter."""
-            nonlocal visible_offboardings, persons
+            nonlocal visible_offboardings, persons, due_messages
             with connection_scope() as connection:
                 all_offboardings = person_offboarding_repo.list_all(connection)
                 persons = {p.id: p for p in person_repo.list_all(connection)}
+                due_messages = due_by_person(connection, all_offboardings, OCCASION_OFFBOARDING)
                 if show_complete_switch.value:
                     offboardings = all_offboardings
                 else:

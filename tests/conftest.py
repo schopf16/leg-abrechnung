@@ -51,6 +51,19 @@ def db() -> sqlite3.Connection:
     return connection
 
 
+@pytest.fixture
+def no_drafts(db: sqlite3.Connection) -> None:
+    """Empty `message_template`, for a test about the rule rather than the seeds.
+
+    A migrated database always carries the Textbausteine migration 55 seeds
+    (plus the three migration 52 carried over), so a test asserting an exact
+    list of templates has to say which ones it means. That the seeds are
+    there is tested on its own, in `tests/test_message_send.py`.
+    """
+    db.execute("DELETE FROM message_template")
+    db.commit()
+
+
 #: The demo database, built once per process on first use. A module-level
 #: cache rather than a session fixture, because the only caller is the
 #: closure inside `_demo_data_from_template` and reaching a fixture from

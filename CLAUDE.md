@@ -53,6 +53,11 @@ Cost is `context × steps`, so a long session is quadratically expensive.
   the signature says it. Module docstring: one sentence, up to three lines if
   it carries a rule. Inline comments only where the *why* is invisible.
 - **No new `.md` files.** Conventions go in this file, nowhere else.
+- **A subagent runs on the cheap model** (`haiku`), and only for work that is
+  already decided: the prompt names the files, the exact change and how to
+  verify it, and leaves no question open. A vague brief makes the agent
+  explore, which is the most expensive thing it can do. Keep judgement calls
+  and anything touching money, mail or migrations in the main session.
 - Full suite + gates once, before the push. Tests cost wall-clock, not tokens.
 
 ## Architecture

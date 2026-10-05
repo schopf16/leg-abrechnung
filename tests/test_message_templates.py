@@ -24,7 +24,7 @@ from app.models.message_template import (
 
 
 def _template(
-    name: str = "Willkommen",
+    name: str = "Probebaustein",
     *,
     occasion: str = OCCASION_ONBOARDING,
     step: str = "registered_at",
@@ -60,7 +60,7 @@ def test_a_template_survives_a_round_trip(db):
     loaded = template_repo.get(db, template_id)
 
     assert loaded is not None
-    assert loaded.name == "Willkommen"
+    assert loaded.name == "Probebaustein"
     assert loaded.occasion == OCCASION_ONBOARDING
     assert loaded.step == "registered_at"
     assert loaded.trigger_kind == TRIGGER_STEP_DONE
@@ -69,9 +69,9 @@ def test_a_template_survives_a_round_trip(db):
     assert loaded.created_at, "created_at wird beim Einfügen gesetzt"
 
 
-def test_several_templates_can_share_one_step(db):
+def test_several_templates_can_share_one_step(db, no_drafts):
     """The whole reason this is a table and not a column pair."""
-    template_repo.create(db, _template("Willkommen", step="contract_signed_at"))
+    template_repo.create(db, _template("Probebaustein", step="contract_signed_at"))
     template_repo.create(
         db,
         _template(
@@ -84,11 +84,11 @@ def test_several_templates_can_share_one_step(db):
 
     found = template_repo.list_for_occasion(db, OCCASION_ONBOARDING, "contract_signed_at")
 
-    assert [t.name for t in found] == ["Erinnerung Vertrag", "Willkommen"]
+    assert [t.name for t in found] == ["Erinnerung Vertrag", "Probebaustein"]
     assert {t.trigger_kind for t in found} == {TRIGGER_STEP_DONE, TRIGGER_STEP_PENDING}
 
 
-def test_the_two_processes_do_not_see_each_others_templates(db):
+def test_the_two_processes_do_not_see_each_others_templates(db, no_drafts):
     """An Austritt step and an Aufnahme step can carry the same attribute name, so the occasion has to..."""
     template_repo.create(db, _template("Aufnahme-Text", occasion=OCCASION_ONBOARDING))
     template_repo.create(db, _template("Austritt-Text", occasion=OCCASION_OFFBOARDING, step="decided_at"))
@@ -208,14 +208,20 @@ def test_a_fresh_database_comes_with_the_three_carried_over_texts():
     """They used to be column pairs on `leg_settings`."""
     connection = _fresh_database()
 
-    templates = template_repo.list_all(connection)
+    # Only the carried-over ones: migration 55 seeds four more, for the
+    # occasions that had no stored text anywhere to carry over.
+    carried = [
+        template
+        for template in template_repo.list_all(connection)
+        if template.occasion in (OCCASION_INVOICE, OCCASION_DUNNING1, OCCASION_DUNNING2)
+    ]
 
-    assert [t.occasion for t in templates] == [
+    assert [t.occasion for t in carried] == [
         OCCASION_INVOICE,
         OCCASION_DUNNING1,
         OCCASION_DUNNING2,
     ]
-    assert [t.name for t in templates] == ["Rechnung", "1. Mahnung", "2. Mahnung"]
+    assert [t.name for t in carried] == ["Rechnung", "1. Mahnung", "2. Mahnung"]
 
 
 def test_an_existing_text_is_carried_over_word_for_word():
@@ -241,11 +247,11 @@ def test_seeding_does_not_run_twice():
     invoice = template_repo.list_for_occasion(connection, OCCASION_INVOICE)[0]
     invoice.subject = "Von Hand geändert"
     template_repo.update(connection, invoice)
+    before = len(template_repo.list_all(connection))
 
     initialize_database(connection)
 
-    templates = template_repo.list_all(connection)
-    assert len(templates) == 3
+    assert len(template_repo.list_all(connection)) == before
     assert template_repo.get(connection, invoice.id).subject == "Von Hand geändert"
 
 
@@ -305,7 +311,7 @@ def _table(client: Client):
 def test_the_list_shows_every_template_with_its_trigger():
     """ "Fällig" is the column that says when a button will appear, which is the only thing a trigger..."""
     with connection_scope() as connection:
-        template_repo.create(connection, _template("Willkommen", step="registered_at"))
+        template_repo.create(connection, _template("Probebaustein", step="registered_at"))
         template_repo.create(
             connection,
             _template(
@@ -319,8 +325,8 @@ def test_the_list_shows_every_template_with_its_trigger():
     rows = _table(_page("/probe-templates-list")).rows
 
     by_name = {row["name"]: row for row in rows}
-    assert "Willkommen" in by_name and "Erinnerung Vertrag" in by_name
-    assert "Anmeldung bei uns" in by_name["Willkommen"]["trigger"]
+    assert "Probebaustein" in by_name and "Erinnerung Vertrag" in by_name
+    assert "Anmeldung bei uns" in by_name["Probebaustein"]["trigger"]
     assert "30 Tage" in by_name["Erinnerung Vertrag"]["trigger"]
 
 
@@ -345,7 +351,7 @@ def test_the_list_names_the_ticked_documents_before_the_uploaded_ones():
         template_id = template_repo.create(connection, _template(auto_attachments=[KEY_MEMBERSHIP_CONTRACT]))
         template_repo.add_attachment(connection, template_id, "Merkblatt.pdf", b"%PDF")
 
-    row = _row(_page("/probe-templates-attachment"), "Willkommen")
+    row = _row(_page("/probe-templates-attachment"), "Probebaustein")
 
     assert row["attachments"].startswith("Gesellschaftsvertrag")
     assert "Merkblatt.pdf" in row["attachments"]
@@ -357,7 +363,7 @@ def test_the_pencil_opens_the_dialog_with_the_stored_text():
         template_repo.create(connection, _template(subject="Willkommen in der LEG"))
 
     client = _page("/probe-templates-edit")
-    _open_pencil(client, "Willkommen")
+    _open_pencil(client, "Probebaustein")
 
     subjects = [
         element.value
@@ -380,7 +386,7 @@ def test_the_step_and_trigger_only_appear_where_they_mean_something(occasion, ex
         )
 
     client = _page(f"/probe-templates-fields-{occasion}")
-    _open_pencil(client, "Willkommen")
+    _open_pencil(client, "Probebaustein")
 
     step_select = next(
         element
