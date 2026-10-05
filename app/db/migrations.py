@@ -1773,4 +1773,39 @@ Freundliche Grüsse';
             ALTER TABLE metering_point ADD COLUMN wallbox_capacity_kw REAL;
         """,
     ),
+    Migration(
+        version=53,
+        description="Tick what gets attached automatically, and keep the LEG's "
+        "own documents in one place. Migration 52 put a `role` on each "
+        "attachment, so the dialog had to ask 'treat new attachments as' per "
+        "upload -- which the administrator could not make sense of, and "
+        "rightly: the question is not what kind of file this is, it is "
+        "**which of our documents should go along**. That is a checkbox per "
+        "document, and the list of documents will grow. "
+        "So `message_template.auto_attachments` holds the keys of a declared "
+        "registry (`app.domain.auto_attachments`), newline separated, and "
+        "adding a document later is one entry there plus an upload -- no "
+        "migration and no change to how the dialog looks, the same bargain "
+        "`app.gui.filter_bar` makes for filters. "
+        "`leg_document` is where those documents live, keyed by the same "
+        "registry key: the blank Gesellschaftsvertrag is a LEG-wide form, not "
+        "something belonging to one text, so it is uploaded once under "
+        "Einstellungen and every template can tick it. In the database rather "
+        "than beside it, so it travels with every backup and it stays "
+        "knowable which version went out. "
+        "`message_template_attachment.role` is left in place and unread, the "
+        "same treatment `leg_settings.leg_founding_min_persons` got -- old "
+        "migrations are never rewritten.",
+        sql="""
+            ALTER TABLE message_template
+                ADD COLUMN auto_attachments TEXT NOT NULL DEFAULT '';
+
+            CREATE TABLE leg_document (
+                key TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """,
+    ),
 ]

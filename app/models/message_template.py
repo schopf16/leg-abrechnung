@@ -31,7 +31,7 @@ and so it is always knowable which version of a contract was sent.
 """
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -66,14 +66,14 @@ TRIGGER_LABELS = {
     "": "ohne Schritt",
 }
 
-#: An attachment that is generated rather than sent as stored: page 1 is
-#: filled from the person's record, the remaining pages come from this file.
-ROLE_MEMBERSHIP_CONTRACT = "membership_contract"
-
-ROLE_LABELS = {
-    "": "unverändert anhängen",
-    ROLE_MEMBERSHIP_CONTRACT: "Seite 1 ausfüllen, Rest anhängen",
-}
+#: `message_template_attachment.role` is **not read any more**. Migration 52
+#: put it there to mark the membership contract, and the dialog had to ask
+#: "neue Anhänge behandeln als" per upload -- a question the administrator
+#: could not make sense of, because it was the wrong one: not what kind of
+#: file this is, but which of our documents should go along. That is
+#: `auto_attachments` below and `app.domain.auto_attachments`. The column
+#: stays, unread, like `leg_settings.leg_founding_min_persons` -- old
+#: migrations are never rewritten.
 
 
 @dataclass
@@ -92,6 +92,10 @@ class MessageTemplate:
             `None` means "due at once".
         subject: Subject, may contain `{placeholder}`s.
         body: Body, same.
+        auto_attachments: Keys of the documents this text attaches by
+            itself, from `app.domain.auto_attachments`. Stored newline
+            separated; a key this version does not know is kept rather than
+            dropped, so a database edited by a later version stays usable.
         sort_order: Position in the list; ties fall back to the name.
         created_at: ISO-8601 creation timestamp.
     """
@@ -106,6 +110,7 @@ class MessageTemplate:
     body: str
     sort_order: int
     created_at: str
+    auto_attachments: list[str] = field(default_factory=list)
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "MessageTemplate":
@@ -128,6 +133,7 @@ class MessageTemplate:
             body=row["body"],
             sort_order=row["sort_order"],
             created_at=row["created_at"],
+            auto_attachments=[key for key in (row["auto_attachments"] or "").splitlines() if key],
         )
 
     @property
@@ -179,19 +185,15 @@ class TemplateAttachment:
             created_at=row["created_at"],
         )
 
-    @property
-    def is_generated(self) -> bool:
-        """Whether this file is built per person rather than sent as stored.
 
-        Returns:
-            `True` for the membership contract.
-        """
-        return self.role == ROLE_MEMBERSHIP_CONTRACT
-
+#: How the ticked document keys are stored in one column. A newline for the
+#: reason `app.models.email_log` gives about filenames: it cannot occur
+#: inside a value, which a comma could.
+_KEY_SEPARATOR = "\n"
 
 _SELECT = """
     SELECT id, name, occasion, step, trigger_kind, deadline_days,
-           subject, body, sort_order, created_at
+           subject, body, sort_order, created_at, auto_attachments
     FROM message_template
 """
 
@@ -266,8 +268,8 @@ def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
         """
         INSERT INTO message_template
             (name, occasion, step, trigger_kind, deadline_days,
-             subject, body, sort_order, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             subject, body, sort_order, created_at, auto_attachments)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             template.name,
@@ -279,6 +281,7 @@ def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
             template.body,
             template.sort_order,
             datetime.now(timezone.utc).isoformat(),
+            _KEY_SEPARATOR.join(template.auto_attachments),
         ),
     )
     if commit:
@@ -301,7 +304,8 @@ def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
         """
         UPDATE message_template
         SET name = ?, occasion = ?, step = ?, trigger_kind = ?,
-            deadline_days = ?, subject = ?, body = ?, sort_order = ?
+            deadline_days = ?, subject = ?, body = ?, sort_order = ?,
+            auto_attachments = ?
         WHERE id = ?
         """,
         (
@@ -313,6 +317,7 @@ def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
             template.subject,
             template.body,
             template.sort_order,
+            _KEY_SEPARATOR.join(template.auto_attachments),
             template.id,
         ),
     )

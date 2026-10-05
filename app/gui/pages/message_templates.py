@@ -14,6 +14,7 @@ out; see `app.models.message_template` on `trigger_kind`.
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.domain import auto_attachments
 from app.emailing import graph_client
 from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.format_size import format_size
@@ -25,13 +26,13 @@ from app.gui.safe_notify import safe_notify
 from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
 from app.gui.table_list import paged_table
 from app.gui.upload import read_uploaded_file
+from app.models import leg_document as leg_document_repo
 from app.models import message_template as template_repo
 from app.models import person_offboarding, person_onboarding
 from app.models.message_template import (
     OCCASION_LABELS,
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
-    ROLE_LABELS,
     STEP_OCCASIONS,
     TRIGGER_LABELS,
     TRIGGER_STEP_DONE,
@@ -48,12 +49,14 @@ COLUMNS = [
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
-#: Orders this list offers, default first. The name leads because that is
-#: what the administrator gave the template; "Anlass" groups the three
-#: carried-over texts away from the process ones.
+#: Orders this list offers, default first. **Anlass leads**, on the
+#: administrator's own reasoning: "ich öffne das weil etwas mit dem
+#: gesellschaftsvertrag nicht stimmt, also suche ich danach. den namen habe
+#: ich dann vielleicht schon wieder vergessen." The name is what you give a
+#: text; the occasion is what you remember about it.
 SORT_OPTIONS = [
-    SortOption("name", "Name", lambda row: text_key(row["name"])),
     SortOption("occasion", "Anlass", lambda row: text_key(row["occasion"], row["name"])),
+    SortOption("name", "Name", lambda row: text_key(row["name"])),
 ]
 
 #: `{attribute: label}` per step occasion, so the dialog can offer the steps
@@ -92,18 +95,23 @@ def _to_row(template: MessageTemplate, attachment_names: list[str]) -> dict:
 
     Args:
         template: The template.
-        attachment_names: Its attachments' filenames, already formatted.
+        attachment_names: Its uploaded attachments' filenames.
 
     Returns:
         A dict with the fields `COLUMNS` needs, plus `_search`.
     """
+    # The ticked documents first, because those are the ones that make the
+    # mail what it is -- an uploaded leaflet is the afterthought.
+    named = [
+        auto_attachments.label_for(key).replace(" anfügen", "") for key in template.auto_attachments
+    ] + attachment_names
     return {
         "id": template.id,
         "name": template.name,
         "occasion": template.occasion_label,
         "trigger": _describe_trigger(template),
         "subject": template.subject,
-        "attachments": ", ".join(attachment_names) if attachment_names else "–",
+        "attachments": ", ".join(named) if named else "–",
         "_search": " ".join(
             [template.name, template.occasion_label, template.subject, template.body]
         ).lower(),
@@ -178,8 +186,7 @@ def message_templates_page() -> None:
                 templates = template_repo.list_all(connection)
                 attachments = {
                     template.id: [
-                        f"{attachment.filename}"
-                        + (" (Seite 1 ausgefüllt)" if attachment.is_generated else "")
+                        attachment.filename
                         for attachment in template_repo.list_attachments(connection, template.id)
                     ]
                     for template in templates
@@ -252,6 +259,12 @@ def message_templates_page() -> None:
                     ).classes("w-40")
                 deadline.props('hint="Nur bei „solange Schritt offen“ -- leer heisst sofort"')
 
+                #: Filled further down, once the document checkboxes exist.
+                #: They have to be created where they appear on screen, which
+                #: is below this, so `follow_occasion` cannot name them
+                #: directly -- it ran before they existed and raised.
+                when_occasion_changes: list = []
+
                 def follow_occasion() -> None:
                     """Offer the steps of the chosen process, and hide what does
                     not apply.
@@ -259,6 +272,8 @@ def message_templates_page() -> None:
                     An occasion without steps (Rechnung, Mahnung) has no step
                     and no trigger to choose: those texts are used when that
                     document is sent, which is not something this page decides.
+                    The occasion also decides which documents can be attached,
+                    which is what the hooks are for.
 
                     Returns:
                         None.
@@ -268,6 +283,8 @@ def message_templates_page() -> None:
                     step.visible = has_steps
                     trigger.visible = has_steps
                     deadline.visible = has_steps
+                    for hook in when_occasion_changes:
+                        hook()
 
                 occasion.on_value_change(lambda _=None: follow_occasion())
                 follow_occasion()
@@ -283,7 +300,70 @@ def message_templates_page() -> None:
                 )
 
                 ui.separator().classes("my-2")
-                ui.label("Anhänge").classes("text-body1 font-bold")
+                ui.label("Automatisch anfügen").classes("text-body1 font-bold")
+                # One switch per document, from the registry in
+                # `app.domain.auto_attachments` -- so a document added later
+                # is one entry there and this dialog looks the same. The
+                # administrator asked for exactly that: "mache also etwas wie
+                # bei den quickfilter das nicht bei jeder änderung das look &
+                # feel anders aussieht".
+                auto_column = ui.column().classes("w-full gap-1")
+                auto_switches: dict[str, ui.switch] = {}
+                missing_note = ui.label("").classes("text-warning text-body2")
+
+                def render_auto_attachments() -> None:
+                    """Draw the checkboxes that apply to the chosen occasion.
+
+                    Returns:
+                        None.
+                    """
+                    ticked = {key for key, switch in auto_switches.items() if switch.value} or set(
+                        existing.auto_attachments if existing else []
+                    )
+                    auto_column.clear()
+                    auto_switches.clear()
+                    entries = auto_attachments.for_occasion(occasion.value)
+                    with auto_column:
+                        if not entries:
+                            ui.label("Für diesen Anlass gibt es keine.").classes("text-caption text-grey-6")
+                        for entry in entries:
+                            switch = ui.switch(value=entry.key in ticked).props(
+                                f'label="{entry.label}" dense'
+                            )
+                            switch.on_value_change(lambda _=None: note_missing_sources())
+                            auto_switches[entry.key] = switch
+                            if entry.hint:
+                                ui.label(entry.hint).classes("text-caption text-grey-6 q-ml-lg")
+                    note_missing_sources()
+
+                def note_missing_sources() -> None:
+                    """Say which ticked document has no form stored yet.
+
+                    A statement, not a refusal: the box may be ticked before
+                    the file is to hand, and the administrator asked for the
+                    hint rather than a block.
+
+                    Returns:
+                        None.
+                    """
+                    ticked = [key for key, switch in auto_switches.items() if switch.value]
+                    with connection_scope() as connection:
+                        stored = leg_document_repo.stored_keys(connection)
+                    missing = auto_attachments.missing_sources(ticked, stored)
+                    if not missing:
+                        missing_note.text = ""
+                        return
+                    names = ", ".join(entry.label.replace(" anfügen", "") for entry in missing)
+                    missing_note.text = (
+                        f"⚠ {names}: Es ist noch keine Vorlage hinterlegt. "
+                        "Einstellungen → Allgemein → LEG-Dokumente."
+                    )
+
+                render_auto_attachments()
+                when_occasion_changes.append(render_auto_attachments)
+
+                ui.separator().classes("my-2")
+                ui.label("Weitere Anhänge").classes("text-body1 font-bold")
                 attachment_list = ui.column().classes("w-full gap-1")
 
                 def render_attachments() -> None:
@@ -303,9 +383,6 @@ def message_templates_page() -> None:
                                 ui.label(
                                     f"{attachment.filename} ({format_size(len(attachment.content))})"
                                 ).classes("text-body2")
-                                ui.label(ROLE_LABELS.get(attachment.role, attachment.role)).classes(
-                                    "text-caption text-grey-6"
-                                )
                                 ui.button(
                                     icon="delete",
                                     on_click=lambda _=None, a=attachment: remove_attachment(a.id),
@@ -332,16 +409,6 @@ def message_templates_page() -> None:
                         template_repo.delete_attachment(connection, attachment_id)
                     render_attachments()
                     refresh()
-
-                role = ui.select(
-                    ROLE_LABELS,
-                    label="Neue Anhänge behandeln als",
-                    value="",
-                ).classes("w-full")
-                role.props(
-                    'hint="„Seite 1 ausfüllen“ ist für die Beitrittserklärung: '
-                    'Seite 1 kommt aus den Personendaten, der Rest aus dieser Datei"'
-                )
 
                 async def handle_upload(event) -> None:
                     """Read the picked files into `pending`.
@@ -406,6 +473,15 @@ def message_templates_page() -> None:
                         body=body.value,
                         sort_order=existing.sort_order if existing else 100,
                         created_at=existing.created_at if existing else "",
+                        # Keys this version does not know are kept: a
+                        # template ticked by a later version must not lose
+                        # its documents by being opened here.
+                        auto_attachments=[key for key, switch in auto_switches.items() if switch.value]
+                        + [
+                            key
+                            for key in (existing.auto_attachments if existing else [])
+                            if key not in auto_attachments.BY_KEY
+                        ],
                     )
                     with connection_scope() as connection:
                         if existing:
@@ -415,12 +491,7 @@ def message_templates_page() -> None:
                             template_id = template_repo.create(connection, record, commit=False)
                         for filename, content in pending:
                             template_repo.add_attachment(
-                                connection,
-                                template_id,
-                                filename,
-                                content,
-                                role=role.value or "",
-                                commit=False,
+                                connection, template_id, filename, content, commit=False
                             )
                     dialog.close()
                     # notify before refresh() -- see app.gui.safe_notify on why

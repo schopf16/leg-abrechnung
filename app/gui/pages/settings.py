@@ -13,6 +13,12 @@ from app.domain.iban_validation import normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
 from app.emailing.templates import PERSON_PLACEHOLDERS
+from app.domain import auto_attachments
+from app.format_size import format_size
+from app.formatting import format_date
+from app.gui.upload import read_uploaded_file
+from app.models import leg_document as leg_document_repo
+from app.gui.safe_notify import safe_notify
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
 
@@ -285,6 +291,100 @@ def settings_page() -> None:
                 ui.notify("Warnschwelle gespeichert.", type="positive")
 
             ui.button("Speichern", on_click=save_production_capacity_warn_percent).classes("mt-2")
+
+        ui.separator().classes("my-6")
+
+        ui.label("LEG-Dokumente").classes("text-lg font-bold")
+        ui.label(
+            "Formulare, die ein Textbaustein anfügen kann (siehe "
+            "„Textbausteine“). Einmal hier hinterlegt, gilt für alle "
+            "Bausteine -- eine neue Fassung ersetzt die alte an dieser "
+            "einen Stelle. Die Datei liegt in der Datenbank und ist damit "
+            "in jedem Backup."
+        ).classes("text-body2 text-grey-8")
+
+        documents_column = ui.column().classes("w-full gap-2")
+
+        def render_documents() -> None:
+            """Draw one row per form that a checkbox can attach.
+
+            Driven by the registry in `app.domain.auto_attachments`, so a
+            form added there appears here without this page changing.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                stored = {document.key: document for document in leg_document_repo.list_all(connection)}
+            documents_column.clear()
+            with documents_column:
+                for entry in auto_attachments.AUTO_ATTACHMENTS:
+                    if not entry.needs_source:
+                        continue
+                    document = stored.get(entry.key)
+                    with ui.card().classes("w-full"):
+                        with ui.row().classes("w-full items-center gap-3"):
+                            ui.label(entry.label.replace(" anfügen", "")).classes("font-bold")
+                            if document is None:
+                                ui.label("Noch keine Datei hinterlegt.").classes("text-warning text-body2")
+                            else:
+                                ui.label(
+                                    f"{document.filename} "
+                                    f"({format_size(len(document.content))}, "
+                                    f"{format_date(document.updated_at)})"
+                                ).classes("text-body2")
+                                ui.button(
+                                    icon="delete",
+                                    on_click=lambda _=None, key=entry.key: remove_document(key),
+                                ).props("dense flat color=negative").classes("ml-auto")
+
+                        async def handle_upload(event, key=entry.key) -> None:
+                            """Store the picked file as this form.
+
+                            Args:
+                                event: NiceGUI upload event.
+                                key: The registry key being replaced.
+
+                            Returns:
+                                None.
+                            """
+                            for file in event.files:
+                                filename, content = await read_uploaded_file(file)
+                                if len(content) > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
+                                    safe_notify(
+                                        "Die Datei ist zu gross für eine E-Mail "
+                                        f"({format_size(len(content))}).",
+                                        type="negative",
+                                    )
+                                    continue
+                                with connection_scope() as connection:
+                                    leg_document_repo.put(connection, key, filename, content)
+                            safe_notify("Datei hinterlegt.", type="positive")
+                            render_documents()
+
+                        upload = ui.upload(on_multi_upload=handle_upload, multiple=False, auto_upload=True)
+                        upload.props('label="Datei wählen" accept=".pdf" flat bordered dense')
+                        if entry.hint:
+                            ui.label(entry.hint).classes("text-caption text-grey-6")
+
+        def remove_document(key: str) -> None:
+            """Remove one stored form.
+
+            A template that ticks it keeps the tick and says the form is
+            missing, which is the honest state.
+
+            Args:
+                key: The registry key.
+
+            Returns:
+                None.
+            """
+            with connection_scope() as connection:
+                leg_document_repo.delete(connection, key)
+            safe_notify("Datei entfernt.", type="warning")
+            render_documents()
+
+        render_documents()
 
         ui.separator().classes("my-6")
 
