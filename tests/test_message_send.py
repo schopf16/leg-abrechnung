@@ -636,8 +636,28 @@ def test_the_seeded_drafts_do_not_displace_the_carried_over_texts(db):
     assert {"Willkommen", "Austritt bestätigt"} <= names
 
 
-def test_no_seeded_draft_names_a_real_person_or_place(db):
-    """The repository is public; a draft must carry no member's data."""
-    for template in template_repo.list_all(db):
-        assert "@" not in template.body or "{" in template.body
-        assert "Ittigen" not in template.body, "keine Ortsangabe in einem Entwurf"
+#: The drafts migration 55 writes into the repository's own history.
+_SEEDED_NAMES = {
+    "Willkommen",
+    "Erinnerung Gesellschaftsvertrag",
+    "Bei der BKW angemeldet",
+    "Austritt bestätigt",
+}
+
+
+def test_no_seeded_draft_carries_an_address_or_a_place(db):
+    """The repository is public, and a migration is in its history forever.
+
+    Scoped to the seeded drafts: the invoice and Mahnung texts come from the
+    administrator's own `leg_settings` and are theirs to write. An earlier
+    version of this test read `"@" not in body or "{" in body`, which every
+    draft satisfies through `{briefanrede}` -- it could not fail.
+    """
+    seeded = [template for template in template_repo.list_all(db) if template.name in _SEEDED_NAMES]
+
+    assert len(seeded) == len(_SEEDED_NAMES), [t.name for t in seeded]
+    for template in seeded:
+        text = f"{template.subject}\n{template.body}"
+        assert "@" not in text, f"{template.name}: keine Adresse in einem Entwurf"
+        assert "Ittigen" not in text, f"{template.name}: keine Ortsangabe in einem Entwurf"
+        assert "{briefanrede}" in template.body, f"{template.name}: grüsst niemanden"

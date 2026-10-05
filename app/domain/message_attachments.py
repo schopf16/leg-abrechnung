@@ -34,8 +34,13 @@ class PreparedAttachment:
         return self.path is not None
 
 
-def _safe_filename(text: str) -> str:
-    """Reduce a name to something Windows accepts in a filename."""
+def safe_filename(text: str) -> str:
+    """Reduce a name to something Windows accepts in a filename.
+
+    The one copy: a person's name reaches a path here, so this is also what
+    keeps a separator or a `..` out of it. Two copies of that would be two
+    things to keep right.
+    """
     keep = [character if character.isalnum() or character in " -_" else "_" for character in text]
     return "".join(keep).strip() or "Person"
 
@@ -91,7 +96,7 @@ def _membership_contract(
                 "Kein Formular hinterlegt (Einstellungen → Allgemein → Aufnahmeprozess → LEG-Dokumente)."
             ),
         )
-    filename = f"Beitrittserklaerung_{_safe_filename(person.display_name)}.pdf"
+    filename = f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
     target = directory / filename
     build_contract(gather(connection, person), document.content, target)
     return PreparedAttachment(key=KEY_MEMBERSHIP_CONTRACT, label=label, path=target, filename=filename)

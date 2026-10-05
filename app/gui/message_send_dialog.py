@@ -60,9 +60,13 @@ def open_message_send_dialog(
 
     # Composed before it is shown, not on the way out: the promise of this
     # dialog is that what is read is what goes out, signature included.
-    rendered_body = compose_with_signature(
-        render_template(template.body, values), chosen.content if chosen else ""
-    )
+    #
+    # Compose **then** render, which is the order `app.emailing.bulk_send`
+    # uses for the Rundmail -- it appends the signature and substitutes
+    # afterwards. The other way round, a placeholder inside a signature
+    # would go out literally here while working there.
+    raw_body = compose_with_signature(template.body, chosen.content if chosen else "")
+    rendered_body = render_template(raw_body, values)
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-3xl"):
         ui.label(f"{template.name} an {person.display_name}").classes("text-lg font-bold")
@@ -74,7 +78,9 @@ def open_message_send_dialog(
         if chosen is not None:
             ui.label(f"Signatur: {chosen.name}").classes("text-caption text-grey-7")
 
-        _render_placeholder_note(template.subject + "\n" + template.body)
+        # Over the composed text, since the signature takes part in the
+        # substitution too.
+        _render_placeholder_note(template.subject + "\n" + raw_body)
         _render_attachments(prepared)
 
         error_label = ui.label("").classes("text-negative text-body2")

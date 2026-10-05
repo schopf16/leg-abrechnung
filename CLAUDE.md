@@ -213,6 +213,11 @@ an action, not a filter.
 `clearable` sets `None`). `FilterBar.reset(then)` puts every control back and
 calls the page **once**.
 
+The Aufnahmen and Austritte worklists search through
+`app.domain.global_search.person_matches`, which matches **every word of the
+query separately** against the name fields. A full name spans two columns, so
+a plain substring search over the fields finds "Michael Test" nowhere.
+
 ### The keyboard: one dispatcher, a stack of who owns it
 
 `app/gui/keyboard.py` holds one `ui.keyboard` per page (created in
@@ -633,6 +638,29 @@ dialog changing shape. The contract is **generated, not attached**:
 `app/pdf/membership_contract.py` draws page 1 and appends pages 2+ of the
 stored original from `leg_document`. Ort, Datum and the signature stay blank.
 The Trafokreis comes from `bkw_designation`, not `name`.
+`app.domain.message_attachments.safe_filename` is the **one** copy of the
+name-to-filename reduction, because a person's name reaches a path there.
+
+**A card shows one of three states per baustein**, all read from
+`person_message_log`: a send button, a date, or a date labelled "von Hand".
+The third exists because this feature arrived on a deployment where most
+participants had already been written to on paper, so `channel`
+(`CHANNEL_EMAIL`/`CHANNEL_MANUAL`, migration 56) is what keeps a marked row
+from claiming a mail went out; such a row carries no text and no recipients.
+**Marking asks nothing and offers an undo; sending asks**, because only one
+of the two can be taken back.
+
+**The controls sit on the row of their own step** (`group_by_step`,
+`render_step_messages`). In a column of their own they began at the top of
+the card while the steps did too, so a mail about step four came out level
+with step two.
+
+**A signature is referenced, not copied** (`message_template.signature_id`,
+migration 57), so changing one changes every template. The send dialog
+**composes then renders** -- `compose_with_signature` first,
+`render_template` after -- which is `bulk_send`'s order for the Rundmail;
+the other way round a placeholder inside a signature goes out literally
+here while working there.
 
 ## Tooling and CI
 

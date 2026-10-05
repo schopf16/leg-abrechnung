@@ -8,18 +8,13 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.membership_contract import gather
+from app.domain.message_attachments import safe_filename
 from app.gui.safe_notify import safe_notify
 from app.models import leg_document as leg_document_repo
 from app.models import person as person_repo
 from app.paths import OUTPUT_DIR
 from app.pdf.membership_contract import build_contract
 from app.sort_keys import person_name_key
-
-
-def _safe_filename(text: str) -> str:
-    """Reduce a name to something Windows accepts in a filename."""
-    keep = [character if character.isalnum() or character in " -_" else "_" for character in text]
-    return "".join(keep).strip() or "Person"
 
 
 def open_contract_preview(*, document_key: str) -> None:
@@ -69,9 +64,7 @@ def open_contract_preview(*, document_key: str) -> None:
                 fields = gather(connection, person)
                 document = leg_document_repo.get(connection, document_key)
 
-            target = (
-                OUTPUT_DIR / "Vorschau" / f"Beitrittserklaerung_{_safe_filename(person.display_name)}.pdf"
-            )
+            target = OUTPUT_DIR / "Vorschau" / f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
             build_contract(fields, document.content if document else None, target)
 
             result.clear()
