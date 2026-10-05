@@ -220,3 +220,97 @@ def test_the_split_tolerates_a_half_migrated_database():
 
     # Reached without raising, which is the whole assertion.
     _split_sender_house_number(connection)
+
+
+# --- Every save button on the page actually runs ---------------------------
+
+
+def test_every_save_button_on_the_page_runs_without_raising():
+    """The guard for the defect the administrator met.
+
+    They changed the address, clicked Speichern, and nothing happened --
+    because a half-finished edit of mine left the handler referring to a
+    field that did not exist yet. NiceGUI runs a synchronous handler and
+    swallows its exception, so the click did nothing and said nothing (see
+    CLAUDE.md, "A page rendering is not evidence that it works").
+
+    Rendering the page could never have caught that: the button was there
+    and looked fine. Pressing every one of them does.
+    """
+    client = _render_settings("/probe-settings-all-saves")
+
+    buttons = [
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Button" and element.text == "Speichern"
+    ]
+    assert len(buttons) >= 4, f"nur {len(buttons)} Speichern-Knöpfe gefunden"
+
+    with client:
+        for button in buttons:
+            handler = next(
+                listener.handler for listener in button._event_listeners.values() if listener.type == "click"
+            )
+            handler(None)
+
+
+def test_the_page_no_longer_holds_an_email_text():
+    """The invoice and the two dunning texts moved to Textbausteine.
+
+    Pinned because leaving a second place to edit them is exactly the
+    "zwei Orte für Vorlagen" the administrator objected to -- and because a
+    field left here would be written to a column nothing reads any more.
+    """
+    client = _render_settings("/probe-settings-no-templates")
+
+    labels = [
+        element.label
+        for element in client.elements.values()
+        if element.__class__.__name__ in {"Input", "Textarea"} and element.label
+    ]
+    assert "Nachricht" not in labels
+    assert labels.count("Betreff") == 0
+
+    headings = [
+        element.text
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Label" and getattr(element, "text", "")
+    ]
+    assert "E-Mail-Versand" not in headings
+
+
+def test_the_dunning_deadlines_stay_on_the_page():
+    """Only the texts left. A deadline is not a text."""
+    client = _render_settings("/probe-settings-dunning-numbers")
+
+    labels = [
+        element.label
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Number" and element.label
+    ]
+    assert any("Neue Zahlungsfrist" in label for label in labels)
+    assert any("Bagatellgrenze" in label for label in labels)
+
+
+def test_the_connection_test_moved_to_where_sending_happens():
+    """It verifies the Graph credentials without sending anything, so it
+    belongs beside the sending, not in the settings."""
+    from app.gui.pages.email_dispatch import email_dispatch_page
+
+    settings_client = _render_settings("/probe-settings-no-connection-test")
+    settings_buttons = [
+        element.text
+        for element in settings_client.elements.values()
+        if element.__class__.__name__ == "Button" and getattr(element, "text", "")
+    ]
+    assert "Verbindung testen" not in settings_buttons
+
+    dispatch_client = Client(ui.page("/probe-dispatch-connection-test")(lambda: None), request=None)
+    with dispatch_client:
+        email_dispatch_page()
+    dispatch_buttons = [
+        element.text
+        for element in dispatch_client.elements.values()
+        if element.__class__.__name__ == "Button" and getattr(element, "text", "")
+    ]
+    assert "Verbindung testen" in dispatch_buttons

@@ -38,7 +38,9 @@ from typing import Optional
 
 from app.config import GraphConfig
 from app.emailing import graph_client
+from app.domain import message_templates
 from app.emailing.templates import person_placeholder_values, render_template
+from app.models.message_template import OCCASION_DUNNING1, OCCASION_DUNNING2
 from app.models import account_entry as account_entry_repo
 from app.models import billing_run as billing_run_repo
 from app.models import dunning_log as dunning_log_repo
@@ -185,7 +187,7 @@ def _sanitize_filename_part(text: str) -> str:
     return cleaned[:60] or "Person"
 
 
-def render_dunning_text(settings, candidate: DunningCandidate) -> tuple[str, str]:
+def render_dunning_text(connection, settings, candidate: DunningCandidate) -> tuple[str, str]:
     """Render a dunning notice's subject/body from the stage-appropriate template.
 
     The single source of truth for this rendering -- both `send_dunning`
@@ -193,20 +195,20 @@ def render_dunning_text(settings, candidate: DunningCandidate) -> tuple[str, str
     call this, so the preview Michael reviews can never silently drift
     from what actually gets sent.
 
+    The two texts live in `message_template` since migration 52 and are
+    maintained on the Textbausteine page; `settings` is still needed for
+    `dunning_new_deadline_days`, which is a deadline and not a text.
+
     Args:
-        settings: Current `LegSettings` (provides the two dunning notice
-            templates and `dunning_new_deadline_days`).
+        connection: Open SQLite connection, to read the stored text.
+        settings: Current `LegSettings`, for `dunning_new_deadline_days`.
         candidate: The `DunningCandidate` to render for.
 
     Returns:
         `(subject, body)`, placeholders already substituted.
     """
-    if candidate.level == 1:
-        subject_template = settings.dunning1_email_subject
-        body_template = settings.dunning1_email_body
-    else:
-        subject_template = settings.dunning2_email_subject
-        body_template = settings.dunning2_email_body
+    occasion = OCCASION_DUNNING1 if candidate.level == 1 else OCCASION_DUNNING2
+    subject_template, body_template = message_templates.text_for(connection, occasion)
 
     new_deadline = (date.today() + timedelta(days=settings.dunning_new_deadline_days)).strftime("%d.%m.%Y")
     values = {
@@ -243,7 +245,7 @@ async def send_dunning(connection, config: Optional[GraphConfig], candidate: Dun
     """
     settings = settings_repo.get_settings(connection)
     person = candidate.person
-    subject, body = render_dunning_text(settings, candidate)
+    subject, body = render_dunning_text(connection, settings, candidate)
 
     output_dir = OUTPUT_DIR / "Mahnungen" / date.today().isoformat()
     output_dir.mkdir(parents=True, exist_ok=True)

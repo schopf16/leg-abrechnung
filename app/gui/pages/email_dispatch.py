@@ -709,3 +709,40 @@ def email_dispatch_page() -> None:
                         ui.label(", ".join(entry.recipient_emails) or "-")
 
         refresh_history()
+
+        ui.separator().classes("my-6")
+
+        ui.label("Verbindung").classes("text-lg font-bold")
+        ui.label(
+            "Holt ein Zugriffstoken bei Microsoft Graph, ohne etwas zu "
+            "versenden -- die Zugangsdaten aus `config.local.json` prüfen, "
+            "bevor der erste echte Versand gestartet wird. Stand bis jetzt "
+            "unter Einstellungen; es gehört dorthin, wo versendet wird."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            connection_test_result = ui.label("").classes("text-caption")
+
+            async def test_graph_connection() -> None:
+                """Acquire a Graph API access token without sending anything.
+
+                Returns:
+                    None.
+                """
+                connection_test_result.text = "Prüfe Verbindung..."
+                connection_test_result.classes(remove="text-negative text-positive")
+                try:
+                    config = get_graph_config()
+                except ConfigError as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                try:
+                    await graph_client.get_access_token(config)
+                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
+                connection_test_result.classes(add="text-positive")
+
+            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")

@@ -30,6 +30,9 @@ from app.models import leg_document as leg_document_repo
 from app.models import message_template as template_repo
 from app.models import person_offboarding, person_onboarding
 from app.models.message_template import (
+    OCCASION_DUNNING1,
+    OCCASION_DUNNING2,
+    OCCASION_INVOICE,
     OCCASION_LABELS,
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
@@ -39,6 +42,20 @@ from app.models.message_template import (
     TRIGGER_STEP_PENDING,
     MessageTemplate,
 )
+
+#: Which placeholders are valid for which occasion. The Person ones are
+#: available everywhere (`app.emailing.templates.PERSON_PLACEHOLDERS`); the
+#: rest exist only in one context -- an invoice knows its quarter and its
+#: amount, a dunning notice knows the new deadline, and a welcome mail knows
+#: neither. The hint used to sit on the Einstellungen page beside the fields
+#: it described; the fields moved here, so it did too, and it is now by
+#: occasion rather than one list for all of them.
+EXTRA_PLACEHOLDERS = {
+    OCCASION_INVOICE: ("leg", "quartal", "jahr", "betrag"),
+    OCCASION_DUNNING1: ("betrag", "neue_frist"),
+    OCCASION_DUNNING2: ("betrag", "neue_frist"),
+}
+
 
 COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
@@ -295,9 +312,22 @@ def message_templates_page() -> None:
                     .classes("w-full")
                     .props("rows=10")
                 )
-                ui.label("Platzhalter: " + ", ".join(f"{{{key}}}" for key in PERSON_PLACEHOLDERS)).classes(
-                    "text-caption text-grey-6"
-                )
+                placeholder_hint = ui.label("").classes("text-caption text-grey-6")
+
+                def show_placeholders() -> None:
+                    """List the placeholders this occasion actually offers.
+
+                    Returns:
+                        None.
+                    """
+                    names = (
+                        *PERSON_PLACEHOLDERS,
+                        *EXTRA_PLACEHOLDERS.get(occasion.value, ()),
+                    )
+                    placeholder_hint.text = "Platzhalter: " + ", ".join(f"{{{name}}}" for name in names)
+
+                show_placeholders()
+                when_occasion_changes.append(show_placeholders)
 
                 ui.separator().classes("my-2")
                 ui.label("Automatisch anfügen").classes("text-body1 font-bold")

@@ -190,7 +190,7 @@ def dunning_page() -> None:
         def open_send_dialog(candidate: dunning.DunningCandidate) -> None:
             with connection_scope() as connection:
                 settings = settings_repo.get_settings(connection)
-            subject, body = dunning.render_dunning_text(settings, candidate)
+                subject, body = dunning.render_dunning_text(connection, settings, candidate)
             channel = (
                 "E-Mail (mit PDF-Anhang)"
                 if candidate.person.contact_emails and not candidate.person.paper_invoice

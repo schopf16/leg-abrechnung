@@ -5,14 +5,12 @@ MeteringPoint Land/identifier defaults, and demo data generation.
 
 from nicegui import ui
 
-from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
 from app.gui.address_input import SuggestionBox
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
-from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.domain import auto_attachments
 from app.format_size import format_size
 from app.formatting import format_date
@@ -21,20 +19,6 @@ from app.models import leg_document as leg_document_repo
 from app.gui.safe_notify import safe_notify
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
-
-#: Shown as a hint above the invoice email template fields -- Person
-#: placeholders plus the invoice-only context ones from
-#: `app.emailing.bulk_send._invoice_placeholder_values`.
-_INVOICE_PLACEHOLDER_HINT = ", ".join(
-    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "leg", "quartal", "jahr", "betrag")
-)
-
-#: Shown as a hint above the dunning notice template fields -- Person
-#: placeholders plus the dunning notice-only context ones from
-#: `app.domain.dunning`.
-_DUNNING_PLACEHOLDER_HINT = ", ".join(
-    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "betrag", "neue_frist")
-)
 
 
 @ui.page("/settings")
@@ -399,82 +383,12 @@ def settings_page() -> None:
 
         ui.separator().classes("my-6")
 
-        ui.label("E-Mail-Versand").classes("text-lg font-bold")
-        ui.label(
-            "Vorlage für den Rechnungsversand per E-Mail (siehe "
-            "„Rechnungslauf“) -- einmal hier hinterlegt, kein erneutes "
-            "Eintippen pro Quartal nötig, für einen einzelnen Lauf dort "
-            "trotzdem noch anpassbar. Verfügbare Platzhalter: "
-            f"{_INVOICE_PLACEHOLDER_HINT}."
-        ).classes("text-body2 text-grey-8")
-        with ui.card().classes("w-full max-w-lg"):
-            invoice_subject = ui.input("Betreff", value=current.invoice_email_subject).classes("w-full")
-            invoice_body = (
-                ui.textarea("Nachricht", value=current.invoice_email_body).classes("w-full").props("rows=6")
-            )
-            invoice_email_error = ui.label("").classes("text-negative")
-
-            def save_invoice_email() -> None:
-                """Validate and persist the invoice email template.
-
-                Returns:
-                    None.
-                """
-                if not invoice_subject.value.strip():
-                    invoice_email_error.text = "Betreff darf nicht leer sein."
-                    return
-                with connection_scope() as connection:
-                    settings = settings_repo.get_settings(connection)
-                    settings.invoice_email_subject = invoice_subject.value.strip()
-                    settings.invoice_email_body = invoice_body.value
-                    settings_repo.update_settings(connection, settings)
-                invoice_email_error.text = ""
-                ui.notify("E-Mail-Vorlage gespeichert.", type="positive")
-
-            ui.button("Speichern", on_click=save_invoice_email).classes("mt-2")
-
-            ui.separator().classes("my-4")
-
-            connection_test_result = ui.label("").classes("text-caption")
-
-            async def test_graph_connection() -> None:
-                """Acquire a Graph API access token without sending anything.
-
-                Verifies the Entra ID app registration/credentials in
-                `config.local.json` before the first real bulk send is
-                attempted.
-
-                Returns:
-                    None.
-                """
-                connection_test_result.text = "Prüfe Verbindung..."
-                connection_test_result.classes(remove="text-negative text-positive")
-                try:
-                    config = get_graph_config()
-                except ConfigError as exc:
-                    connection_test_result.text = str(exc)
-                    connection_test_result.classes(add="text-negative")
-                    return
-                try:
-                    await graph_client.get_access_token(config)
-                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
-                    connection_test_result.text = str(exc)
-                    connection_test_result.classes(add="text-negative")
-                    return
-                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
-                connection_test_result.classes(add="text-positive")
-
-            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
-
-        ui.separator().classes("my-6")
-
         ui.label("Mahnwesen").classes("text-lg font-bold")
         ui.label(
             "Zwei Stufen gemäss Reglement: die 1. Mahnung gewährt eine neue "
             "Frist, die 2. Mahnung löst die Ausschluss-Prüfung aus (siehe "
             "„Debitoren“/„Mahnwesen“) -- keine Mahngebühr auf irgendeiner "
-            "Stufe. Verfügbare Platzhalter: "
-            f"{_DUNNING_PLACEHOLDER_HINT}."
+            "Stufe. Die beiden Texte stehen unter „Textbausteine“."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
             dunning_new_deadline_days = ui.number(
@@ -492,18 +406,6 @@ def settings_page() -> None:
                 format="%.2f",
             ).classes("w-full")
 
-            ui.label("1. Mahnung").classes("font-bold mt-3")
-            dunning1_subject = ui.input("Betreff", value=current.dunning1_email_subject).classes("w-full")
-            dunning1_body = (
-                ui.textarea("Nachricht", value=current.dunning1_email_body).classes("w-full").props("rows=6")
-            )
-
-            ui.label("2. Mahnung").classes("font-bold mt-3")
-            dunning2_subject = ui.input("Betreff", value=current.dunning2_email_subject).classes("w-full")
-            dunning2_body = (
-                ui.textarea("Nachricht", value=current.dunning2_email_body).classes("w-full").props("rows=6")
-            )
-
             dunning_error = ui.label("").classes("text-negative")
 
             def save_dunning() -> None:
@@ -518,17 +420,10 @@ def settings_page() -> None:
                 if dunning_minimum.value is None or dunning_minimum.value < 0:
                     dunning_error.text = "Bagatellgrenze muss positiv sein."
                     return
-                if not dunning1_subject.value.strip() or not dunning2_subject.value.strip():
-                    dunning_error.text = "Betreff darf nicht leer sein."
-                    return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
                     settings.dunning_new_deadline_days = int(dunning_new_deadline_days.value)
                     settings.dunning_minimum_rappen = round(dunning_minimum.value * 100)
-                    settings.dunning1_email_subject = dunning1_subject.value.strip()
-                    settings.dunning1_email_body = dunning1_body.value
-                    settings.dunning2_email_subject = dunning2_subject.value.strip()
-                    settings.dunning2_email_body = dunning2_body.value
                     settings_repo.update_settings(connection, settings)
                 dunning_error.text = ""
                 ui.notify("Mahnwesen-Einstellungen gespeichert.", type="positive")

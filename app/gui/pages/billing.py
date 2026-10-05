@@ -5,6 +5,8 @@ from nicegui import ui
 from app.config import ConfigError, get_graph_config
 from app.formatting import format_chf
 from app.db.connection import connection_scope
+from app.domain import message_templates
+from app.models.message_template import OCCASION_INVOICE
 from app.domain.billing import create_billing_runs_for_all_legs, create_or_replace_billing_run
 from app.domain.distribution import LegNotAssignedError
 from app.domain.period import last_completed_quarter
@@ -531,7 +533,6 @@ def billing_page() -> None:
                     None,
                 )
                 person = person_repo.get(connection, item.person_id) if item else None
-                settings = settings_repo.get_settings(connection)
             if item is None or person is None:
                 safe_notify("Position nicht gefunden.", type="negative")
                 return
@@ -558,13 +559,9 @@ def billing_page() -> None:
                             return
                         try:
                             with connection_scope() as connection:
+                                subject, body = message_templates.text_for(connection, OCCASION_INVOICE)
                                 await bulk_send.resend_invoice_email(
-                                    connection,
-                                    config,
-                                    run,
-                                    item,
-                                    settings.invoice_email_subject,
-                                    settings.invoice_email_body,
+                                    connection, config, run, item, subject, body
                                 )
                         except (
                             ValueError,
@@ -633,7 +630,6 @@ def billing_page() -> None:
                 None.
             """
             with connection_scope() as connection:
-                settings = settings_repo.get_settings(connection)
                 items = billing_run_repo.list_items(connection, run.id)
                 persons = {p.id: p for p in person_repo.list_all(connection)}
 
@@ -642,12 +638,13 @@ def billing_page() -> None:
                     f"Rechnungen per E-Mail versenden -- {leg_options.get(run.leg_id, '?')}, "
                     f"Q{run.period_quarter} {run.period_year}"
                 ).classes("text-lg font-bold")
-                subject_input = ui.input("Betreff", value=settings.invoice_email_subject).classes("w-full")
-                body_textarea = (
-                    ui.textarea("Nachricht", value=settings.invoice_email_body)
-                    .classes("w-full")
-                    .props("rows=8")
-                )
+                # The text comes from the Textbausteine page now, not from
+                # Einstellungen -- still editable here for this one send,
+                # which is the whole point of showing it before it goes.
+                with connection_scope() as connection:
+                    stored_subject, stored_body = message_templates.text_for(connection, OCCASION_INVOICE)
+                subject_input = ui.input("Betreff", value=stored_subject).classes("w-full")
+                body_textarea = ui.textarea("Nachricht", value=stored_body).classes("w-full").props("rows=8")
                 ui.label(f"Verfügbare Platzhalter: {_INVOICE_PLACEHOLDER_HINT}").classes(
                     "text-caption text-grey-6"
                 )
