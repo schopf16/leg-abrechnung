@@ -26,10 +26,7 @@ def test_round_trip_recovers_original_ids(customer_number, billing_run_id, item_
 
 
 def test_round_trip_works_with_full_27_digit_zero_padded_form():
-    """The reference as it actually appears on a printed QR-bill/bank
-    statement is zero-padded to 27 digits (2 leading zeros in front of
-    `generate_qrr_reference`'s own 25-character output) -- must decode
-    identically to the unpadded form."""
+    """The reference as it actually appears on a printed QR-bill/bank statement is zero-padded to 27..."""
     reference = generate_qrr_reference(123456, 42, 999)
     padded = "00" + reference
     assert len(padded) == 27

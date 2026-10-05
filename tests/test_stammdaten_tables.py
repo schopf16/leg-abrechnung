@@ -1,12 +1,4 @@
-"""The Stammdaten lists as paged tables.
-
-"eine solche tabellenansicht ist näher an einer datenbank als diese
-boubles" -- so Trafokreise, LEGs and Messpunkte took the same shape as
-Personen and Standorte. A render test would pass on an empty table, so these
-check that the rows arrive, that the cells read as one value each, and that
-the buttons in the actions column are wired: a Vue template that emits an
-event nobody listens for looks exactly like one that works.
-"""
+"""The Stammdaten lists as paged tables."""
 
 import pytest
 from nicegui import Client, ui
@@ -24,11 +16,7 @@ from app.models.substation_area import SubstationArea
 
 
 def _deployment() -> dict:
-    """One Trafokreis, one Standort, one LEG and one Messpunkt.
-
-    Returns:
-        `{"area": id, "site": id, "leg": id, "metering_point": id}`.
-    """
+    """One Trafokreis, one Standort, one LEG and one Messpunkt."""
     with connection_scope() as connection:
         area = substation_area_repo.create(
             connection,
@@ -82,16 +70,7 @@ def _deployment() -> dict:
 
 
 def _table(module: str, function: str, probe: str):
-    """Render one list page and return its table.
-
-    Args:
-        module: Module name under `app.gui.pages`.
-        function: The page function.
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        `(client, table)`.
-    """
+    """Render one list page and return its table."""
     import importlib
 
     page_module = importlib.import_module(f"app.gui.pages.{module}")
@@ -109,7 +88,15 @@ def _table(module: str, function: str, probe: str):
             "substation_areas",
             "substation_areas_page",
             "/probe-st-areas",
-            ["Name", "BKW-Bezeichnung", "Standorte", "Produzenten / Konsumenten", "Bemerkung", ""],
+            [
+                "Name",
+                "BKW-Bezeichnung",
+                "Standorte",
+                "Wohneinheiten",
+                "Produzenten / Konsumenten",
+                "Bemerkung",
+                "",
+            ],
         ),
         (
             "legs",
@@ -187,11 +174,7 @@ def test_the_leg_row_holds_the_trafokreise_in_one_cell():
     ],
 )
 def test_the_pencil_in_the_actions_column_opens_the_dialog(module, function, probe):
-    """A Vue template emitting an event nobody listens for looks identical.
-
-    The lesson from the nicegui 3.16 bump: rendering proves that a page
-    builds, never that a click does anything.
-    """
+    """A Vue template emitting an event nobody listens for looks identical."""
     _deployment()
 
     client, table = _table(module, function, probe)
@@ -209,13 +192,7 @@ def test_the_pencil_in_the_actions_column_opens_the_dialog(module, function, pro
 
 
 def test_a_trafokreis_finding_can_be_read_in_the_pencil(address_register):
-    """A Trafokreis has no detail page, so the triangle needs somewhere to lead.
-
-    Without this the marker on that one list pointed at nothing: no eye to
-    open, and the dialog said only what the record holds, not what is wrong
-    with it. Driven through the pencil in the row, because the form is a
-    nested function and only that path reaches it.
-    """
+    """A Trafokreis has no detail page, so the triangle needs somewhere to lead."""
     _deployment()
 
     client, table = _table("substation_areas", "substation_areas_page", "/probe-st-areas-finding")
@@ -242,11 +219,7 @@ def test_a_trafokreis_finding_can_be_read_in_the_pencil(address_register):
 
 
 def _two_assignments() -> dict:
-    """One Messpunkt with two people in sequence, which is a move.
-
-    Returns:
-        The ids from `_deployment`, plus `"person"`.
-    """
+    """One Messpunkt with two people in sequence, which is a move."""
     from datetime import date
 
     from app.models import assignment as assignment_repo
@@ -327,11 +300,7 @@ def test_zuordnungen_is_a_table_with_one_row_per_assignment():
 
 
 def test_the_rows_of_one_messpunkt_stay_together_and_in_sequence():
-    """That is the part of the grouping worth keeping.
-
-    A move reads as two rows in order; shuffled into a flat sort they would
-    be two unrelated lines.
-    """
+    """That is the part of the grouping worth keeping."""
     _two_assignments()
 
     _, table = _table("assignments", "assignments_page", "/probe-st-assign-order")
@@ -381,13 +350,7 @@ def test_the_pencil_on_a_zuordnung_opens_its_dialog():
     ],
 )
 def test_no_table_pushes_itself_wider_than_the_window(module, function, probe, address_register):
-    """A sideways scrollbar sits at the *bottom* of a long list.
-
-    So reading the right-hand columns means scrolling down, across, and back
-    up -- "das will ich auf keinen fall". Quasar keeps a cell on one line by
-    default, which lets one 27-character Messpunktbezeichnung decide the
-    whole table's width; `wrap-cells` lets the row grow taller instead.
-    """
+    """A sideways scrollbar sits at the *bottom* of a long list."""
     _deployment()
 
     _, table = _table(module, function, probe)
@@ -421,13 +384,7 @@ def test_the_content_area_is_wide_enough_for_a_seven_column_table():
     ],
 )
 def test_a_detail_page_says_where_it_is_and_can_be_edited(module, function, route, label, address_register):
-    """Three of the four had no edit button at all.
-
-    So the loop the markers were built for -- see it in the list, look at it,
-    correct it -- ended in a dead end on sites, metering points and LEGs: the
-    eye led somewhere the pencil could not follow. And "← Zurück zu
-    Standorten" is a way back rather than a place; a breadcrumb is both.
-    """
+    """Three of the four had no edit button at all."""
     import importlib
 
     ids = _deployment()
@@ -501,12 +458,7 @@ def test_a_detail_page_says_where_it_is_and_can_be_edited(module, function, rout
 
 
 def test_saving_from_a_detail_page_reloads_it(address_register, monkeypatch):
-    """The whole loop, end to end, because its last step is easy to miss.
-
-    The pencil opens the dialog and the dialog saves -- but a detail page
-    that does not reload afterwards keeps showing the values that were just
-    corrected, which reads as the save having failed.
-    """
+    """The whole loop, end to end, because its last step is easy to miss."""
     from app.gui.pages.sites import site_detail_page
     from app.models import site as site_repo
 

@@ -1,16 +1,4 @@
-"""The guided billing run: six steps, four control points, one gate.
-
-Renders `app.models.billing_cycle` the way the Aufnahme and Austritt
-pages render their trackers -- the fixed step list with a date against
-each -- plus the part that has no equivalent there: the control points
-from `app.domain.billing_checks`, which decide whether the quarter may be
-computed at all.
-
-Kept out of `app.gui.pages.billing` so that page stays about running a
-billing and this stays about tracking one; it takes the two actions that
-belong to the page (compute all LEGs, send the invoice emails) as
-callbacks.
-"""
+"""The guided billing run: six steps, four control points, one gate."""
 
 from datetime import date
 from typing import Callable, Optional
@@ -42,16 +30,7 @@ PAPER_COLUMNS = [
 
 
 def _readings_exist(connection, year: int, quarter: int) -> bool:
-    """Whether the quarter has any readings at all.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        `True` if at least one reading falls inside the quarter.
-    """
+    """Whether the quarter has any readings at all."""
     from app.domain.period import quarter_bounds
 
     start, end = quarter_bounds(year, quarter)
@@ -63,16 +42,7 @@ def _readings_exist(connection, year: int, quarter: int) -> bool:
 
 
 def _runs_exist(connection, year: int, quarter: int) -> bool:
-    """Whether any billing run was computed for the quarter.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        `True` if at least one run exists for this period.
-    """
+    """Whether any billing run was computed for the quarter."""
     return any(
         (run.period_year, run.period_quarter) == (year, quarter)
         for run in billing_run_repo.list_runs(connection)
@@ -80,21 +50,7 @@ def _runs_exist(connection, year: int, quarter: int) -> bool:
 
 
 def _invoice_email_progress(connection, year: int, quarter: int) -> tuple[int, int]:
-    """Count how many invoice emails of a quarter are still outstanding.
-
-    Decided by `app.emailing.bulk_send.invoice_skip_reason`, the same
-    rule the dispatch itself applies, rather than by re-listing the
-    conditions here -- a recipient counted as outstanding who would then
-    be skipped (or the reverse) would make the step lie.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        `(outstanding, already_sent)`.
-    """
+    """Count how many invoice emails of a quarter are still outstanding."""
     from app.emailing.bulk_send import invoice_skip_reason
     from app.models import person as person_repo
 
@@ -113,14 +69,7 @@ def _invoice_email_progress(connection, year: int, quarter: int) -> tuple[int, i
 
 
 def _paper_rows(invoices) -> list[dict]:
-    """Turn paper invoices into printable rows.
-
-    Args:
-        invoices: `PaperInvoice` instances.
-
-    Returns:
-        Row dicts matching `PAPER_COLUMNS`.
-    """
+    """Turn paper invoices into printable rows."""
     return [
         {
             "person_name": invoice.person_name,
@@ -141,21 +90,7 @@ def render_billing_cycle(
     on_send_emails: Callable[[], None],
     on_changed: Callable[[], None],
 ) -> None:
-    """Render the guided billing run for one quarter.
-
-    Args:
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-        on_compute: Runs the all-LEGs billing and export. Called only
-            once the control points allow it (or an override is on
-            record).
-        on_send_emails: Opens the invoice email dispatch.
-        on_changed: Called after anything was recorded, so the page can
-            rebuild itself.
-
-    Returns:
-        None.
-    """
+    """Render the guided billing run for one quarter."""
     with connection_scope() as connection:
         cycle = billing_cycle_repo.get_by_period(connection, year, quarter)
         points = run_control_points(connection, year, quarter)
@@ -192,14 +127,7 @@ def render_billing_cycle(
 
 
 def _render_progress(cycle: BillingCycle) -> None:
-    """Draw the one-line status of a cycle.
-
-    Args:
-        cycle: The cycle to describe.
-
-    Returns:
-        None.
-    """
+    """Draw the one-line status of a cycle."""
     done = sum(1 for attr, _ in STEPS if getattr(cycle, attr) is not None)
     with ui.row().classes("w-full items-center gap-3"):
         ui.label(f"Rechnungslauf {cycle.label}").classes("text-lg font-bold")
@@ -217,16 +145,7 @@ def _render_progress(cycle: BillingCycle) -> None:
 def _render_control_points(
     cycle: BillingCycle, points: list[ControlPoint], on_changed: Callable[[], None]
 ) -> None:
-    """Draw the four control points and, if needed, the override.
-
-    Args:
-        cycle: The cycle they belong to.
-        points: The freshly computed control points.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Draw the four control points and, if needed, the override."""
     passed = control_points_passed(points)
     with ui.card().classes("w-full"):
         with ui.row().classes("items-center gap-2"):
@@ -273,15 +192,7 @@ def _render_control_points(
 
 
 def _render_override_button(cycle: BillingCycle, on_changed: Callable[[], None]) -> None:
-    """Offer to proceed despite failing control points, against a reason.
-
-    Args:
-        cycle: The cycle to annotate.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Offer to proceed despite failing control points, against a reason."""
 
     def open_dialog() -> None:
         with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
@@ -316,16 +227,7 @@ def _render_override_button(cycle: BillingCycle, on_changed: Callable[[], None])
 
 
 def _mark(cycle_id: int, attribute: str, on_changed: Callable[[], None]) -> None:
-    """Record one step as done, today.
-
-    Args:
-        cycle_id: The cycle to update.
-        attribute: The step's attribute name.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Record one step as done, today."""
     with connection_scope() as connection:
         fresh = billing_cycle_repo.get(connection, cycle_id)
         billing_cycle_repo.mark_step(connection, fresh, attribute)
@@ -333,16 +235,7 @@ def _mark(cycle_id: int, attribute: str, on_changed: Callable[[], None]) -> None
 
 
 def _unmark(cycle_id: int, attribute: str, on_changed: Callable[[], None]) -> None:
-    """Undo one step's date, for a mis-click.
-
-    Args:
-        cycle_id: The cycle to update.
-        attribute: The step's attribute name.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Undo one step's date, for a mis-click."""
     with connection_scope() as connection:
         fresh = billing_cycle_repo.get(connection, cycle_id)
         setattr(fresh, attribute, None)
@@ -362,22 +255,7 @@ def _render_steps(
     on_send_emails: Callable[[], None],
     on_changed: Callable[[], None],
 ) -> None:
-    """Draw the six steps, each with whatever action moves it forward.
-
-    Args:
-        cycle: The cycle being worked on.
-        points: The freshly computed control points.
-        readings_present: Whether the quarter has readings.
-        runs_present: Whether the quarter has computed runs.
-        paper: The quarter's paper invoices.
-        email_progress: `(outstanding, already_sent)` invoice emails.
-        on_compute: Runs the all-LEGs billing and export.
-        on_send_emails: Opens the invoice email dispatch.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Draw the six steps, each with whatever action moves it forward."""
     passed = control_points_passed(points)
     # Without readings there is nothing to compute, whatever the control
     # points say -- they have nothing to object to either.
@@ -441,24 +319,7 @@ def _render_step_action(
     on_send_emails: Callable[[], None],
     on_changed: Callable[[], None],
 ) -> None:
-    """Draw the action belonging to one open step.
-
-    Args:
-        cycle: The cycle being worked on.
-        attribute: The step's attribute name.
-        readings_present: Whether the quarter has readings.
-        runs_present: Whether the quarter has computed runs.
-        may_compute: Whether the control points (or an override) allow
-            computing.
-        paper: The quarter's paper invoices.
-        email_progress: `(outstanding, already_sent)` invoice emails.
-        on_compute: Runs the all-LEGs billing and export.
-        on_send_emails: Opens the invoice email dispatch.
-        on_changed: Page refresh.
-
-    Returns:
-        None.
-    """
+    """Draw the action belonging to one open step."""
     if attribute == "readings_imported_at":
         # Nothing to confirm by hand: whether readings are there is a
         # question the app can answer, and asking for an attestation would
@@ -538,14 +399,7 @@ def _render_step_action(
 
 
 def _render_paper_list(paper: list) -> None:
-    """Draw the list of documents that have to go out on paper.
-
-    Args:
-        paper: `PaperInvoice` instances.
-
-    Returns:
-        None.
-    """
+    """Draw the list of documents that have to go out on paper."""
     rows = _paper_rows(paper)
     with ui.card().classes("w-full"):
         with ui.row().classes("w-full items-center gap-2"):

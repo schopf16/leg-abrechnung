@@ -1,21 +1,18 @@
-"""Aufnahmen page: tracks each interested person's progress through the
-five real-world onboarding steps (see `app.models.person_onboarding`).
-
-A tracker only exists for a person once explicitly started -- either
-automatically when a Web-Registrierung is taken over ("Person übernehmen",
-see `app.gui.pages.web_registrations`), or manually here (e.g. for
-someone who inquired by phone rather than through the web form). Deleting
-a tracker only discards the tracking record; it never touches the Person.
-"""
+"""Aufnahmen page: tracks each interested person's progress through the five real-world onboarding
+steps (see `app.models.person_onboarding`)."""
 
 from datetime import date, datetime
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.formatting import format_date
+from app.domain.global_search import person_matches
+from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.list_footer import render_count, render_empty
+from app.gui.message_buttons import group_by_step, render_step_messages
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -29,6 +26,7 @@ from app.gui.sorting import (
 from app.models import person as person_repo
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
+from app.models.message_template import OCCASION_ONBOARDING
 from app.models.person import Person
 from app.models.person_onboarding import STEPS, PersonOnboarding
 
@@ -57,32 +55,12 @@ PRINT_COLUMNS = [("Person", "person"), ("Status", "status")] + [(label, attr) fo
 
 
 def _person_name_key(persons: dict[int, Person], onboarding: PersonOnboarding) -> tuple[str, ...]:
-    """Look up a tracker's person and key it by name.
-
-    Args:
-        persons: `{person_id: Person}` lookup.
-        onboarding: The tracker whose person to key on.
-
-    Returns:
-        `app.gui.sorting.person_name_key`'s key; a tracker whose person is
-        gone sorts first rather than crashing the page.
-    """
+    """Look up a tracker's person and key it by name."""
     return person_name_key(persons.get(onboarding.person_id))
 
 
 def sort_options(persons: dict[int, Person]) -> list[SortOption]:
-    """Build the orders the Aufnahmen list offers.
-
-    Surname first by default: the administrator looks people up by name,
-    while the order trackers happen to have been created in is meaningful
-    only for the date-based options.
-
-    Args:
-        persons: `{person_id: Person}` lookup for the tracked persons.
-
-    Returns:
-        The options, default first.
-    """
+    """Build the orders the Aufnahmen list offers."""
     step_attributes = [attr for attr, _ in STEPS]
 
     def registered(onboarding: PersonOnboarding):
@@ -119,32 +97,12 @@ def sort_options(persons: dict[int, Person]) -> list[SortOption]:
 def sort_onboardings(
     onboardings: list[PersonOnboarding], persons: dict[int, Person], sort_by
 ) -> list[PersonOnboarding]:
-    """Sort trackers by one of `sort_options`' keys.
-
-    Args:
-        onboardings: Trackers to sort; left untouched.
-        persons: `{person_id: Person}` lookup.
-        sort_by: The page's `app.gui.sorting.SortControl`, or a bare key;
-            an unknown one falls back to the default.
-
-    Returns:
-        A new, sorted list.
-    """
+    """Sort trackers by one of `sort_options`' keys."""
     return apply_sort(onboardings, sort_options(persons), sort_by)
 
 
 def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> dict:
-    """Convert one onboarding tracker into a row dict for the printed table.
-
-    Args:
-        onboarding: Tracker to convert.
-        person: The tracked person.
-        threshold_days: Current `onboarding_overdue_days` setting, to
-            flag an overdue step on the printout too.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS`.
-    """
+    """Convert one onboarding tracker into a row dict for the printed table."""
     if onboarding.is_complete:
         status = "Abgeschlossen"
     else:
@@ -160,24 +118,13 @@ def _print_row(onboarding: PersonOnboarding, person: Person, threshold_days: int
 
 
 def _parse_date(value: str) -> date:
-    """Parse a date string from a NiceGUI date input into a `date`.
-
-    Args:
-        value: Date string in ISO format ("YYYY-MM-DD").
-
-    Returns:
-        The parsed `date`.
-    """
+    """Parse a date string from a NiceGUI date input into a `date`."""
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 @ui.page("/onboardings")
 def onboardings_page() -> None:
-    """Render the Aufnahmen (onboarding tracking) page.
-
-    Returns:
-        None.
-    """
+    """Render the Aufnahmen (onboarding tracking) page."""
     with page_frame("/onboardings", "Aufnahmen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -205,6 +152,7 @@ def onboardings_page() -> None:
                 ui.button("+ Aufnahme starten", on_click=lambda: on_start())
 
         bar = FilterBar("/onboardings")
+        search_input = bar.search("Name, Firma, Kunden-Nr.")
         sort_select = bar.sort(sort_options({}), lambda: refresh())
         show_complete_switch = bar.filter("Auch abgeschlossene anzeigen")
         step_filter = bar.choice(STEP_FILTER_OPTIONS, "Schritt-Filter")
@@ -212,15 +160,14 @@ def onboardings_page() -> None:
 
         visible_onboardings: list[PersonOnboarding] = []
         persons: dict[int, Person] = {}
+        due_messages: dict[int, list[DueMessage]] = {}
         threshold_days = 30
 
         def _filter_description() -> str | None:
-            """Build a short description of the currently active filters.
-
-            Returns:
-                A human-readable summary, or `None` if no filter is active.
-            """
+            """Build a short description of the currently active filters."""
             parts = []
+            if search_input.value:
+                parts.append(f'Suche "{search_input.value}"')
             if show_complete_switch.value:
                 parts.append("inkl. abgeschlossene")
             if step_filter.value is not None:
@@ -228,16 +175,7 @@ def onboardings_page() -> None:
             return ", ".join(parts) if parts else None
 
         def render_card(onboarding: PersonOnboarding, person: Person, threshold_days: int) -> None:
-            """Render one onboarding tracker as a card.
-
-            Args:
-                onboarding: Tracker to render.
-                person: The tracked person.
-                threshold_days: Current `onboarding_overdue_days` setting.
-
-            Returns:
-                None.
-            """
+            """Render one onboarding tracker as a card."""
             overdue = onboarding.is_overdue(threshold_days)
             with ui.card().classes("w-full" + (" opacity-60" if onboarding.is_complete else "")):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
@@ -251,13 +189,31 @@ def onboardings_page() -> None:
                         if not onboarding.is_complete:
                             _, step_label = onboarding.current_step
                             ui.label(f"Aktueller Schritt: {step_label}").classes("text-caption text-grey-6")
-                    with ui.column().classes("gap-0 min-w-[280px]"):
+                    # One row per step, and that step's mails on the same
+                    # row: in a column of their own they started at the top
+                    # of the card while the steps did too, so a mail about
+                    # step four sat level with step two.
+                    by_step = group_by_step(due_messages.get(onboarding.person_id, []))
+                    with ui.column().classes("gap-0 grow min-w-[280px]"):
                         for attr, label in STEPS:
                             value = getattr(onboarding, attr)
                             text = f"{'✓' if value else '—'} {label}"
                             if value:
-                                text += f" ({value.isoformat()})"
-                            ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
+                                text += f" ({format_date(value)})"
+                            with ui.row().classes("w-full items-center gap-3"):
+                                # A fixed width, so the controls line up in a
+                                # column of their own however long the labels
+                                # are -- which is what makes the pairing
+                                # readable at a glance.
+                                ui.label(text).classes(
+                                    "text-caption w-[260px] shrink-0" + ("" if value else " text-grey-6")
+                                )
+                                render_step_messages(
+                                    person,
+                                    by_step.get(attr, []),
+                                    OCCASION_ONBOARDING,
+                                    on_changed=refresh,
+                                )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
                             "dense flat"
@@ -267,12 +223,8 @@ def onboardings_page() -> None:
                         ).props("dense flat color=negative")
 
         def refresh() -> None:
-            """Reload the onboarding list according to the current filters.
-
-            Returns:
-                None.
-            """
-            nonlocal visible_onboardings, persons, threshold_days
+            """Reload the onboarding list according to the current filters."""
+            nonlocal visible_onboardings, persons, due_messages, threshold_days
             with connection_scope() as connection:
                 onboardings = (
                     person_onboarding_repo.list_all(connection)
@@ -281,9 +233,18 @@ def onboardings_page() -> None:
                 )
                 persons = {p.id: p for p in person_repo.list_all(connection)}
                 threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
+                due_messages = due_by_person(connection, onboardings, OCCASION_ONBOARDING)
             # Counted before the step filter narrows it, so "3 von 88" says
             # what the reader expects it to say.
             total_onboardings = len(onboardings)
+            query = search_input.value or ""
+            if query.strip():
+                onboardings = [
+                    tracker
+                    for tracker in onboardings
+                    if (candidate := persons.get(tracker.person_id)) is not None
+                    and person_matches(candidate, query)
+                ]
             step_attr = step_filter.value
             if step_attr is not None:
                 # A tracker matches only while that one step's own date is
@@ -311,31 +272,16 @@ def onboardings_page() -> None:
                         continue
                     render_card(onboarding, person, threshold_days)
 
+        search_input.on_value_change(lambda _: refresh())
         show_complete_switch.on_value_change(lambda _: refresh())
         step_filter.on_value_change(lambda _: refresh())
 
         def on_edit(onboarding: PersonOnboarding, person: Person) -> None:
-            """Card button handler: open the edit dialog for this tracker.
-
-            Args:
-                onboarding: Tracker to edit.
-                person: The tracked person.
-
-            Returns:
-                None.
-            """
+            """Card button handler: open the edit dialog for this tracker."""
             open_onboarding_form(onboarding, person, on_saved=lambda _: refresh())
 
         def on_delete(onboarding: PersonOnboarding, person: Person) -> None:
-            """Card button handler: discard a tracker after confirmation.
-
-            Args:
-                onboarding: Tracker to delete.
-                person: The tracked person (display only -- never deleted).
-
-            Returns:
-                None.
-            """
+            """Card button handler: discard a tracker after confirmation."""
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Aufnahme von "{person.display_name}" wirklich verwerfen?')
                 ui.label("Nur die Nachverfolgung verschwindet -- die Person selbst bleibt bestehen.").classes(
@@ -356,11 +302,7 @@ def onboardings_page() -> None:
             confirm.open()
 
         def on_start() -> None:
-            """Top button handler: start onboarding tracking for an existing Person.
-
-            Returns:
-                None.
-            """
+            """Top button handler: start onboarding tracking for an existing Person."""
             with connection_scope() as connection:
                 all_persons = person_repo.list_all(connection)
                 already_tracked = {o.person_id for o in person_onboarding_repo.list_all(connection)}
@@ -384,11 +326,7 @@ def onboardings_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def start() -> None:
-                    """Validate the form and start the onboarding tracker.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and start the onboarding tracker."""
                     if person_select.value is None:
                         error_label.text = "Bitte eine Person wählen."
                         return

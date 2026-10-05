@@ -1,11 +1,4 @@
-"""Manual, single-file database backups (project brief, section 8).
-
-Deliberately simple: one backup = one timestamped `.sqlite3` file in
-`backups/`. Restoring always takes a safety backup of the current database
-first, then fully replaces it with the chosen backup's content and brings
-it up to the current schema version, so old backups stay usable across
-app upgrades.
-"""
+"""Manual, single-file database backups (project brief, section 8)."""
 
 import shutil
 import sqlite3
@@ -36,17 +29,7 @@ class BackupValidationError(Exception):
 
 @dataclass(frozen=True)
 class BackupContents:
-    """How much master data a backup holds.
-
-    A filename and a size say nothing about which backup is which. These
-    three numbers do: they are what changes as the community grows, so
-    they are what tells two snapshots apart at a glance.
-
-    Attributes:
-        legs: Number of LEGs.
-        persons: Number of persons.
-        metering_points: Number of metering points.
-    """
+    """How much master data a backup holds."""
 
     legs: int
     persons: int
@@ -55,24 +38,7 @@ class BackupContents:
 
 @dataclass
 class BackupFileInfo:
-    """Metadata about one backup file for display in the UI.
-
-    Attributes:
-        path: Filesystem path of the backup file.
-        created_at: When the backup was taken, read from its own filename
-            (see `create_backup`), falling back to the file's
-            modification time for anything not named that way. The
-            filename is preferred because copying a backup around
-            rewrites the modification time while the name keeps saying
-            when the snapshot was actually made.
-        size_bytes: File size in bytes.
-        contents: What is inside, or `None` if the counts could not be
-            read -- a backup from an older schema names its tables
-            differently. `None` is shown as such rather than as zeroes,
-            which would read like an empty database. A file can be
-            perfectly restorable and still have no counts.
-        problem: Why this file cannot be restored, or `None` if it can.
-    """
+    """Metadata about one backup file for display in the UI."""
 
     path: Path
     created_at: datetime
@@ -88,32 +54,14 @@ class BackupFileInfo:
 
 @dataclass
 class RestoreResult:
-    """Outcome of a successful restore operation.
-
-    Attributes:
-        safety_backup_path: Path of the automatic safety backup taken of
-            the database just before it was overwritten.
-        restored_schema_version: Schema version the database is at after
-            restoring and migrating.
-    """
+    """Outcome of a successful restore operation."""
 
     safety_backup_path: Path
     restored_schema_version: int
 
 
 def create_backup(db_path: Path = DATABASE_PATH, backups_dir: Path = BACKUPS_DIR) -> Path:
-    """Write a consistent snapshot of the live database to `backups/`.
-
-    Uses SQLite's online backup API (rather than a plain file copy) so the
-    snapshot is consistent even if a write happens to be in progress.
-
-    Args:
-        db_path: Path of the live database to snapshot.
-        backups_dir: Directory to write the backup file into.
-
-    Returns:
-        Path of the newly created backup file.
-    """
+    """Write a consistent snapshot of the live database to `backups/`."""
     backups_dir.mkdir(parents=True, exist_ok=True)
     # Microsecond precision avoids filename collisions when backups are
     # triggered in quick succession (e.g. the automatic safety backup
@@ -135,23 +83,7 @@ def create_backup(db_path: Path = DATABASE_PATH, backups_dir: Path = BACKUPS_DIR
 
 
 def mirror_backup(backup_path: Path, extra_dir: Path) -> Optional[str]:
-    """Copy an already-created backup file into a second, optional directory.
-
-    Lets the administrator keep a copy on an external location (e.g. a
-    mapped network drive) in addition to the primary copy in `backups/`.
-    Deliberately never raises: if the extra location is temporarily
-    unreachable (e.g. while travelling), the primary backup already
-    written to `backups/` is unaffected -- this only reports the problem
-    back to the caller instead of crashing.
-
-    Args:
-        backup_path: Backup file already written to `backups/`.
-        extra_dir: Directory to also copy it into.
-
-    Returns:
-        `None` if the copy succeeded, or a short German warning message
-        describing why it did not.
-    """
+    """Copy an already-created backup file into a second, optional directory."""
     try:
         extra_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(backup_path, extra_dir / backup_path.name)
@@ -165,22 +97,7 @@ def mirror_backup(backup_path: Path, extra_dir: Path) -> Optional[str]:
 
 
 def list_backups(backups_dir: Path = BACKUPS_DIR) -> list[BackupFileInfo]:
-    """List every file in the backups folder, most recent first.
-
-    Deliberately not filtered by filename. Whether a file can be restored
-    is a question about its contents, and asking the filename instead hid
-    real backups: a copy saved under a describing name -- exactly what one
-    does before something risky -- was simply absent from the list, with
-    nothing saying why. Every file is opened and asked directly; the ones
-    that turn out not to be LEG databases stay in the list carrying the
-    reason, so "why is my file not here" cannot arise either.
-
-    Args:
-        backups_dir: Directory backups are stored in.
-
-    Returns:
-        Backup file metadata, newest first.
-    """
+    """List every file in the backups folder, most recent first."""
     backups_dir.mkdir(parents=True, exist_ok=True)
     infos = []
     for path in backups_dir.iterdir():
@@ -204,33 +121,12 @@ def list_backups(backups_dir: Path = BACKUPS_DIR) -> list[BackupFileInfo]:
 
 
 def _read_only_uri(path: Path) -> str:
-    """Build a read-only SQLite URI for a path, whatever it is called.
-
-    `Path.as_uri()` percent-encodes, which matters here: since the list
-    stopped filtering by filename, any name can reach this code, and an
-    unencoded "#" ends the URI's path. A perfectly good backup called
-    "Backup #3 vor Umbau.sqlite3" then opened as something else entirely
-    and was reported as not being a LEG database at all.
-
-    Args:
-        path: The file to open.
-
-    Returns:
-        A `file:` URI requesting read-only access.
-    """
+    """Build a read-only SQLite URI for a path, whatever it is called."""
     return f"{path.resolve().as_uri()}?mode=ro"
 
 
 def _created_at_of(path: Path) -> Optional[datetime]:
-    """Read the timestamp `create_backup` put into a backup's filename.
-
-    Args:
-        path: The backup file.
-
-    Returns:
-        The moment the snapshot was taken, or `None` if the name does not
-        carry one (a file put here by hand, or renamed).
-    """
+    """Read the timestamp `create_backup` put into a backup's filename."""
     if not (path.name.startswith(_BACKUP_FILENAME_PREFIX) and path.suffix == _BACKUP_FILENAME_SUFFIX):
         return None
     stem = path.name[len(_BACKUP_FILENAME_PREFIX) : -len(_BACKUP_FILENAME_SUFFIX)]
@@ -241,20 +137,7 @@ def _created_at_of(path: Path) -> Optional[datetime]:
 
 
 def read_backup_contents(path: Path) -> Optional[BackupContents]:
-    """Count the master data inside a backup, without touching it.
-
-    Opened strictly read-only and never migrated: a backup is evidence of
-    a past state, and reading it must not change what it says. A file
-    from an older schema simply has no answer here -- reporting zeroes
-    would be worse than reporting nothing, since an empty community and
-    an unreadable file are very different things.
-
-    Args:
-        path: The backup file.
-
-    Returns:
-        Its `BackupContents`, or `None` if it cannot be read.
-    """
+    """Count the master data inside a backup, without touching it."""
     try:
         connection = sqlite3.connect(_read_only_uri(path), uri=True)
     except sqlite3.Error:
@@ -275,19 +158,7 @@ def read_backup_contents(path: Path) -> Optional[BackupContents]:
 
 
 def _validate_backup_file(path: Path) -> None:
-    """Check that a file is a structurally valid, non-corrupt LEG database.
-
-    Args:
-        path: Candidate backup file.
-
-    Returns:
-        None.
-
-    Raises:
-        BackupValidationError: If the file cannot be opened as SQLite, is
-            reported corrupt by `PRAGMA integrity_check`, or is missing
-            tables a LEG database must have.
-    """
+    """Check that a file is a structurally valid, non-corrupt LEG database."""
     if not path.exists():
         raise BackupValidationError(f"Datei nicht gefunden: {path}")
 
@@ -316,19 +187,7 @@ def _validate_backup_file(path: Path) -> None:
 
 
 def check_backup_file(path: Path) -> Optional[str]:
-    """Ask whether a file could be restored, without raising.
-
-    The same question `restore_backup` asks, phrased for a list rather
-    than for a failure: a file either is a LEG database this app can read
-    back, or there is a reason it is not, and that reason is worth
-    showing beside it.
-
-    Args:
-        path: Candidate backup file.
-
-    Returns:
-        `None` if the file is usable, else a short German explanation.
-    """
+    """Ask whether a file could be restored, without raising."""
     try:
         _validate_backup_file(path)
     except BackupValidationError as exc:
@@ -337,14 +196,7 @@ def check_backup_file(path: Path) -> Optional[str]:
 
 
 def _read_schema_version(path: Path) -> int:
-    """Read the schema version stored in a (already validated) database file.
-
-    Args:
-        path: Path of the database file.
-
-    Returns:
-        The stored schema version, or `0` if unset.
-    """
+    """Read the schema version stored in a (already validated) database file."""
     connection = sqlite3.connect(str(path))
     connection.row_factory = sqlite3.Row
     try:
@@ -358,27 +210,7 @@ def restore_backup(
     db_path: Path = DATABASE_PATH,
     backups_dir: Path = BACKUPS_DIR,
 ) -> RestoreResult:
-    """Replace the live database with the contents of a backup file.
-
-    Always takes an automatic safety backup of the current database first
-    (so restoring is itself undoable), then fully replaces the live
-    database and migrates it to the current schema version -- this is what
-    lets an old backup, taken by an earlier version of the app, keep
-    working after the app has been upgraded.
-
-    Args:
-        backup_path: Path of the backup file to restore.
-        db_path: Path of the live database to overwrite.
-        backups_dir: Directory to write the automatic safety backup into.
-
-    Returns:
-        A `RestoreResult` with the safety backup's path and the resulting
-        schema version.
-
-    Raises:
-        BackupValidationError: If `backup_path` is not a valid, intact LEG
-            database, or was created by a newer, incompatible app version.
-    """
+    """Replace the live database with the contents of a backup file."""
     _validate_backup_file(backup_path)
 
     backup_version = _read_schema_version(backup_path)

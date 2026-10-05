@@ -1,16 +1,4 @@
-"""Tests for the receivables series: invoiced, received, still open.
-
-Money, so signs are the whole risk here. `app.models.account_entry`
-stores an incoming payment as a **negative** amount, because it reduces a
-debt, and this app negates that in exactly one place -- where a person's
-balance is displayed. A second negation anywhere else is how a wrong
-number reaches a real invoice, so the arithmetic is pinned here rather
-than trusted.
-
-Nothing in this series is ever broken down per person. That is a decision
-the administrator made on data-protection grounds, not an oversight, and
-`test_nothing_here_is_per_person` holds it in place.
-"""
+"""Tests for the receivables series: invoiced, received, still open."""
 
 from datetime import datetime
 
@@ -27,15 +15,7 @@ from app.models.person import Person
 
 
 def _person(db, last_name: str = "Muster") -> int:
-    """Create a person to bill.
-
-    Args:
-        db: Database connection fixture.
-        last_name: Their surname.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person to bill."""
     return person_repo.create(
         db,
         Person(
@@ -62,18 +42,7 @@ def _person(db, last_name: str = "Muster") -> int:
 
 
 def _invoice(db, person_id: int, rappen: int, created_at: datetime, quarter: int = 1) -> None:
-    """Record one billing run holding one item.
-
-    Args:
-        db: Database connection fixture.
-        person_id: Who is billed.
-        rappen: The item's net amount, positive when the person owes.
-        created_at: When the run was created -- what dates the receivable.
-        quarter: Which quarter the run covers, to keep runs distinct.
-
-    Returns:
-        None.
-    """
+    """Record one billing run holding one item."""
     run_id = billing_run_repo.create_run(
         db,
         BillingRun(
@@ -120,18 +89,7 @@ def _invoice(db, person_id: int, rappen: int, created_at: datetime, quarter: int
 
 
 def _payment(db, person_id: int, rappen: int, booked_at: datetime) -> None:
-    """Record one incoming payment.
-
-    Args:
-        db: Database connection fixture.
-        person_id: Who paid.
-        rappen: How much arrived, as a positive number -- stored negative,
-            which is the convention this test is about.
-        booked_at: When it arrived.
-
-    Returns:
-        None.
-    """
+    """Record one incoming payment."""
     account_entry_repo.create(
         db,
         person_id=person_id,
@@ -142,15 +100,7 @@ def _payment(db, person_id: int, rappen: int, booked_at: datetime) -> None:
 
 
 def _bucket(series: list[ReceivablesBucket], day: int) -> ReceivablesBucket:
-    """Pick one bucket out of a series by its day of month.
-
-    Args:
-        series: The series to search.
-        day: Day of month.
-
-    Returns:
-        The matching bucket.
-    """
+    """Pick one bucket out of a series by its day of month."""
     return next(bucket for bucket in series if bucket.start.day == day)
 
 
@@ -168,11 +118,7 @@ def test_an_invoice_raises_the_open_amount(db):
 
 
 def test_a_payment_brings_the_open_amount_down(db):
-    """And is reported as money that arrived, not as a negative number.
-
-    The ledger stores it negative; a chart reading "-12'000 eingegangen"
-    would be nonsense, so the one sign flip in this module happens here.
-    """
+    """And is reported as money that arrived, not as a negative number."""
     person_id = _person(db)
     _invoice(db, person_id, 12_000, datetime(2026, 7, 10))
     _payment(db, person_id, 12_000, datetime(2026, 7, 20))
@@ -187,11 +133,7 @@ def test_a_payment_brings_the_open_amount_down(db):
 
 
 def test_the_open_amount_stays_flat_between_events(db):
-    """It is a running total, not a per-bucket figure.
-
-    A day with no invoice and no payment does not reset the mountain to
-    zero -- which is what a naive per-bucket sum would draw.
-    """
+    """It is a running total, not a per-bucket figure."""
     person_id = _person(db)
     _invoice(db, person_id, 5_000, datetime(2026, 7, 5))
 
@@ -217,10 +159,7 @@ def test_what_was_open_before_the_window_is_carried_in(db):
 
 
 def test_a_credit_note_lowers_the_open_amount(db):
-    """A payout owed to a member is a negative receivable.
-
-    Read as stored (see `app.models.billing_run`), not negated here.
-    """
+    """A payout owed to a member is a negative receivable."""
     person_id = _person(db)
     _invoice(db, person_id, 10_000, datetime(2026, 7, 5))
     _invoice(db, _person(db, "Gutschrift"), -4_000, datetime(2026, 7, 6), quarter=2)
@@ -249,12 +188,7 @@ def test_several_people_are_summed_into_one_line(db):
 
 
 def test_nothing_here_is_per_person(db):
-    """A data-protection decision, held in place by a test.
-
-    The administrator asked for the LEG's account and explicitly not for
-    individual balances: a statistics page is read over somebody's
-    shoulder, a person's detail page is not.
-    """
+    """A data-protection decision, held in place by a test."""
     person_id = _person(db)
     _invoice(db, person_id, 1_000, datetime(2026, 7, 5))
 

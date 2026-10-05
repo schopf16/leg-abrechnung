@@ -1,12 +1,4 @@
-"""Orchestrates generating every document for a billing run into `output/`.
-
-The only entry point the GUI needs: given a persisted `BillingRun`, this
-creates one combined billing PDF per person plus two CSV reconciliation
-lists (invoices to collect, payouts to make), all collected in
-`output/<year>_Q<quarter>/<LEG>/` (project brief, section 6: "Alle
-Dokumente eines Laufs gesammelt exportierbar"). Nested by LEG since more
-than one LEG can have a run for the same quarter.
-"""
+"""Orchestrates generating every document for a billing run into `output/`."""
 
 import re
 import sqlite3
@@ -32,22 +24,7 @@ from app.pdf.qr_bill_render import QrBillConfigurationError
 
 @dataclass
 class ExportResult:
-    """Outcome of exporting all documents for one billing run.
-
-    Attributes:
-        output_dir: Folder all generated files were written to.
-        document_paths: Paths of all generated person billing PDFs.
-        invoice_list_path: Path of the generated invoice/reconciliation
-            CSV (Rechnungsliste), or `None` if the run has no invoices.
-        payout_list_path: Path of the generated payout CSV
-            (Auszahlungsliste), or `None` if the run has no payouts to make.
-        errors: Human-readable (German) messages for line items that could
-            not be rendered (e.g. missing QR-IBAN configuration).
-        removed_paths: Documents of a superseded run that were deleted
-            before writing this one (see `_remove_superseded_documents`).
-            Surfaced rather than silently discarded -- a file vanishing
-            without a word is how the next surprise starts.
-    """
+    """Outcome of exporting all documents for one billing run."""
 
     output_dir: Path
     document_paths: list[Path] = field(default_factory=list)
@@ -58,15 +35,7 @@ class ExportResult:
 
 
 def _sanitize_filename_part(text: str) -> str:
-    """Turn arbitrary text into a safe filesystem path segment.
-
-    Args:
-        text: Text to sanitize (e.g. a person's name).
-
-    Returns:
-        The text with anything but letters, digits, spaces, hyphens and
-        underscores replaced by "_", trimmed and capped at 60 characters.
-    """
+    """Turn arbitrary text into a safe filesystem path segment."""
     cleaned = re.sub(r"[^\w\säöüÄÖÜ-]", "_", text, flags=re.UNICODE).strip()
     return cleaned[:60] or "Person"
 
@@ -77,33 +46,7 @@ _GENERATED_PATTERNS = ("Abrechnung_*.pdf", "Rechnungsliste_*.csv", "Auszahlungsl
 
 
 def _remove_superseded_documents(output_dir: Path, keep: set[Path]) -> list[Path]:
-    """Delete the documents of an earlier run for this LEG and quarter.
-
-    Re-running a quarter deletes the old run and creates a new one, whose
-    line items get fresh ids -- so the export used to write
-    `Abrechnung_Muster_7.pdf` next to the previous `..._1.pdf` and leave
-    both lying there, identical in every visible respect but the amount.
-    Choosing between them is not a judgement anyone can make from a file
-    listing, and getting it wrong means sending a member the wrong
-    invoice. There is exactly one current set, so exactly one set is kept.
-
-    Only files matching `_GENERATED_PATTERNS` are touched: the folder may
-    hold notes or a signed copy the administrator put there, and none of
-    that is this function's to remove.
-
-    Called *after* the new documents are written, never before: an export
-    that fails halfway -- a missing QR-IBAN, a vanished person -- would
-    otherwise leave the administrator with neither the new documents nor
-    the old ones.
-
-    Args:
-        output_dir: The run's output folder.
-        keep: Absolute paths written by the export that just ran.
-
-    Returns:
-        `(removed, problems)`: the paths actually deleted, and German
-        messages for any that could not be.
-    """
+    """Delete the documents of an earlier run for this LEG and quarter."""
     removed: list[Path] = []
     problems: list[str] = []
     for pattern in _GENERATED_PATTERNS:
@@ -126,19 +69,7 @@ def _remove_superseded_documents(output_dir: Path, keep: set[Path]) -> list[Path
 
 
 def _load_metering_point_info(connection: sqlite3.Connection) -> dict[int, MeteringPointInfo]:
-    """Resolve every metering point into what the billing document prints.
-
-    Done once per export rather than once per document: the same handful
-    of sites is referenced by most participants.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        `MeteringPointInfo` keyed by metering point id. A metering point
-        whose site has vanished is left out, and the document simply
-        omits it rather than failing to render.
-    """
+    """Resolve every metering point into what the billing document prints."""
     sites = {site.id: site for site in site_repo.list_all(connection)}
     info: dict[int, MeteringPointInfo] = {}
     for metering_point in metering_point_repo.list_all(connection):
@@ -156,16 +87,7 @@ def _load_metering_point_info(connection: sqlite3.Connection) -> dict[int, Meter
 
 
 def export_billing_run_documents(connection: sqlite3.Connection, run: BillingRun) -> ExportResult:
-    """Generate every person's billing document and the payment list.
-
-    Args:
-        connection: Open SQLite connection.
-        run: The billing run to export documents for.
-
-    Returns:
-        An `ExportResult` summarizing what was written and any per-item
-        errors encountered.
-    """
+    """Generate every person's billing document and the payment list."""
     items = billing_run_repo.list_items(connection, run.id)
     persons = {p.id: p for p in person_repo.list_all(connection)}
     leg = leg_repo.get(connection, run.leg_id)

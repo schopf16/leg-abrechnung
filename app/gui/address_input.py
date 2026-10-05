@@ -1,28 +1,4 @@
-"""The one address field with suggestions and hints, for every form.
-
-A plain `ui.input` with a list underneath, never a `ui.select`. That is the
-point: a select forces a choice from its options, and an address the
-register does not know -- a new building, a PO box, a "c/o" line -- has to
-stay typeable. **Nothing is written unless a suggestion is clicked**, so the
-typed text survives by construction rather than by care.
-
-The "Meinten Sie: X?" hint belongs **at the field**, and the first build got
-that wrong. It put the questions in a card above the Standorte and Personen
-lists, where each line read as a name and a suggestion with no sight of
-which field was meant or what stood in it -- unanswerable. The lists now
-only mark a record; the question is asked here, directly under the row
-holding the value it would replace.
-
-One mechanism for all four places that take an address (Standort, Person,
-the LEG's own sender address, and the dialogs the Webanmeldungen prefill),
-for the same reason `app.gui.sorting` is one mechanism: four
-almost-identical autocompletes would drift apart and the administrator would
-meet a different behaviour on each page.
-
-The logic sits in methods rather than inside event handlers so a test can
-call `update()`, `apply()` and `dismiss()` directly. Rendering a page proves
-none of it (see CLAUDE.md on the nicegui 3.16 upload change).
-"""
+"""The one address field with suggestions and hints, for every form."""
 
 from pathlib import Path
 from typing import Optional
@@ -58,14 +34,7 @@ DISMISS_LOCALITY = "locality"
 
 
 class SuggestionBox:
-    """Suggestions and hints for one set of address fields.
-
-    Attributes:
-        suggestions: What was offered after the last `update()`.
-        dismissals: `{DISMISS_*: confirmed value}` collected from "Nein"
-            clicks. The form writes them after saving the record -- a new
-            record has no id to attach them to while the dialog is open.
-    """
+    """Suggestions and hints for one set of address fields."""
 
     def __init__(
         self,
@@ -78,25 +47,7 @@ class SuggestionBox:
         locality_hint: Optional[ui.element] = None,
         path: Optional[Path] = None,
     ) -> None:
-        """Wire suggestions and hints onto a form's address fields.
-
-        Args:
-            street: The street input. Typing here drives the suggestions.
-            postal_code: The postal code input, filled on click.
-            locality: The locality input, filled on click. Always receives
-                the **postal** locality, never the political municipality.
-            house_number: The house number input, if the form has one. The
-                settings page keeps street and number in one field.
-            street_hint: Container directly under the street row, for
-                findings about the street or house number. Without it those
-                findings are not shown -- a hint far from its field is what
-                made the first version unanswerable.
-            locality_hint: Container under the postal code and locality row.
-            path: The register file, or `None` for the configured one.
-
-        Returns:
-            None.
-        """
+        """Wire suggestions and hints onto a form's address fields."""
         self._street = street
         self._postal_code = postal_code
         self._locality = locality
@@ -162,11 +113,7 @@ class SuggestionBox:
     # -- suggestions --------------------------------------------------------
 
     def update(self) -> None:
-        """Recompute the suggestions from the street and number fields.
-
-        Returns:
-            None.
-        """
+        """Recompute the suggestions from the street and number fields."""
         query = (self._street.value or "").strip()
         if self._house_number is not None and (self._house_number.value or "").strip():
             # The number lives in its own field here, so fold it back into
@@ -185,14 +132,7 @@ class SuggestionBox:
         self.refresh_hints()
 
     def update_locality(self, source: ui.input) -> None:
-        """Recompute the suggestions from the postal code or locality field.
-
-        Args:
-            source: Whichever of the two fields was typed in.
-
-        Returns:
-            None.
-        """
+        """Recompute the suggestions from the postal code or locality field."""
         self.suggestions = suggest_localities((source.value or "").strip(), path=self._path)
         self._active = source
         self._highlight = -1
@@ -200,14 +140,7 @@ class SuggestionBox:
         self.refresh_hints()
 
     def _move(self, step: int) -> None:
-        """Walk the open list by one entry.
-
-        Args:
-            step: `1` for down, `-1` for up.
-
-        Returns:
-            None.
-        """
+        """Walk the open list by one entry."""
         if not self.suggestions:
             return
         if self._highlight < 0:
@@ -219,31 +152,12 @@ class SuggestionBox:
         self._render_list()
 
     def _take_highlighted(self) -> None:
-        """Apply whichever suggestion the arrows have reached.
-
-        Does nothing while none is highlighted. That is the point: the
-        street suggestions can be a correctly spelled *different* street, so
-        Enter only ever takes something that has been stepped onto and read.
-
-        Returns:
-            None.
-        """
+        """Apply whichever suggestion the arrows have reached."""
         if 0 <= self._highlight < len(self.suggestions):
             self.apply(self.suggestions[self._highlight])
 
     def apply(self, suggestion: AddressSuggestion) -> None:
-        """Fill the fields from one suggestion.
-
-        A locality-only suggestion leaves the street alone: picking "3048
-        Worblaufen" in the postal code field must not wipe a street that is
-        already typed.
-
-        Args:
-            suggestion: The clicked suggestion.
-
-        Returns:
-            None.
-        """
+        """Fill the fields from one suggestion."""
         if suggestion.street:
             self._street.value = suggestion.street
             if self._house_number is not None:
@@ -258,26 +172,14 @@ class SuggestionBox:
         self.refresh_hints()
 
     def hide(self) -> None:
-        """Dismiss the suggestion list without changing anything.
-
-        Bound to Escape, so a list that is in the way can be pushed aside
-        while the typed text stays exactly as it is.
-
-        Returns:
-            None.
-        """
+        """Dismiss the suggestion list without changing anything."""
         self.suggestions = []
         self._render_list()
 
     # -- hints --------------------------------------------------------------
 
     def findings(self) -> list[AddressFinding]:
-        """Check the fields as they currently stand.
-
-        Returns:
-            What the register disagrees with, minus anything dismissed in
-            this dialog. Empty without a register.
-        """
+        """Check the fields as they currently stand."""
         number = (self._house_number.value or "").strip() if self._house_number else ""
         open_findings = []
         for finding in verify(
@@ -294,17 +196,7 @@ class SuggestionBox:
         return open_findings
 
     def _dismissal_for(self, finding: AddressFinding) -> tuple[str, str]:
-        """Which confirmation a "Nein" on this finding would write.
-
-        Args:
-            finding: The finding.
-
-        Returns:
-            `(key, value)` for `dismissals`. The locality is confirmed by
-            its own text; everything else by the whole address, so that
-            correcting the house number does not leave a dismissal meant for
-            the old one in place.
-        """
+        """Which confirmation a "Nein" on this finding would write."""
         if finding.field == FIELD_LOCALITY:
             return (DISMISS_LOCALITY, (self._locality.value or "").strip())
         number = (self._house_number.value or "").strip() if self._house_number else ""
@@ -318,14 +210,7 @@ class SuggestionBox:
         )
 
     def accept(self, finding: AddressFinding) -> None:
-        """Write the register's value into the field this finding is about.
-
-        Args:
-            finding: The accepted finding.
-
-        Returns:
-            None.
-        """
+        """Write the register's value into the field this finding is about."""
         if not finding.suggestion:
             return
         # An explicit mapping, never "everything that is not the locality is
@@ -352,24 +237,13 @@ class SuggestionBox:
         self.refresh_hints()
 
     def dismiss(self, finding: AddressFinding) -> None:
-        """Record that the current text is intended.
-
-        Args:
-            finding: The declined finding.
-
-        Returns:
-            None.
-        """
+        """Record that the current text is intended."""
         key, value = self._dismissal_for(finding)
         self.dismissals[key] = value
         self.refresh_hints()
 
     def refresh_hints(self) -> None:
-        """Redraw the hints under their own fields.
-
-        Returns:
-            None.
-        """
+        """Redraw the hints under their own fields."""
         if self._street_hint is None and self._locality_hint is None:
             return
         for container in (self._street_hint, self._locality_hint):
@@ -399,11 +273,7 @@ class SuggestionBox:
     # -- the suggestion list ------------------------------------------------
 
     def _render_list(self) -> None:
-        """Redraw the floating list under the field being typed in.
-
-        Returns:
-            None.
-        """
+        """Redraw the floating list under the field being typed in."""
         if self.suggestions:
             push(self._layer)
         else:
@@ -433,25 +303,7 @@ class SuggestionBox:
 
 
 def store_dismissals(connection, box: SuggestionBox, record_id: int, kind: str) -> None:
-    """Persist the "Nein" decisions a dialog collected.
-
-    Called after saving rather than as part of it: a new record has no id
-    while the dialog is open, and `update` deliberately leaves the
-    confirmation columns alone so that editing an unrelated field cannot
-    clear a dismissal.
-
-    One copy here rather than one per form, for the reason `app.gui.sorting`
-    is one module: two would drift.
-
-    Args:
-        connection: Open SQLite connection.
-        box: The dialog's suggestion box.
-        record_id: The saved record.
-        kind: `"site"` or `"person"`.
-
-    Returns:
-        None.
-    """
+    """Persist the "Nein" decisions a dialog collected."""
     from app.models import person as person_repo
     from app.models import site as site_repo
 

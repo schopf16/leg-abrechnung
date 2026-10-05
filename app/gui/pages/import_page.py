@@ -1,6 +1,5 @@
-"""Import page: select one or many EBIX (.xml) / CSV files, then explicitly
-start the import with visible per-file progress.
-"""
+"""Import page: select one or many EBIX (.xml) / CSV files, then explicitly start the import with
+visible per-file progress."""
 
 import asyncio
 import tempfile
@@ -17,11 +16,7 @@ from app.models.reading import list_import_batches
 
 @ui.page("/import")
 def import_page() -> None:
-    """Render the reading-import page.
-
-    Returns:
-        None.
-    """
+    """Render the reading-import page."""
     with page_frame("/import", "Import"):
         ui.label(
             "Messdaten der BKW importieren: EBIX (.xml) bevorzugt, CSV als "
@@ -62,11 +57,7 @@ def import_page() -> None:
         ).classes("w-full mt-6")
 
         def refresh_history() -> None:
-            """Reload the import history table.
-
-            Returns:
-                None.
-            """
+            """Reload the import history table."""
             with connection_scope() as connection:
                 batches = list_import_batches(connection)
             history_table.rows = [
@@ -82,16 +73,7 @@ def import_page() -> None:
             history_table.update()
 
         def import_one_file(filename: str, data: bytes) -> tuple[str, str]:
-            """Import a single already-read file's bytes.
-
-            Args:
-                filename: Original filename, used to pick the parser and
-                    for display in the result panel.
-                data: Raw file content.
-
-            Returns:
-                A `(status, message)` tuple, `status` being "ok" or "error".
-            """
+            """Import a single already-read file's bytes."""
             # Written into its own temp directory under the original
             # filename (rather than a randomized tempfile name) so the
             # import history shows the real filename, not "leg_import_xyz".
@@ -116,14 +98,7 @@ def import_page() -> None:
             return "ok", message
 
         def show_results(results: list[tuple[str, str]]) -> None:
-            """Render the outcome of one or more imports in the result panel.
-
-            Args:
-                results: `(status, message)` tuples, one per imported file.
-
-            Returns:
-                None.
-            """
+            """Render the outcome of one or more imports in the result panel."""
             result_column.clear()
             with result_column:
                 with ui.card().classes("w-full"):
@@ -137,14 +112,7 @@ def import_page() -> None:
                         ui.label(f"{symbol} {message}").classes(css_class)
 
         async def handle_multi_upload(event: events.MultiUploadEventArguments) -> None:
-            """Import every selected file, showing live per-file progress.
-
-            Args:
-                event: NiceGUI multi-upload event carrying all selected files.
-
-            Returns:
-                None.
-            """
+            """Import every selected file, showing live per-file progress."""
             files = event.files
             total = len(files)
             results: list[tuple[str, str]] = []

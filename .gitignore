@@ -9,6 +9,13 @@ logs/
 config.local.*
 .env
 
+# Dokumente und Tabellen liegen zum Prüfen im Projektordner und gehören
+# nicht ins Repo -- Formulare wie der Gesellschaftsvertrag werden in der
+# Datenbank hinterlegt (Einstellungen -> LEG-Dokumente), nicht hier.
+*.pdf
+*.xlsx
+*.docx
+
 # --- Python ---
 __pycache__/
 *.py[cod]

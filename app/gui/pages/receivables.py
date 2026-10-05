@@ -1,15 +1,6 @@
-"""receivables page: every Person's running account balance, a camt.053/
-camt.054 bank statement import with automatic (QRR) and suggested
-(IBAN/name/customer number) reconciliation, and a persistent queue of not-yet-
-resolved bank transactions so nothing imported is ever silently lost.
-
-Display sign convention: `account_entry.get_balance_rappen` uses the same
-internal convention as `BillingRunItem.net_amount_rappen` (positive =
-owed to the LEG). This page negates it for display exactly once, to match
-how Michael thinks about it: a positive balance shown here means a credit/
-overpayment, negative means the person still owes money. Never negate
-anywhere else.
-"""
+"""receivables page: every Person's running account balance, a camt.053/ camt.054 bank statement import
+with automatic (QRR) and suggested (IBAN/name/customer number) reconciliation, and a persistent
+queue of not-yet- resolved bank transactions so nothing imported is ever silently lost."""
 
 import tempfile
 from datetime import date
@@ -56,28 +47,12 @@ _IGNORE = "ignore"
 
 
 def _display_balance_chf(balance_rappen: int) -> float:
-    """Negate + convert an internal balance to the GUI-displayed CHF value.
-
-    Args:
-        balance_rappen: Internal balance (positive = owed to the LEG), see
-            `app.models.account_entry`'s sign-convention glossary.
-
-    Returns:
-        The value as Michael reads it: positive = Guthaben, negative =
-        Schulden.
-    """
+    """Negate + convert an internal balance to the GUI-displayed CHF value."""
     return -balance_rappen / 100
 
 
 def _balance_color_class(balance_rappen: int) -> str:
-    """CSS text-color class for a displayed balance.
-
-    Args:
-        balance_rappen: Internal balance.
-
-    Returns:
-        A Quasar/Tailwind text-color class name.
-    """
+    """CSS text-color class for a displayed balance."""
     displayed = _display_balance_chf(balance_rappen)
     if displayed > 0:
         return "text-positive"
@@ -109,11 +84,7 @@ SORT_OPTIONS = [
 
 @ui.page("/receivables")
 def receivables_page() -> None:
-    """Render the receivables overview, bank-import assistant and open-items queue.
-
-    Returns:
-        None.
-    """
+    """Render the receivables overview, bank-import assistant and open-items queue."""
     with page_frame("/receivables", "Debitoren"):
         ui.label(
             "Übersicht, wer der LEG etwas schuldet oder ein Guthaben hat. "

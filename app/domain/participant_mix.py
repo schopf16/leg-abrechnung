@@ -1,64 +1,4 @@
-"""Whether a substation area or LEG has a workable mix of Producer and Consumer
-participants.
-
-Local sharing needs both sides: a substation area/LEG with only Producer
-(everyone feeds in, nobody draws from the shared pool) or only Consumer
-(nobody feeds in, nothing to share) makes no sense to run as its own LEG,
-independent of any BKW discount-rate question. This module answers "does
-this substation area/LEG have both sides at all", expressed as a simple
-Producer:Consumer participant-count ratio.
-
-**What this module deliberately no longer does** is recommend moving people
-out of a pooled LEG into a dedicated one. It used to: both sides present
-plus a minimum headcount produced a "could now split off" suggestion. That
-test was wrong, because presence is not viability. A substation area with
-seven feed-in meters and one consumption meter passed it, and acting on the
-advice would have left the producers with almost nobody to share with --
-the opposite of what they joined for. A real administrator had deliberately
-parked a 34 kWp producer in the pooled LEG for exactly that reason and was
-told to undo it.
-
-A ratio threshold would have been the obvious repair. It was not built,
-because the decision is not the app's to make: it turns on economics, on
-what the participants are willing to do, and on what BKW confirms per
-location -- none of which is in this database. The app now states the one
-fact it does hold, per metering point, on the LEG detail page: whether that
-substation area already has a LEG of its own or would need one founded (see
-`app.gui.pages.legs`). The judgement stays with the administrator, who
-sorts that list by substation area and decides.
-
-Terms used here, deliberately simple (an earlier, more legally-precise
-model based on the BKW 5%-Produktionsregel/Anschlussleistung -- Art. 19e
-StromVV -- turned out to need too much manual, hard-to-obtain data per
-site to be worth it):
-
-    Producer: a person with a current-or-upcoming Assignment (see
-        `app.models.assignment.Assignment.is_current_or_upcoming` -- counts
-        an assignment pre-entered ahead of its start date too, not just
-        ones already running today; real customer data made this the
-        permanent behaviour, not a toggle: an administrator who
-        pre-enters a whole future quarter's move-ins in advance had every
-        substation area/LEG here show 0:0 under a strict "started today" rule,
-        until that date actually arrived) to at least one
-        feed-in-MeteringPoint in scope -- "kann Strom liefern". A person
-        who both consumes and feeds in counts here too.
-    Consumer: a person with a current-or-upcoming Assignment to at least
-        one consumption-MeteringPoint in scope -- "bezieht Strom". Same overlap
-        applies.
-
-A true prosumer (feeds in AND consumes) is deliberately counted on both
-sides -- the question this module answers is whether a supply side and a
-demand side both exist at all, not a strict partition of people into two
-disjoint camps.
-
-This is deliberately different from billing/distribution
-(`app.domain.distribution`) and the historical reading-completeness check
-(`app.domain.quality_checks.check_reading_completeness`), which both keep
-using the strict `Assignment.covers` unaffected by anything here --
-attributing energy to someone before their Assignment's exact start date
-would be a real correctness bug there, unlike for this module's
-"does/will this arrangement work" question.
-"""
+"""Whether a substation area or LEG has a workable mix of Producer and Consumer participants."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -72,40 +12,13 @@ from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
 
 def _moment(reference_date: Optional[date]) -> datetime:
-    """Turn an optional reference date into the midnight `datetime` `Assignment.covers` expects.
-
-    Args:
-        reference_date: The reference date, or `None` for today.
-
-    Returns:
-        Midnight of `reference_date` (or today).
-    """
+    """Turn an optional reference date into the midnight `datetime` `Assignment.covers` expects."""
     return datetime.combine(reference_date or date.today(), time())
 
 
 @dataclass
 class ParticipantMix:
-    """The Producer:Consumer participant balance for a substation area or LEG.
-
-    Two different things are counted here, and confusing them is what
-    made the overview disagree with itself: the **metering points** are
-    what a reader adds up against the "Messpunkte" column, while the
-    **persons** answer "how many people is this". The overviews show the
-    metering points.
-
-    Attributes:
-        producer_count: Distinct persons on the feed-in side (see module
-            docstring). A person with two feed-in meters counts once.
-        consumer_count: Distinct persons on the consumption side.
-        producer_metering_points: Feed-in metering points in scope.
-        consumer_metering_points: Consumption metering points in scope.
-        unassigned_metering_points: Of those, how many have no current or
-            upcoming assignment. They are counted in the two numbers
-            above -- they exist and they have a direction -- but they are
-            reported separately, because a metering point nobody is
-            assigned to produces energy with no recipient at billing
-            time (see `app.domain.billing_checks`).
-    """
+    """The Producer:Consumer participant balance for a substation area or LEG."""
 
     producer_count: int
     consumer_count: int
@@ -115,55 +28,22 @@ class ParticipantMix:
 
     @property
     def is_one_sided(self) -> bool:
-        """Whether one side is completely empty.
-
-        Judged on the metering points, not the persons: whether energy
-        can be shared locally depends on there being meters of both
-        directions, regardless of how many people hold them.
-
-        Returns:
-            `True` if there are no feed-in, or no consumption, metering
-            points at all (a scope with neither is not "one-sided", it is
-            simply empty -- also `True` in that case, since it equally
-            cannot function as its own LEG).
-        """
+        """Whether one side is completely empty."""
         return self.producer_metering_points == 0 or self.consumer_metering_points == 0
 
     @property
     def ratio(self) -> str:
-        """The ratio as a simple `"<Producer>:<Consumer>"` string.
-
-        Metering points, so the two numbers add up to the metering point
-        count shown beside them.
-
-        Returns:
-            E.g. `"9:26"`.
-        """
+        """The ratio as a simple `"<Producer>:<Consumer>"` string."""
         return f"{self.producer_metering_points}:{self.consumer_metering_points}"
 
     @property
     def total_persons(self) -> int:
-        """The simple sum of `producer_count` and `consumer_count`.
-
-        A true prosumer is counted on both sides (see the module
-        docstring), so this is not a deduplicated headcount. Note this is
-        **not** what `ratio` shows: that counts metering points, so the
-        overview adds up against the "Messpunkte" column beside it. This is
-        the people -- seven meters are not seven members.
-
-        Returns:
-            `producer_count + consumer_count`.
-        """
+        """The simple sum of `producer_count` and `consumer_count`."""
         return self.producer_count + self.consumer_count
 
     @property
     def hint(self) -> Optional[str]:
-        """A German one-liner if exactly one side is empty, else `None`.
-
-        Returns:
-            `None` if both sides are present, or if the scope has no
-            participants at all yet (nothing to warn about).
-        """
+        """A German one-liner if exactly one side is empty, else `None`."""
         if self.producer_metering_points and self.consumer_metering_points:
             return None
         if self.producer_metering_points == 0 and self.consumer_metering_points == 0:
@@ -178,22 +58,7 @@ class ParticipantMix:
 def compute_participant_mix(
     connection: sqlite3.Connection, site_ids: list[int], reference_date: Optional[date] = None
 ) -> ParticipantMix:
-    """Compute the Producer:Consumer mix for an arbitrary set of sites.
-
-    The one core computation, used both for a hypothetical "this
-    substation area as its own LEG" check (`compute_participant_mix_for_substation_area`)
-    and the real "this LEG, however it is actually composed" check
-    (`compute_participant_mix_for_leg`).
-
-    Args:
-        connection: Open SQLite connection.
-        site_ids: sites to include.
-        reference_date: Reference date for which assignments count as relevant,
-            `None` for today.
-
-    Returns:
-        The computed `ParticipantMix`.
-    """
+    """Compute the Producer:Consumer mix for an arbitrary set of sites."""
     site_ids_set = set(site_ids)
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.site_id in site_ids_set]
     return _mix_of(connection, metering_points, reference_date)
@@ -202,29 +67,7 @@ def compute_participant_mix(
 def _mix_of(
     connection: sqlite3.Connection, metering_points: list, reference_date: Optional[date] = None
 ) -> ParticipantMix:
-    """Compute the mix over an explicit set of metering points.
-
-    The single place both counts are derived, so they can never be taken
-    over different sets: the metering points are counted by their own
-    `direction`, the persons from the assignments those metering points
-    carry.
-
-    A metering point with no current or upcoming assignment still counts
-    towards its direction -- it is part of the LEG and it has one -- but
-    contributes no person, and is tallied in
-    `unassigned_metering_points`. Dropping it from the direction counts
-    is what used to make the two numbers fall short of the metering point
-    count beside them, with nothing saying why.
-
-    Args:
-        connection: Open SQLite connection.
-        metering_points: The metering points in scope.
-        reference_date: Reference date for which assignments count as
-            relevant, `None` for today.
-
-    Returns:
-        The computed `ParticipantMix`.
-    """
+    """Compute the mix over an explicit set of metering points."""
     moment = _moment(reference_date)
 
     producer_ids: set[int] = set()
@@ -264,16 +107,7 @@ def _mix_of(
 def compute_participant_mix_for_substation_area(
     connection: sqlite3.Connection, substation_area_id: int, reference_date: Optional[date] = None
 ) -> ParticipantMix:
-    """Hypothetical mix if this substation area's sites formed their own LEG.
-
-    Args:
-        connection: Open SQLite connection.
-        substation_area_id: Primary key of the substation area.
-        reference_date: Reference date, `None` for today.
-
-    Returns:
-        The `ParticipantMix` for every site assigned to this substation area.
-    """
+    """Hypothetical mix if this substation area's sites formed their own LEG."""
     site_ids = [s.id for s in site_repo.list_all(connection) if s.substation_area_id == substation_area_id]
     return compute_participant_mix(connection, site_ids, reference_date)
 
@@ -281,64 +115,14 @@ def compute_participant_mix_for_substation_area(
 def compute_participant_mix_for_leg(
     connection: sqlite3.Connection, leg_id: int, reference_date: Optional[date] = None
 ) -> ParticipantMix:
-    """The real mix for a LEG as it is actually composed today.
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: Primary key of the LEG.
-        reference_date: Reference date, `None` for today.
-
-    Returns:
-        The `ParticipantMix` over the metering points that belong to this
-        LEG.
-
-    Scoped by `leg_id`, not by the sites those metering points sit at:
-    LEG membership is a property of the MeteringPoint (see
-    `app.models.leg`), and two metering points at one address can belong
-    to different LEGs. Going via the sites pulled a neighbour's meter
-    into this LEG's figures and made them disagree with the metering
-    point count shown beside them.
-    """
+    """The real mix for a LEG as it is actually composed today."""
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     return _mix_of(connection, metering_points, reference_date)
 
 
 @dataclass
 class ParticipantRoles:
-    """How many **connections** are on each side, counted once each.
-
-    A connection is one party at one location -- a `(person_id, site_id)`
-    pair. That unit, rather than the person, is what "Prosumer" and
-    "Konsumer" actually describe, and both halves of it matter:
-
-      - A property management with two buildings is one person and **two**
-        connections. Counting people made it one Prosumer, and the
-        arithmetic stopped adding up against the metering points.
-      - A Mehrfamilienhaus is one site with several parties. Counting
-        sites would collapse them into one, when in truth whoever holds
-        the PV on the roof is the Prosumer and every tenant is a Konsumer
-        in their own right.
-
-    This is a different question from `ParticipantMix`, which counts a
-    both-directions participant on **both** sides on purpose -- there the
-    question is whether a supply and a demand side exist at all. Here the
-    two numbers are disjoint and add up.
-
-    Which side a connection falls on follows the administrator's model of
-    the LEG: whoever feeds in also draws at that address, so the feed-in
-    side *is* the Prosumer side. A connection that only feeds in is not a
-    third kind but a gap -- a consumption assignment that was never
-    entered. `feed_in_only` names those instead of letting them quietly
-    inflate the Prosumer count.
-
-    Attributes:
-        prosumers: Connections with at least one feed-in metering point,
-            whether or not they also draw.
-        consumers: Connections that draw and do **not** feed in. Disjoint
-            from `prosumers` by construction.
-        feed_in_only: Of the prosumers, the `(person_id, site_id)` pairs
-            with no consumption assignment at all.
-    """
+    """How many **connections** are on each side, counted once each."""
 
     prosumers: int
     consumers: int
@@ -346,30 +130,14 @@ class ParticipantRoles:
 
     @property
     def total(self) -> int:
-        """Every connection taking part, each counted once.
-
-        Returns:
-            `prosumers + consumers`.
-        """
+        """Every connection taking part, each counted once."""
         return self.prosumers + self.consumers
 
 
 def compute_participant_roles(
     connection: sqlite3.Connection, reference_date: Optional[date] = None
 ) -> ParticipantRoles:
-    """Count the deployment's connections by side, without double counting.
-
-    Args:
-        connection: Open SQLite connection.
-        reference_date: Reference date for which assignments count as
-            relevant, `None` for today. Uses
-            `Assignment.is_current_or_upcoming`, like the rest of this
-            module: a connection whose assignment starts next quarter
-            already belongs here.
-
-    Returns:
-        The `ParticipantRoles` over every metering point in the database.
-    """
+    """Count the deployment's connections by side, without double counting."""
     moment = _moment(reference_date)
     feed_in: set[tuple[int, int]] = set()
     consumption: set[tuple[int, int]] = set()

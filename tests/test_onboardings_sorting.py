@@ -1,8 +1,4 @@
-"""Tests for the Aufnahmen page's sort options (app.gui.pages.onboardings).
-
-`sort_onboardings` is a pure function over already-loaded trackers, so it
-is testable without rendering any NiceGUI page.
-"""
+"""Tests for the Aufnahmen page's sort options (app.gui.pages.onboardings)."""
 
 from datetime import date, timedelta
 
@@ -82,8 +78,7 @@ def test_sorts_by_last_name_case_insensitively():
 
 
 def test_last_name_falls_back_to_company_and_breaks_ties_on_first_name():
-    """A company without a contact person sorts under its company name --
-    the same rule `person_repo.list_all` uses."""
+    """A company without a contact person sorts under its company name -- the same rule..."""
     persons = {
         1: _person(1, company="Wyder AG"),
         2: _person(2, last_name="Muster", first_name="Zoe"),
@@ -110,8 +105,7 @@ def test_sorts_by_registration_date_oldest_first():
 
 
 def test_registration_date_falls_back_to_created_at_when_step_1_is_open():
-    """A tracker started without a date must not jump to the very top --
-    it is placed on the day tracking began instead."""
+    """A tracker started without a date must not jump to the very top -- it is placed on the day..."""
     persons = {i: _person(i, last_name=f"P{i}") for i in (1, 2)}
     onboardings = [
         _onboarding(1, 1, registered_at=date(2026, 1, 1)),
@@ -172,11 +166,7 @@ def test_tracker_whose_person_is_missing_still_sorts_without_crashing():
 
 
 def test_umlauts_sort_as_their_base_letter():
-    """German rule (DIN 5007 Variant 1): "Bühler" belongs before "Burri".
-
-    That is exactly where plain code-point ordering (SQLite's
-    BINARY/NOCASE) puts it wrong -- it sorts "Bühler" *after* "Burri".
-    """
+    """German rule (DIN 5007 Variant 1): "Bühler" belongs before "Burri"."""
     persons = {
         1: _person(1, last_name="Burri"),
         2: _person(2, last_name="Bühler"),

@@ -13,16 +13,7 @@ from app.models.reading import Reading, upsert_readings
 
 
 def _insert_reading(db, metering_point_id: int, timestamp: str) -> None:
-    """Insert a single reading for an existing MeteringPoint.
-
-    Args:
-        db: Database connection fixture.
-        metering_point_id: MeteringPoint id to attach the reading to.
-        timestamp: ISO-8601 timestamp for the reading.
-
-    Returns:
-        None.
-    """
+    """Insert a single reading for an existing MeteringPoint."""
     upsert_readings(
         db,
         [

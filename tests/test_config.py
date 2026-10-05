@@ -1,5 +1,4 @@
-"""Tests for app.config's local, gitignored secrets file (leg_api_token,
-Microsoft Graph credentials)."""
+"""Tests for app.config's local, gitignored secrets file (leg_api_token, Microsoft Graph credentials)."""
 
 import json
 

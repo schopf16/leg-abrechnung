@@ -1,9 +1,4 @@
-"""Tests for the per-quarter data overview used to sanity-check an import.
-
-These figures exist to be compared against reality by eye, so what they
-must never do is quietly disagree with the readings they claim to
-summarise.
-"""
+"""Tests for the per-quarter data overview used to sanity-check an import."""
 
 from datetime import date
 
@@ -22,17 +17,7 @@ from app.models.site import Site
 
 
 def _totals_for(db, year, quarter, leg_id=None):
-    """Fetch one quarter's summary.
-
-    Args:
-        db: Database connection fixture.
-        year: Calendar year.
-        quarter: Quarter number.
-        leg_id: Optional LEG to restrict to.
-
-    Returns:
-        The matching `QuarterEnergy`, or `None`.
-    """
+    """Fetch one quarter's summary."""
     return next(
         (t for t in quarter_energy_totals(db, leg_id) if (t.year, t.quarter) == (year, quarter)),
         None,
@@ -40,12 +25,7 @@ def _totals_for(db, year, quarter, leg_id=None):
 
 
 def test_totals_match_the_raw_readings(db):
-    """Every figure must equal what a plain SQL sum over `readings` says.
-
-    This is the whole point: a number that drifts from the readings is
-    worse than no number, because it would be used to wave through a
-    broken import.
-    """
+    """Every figure must equal what a plain SQL sum over `readings` says."""
     create_demo_data(db)
 
     for total in quarter_energy_totals(db):
@@ -68,13 +48,7 @@ def test_totals_match_the_raw_readings(db):
 
 
 def test_a_quarter_without_feed_in_is_flagged_as_unshareable(db):
-    """The demo's winter quarter is exactly the trap that cost an evening.
-
-    Readings exist, so the quarter is selectable and looks usable -- but
-    with no feed-in at all nothing can be shared, and a billing run over
-    it yields documents reading 0.00 throughout. The overview has to say
-    so before the run, not after.
-    """
+    """The demo's winter quarter is exactly the trap that cost an evening."""
     create_demo_data(db)
 
     winter = _totals_for(db, *WINTER_QUARTER)
@@ -102,11 +76,7 @@ def test_filtering_by_leg_adds_up_to_the_total(db):
 
 
 def test_a_metering_point_without_readings_shows_up_as_a_shortfall(db):
-    """An assigned meter that delivered nothing is the partial-import symptom.
-
-    This is the number that answers "did my import actually cover
-    everything": assigned metering points against those that reported.
-    """
+    """An assigned meter that delivered nothing is the partial-import symptom."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
     before = _totals_for(db, *SUMMER_QUARTER, leg.id)
@@ -161,11 +131,7 @@ def test_a_metering_point_without_readings_shows_up_as_a_shortfall(db):
 
 
 def test_an_assignment_ending_before_the_quarter_is_not_expected(db):
-    """A meter whose assignment ended earlier is not a missing import.
-
-    The expectation follows the same overlap rule the distribution uses,
-    so someone who moved out does not turn into a false alarm.
-    """
+    """A meter whose assignment ended earlier is not a missing import."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
 

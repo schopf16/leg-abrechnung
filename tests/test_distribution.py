@@ -1,10 +1,4 @@
-"""Tests for the 15-minute distribution engine and its edge cases.
-
-Covers the project brief's required cases: `P(t) = 0`, `C(t) = 0`,
-production-limited (`P > C`) and consumption-limited (`P < C`) sharing,
-attribution across a mid-quarter Person move, and the requirement that
-sharing never crosses a LEG boundary.
-"""
+"""Tests for the 15-minute distribution engine and its edge cases."""
 
 import uuid
 from datetime import date, datetime, timedelta
@@ -28,15 +22,7 @@ YEAR, QUARTER = 2025, 1  # Jan-Mar 2025, used as a fast, controlled sandbox.
 
 
 def _person(db, name: str) -> int:
-    """Create a person and return its id.
-
-    Args:
-        db: Database connection fixture.
-        name: Person name.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person and return its id."""
     return person_repo.create(
         db,
         Person(
@@ -71,15 +57,7 @@ def _leg(db) -> int:
 
 
 def _site(db) -> int:
-    """Create a minimal site (no substation area needed for these tests) and
-    return its id.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a minimal site (no substation area needed for these tests) and return its id."""
     return site_repo.create(
         db,
         Site(
@@ -98,20 +76,7 @@ def _site(db) -> int:
 def _metering_point(
     db, designation: str, direction: str, site_id: int, leg_id: "int | None | str" = "auto"
 ) -> int:
-    """Create a MeteringPoint and return its id.
-
-    Args:
-        db: Database connection fixture.
-        designation: Business key.
-        direction: Measurement direction.
-        site_id: Foreign key of the site the MeteringPoint belongs to.
-        leg_id: LEG to assign. Defaults to a freshly created one (most
-            tests just need *a* valid LEG, not to control which one);
-            pass `None` explicitly to test the unassigned case.
-
-    Returns:
-        The new MeteringPoint's id.
-    """
+    """Create a MeteringPoint and return its id."""
     if leg_id == "auto":
         leg_id = _leg(db)
     return metering_point_repo.create(
@@ -132,18 +97,7 @@ def _metering_point(
 def _assign(
     db, metering_point_id: int, person_id: int, valid_from: date, valid_to: date | None = None
 ) -> None:
-    """Create a Assignment.
-
-    Args:
-        db: Database connection fixture.
-        metering_point_id: MeteringPoint to assign.
-        person_id: Person to assign it to.
-        valid_from: Start of validity.
-        valid_to: End of validity, or `None` for open-ended.
-
-    Returns:
-        None.
-    """
+    """Create a Assignment."""
     assignment_repo.create(
         db,
         Assignment(
@@ -158,18 +112,7 @@ def _assign(
 
 
 def _reading(db, metering_point_id: int, moment: datetime, direction: str, kwh: float) -> None:
-    """Insert a single reading.
-
-    Args:
-        db: Database connection fixture.
-        metering_point_id: MeteringPoint the reading belongs to.
-        moment: Interval start.
-        direction: "consumption" or "feed_in".
-        kwh: Energy for the interval.
-
-    Returns:
-        None.
-    """
+    """Insert a single reading."""
     upsert_readings(
         db,
         [

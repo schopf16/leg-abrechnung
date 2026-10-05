@@ -1,21 +1,4 @@
-"""Click paths for the Statistik page's time axis.
-
-Rendering the page proves only that it builds. The resolution select and
-the arrows are the whole feature here, so they are driven for real -- the
-lesson from `2a33e40`, where a page kept rendering perfectly while its
-upload handler had been broken for nine days.
-
-One trap this file exists to avoid: the arrows can look verified when they
-are not. Every day carries the same axis labels ("00:00" ... "23:45"), so
-a chart whose window never moved is indistinguishable from one that moved
-correctly -- unless the *window* is what gets asserted.
-
-Every lookup here is scoped to the **Energie** panel. The scoping stays
-useful now that each theme has a page of its own: it is what keeps these
-tests pointed at the chart they are about if a page ever grows a second
-one, and it made the split from one page into four a change of the
-rendered function and nothing else.
-"""
+"""Click paths for the Statistik page's time axis."""
 
 from datetime import datetime
 
@@ -27,11 +10,7 @@ from app.domain.demo_data import create_demo_data
 
 
 def _page() -> Client:
-    """Render the Statistik page against demo data.
-
-    Returns:
-        The client holding the rendered page.
-    """
+    """Render the Statistik page against demo data."""
     from app.gui.pages import statistics as statistics_module
 
     with connection_scope() as connection:
@@ -44,15 +23,7 @@ def _page() -> Client:
 
 
 def _panel(client: Client, heading: str = "Energie"):
-    """Find one thematic card by its heading.
-
-    Args:
-        client: The rendered client.
-        heading: The panel's German heading.
-
-    Returns:
-        The card element, to search inside.
-    """
+    """Find one thematic card by its heading."""
     for element in client.elements.values():
         if element.__class__.__name__ != "Card":
             continue
@@ -67,16 +38,7 @@ def _panel(client: Client, heading: str = "Energie"):
 
 
 def _select(client: Client, label: str, heading: str = "Energie"):
-    """Find one select by its label, inside one panel.
-
-    Args:
-        client: The rendered client.
-        label: The German field label.
-        heading: Which panel to look in.
-
-    Returns:
-        The matching select element.
-    """
+    """Find one select by its label, inside one panel."""
     matches = [
         element
         for element in _panel(client, heading).descendants()
@@ -87,16 +49,7 @@ def _select(client: Client, label: str, heading: str = "Energie"):
 
 
 def _button(client: Client, name: str, heading: str = "Energie"):
-    """Find one button by its icon or label, inside one panel.
-
-    Args:
-        client: The rendered client.
-        name: The icon name or the button caption.
-        heading: Which panel to look in.
-
-    Returns:
-        The matching button element.
-    """
+    """Find one button by its icon or label, inside one panel."""
     matches = [
         element
         for element in _panel(client, heading).descendants()
@@ -108,14 +61,7 @@ def _button(client: Client, name: str, heading: str = "Energie"):
 
 
 def _press(button) -> None:
-    """Invoke a button's click handler, as a real click would.
-
-    Args:
-        button: The button element.
-
-    Returns:
-        None.
-    """
+    """Invoke a button's click handler, as a real click would."""
     for listener in button._event_listeners.values():
         if listener.type == "click":
             listener.handler(None)
@@ -124,15 +70,7 @@ def _press(button) -> None:
 
 
 def _window_label(client: Client, heading: str = "Energie"):
-    """The label naming the window currently shown in one panel.
-
-    Args:
-        client: The rendered client.
-        heading: Which panel to look in.
-
-    Returns:
-        The label element.
-    """
+    """The label naming the window currently shown in one panel."""
     matches = [
         element
         for element in _panel(client, heading).descendants()
@@ -143,17 +81,7 @@ def _window_label(client: Client, heading: str = "Energie"):
 
 
 def _energy_chart(client: Client):
-    """The chart inside the Energie panel.
-
-    Found through its panel rather than by position: the page holds five
-    charts now, and "the first one" would be a guess about their order.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The chart element.
-    """
+    """The chart inside the Energie panel."""
     charts = [e for e in _panel(client).descendants() if e.__class__.__name__ == "EChart"]
     assert len(charts) == 1, f"genau ein Energie-Diagramm erwartet, {len(charts)} gefunden"
     return charts[0]
@@ -211,12 +139,7 @@ def test_the_quarter_hour_view_switches_the_unit_to_power():
 
 
 def test_the_arrows_really_move_the_window():
-    """Asserted on the window, not on the axis labels.
-
-    Every day's axis reads "00:00" to "23:45", so a chart that never moved
-    looks exactly like one that moved correctly. Only the window label
-    tells them apart -- which is why this test looks there.
-    """
+    """Asserted on the window, not on the axis labels."""
     client = _page()
     _select(client, "Auflösung").value = period.GRANULARITY_QUARTER_HOUR
     label = _window_label(client)
@@ -234,12 +157,7 @@ def test_the_arrows_really_move_the_window():
 
 
 def test_changing_the_resolution_keeps_the_window_in_view():
-    """Switching from a day to its quarter keeps that day in sight.
-
-    Jumping back to today on every resolution change would make the arrows
-    useless -- you could never look at one day and then widen out around
-    it.
-    """
+    """Switching from a day to its quarter keeps that day in sight."""
     client = _page()
     resolution = _select(client, "Auflösung")
     label = _window_label(client)
@@ -258,13 +176,7 @@ def test_changing_the_resolution_keeps_the_window_in_view():
 
 
 def test_heute_returns_to_the_current_window():
-    """After paging away, one button gets back to now.
-
-    Note the chart does **not** open on "now": it opens on the newest
-    reading, because an import usually lands a completed quarter and an
-    empty chart on arrival reads as a broken page. So "Heute" is a jump
-    forward here, not a reset to where it started.
-    """
+    """After paging away, one button gets back to now."""
     client = _page()
     _select(client, "Auflösung").value = period.GRANULARITY_QUARTER_HOUR
     label = _window_label(client)
@@ -279,12 +191,7 @@ def test_heute_returns_to_the_current_window():
 
 
 def test_the_chart_opens_where_the_data_is():
-    """Not on today, which is routinely an empty window.
-
-    The demo readings lie in a past quarter; opening on "now" showed a
-    blank chart until somebody thought to press the arrows, which is
-    exactly the impression this page had to lose.
-    """
+    """Not on today, which is routinely an empty window."""
     client = _page()
     chart = _energy_chart(client)
     _select(client, "Auflösung").value = period.GRANULARITY_MONTH
@@ -293,10 +200,7 @@ def test_the_chart_opens_where_the_data_is():
 
 
 def test_an_empty_window_says_so_while_readings_exist_elsewhere():
-    """A different statement from "nothing imported yet", and it has to be.
-
-    One sends the reader to the import page, the other to the arrows.
-    """
+    """A different statement from "nothing imported yet", and it has to be."""
     client = _page()
     _select(client, "Auflösung").value = period.GRANULARITY_QUARTER_HOUR
     _press(_button(client, "Heute"))
@@ -311,17 +215,7 @@ def test_an_empty_window_says_so_while_readings_exist_elsewhere():
 
 
 def test_the_leg_filter_reaches_the_chart():
-    """Selecting a LEG has to change the numbers, not just the label.
-
-    The demo deployment has exactly one LEG holding readings, so the proof
-    runs the other way round: a second, empty LEG must bring the chart to
-    zero. Comparing "all LEGs" against the only LEG that has data would
-    pass even if the filter were ignored entirely.
-
-    The extra LEG is created **before** the page renders, because the
-    select builds its options once -- an id that did not exist yet is not
-    selectable, and the assignment would silently do nothing.
-    """
+    """Selecting a LEG has to change the numbers, not just the label."""
     from app.gui.pages import statistics as statistics_module
     from app.models import leg as leg_repo
     from app.models.leg import Leg

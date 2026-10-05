@@ -442,9 +442,7 @@ def _metering_point_direction(
 
 
 def test_check_substation_area_one_sided_no_warning_once_resolved_via_mixed_leg(db):
-    """The substation area is still producer-only, but its one MeteringPoint already
-    sits in a mixed (multi-substation-area) LEG -- the recommended fix is
-    already acted on, so no warning."""
+    """The substation area is still producer-only, but its one MeteringPoint already sits in a mixed..."""
     substation_area_id = _substation_area(db, "TK1")
     other_substation_area_id = _substation_area(db, "TK2")
     site_id = _site_in(db, substation_area_id)
@@ -509,8 +507,7 @@ def test_a_leg_below_five_percent_is_reported_as_a_problem(db):
 
 
 def test_a_leg_inside_the_warning_band_is_reported_with_its_headroom(db):
-    """The point of the early warning: park the next consumer elsewhere
-    before the floor is actually hit."""
+    """The point of the early warning: park the next consumer elsewhere before the floor is actually..."""
     from app.domain.quality_checks import check_leg_production_capacity
 
     _leg_with_capacity(db, 8.0)
@@ -543,8 +540,7 @@ def test_a_leg_without_a_recorded_figure_is_not_reported(db):
 
 
 def test_the_warning_band_honours_the_configured_threshold(db):
-    """Hard-coding 10 inside the check would otherwise pass every test in
-    this block -- the same guard the LEG-founding check already has."""
+    """Hard-coding 10 inside the check would otherwise pass every test in this block -- the same guard..."""
     from app.domain.quality_checks import check_leg_production_capacity
     from app.models import settings as settings_repo
 
@@ -562,8 +558,7 @@ def test_the_warning_band_honours_the_configured_threshold(db):
 
 
 def test_a_metering_point_added_after_the_reading_makes_it_stale(db):
-    """The figure stops matching the LEG the moment it grows -- that is the
-    whole reason the recording date is stored."""
+    """The figure stops matching the LEG the moment it grows -- that is the whole reason the recording..."""
     from app.domain.quality_checks import check_leg_production_capacity
 
     leg_id = _leg_with_capacity(db, 37.6, recorded_at="2026-01-05")
@@ -578,9 +573,7 @@ def test_a_metering_point_added_after_the_reading_makes_it_stale(db):
 
 
 def test_a_metering_point_added_the_same_day_is_not_stale(db):
-    """The portal shows the figure *while* the metering point is being
-    registered, so the reading already accounts for it. Only a later
-    addition makes it out of date."""
+    """The portal shows the figure *while* the metering point is being registered, so the reading..."""
     from app.domain.quality_checks import check_leg_production_capacity
     from datetime import date as _date
 
@@ -618,16 +611,7 @@ def test_an_unrecorded_leg_is_never_reported_as_stale(db):
 
 
 def _assign(db, person_id: int, metering_point_id: int) -> None:
-    """Give one person an open-ended assignment to one metering point.
-
-    Args:
-        db: Database connection fixture.
-        person_id: The person.
-        metering_point_id: The metering point.
-
-    Returns:
-        None.
-    """
+    """Give one person an open-ended assignment to one metering point."""
     assignment_repo.create(
         db,
         Assignment(
@@ -642,12 +626,7 @@ def _assign(db, person_id: int, metering_point_id: int) -> None:
 
 
 def test_feeding_in_without_drawing_is_reported(db):
-    """Somebody puts power into the LEG and takes none out of it.
-
-    The likely cause is a consumption assignment that was never entered.
-    Reported rather than blocked, and without claiming BKW forbids the
-    arrangement -- that is not something this database can establish.
-    """
+    """Somebody puts power into the LEG and takes none out of it."""
     site_id = _site_in(db, _substation_area(db, "TK1"))
     leg_id = _leg(db)
     person_id = _person(db, "NurEinspeisung")
@@ -661,12 +640,7 @@ def test_feeding_in_without_drawing_is_reported(db):
 
 
 def test_drawing_without_feeding_in_is_never_reported(db):
-    """The normal case: most participants have no PV at all.
-
-    Deliberately one-directional -- flagging this would put a warning on
-    the majority of the membership and train the administrator to ignore
-    the list.
-    """
+    """The normal case: most participants have no PV at all."""
     site_id = _site_in(db, _substation_area(db, "TK1"))
     leg_id = _leg(db)
     person_id = _person(db, "NurBezug")

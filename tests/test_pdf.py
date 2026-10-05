@@ -24,55 +24,27 @@ from app.pdf.qr_reference import generate_qrr_reference
 
 
 def _assert_is_pdf(path) -> None:
-    """Assert that a file exists and starts with the PDF magic bytes.
-
-    Args:
-        path: Path of the file to check.
-
-    Returns:
-        None.
-    """
+    """Assert that a file exists and starts with the PDF magic bytes."""
     assert path.exists()
     with open(path, "rb") as f:
         assert f.read(5) == b"%PDF-"
 
 
 def _page_count(path) -> int:
-    """Read a PDF's page count from its `/Pages` object's `/Count` entry.
-
-    Args:
-        path: Path of the PDF file.
-
-    Returns:
-        The number of pages in the document.
-    """
+    """Read a PDF's page count from its `/Pages` object's `/Count` entry."""
     match = re.search(rb"/Count (\d+) /Kids", path.read_bytes())
     assert match, "could not find a /Pages /Count entry in the PDF"
     return int(match.group(1))
 
 
 def _read_csv_rows(path) -> list[dict]:
-    """Read a semicolon-delimited CSV file into a list of header-keyed dicts.
-
-    Args:
-        path: Path of the CSV file.
-
-    Returns:
-        One dict per data row (header row excluded).
-    """
+    """Read a semicolon-delimited CSV file into a list of header-keyed dicts."""
     with open(path, encoding="utf-8-sig") as f:
         return list(csv.DictReader(f, delimiter=";"))
 
 
 def _billing_context(db):
-    """Set up demo data and a summer billing run, returning common test fixtures.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        A `(run, items, distribution, leg, settings)` tuple.
-    """
+    """Set up demo data and a summer billing run, returning common test fixtures."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
     run, items, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
@@ -89,18 +61,7 @@ def _billing_context(db):
 
 
 def _metering_point_info(db):
-    """Resolve the metering point/site data a billing document prints.
-
-    The real caller is `export_billing_run_documents`, which builds this
-    once per run; tests calling `generate_person_bill_pdf` directly reuse
-    the same loader so they exercise the same data the export does.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        `MeteringPointInfo` keyed by metering point id.
-    """
+    """Resolve the metering point/site data a billing document prints."""
     return _load_metering_point_info(db)
 
 
@@ -122,7 +83,8 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1",
+        address_street="Weg",
+        address_house_number="1",
         address_zip="3000",
         address_city="Bern",
         address_country="CH",
@@ -179,22 +141,14 @@ def test_build_qr_bill_with_none_amount_encodes_no_fixed_amount():
 
 
 def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
-    """`draw_qr_bill` must render qrbill's bill-only SVG, not its full-page one.
-
-    Regression test for a real bug: qrbill's full_page=True output paints
-    an opaque white rectangle across the *entire* A4 page as a background
-    (qrbill/bill.py "Force white background"). Composited on top of an
-    already-populated canvas via renderPDF.draw(), that rectangle silently
-    erased all previously drawn content (letterhead, tables) -- the PDF
-    still contained the text objects, so naive text extraction missed it,
-    but nothing was visible except the QR-bill itself.
-    """
+    """`draw_qr_bill` must render qrbill's bill-only SVG, not its full-page one."""
     from app.models.leg import Leg
     from app.models.person import Person
     from app.models.settings import LegSettings
 
     settings = LegSettings(
-        address_street="Weg 1",
+        address_street="Weg",
+        address_house_number="1",
         address_zip="3000",
         address_city="Bern",
         address_country="CH",
@@ -257,18 +211,7 @@ def test_draw_qr_bill_uses_bill_only_svg_not_full_page(tmp_path):
 
 
 def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(db, tmp_path):
-    """A prosumer's document (both consumption and Vergütung tables) is long enough to
-    push the QR-bill onto a second page rather than overlapping the content.
-
-    The demo data's prosumers are net credits (see the credit-note test
-    below), so this forces the same item into an invoice (positive net,
-    same magnitude) purely to exercise the page-break geometry -- the
-    person/tables/fees involved are otherwise identical.
-
-    Regression test: the QR-bill must never be drawn on top of content that
-    reaches into its reserved bottom area -- see app.pdf.layout.CONTENT_BOTTOM_Y
-    and the page-break check in generate_person_bill_pdf.
-    """
+    """A prosumer's document (both consumption and Vergütung tables) is long enough to push the QR-bill..."""
     run, items, distribution, leg, settings = _billing_context(db)
     prosumer_item = next(i for i in items if i.consumed_kwh > 0 and i.produced_kwh > 0)
     invoice_item = replace(prosumer_item, net_amount_rappen=abs(prosumer_item.net_amount_rappen))
@@ -293,9 +236,7 @@ def test_generate_person_bill_pdf_for_prosumer_invoice_overflows_to_second_page(
 
 
 def test_generate_person_bill_pdf_for_credit_item_omits_payment_slip(db, tmp_path):
-    """A person with a negative net (owed money by the LEG) gets no QR-bill/
-    Einzahlungsschein at all -- there is nothing to pay via a payment slip,
-    the LEG settles the credit directly (see the payout list)."""
+    """A person with a negative net (owed money by the LEG) gets no QR-bill/ Einzahlungsschein at all..."""
     run, items, distribution, leg, settings = _billing_context(db)
     credit_item = next(i for i in items if i.is_owed_by_leg)
     person = person_repo.get(db, credit_item.person_id)
@@ -342,12 +283,7 @@ def test_generate_person_bill_pdf_for_pure_consumer_has_payable_qr_bill(db, tmp_
 
 
 def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db, tmp_path):
-    """With no admin fees at all, a single-table document avoids an unnecessary page break.
-
-    Regression test for app.pdf.layout.CONTENT_BOTTOM_Y: the QR-bill must
-    never be drawn on top of content, but also must not force a page break
-    when there is clearly room for it on the first page.
-    """
+    """With no admin fees at all, a single-table document avoids an unnecessary page break."""
     run, items, distribution, leg, settings = _billing_context(db)
     consumer_item = next(i for i in items if i.is_owed_to_leg and i.produced_kwh == 0)
     person = person_repo.get(db, consumer_item.person_id)
@@ -377,8 +313,7 @@ def test_generate_person_bill_pdf_with_no_fees_and_one_table_fits_on_one_page(db
 
 
 def test_generate_person_bill_pdf_shows_admin_fee_section_when_person_pays_paper_invoice(db, tmp_path):
-    """Beat (demo person with `paper_invoice=True`) gets a document that
-    renders without error even with the extra fee section present."""
+    """Beat (demo person with `paper_invoice=True`) gets a document that renders without error even..."""
     run, items, distribution, leg, settings = _billing_context(db)
     beat = next(p for p in person_repo.list_all(db) if p.paper_invoice)
     item = next(i for i in items if i.person_id == beat.id)
@@ -401,9 +336,7 @@ def test_generate_person_bill_pdf_shows_admin_fee_section_when_person_pays_paper
 
 
 def test_generate_invoice_list_csv_lists_debtors_with_matching_reference_numbers(db, tmp_path):
-    """The invoice list has one row per debtor, with the same QRR reference
-    printed on that person's Einzahlungsschein -- so a bank statement can be
-    matched back to the right invoice."""
+    """The invoice list has one row per debtor, with the same QRR reference printed on that person's..."""
     run, items, _, _, _ = _billing_context(db)
     persons = {p.id: p for p in person_repo.list_all(db)}
     debtor_items = [i for i in items if i.is_owed_to_leg]
@@ -436,8 +369,7 @@ def test_generate_payout_list_csv_only_lists_credits(db, tmp_path):
 
 
 def test_export_billing_run_documents_writes_one_pdf_per_person(db, tmp_path, monkeypatch):
-    """The export service writes exactly one PDF per billing item (per
-    person) plus a payment list, and records each item's PDF path."""
+    """The export service writes exactly one PDF per billing item (per person) plus a payment list, and..."""
     import app.pdf.export_service as export_service
 
     monkeypatch.setattr(export_service, "OUTPUT_DIR", tmp_path)
@@ -469,10 +401,7 @@ def test_export_billing_run_documents_writes_one_pdf_per_person(db, tmp_path, mo
 def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_reexport(
     db, tmp_path, monkeypatch
 ):
-    """Finding #2: a re-export (e.g. to fix a typo in the LEG address) must
-    keep printing/using the due date already communicated to the person
-    and already relied upon by app.domain.dunning -- never push it back
-    out by another PAYMENT_TERM just because the PDF was regenerated."""
+    """Finding #2: a re-export (e.g."""
     import app.pdf.export_service as export_service
 
     monkeypatch.setattr(export_service, "OUTPUT_DIR", tmp_path)
@@ -501,19 +430,7 @@ def test_export_billing_run_documents_freezes_due_date_and_never_resets_it_on_re
 
 
 def _intro_lines_of(db, tmp_path, context, person) -> list[str]:
-    """Generate one person's bill and capture the intro lines it draws.
-
-    Args:
-        db: Database connection fixture.
-        tmp_path: Temporary output directory.
-        context: The tuple `_billing_context` returned. Passed in rather
-            than built here: it calls `create_demo_data`, which cannot run
-            twice against one database.
-        person: The person to bill (already persisted).
-
-    Returns:
-        The texts passed to `draw_intro_text`, in order.
-    """
+    """Generate one person's bill and capture the intro lines it draws."""
     run, items, distribution, leg, settings = context
     item = next(i for i in items if i.person_id == person.id)
     person_result = distribution.person_results[item.person_id]

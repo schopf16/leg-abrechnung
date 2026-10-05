@@ -1,13 +1,4 @@
-"""Tests that drive the Standort dialog itself, not the widget behind it.
-
-`tests/test_address_hints.py` calls `SuggestionBox.update()` by hand, which
-proves the logic and nothing about the wiring. This file sets a field's
-value the way typing does and looks at what the dialog then holds -- the gap
-that let a freshly opened dialog greet the administrator with "Nicht im
-amtlichen Verzeichnis." under an empty address field, a complaint about
-something they had not written yet, sitting exactly where they were looking
-for help.
-"""
+"""Tests that drive the Standort dialog itself, not the widget behind it."""
 
 from nicegui import Client, ui
 
@@ -15,11 +6,7 @@ from app.gui.site_form import open_site_form
 
 
 def _dialog() -> Client:
-    """Open a new Standort dialog.
-
-    Returns:
-        The client holding the rendered dialog.
-    """
+    """Open a new Standort dialog."""
     client = Client(ui.page("/probe-site-address")(lambda: None), request=None)
     with client:
         open_site_form()
@@ -27,14 +14,7 @@ def _dialog() -> Client:
 
 
 def _fields(client: Client) -> dict:
-    """The dialog's inputs, by their German label.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        `{label: element}`.
-    """
+    """The dialog's inputs, by their German label."""
     return {
         element._props.get("label"): element
         for element in client.elements.values()
@@ -43,14 +23,7 @@ def _fields(client: Client) -> dict:
 
 
 def _hints(client: Client) -> list[str]:
-    """Every address hint currently shown.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The hint texts.
-    """
+    """Every address hint currently shown."""
     return [
         element.text
         for element in client.elements.values()
@@ -61,14 +34,7 @@ def _hints(client: Client) -> list[str]:
 
 
 def _suggestions(client: Client) -> int:
-    """How many suggestions the floating lists hold.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The number of clickable entries.
-    """
+    """How many suggestions the floating lists hold."""
     return sum(
         1
         for menu in client.elements.values()
@@ -79,12 +45,7 @@ def _suggestions(client: Client) -> int:
 
 
 def test_a_new_dialog_says_nothing(address_register):
-    """An empty form has no address to complain about.
-
-    This is the defect the administrator met: opening a new Standort showed
-    "Nicht im amtlichen Verzeichnis." straight away, so the place help was
-    expected held a complaint instead.
-    """
+    """An empty form has no address to complain about."""
     client = _dialog()
 
     assert _hints(client) == []
@@ -92,12 +53,7 @@ def test_a_new_dialog_says_nothing(address_register):
 
 
 def test_typing_a_street_offers_suggestions_and_no_complaint(address_register):
-    """Help while typing, and only help.
-
-    Driven through the field rather than through `SuggestionBox.update()`:
-    a handler that is never bound passes every test that calls the method
-    directly.
-    """
+    """Help while typing, and only help."""
     client = _dialog()
     fields = _fields(client)
 
@@ -108,11 +64,7 @@ def test_typing_a_street_offers_suggestions_and_no_complaint(address_register):
 
 
 def test_a_half_typed_address_is_not_called_wrong(address_register):
-    """Street typed, postal code still empty -- nothing can be said yet.
-
-    Every check needs the postal code, so complaining before there is one
-    would be noise through every keystroke.
-    """
+    """Street typed, postal code still empty -- nothing can be said yet."""
     client = _dialog()
     fields = _fields(client)
 
@@ -122,10 +74,7 @@ def test_a_half_typed_address_is_not_called_wrong(address_register):
 
 
 def test_a_missing_house_number_is_not_called_wrong(address_register):
-    """It is "not typed yet", not "wrong".
-
-    The register itself holds thousands of addresses without a number.
-    """
+    """It is "not typed yet", not "wrong"."""
     client = _dialog()
     fields = _fields(client)
     fields["PLZ"].value = "3048"
@@ -163,11 +112,7 @@ def test_a_wrong_locality_is_asked_about_at_the_field(address_register):
 
 
 def test_the_postal_code_in_the_form_ranks_the_street_suggestions(address_register):
-    """The administrator's case: the fitting street sat in seventh place.
-
-    With "3063 Ittigen" already entered, six streets from other cantons were
-    offered above the one in that postal code.
-    """
+    """The administrator's case: the fitting street sat in seventh place."""
     client = _dialog()
     fields = _fields(client)
     fields["PLZ"].value = "3065"
@@ -202,14 +147,7 @@ def test_the_cursor_starts_in_the_address_field(address_register):
 
 
 def test_the_address_fields_do_not_delay_the_lookup(address_register):
-    """Typing a street quickly and stopping left the list empty until
-    another key was pressed seconds later.
-
-    The dialog carried `debounce=300` of its own for the duplicate check and
-    the suggestion box added a second delay on top. Two stacked delays are
-    not worth reasoning about, and the lookup is an indexed prefix query
-    over 197'000 streets -- there is nothing to spare the machine.
-    """
+    """Typing a street quickly and stopping left the list empty until another key was pressed seconds..."""
     fields = _fields(_dialog())
 
     for label in ("Adresse", "Hausnummer", "PLZ", "Ort"):

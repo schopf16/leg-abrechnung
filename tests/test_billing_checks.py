@@ -1,10 +1,4 @@
-"""Tests for the gate a quarter has to pass before it may be billed.
-
-The case these exist for is not a wrong invoice for one person. It is
-that a metering point whose readings were never imported enlarges every
-other participant's share of each interval, so one forgotten file means
-wrong invoices for everyone -- and the figures look entirely normal.
-"""
+"""Tests for the gate a quarter has to pass before it may be billed."""
 
 from datetime import date
 
@@ -22,15 +16,7 @@ from app.models.site import Site
 
 
 def _point(points, key):
-    """Pick one control point out of the list.
-
-    Args:
-        points: Result of `run_control_points`.
-        key: The control point's key.
-
-    Returns:
-        The matching `ControlPoint`.
-    """
+    """Pick one control point out of the list."""
     return next(p for p in points if p.key == key)
 
 
@@ -44,12 +30,7 @@ def test_complete_demo_data_passes_every_control_point(db):
 
 
 def test_a_quarter_without_feed_in_still_passes(db):
-    """No feed-in is not a data fault -- it is a quarter with nothing to share.
-
-    The warning about that comes from the quarter overview
-    (`QuarterEnergy.note`); the control points are about whether the data
-    is trustworthy, and it is.
-    """
+    """No feed-in is not a data fault -- it is a quarter with nothing to share."""
     create_demo_data(db)
     points = run_control_points(db, *WINTER_QUARTER)
 
@@ -57,11 +38,7 @@ def test_a_quarter_without_feed_in_still_passes(db):
 
 
 def test_a_metering_point_whose_readings_were_never_imported_blocks(db):
-    """The forgotten import: an assigned metering point with no data at all.
-
-    It must block, and it must be named -- being told "something is
-    missing" without being told what would leave you hunting.
-    """
+    """The forgotten import: an assigned metering point with no data at all."""
     create_demo_data(db)
     victim = metering_point_repo.list_all(db)[0]
     db.execute("DELETE FROM readings WHERE metering_point_id = ?", (victim.id,))
@@ -152,13 +129,7 @@ def test_a_metering_point_without_a_leg_blocks_and_stops_the_balance_check(db):
 
 
 def test_a_gap_in_the_assignments_unbalances_the_shared_energy(db):
-    """Shared energy with nobody to attribute it to breaks the balance.
-
-    Locally delivered and locally drawn are equal by construction, so a
-    difference always means energy was shared but could not be assigned
-    -- never that more was produced than used. Surplus in either
-    direction is settled with BKW and never reaches this app.
-    """
+    """Shared energy with nobody to attribute it to breaks the balance."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
 
@@ -220,17 +191,7 @@ def test_the_paper_invoice_list_names_who_needs_a_printed_document(db):
 
 
 def _distribution_with(person_count: int, consumed: float, produced: float, unassigned: float = 0.0):
-    """Build a distribution result with a chosen imbalance.
-
-    Args:
-        person_count: How many participants it should report.
-        consumed: Total locally drawn kWh, spread over the participants.
-        produced: Total locally delivered kWh, on one participant.
-        unassigned: Shared energy attributed to nobody.
-
-    Returns:
-        A `DistributionResult`.
-    """
+    """Build a distribution result with a chosen imbalance."""
     from app.domain.distribution import DistributionResult, PersonQuarterResult
 
     result = DistributionResult(leg_id=1, year=2025, quarter=3, unassigned_kwh=unassigned)
@@ -244,14 +205,7 @@ def _distribution_with(person_count: int, consumed: float, produced: float, unas
 
 
 def test_rounding_across_many_participants_is_not_reported_as_an_imbalance(db, monkeypatch):
-    """The balance tolerance has to scale with the number of participants.
-
-    Each person's totals are rounded to three decimals on their own, so
-    the two sides can legitimately differ by a fraction of a milli-kWh
-    per participant. A fixed tolerance of 0.001 kWh fired on perfectly
-    sound real data -- found by running the thing, not by reading it --
-    and a control point that cries wolf is worse than none.
-    """
+    """The balance tolerance has to scale with the number of participants."""
     create_demo_data(db)
     tolerable = _distribution_with(person_count=6, consumed=4786.973, produced=4786.971)
     monkeypatch.setattr(
@@ -295,15 +249,7 @@ def test_energy_attributed_to_nobody_is_caught_however_small(db, monkeypatch):
 
 
 def test_a_partial_delivery_is_not_reported_as_a_forgotten_import(db):
-    """The two failure modes need different advice, so they must not be conflated.
-
-    Found while walking the flow by hand: a metering point whose file
-    stopped four days early was announced as "ganz ohne Messdaten --
-    Import vergessen?", which sends you looking for a file you already
-    imported. The gaps alone cannot tell the two apart, because the days
-    a partial delivery *did* cover produce no gap entry at all, so every
-    gap it has reads as zero.
-    """
+    """The two failure modes need different advice, so they must not be conflated."""
     create_demo_data(db)
     points = metering_point_repo.list_all(db)
     never_imported, stopped_early = points[0], points[1]
@@ -324,13 +270,7 @@ def test_a_partial_delivery_is_not_reported_as_a_forgotten_import(db):
 
 
 def test_a_participant_who_joined_mid_quarter_is_not_missing_data(db):
-    """Someone who moved in in August owes no readings for July.
-
-    The completeness check only looks at days an assignment actually
-    covers, so a legitimate newcomer must not appear alongside the real
-    import failures -- otherwise every quarter with a move-in looks
-    broken and the gate gets ignored.
-    """
+    """Someone who moved in in August owes no readings for July."""
     from datetime import datetime, timedelta
 
     from app.models.reading import Reading, upsert_readings

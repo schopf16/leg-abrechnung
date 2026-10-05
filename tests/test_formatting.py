@@ -1,9 +1,4 @@
-"""Tests for the two formatting helpers.
-
-Written before the sixteen call sites were changed over, because the point of
-one helper is that every one of them now reads the same -- and a rounding or
-grouping mistake here would be wrong on an invoice, not merely ugly.
-"""
+"""Tests for the two formatting helpers."""
 
 from datetime import date, datetime
 
@@ -38,11 +33,7 @@ def test_the_unit_is_optional():
 
 
 def test_no_amount_is_not_zero():
-    """ "Not recorded" and "zero francs" are different statements.
-
-    The same rule the Ausgewogenheit view follows when it prints "—" rather
-    than "0 %" for a quarter with no import.
-    """
+    """ "Not recorded" and "zero francs" are different statements."""
     assert format_chf(None) == MISSING
     assert format_chf(0) == "0.00"
 
@@ -68,11 +59,7 @@ def test_a_date_reads_the_way_the_rest_of_the_app_writes_it(value, expected):
 
 
 def test_no_date_is_not_today():
-    """A made-up date prints as though it were recorded.
-
-    The same reason `Person.deactivated_at` is `None` for anyone deactivated
-    before migration 50 rather than carrying an invented day.
-    """
+    """A made-up date prints as though it were recorded."""
     assert format_date(None) == MISSING
     assert format_date("") == MISSING
 
@@ -83,12 +70,7 @@ def test_something_unparseable_is_shown_rather_than_swallowed():
 
 
 def test_a_stray_float_is_rounded_rather_than_truncated():
-    """Amounts are integer Rappen by convention; this is about when one is not.
-
-    `int()` would turn 1234.9 Rappen into 12.34 and lose a Rappen without a
-    word, and in an invoice a wrong number is a wrong invoice to a real
-    person.
-    """
+    """Amounts are integer Rappen by convention; this is about when one is not."""
     assert format_chf(1234.9) == "12.35"
     assert format_chf(-1234.9) == "-12.35"
     assert format_chf(1234.0) == "12.34"

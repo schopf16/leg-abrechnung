@@ -167,8 +167,7 @@ def test_list_in_progress_excludes_completed_trackers(db):
 
 
 def test_existing_persons_never_get_an_implicit_tracker(db):
-    """A Person created without ever starting onboarding has no tracker --
-    the whole point of the separate, opt-in table."""
+    """A Person created without ever starting onboarding has no tracker -- the whole point of the..."""
     person_id = _person(db, "Legacy")
     assert person_onboarding_repo.get_by_person(db, person_id) is None
     assert person_onboarding_repo.list_all(db) == []

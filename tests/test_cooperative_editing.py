@@ -1,16 +1,4 @@
-"""Tests for editing a Genossenschaft membership from the Person edit dialog.
-
-Where this lives is the point. The first build put entry, exit and share
-changes on the person's **detail** page, and the administrator rejected it
-in one sentence: the eye is for looking, the pencil is for changing, and
-joining or buying shares is a change. So the controls sit in the edit
-dialog, and the detail page only shows the history.
-
-The other point is that three plain controls have to produce correct period
-bookkeeping underneath -- a share purchase must not overwrite the old
-figure, because a cooperative has to be able to state what somebody held on
-a given day.
-"""
+"""Tests for editing a Genossenschaft membership from the Person edit dialog."""
 
 from datetime import date, timedelta
 
@@ -25,15 +13,7 @@ from app.models.person import Person
 
 
 def _person(connection, last_name: str = "Muster") -> int:
-    """Create a person to hang a membership on.
-
-    Args:
-        connection: Open SQLite connection.
-        last_name: Their surname.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person to hang a membership on."""
     return person_repo.create(
         connection,
         Person(
@@ -60,15 +40,7 @@ def _person(connection, last_name: str = "Muster") -> int:
 
 
 def _open_edit(person_id: int, probe: str) -> Client:
-    """Open the Person edit dialog for one person.
-
-    Args:
-        person_id: The person to edit.
-        probe: A unique probe route.
-
-    Returns:
-        The client holding the rendered dialog.
-    """
+    """Open the Person edit dialog for one person."""
     with connection_scope() as connection:
         person = person_repo.get(connection, person_id)
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -78,16 +50,7 @@ def _open_edit(person_id: int, probe: str) -> Client:
 
 
 def _element(client: Client, class_name: str, text: str):
-    """Find one element by class name and caption.
-
-    Args:
-        client: The client to search.
-        class_name: NiceGUI element class name, e.g. `"Checkbox"`.
-        text: The caption to match.
-
-    Returns:
-        The matching element.
-    """
+    """Find one element by class name and caption."""
     matches = [
         element
         for element in client.elements.values()
@@ -98,15 +61,7 @@ def _element(client: Client, class_name: str, text: str):
 
 
 def _input(client: Client, label: str):
-    """Find one input or number field by its label.
-
-    Args:
-        client: The client to search.
-        label: The German field label.
-
-    Returns:
-        The matching element.
-    """
+    """Find one input or number field by its label."""
     matches = [
         element
         for element in client.elements.values()
@@ -117,14 +72,7 @@ def _input(client: Client, label: str):
 
 
 def _save(client: Client) -> None:
-    """Press the dialog's Speichern button.
-
-    Args:
-        client: The client holding the dialog.
-
-    Returns:
-        None.
-    """
+    """Press the dialog's Speichern button."""
     buttons = [
         element
         for element in client.elements.values()
@@ -139,21 +87,7 @@ def _save(client: Client) -> None:
 
 
 def _edit(person_id: int, probe: str, *, member=None, shares=None, effective=None) -> None:
-    """Open the edit dialog, set the Genossenschaft controls and save.
-
-    One call per visit to the dialog, so a sequence of steps reads as the
-    sequence the administrator actually performs.
-
-    Args:
-        person_id: The person to edit.
-        probe: A unique probe route.
-        member: New value for the membership checkbox, or `None` to leave it.
-        shares: New share count, or `None` to leave it.
-        effective: Date the change takes effect (ISO), or `None` for today.
-
-    Returns:
-        None.
-    """
+    """Open the edit dialog, set the Genossenschaft controls and save."""
     client = _open_edit(person_id, probe)
     if member is not None:
         _element(client, "Checkbox", "Genossenschaftsmitglied").value = member
@@ -235,11 +169,7 @@ def test_joining_opens_a_membership():
 
 
 def test_buying_shares_keeps_the_previous_figure_answerable():
-    """The reason this is a history and not a number.
-
-    Raising the count must close the running period and open a new one, so
-    "how many did they hold in March" still has an answer afterwards.
-    """
+    """The reason this is a history and not a number."""
     with connection_scope() as connection:
         person_id = _person(connection)
         coop_repo.create(
@@ -277,13 +207,7 @@ def test_buying_shares_keeps_the_previous_figure_answerable():
 
 
 def test_leaving_closes_the_period_the_day_before_it_takes_effect():
-    """An exit is a date, not a deletion -- the membership still happened.
-
-    The date is the first day of *not* being a member, the same reading the
-    join and the share change use, so the period ends the day before.
-    Ending it *on* the date left somebody counted as a member for the rest
-    of that day -- which is what the administrator reported.
-    """
+    """An exit is a date, not a deletion -- the membership still happened."""
     with connection_scope() as connection:
         person_id = _person(connection)
         coop_repo.create(
@@ -414,17 +338,7 @@ def test_a_new_person_says_the_membership_comes_after_saving():
 
 
 def test_the_administrators_own_three_steps(db):
-    """Aktivieren, 10 Anteile geben, deaktivieren -- alles am selben Tag.
-
-    Reported from real use: after these three steps the person was still
-    badged as a Genossenschafter. The exit wrote `valid_to = heute`, and
-    `covers()` counts that day, so they stayed a member for the rest of it
-    -- while the administrator had just removed them.
-
-    The date means the same thing in all three actions now: the day the new
-    state takes effect. Ending a membership on the day it began leaves it
-    covering no day at all, so there was none.
-    """
+    """Aktivieren, 10 Anteile geben, deaktivieren -- alles am selben Tag."""
     with connection_scope() as connection:
         person_id = _person(connection)
 
@@ -445,18 +359,7 @@ def test_the_administrators_own_three_steps(db):
 
 
 def _members_on_the_list(probe: str) -> list[str]:
-    """The names the Personen list shows with "Nur Genossenschafter" on.
-
-    The list used to badge each member's card and is a table now, so the
-    members' list is what the filter leaves standing -- which is also what
-    gets printed (see CLAUDE.md: there is no page of its own).
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        The names of the visible rows.
-    """
+    """The names the Personen list shows with "Nur Genossenschafter" on."""
     from app.gui.pages import persons as persons_module
 
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -477,14 +380,7 @@ def _members_on_the_list(probe: str) -> list[str]:
 
 
 def test_a_deactivated_member_drops_off_the_list_at_once(db):
-    """The administrator's own sequence: aktivieren, 10 Anteile, deaktivieren.
-
-    The membership used to end *on* the given day and `covers()` includes
-    it, so the person stayed a member for the rest of that day -- on the
-    list, in this filter and on the members' mailing. The symptom used to be
-    a badge on a card; the list is a table now and the filter is the
-    members' list, so that is where it has to show.
-    """
+    """The administrator's own sequence: aktivieren, 10 Anteile, deaktivieren."""
     with connection_scope() as connection:
         person_id = _person(connection)
 

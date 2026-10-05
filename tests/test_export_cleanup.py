@@ -1,10 +1,4 @@
-"""Tests for exporting all LEGs at once and for not leaving stale documents.
-
-Both exist because of the same incident: a quarter re-billed at a
-corrected price wrote a second set of documents beside the first, and the
-old ones -- indistinguishable in a file listing, wrong in the one figure
-that matters -- stayed behind.
-"""
+"""Tests for exporting all LEGs at once and for not leaving stale documents."""
 
 from app.domain.billing import create_billing_runs_for_all_legs, create_or_replace_billing_run
 from app.domain.demo_data import SUMMER_QUARTER, create_demo_data
@@ -14,27 +8,14 @@ from app.pdf.export_service import export_billing_run_documents
 
 
 def _export_summer(db):
-    """Bill and export the demo summer quarter for the first LEG.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        The `ExportResult`.
-    """
+    """Bill and export the demo summer quarter for the first LEG."""
     leg = leg_repo.list_all(db)[0]
     run, _, _, _ = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
     return export_billing_run_documents(db, run)
 
 
 def test_re_exporting_a_quarter_leaves_exactly_one_set_of_documents(db, monkeypatch, tmp_path):
-    """A corrected run must not leave the superseded documents behind.
-
-    Regression test for the real incident: after changing the energy
-    price, the folder held `Abrechnung_Muster_1.pdf` (old price) beside
-    `Abrechnung_Muster_7.pdf` (new one), and nothing in the filename said
-    which was current.
-    """
+    """A corrected run must not leave the superseded documents behind."""
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)
     create_demo_data(db)
 
@@ -139,12 +120,7 @@ def test_billing_without_export_touches_no_files(db, monkeypatch, tmp_path):
 
 
 def test_the_all_legs_button_actually_bills_every_leg(monkeypatch, tmp_path):
-    """Pressing "Alle LEGs abrechnen und exportieren" runs the whole pass.
-
-    Sets its data up through `connection_scope()`, because that is the
-    connection the page itself opens -- the `db` fixture is a separate
-    in-memory database the GUI never sees.
-    """
+    """Pressing "Alle LEGs abrechnen und exportieren" runs the whole pass."""
     from nicegui import Client, ui
 
     from app.db.connection import connection_scope
@@ -193,14 +169,7 @@ def test_the_all_legs_button_actually_bills_every_leg(monkeypatch, tmp_path):
 
 
 def _press(button) -> None:
-    """Invoke a button's registered click handler directly.
-
-    Args:
-        button: The NiceGUI button element to press.
-
-    Returns:
-        None.
-    """
+    """Invoke a button's registered click handler directly."""
     for listener in button._event_listeners.values():
         if listener.type == "click":
             listener.handler(None)
@@ -209,14 +178,7 @@ def _press(button) -> None:
 
 
 def test_a_document_that_cannot_be_deleted_does_not_fail_the_export(db, monkeypatch, tmp_path):
-    """An open PDF viewer must not turn a finished export into a failure.
-
-    On Windows a file held open cannot be unlinked. By the time the
-    cleanup runs the new documents are already on disk, so the export
-    succeeded -- reporting it as failed would be worse than the stale
-    file it is warning about, and would make the all-LEGs pass mark a
-    perfectly good run as broken.
-    """
+    """An open PDF viewer must not turn a finished export into a failure."""
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)
     create_demo_data(db)
     first = _export_summer(db)

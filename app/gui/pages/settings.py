@@ -1,57 +1,46 @@
-"""LEG-wide settings page: sender address, QR-IBAN, price, admin fees
-(shared across all LEGs -- see `app.models.leg` for the per-LEG name),
-MeteringPoint Land/identifier defaults, and demo data generation.
-"""
+"""LEG-wide settings page: sender address, QR-IBAN, price, admin fees (shared across all LEGs -- see
+`app.models.leg` for the per-LEG name), MeteringPoint Land/identifier defaults, and demo data
+generation."""
 
 from nicegui import ui
 
-from app.config import ConfigError, get_graph_config
 from app.db.connection import connection_scope
 from app.gui.address_input import SuggestionBox
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
-from app.emailing.templates import PERSON_PLACEHOLDERS
+from app.domain import auto_attachments
+from app.format_size import format_size
+from app.formatting import format_date
+from app.gui.upload import read_uploaded_file
+from app.models import leg_document as leg_document_repo
+from app.gui.safe_notify import safe_notify
 from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
-
-#: Shown as a hint above the invoice email template fields -- Person
-#: placeholders plus the invoice-only context ones from
-#: `app.emailing.bulk_send._invoice_placeholder_values`.
-_INVOICE_PLACEHOLDER_HINT = ", ".join(
-    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "leg", "quartal", "jahr", "betrag")
-)
-
-#: Shown as a hint above the dunning notice template fields -- Person
-#: placeholders plus the dunning notice-only context ones from
-#: `app.domain.dunning`.
-_DUNNING_PLACEHOLDER_HINT = ", ".join(
-    f"{{{name}}}" for name in (*PERSON_PLACEHOLDERS, "betrag", "neue_frist")
-)
 
 
 @ui.page("/settings")
 def settings_page() -> None:
-    """Render the LEG-wide settings page.
-
-    Returns:
-        None.
-    """
+    """Render the LEG-wide settings page."""
     with page_frame("/settings", "Allgemein"):
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
 
-        ui.label("Einstellungen").classes("text-lg font-bold")
         ui.label(
-            "Diese Angaben gelten für alle LEGs (Absender und "
-            "Zahlungsempfänger der QR-Rechnung, interner Strompreis, "
-            "Gebühren). Der Name auf der Rechnung wird von der "
-            "jeweiligen LEG bezogen -- siehe „LEGs“."
+            "Diese Angaben gelten für alle LEGs. Der Name auf der Rechnung "
+            "kommt von der jeweiligen LEG -- siehe „LEGs“."
+        ).classes("text-body2 text-grey-8")
+
+        ui.label("Absender und Abrechnung").classes("text-lg font-bold mt-4")
+        ui.label(
+            "Absender und Zahlungsempfänger jeder QR-Rechnung, interner Strompreis und Gebühren."
         ).classes("text-body2 text-grey-8")
 
         with ui.card().classes("w-full max-w-lg"):
-            street = ui.input("Strasse", value=current.address_street).classes("w-full")
+            with ui.row().classes("w-full gap-2"):
+                street = ui.input("Strasse", value=current.address_street).classes("flex-grow")
+                house_number = ui.input("Hausnummer", value=current.address_house_number).classes("w-28")
             street_hint = ui.column().classes("w-full gap-0")
             with ui.row().classes("w-full gap-2"):
                 zip_code = ui.input("PLZ", value=current.address_zip).classes("w-24")
@@ -61,12 +50,17 @@ def settings_page() -> None:
             # The most consequential address in the app: it is the creditor
             # on every QR-bill (app/pdf/qr_bill_render.py) and the letterhead
             # of every document, entered once and never looked at again.
-            # Street and house number share one field here, so no separate
-            # number input is passed.
+            #
+            # The house number is its own field since migration 54. With both
+            # in one box the check compared "Im Feld 3" against street names,
+            # found nothing, offered "Im Feld" -- and accepting that wrote it
+            # over the whole value, so the number was gone. Passed to the
+            # box now, exactly as the Standort and Person dialogs do.
             SuggestionBox(
                 street,
                 zip_code,
                 city,
+                house_number,
                 street_hint=street_hint,
                 locality_hint=locality_hint,
             )
@@ -74,11 +68,7 @@ def settings_page() -> None:
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
             def check_qr_iban() -> None:
-                """Validate the QR-IBAN once the field loses focus.
-
-                Returns:
-                    None.
-                """
+                """Validate the QR-IBAN once the field loses focus."""
                 qr_iban_error.text = validate_qr_iban(qr_iban.value) or ""
 
             qr_iban.on("blur", check_qr_iban)
@@ -113,11 +103,7 @@ def settings_page() -> None:
             error_label = ui.label("").classes("text-negative")
 
             def save() -> None:
-                """Validate and persist the LEG-wide settings form.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the LEG-wide settings form."""
                 if price.value is None or price.value < 0:
                     error_label.text = "Preis muss positiv sein."
                     return
@@ -143,6 +129,7 @@ def settings_page() -> None:
                 with connection_scope() as connection:
                     updated = settings_repo.get_settings(connection)
                     updated.address_street = street.value.strip()
+                    updated.address_house_number = house_number.value.strip()
                     updated.address_zip = zip_code.value.strip()
                     updated.address_city = city.value.strip()
                     updated.address_country = country.value.strip() or "CH"
@@ -178,11 +165,7 @@ def settings_page() -> None:
             metering_point_defaults_error = ui.label("").classes("text-negative")
 
             def save_metering_point_defaults() -> None:
-                """Validate and persist the MeteringPoint Land/identifier defaults.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the MeteringPoint Land/identifier defaults."""
                 country_value = metering_point_country.value.strip().upper()
                 identifier_value = metering_point_identifier.value.strip().upper()
                 country_problem = validate_country(country_value)
@@ -207,6 +190,11 @@ def settings_page() -> None:
 
         ui.label("Aufnahmeprozess").classes("text-lg font-bold")
         ui.label(
+            "Wie lange ein Schritt offen sein darf, und die Formulare, die beim Aufnehmen mitgehen."
+        ).classes("text-body2 text-grey-8")
+
+        ui.label("Überfällige Schritte").classes("text-body1 font-bold mt-2")
+        ui.label(
             "Ab wie vielen Tagen ohne Fortschritt beim aktuellen Schritt "
             "einer Aufnahme (siehe „Aufnahmen“) diese in den Auswertungen "
             "und auf der Übersicht als überfällig gemeldet wird."
@@ -222,11 +210,7 @@ def settings_page() -> None:
             onboarding_error = ui.label("").classes("text-negative")
 
             def save_onboarding_threshold() -> None:
-                """Validate and persist the onboarding overdue threshold.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the onboarding overdue threshold."""
                 if onboarding_overdue_days.value is None or onboarding_overdue_days.value < 1:
                     onboarding_error.text = "Muss mindestens 1 Tag sein."
                     return
@@ -239,7 +223,72 @@ def settings_page() -> None:
 
             ui.button("Speichern", on_click=save_onboarding_threshold).classes("mt-2")
 
-        ui.separator().classes("my-6")
+        ui.label("LEG-Dokumente").classes("text-body1 font-bold mt-4")
+        ui.label(
+            "Formulare, die ein Textbaustein anfügen kann (siehe "
+            "„Textbausteine“). Einmal hier hinterlegt, gilt für alle "
+            "Bausteine -- eine neue Fassung ersetzt die alte an dieser "
+            "einen Stelle. Die Datei liegt in der Datenbank und ist damit "
+            "in jedem Backup."
+        ).classes("text-body2 text-grey-8")
+
+        documents_column = ui.column().classes("w-full gap-2")
+
+        def render_documents() -> None:
+            """Draw one row per form that a checkbox can attach."""
+            with connection_scope() as connection:
+                stored = {document.key: document for document in leg_document_repo.list_all(connection)}
+            documents_column.clear()
+            with documents_column:
+                for entry in auto_attachments.AUTO_ATTACHMENTS:
+                    if not entry.needs_source:
+                        continue
+                    document = stored.get(entry.key)
+                    with ui.card().classes("w-full"):
+                        with ui.row().classes("w-full items-center gap-3"):
+                            ui.label(entry.label.replace(" anfügen", "")).classes("font-bold")
+                            if document is None:
+                                ui.label("Noch keine Datei hinterlegt.").classes("text-warning text-body2")
+                            else:
+                                ui.label(
+                                    f"{document.filename} "
+                                    f"({format_size(len(document.content))}, "
+                                    f"{format_date(document.updated_at)})"
+                                ).classes("text-body2")
+                                ui.button(
+                                    icon="delete",
+                                    on_click=lambda _=None, key=entry.key: remove_document(key),
+                                ).props("dense flat color=negative").classes("ml-auto")
+
+                        async def handle_upload(event, key=entry.key) -> None:
+                            """Store the picked file as this form."""
+                            for file in event.files:
+                                filename, content = await read_uploaded_file(file)
+                                if len(content) > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
+                                    safe_notify(
+                                        "Die Datei ist zu gross für eine E-Mail "
+                                        f"({format_size(len(content))}).",
+                                        type="negative",
+                                    )
+                                    continue
+                                with connection_scope() as connection:
+                                    leg_document_repo.put(connection, key, filename, content)
+                            safe_notify("Datei hinterlegt.", type="positive")
+                            render_documents()
+
+                        upload = ui.upload(on_multi_upload=handle_upload, multiple=False, auto_upload=True)
+                        upload.props('label="Datei wählen" accept=".pdf" flat bordered dense')
+                        if entry.hint:
+                            ui.label(entry.hint).classes("text-caption text-grey-6")
+
+        def remove_document(key: str) -> None:
+            """Remove one stored form."""
+            with connection_scope() as connection:
+                leg_document_repo.delete(connection, key)
+            safe_notify("Datei entfernt.", type="warning")
+            render_documents()
+
+        render_documents()
 
         ui.separator().classes("my-6")
 
@@ -264,11 +313,7 @@ def settings_page() -> None:
             capacity_error = ui.label("").classes("text-negative")
 
             def save_production_capacity_warn_percent() -> None:
-                """Validate and persist the production-capacity warning threshold.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the production-capacity warning threshold."""
                 value = production_capacity_warn_percent.value
                 # Exactly 5 would empty the warning band entirely: a LEG
                 # sitting on the legal floor would show a green tick.
@@ -288,82 +333,12 @@ def settings_page() -> None:
 
         ui.separator().classes("my-6")
 
-        ui.label("E-Mail-Versand").classes("text-lg font-bold")
-        ui.label(
-            "Vorlage für den Rechnungsversand per E-Mail (siehe "
-            "„Rechnungslauf“) -- einmal hier hinterlegt, kein erneutes "
-            "Eintippen pro Quartal nötig, für einen einzelnen Lauf dort "
-            "trotzdem noch anpassbar. Verfügbare Platzhalter: "
-            f"{_INVOICE_PLACEHOLDER_HINT}."
-        ).classes("text-body2 text-grey-8")
-        with ui.card().classes("w-full max-w-lg"):
-            invoice_subject = ui.input("Betreff", value=current.invoice_email_subject).classes("w-full")
-            invoice_body = (
-                ui.textarea("Nachricht", value=current.invoice_email_body).classes("w-full").props("rows=6")
-            )
-            invoice_email_error = ui.label("").classes("text-negative")
-
-            def save_invoice_email() -> None:
-                """Validate and persist the invoice email template.
-
-                Returns:
-                    None.
-                """
-                if not invoice_subject.value.strip():
-                    invoice_email_error.text = "Betreff darf nicht leer sein."
-                    return
-                with connection_scope() as connection:
-                    settings = settings_repo.get_settings(connection)
-                    settings.invoice_email_subject = invoice_subject.value.strip()
-                    settings.invoice_email_body = invoice_body.value
-                    settings_repo.update_settings(connection, settings)
-                invoice_email_error.text = ""
-                ui.notify("E-Mail-Vorlage gespeichert.", type="positive")
-
-            ui.button("Speichern", on_click=save_invoice_email).classes("mt-2")
-
-            ui.separator().classes("my-4")
-
-            connection_test_result = ui.label("").classes("text-caption")
-
-            async def test_graph_connection() -> None:
-                """Acquire a Graph API access token without sending anything.
-
-                Verifies the Entra ID app registration/credentials in
-                `config.local.json` before the first real bulk send is
-                attempted.
-
-                Returns:
-                    None.
-                """
-                connection_test_result.text = "Prüfe Verbindung..."
-                connection_test_result.classes(remove="text-negative text-positive")
-                try:
-                    config = get_graph_config()
-                except ConfigError as exc:
-                    connection_test_result.text = str(exc)
-                    connection_test_result.classes(add="text-negative")
-                    return
-                try:
-                    await graph_client.get_access_token(config)
-                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
-                    connection_test_result.text = str(exc)
-                    connection_test_result.classes(add="text-negative")
-                    return
-                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
-                connection_test_result.classes(add="text-positive")
-
-            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
-
-        ui.separator().classes("my-6")
-
         ui.label("Mahnwesen").classes("text-lg font-bold")
         ui.label(
             "Zwei Stufen gemäss Reglement: die 1. Mahnung gewährt eine neue "
             "Frist, die 2. Mahnung löst die Ausschluss-Prüfung aus (siehe "
             "„Debitoren“/„Mahnwesen“) -- keine Mahngebühr auf irgendeiner "
-            "Stufe. Verfügbare Platzhalter: "
-            f"{_DUNNING_PLACEHOLDER_HINT}."
+            "Stufe. Die beiden Texte stehen unter „Textbausteine“."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
             dunning_new_deadline_days = ui.number(
@@ -381,43 +356,20 @@ def settings_page() -> None:
                 format="%.2f",
             ).classes("w-full")
 
-            ui.label("1. Mahnung").classes("font-bold mt-3")
-            dunning1_subject = ui.input("Betreff", value=current.dunning1_email_subject).classes("w-full")
-            dunning1_body = (
-                ui.textarea("Nachricht", value=current.dunning1_email_body).classes("w-full").props("rows=6")
-            )
-
-            ui.label("2. Mahnung").classes("font-bold mt-3")
-            dunning2_subject = ui.input("Betreff", value=current.dunning2_email_subject).classes("w-full")
-            dunning2_body = (
-                ui.textarea("Nachricht", value=current.dunning2_email_body).classes("w-full").props("rows=6")
-            )
-
             dunning_error = ui.label("").classes("text-negative")
 
             def save_dunning() -> None:
-                """Validate and persist the dunning settings and templates.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the dunning settings and templates."""
                 if dunning_new_deadline_days.value is None or dunning_new_deadline_days.value < 1:
                     dunning_error.text = "Neue Zahlungsfrist muss mindestens 1 Tag sein."
                     return
                 if dunning_minimum.value is None or dunning_minimum.value < 0:
                     dunning_error.text = "Bagatellgrenze muss positiv sein."
                     return
-                if not dunning1_subject.value.strip() or not dunning2_subject.value.strip():
-                    dunning_error.text = "Betreff darf nicht leer sein."
-                    return
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
                     settings.dunning_new_deadline_days = int(dunning_new_deadline_days.value)
                     settings.dunning_minimum_rappen = round(dunning_minimum.value * 100)
-                    settings.dunning1_email_subject = dunning1_subject.value.strip()
-                    settings.dunning1_email_body = dunning1_body.value
-                    settings.dunning2_email_subject = dunning2_subject.value.strip()
-                    settings.dunning2_email_body = dunning2_body.value
                     settings_repo.update_settings(connection, settings)
                 dunning_error.text = ""
                 ui.notify("Mahnwesen-Einstellungen gespeichert.", type="positive")
@@ -436,11 +388,7 @@ def settings_page() -> None:
         ).classes("text-body2")
 
         def generate_demo_data() -> None:
-            """Run the demo data generator and report the outcome via a toast.
-
-            Returns:
-                None.
-            """
+            """Run the demo data generator and report the outcome via a toast."""
             try:
                 with connection_scope() as connection:
                     summary = create_demo_data(connection)

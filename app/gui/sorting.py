@@ -1,28 +1,4 @@
-"""The one sorting control used by every list in the app.
-
-Every list view sorts the same way: a select labelled "Sortierung", always
-the last control in the page's filter row, always offering a handful of
-named orders with a sensible default. There is deliberately no second
-mechanism -- the `ui.table` views used to let you click a column header
-while the card views offered nothing at all, so the same question ("how do
-I sort this?") had a different answer on nearly every page.
-
-Cards are the reason a select rather than clickable headers won: several
-lists render as cards on purpose (a long Bemerkung must wrap instead of
-forcing horizontal scrolling, see `app.gui.pages.persons`), and cards have
-no column headers to click. A select works for both shapes.
-
-Sorting happens in Python, on the rows a page has already loaded, rather
-than in each repo's `ORDER BY`. That keeps the option list next to the
-page that shows it, and it applies `natural_key`, so umlauts sort as their
-base letter the way a German reader expects and a number inside a name is
-read as a number ("TRA9365" before "TRA11600").
-
-The key functions themselves live in `app.sort_keys`, which imports no
-NiceGUI, and are re-exported here: the PDF layer has to group a person's
-sites in the same order the Standorte page shows them, and it cannot
-import this module. Pages keep importing them from here.
-"""
+"""The one sorting control used by every list in the app."""
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional, Sequence, Union
@@ -55,16 +31,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SortOption:
-    """One entry of a page's "Sortierung" select.
-
-    Attributes:
-        key: Stable identifier, used as the select's value. Never shown.
-        label: German label shown in the select.
-        sort_key: Key function passed to `sorted`, receiving whatever the
-            page keeps in its list (a row dict or a model instance).
-        reverse: Whether to sort descending -- for "highest/newest first"
-            orders. Note this also flips ties.
-    """
+    """One entry of a page's "Sortierung" select."""
 
     key: str
     label: str
@@ -73,22 +40,10 @@ class SortOption:
 
 
 class SortControl:
-    """The "Sortierung" control: the select plus its direction toggle.
-
-    Exposes `value` (the selected key) so a page can read it exactly as it
-    would read the select itself, and `descending`, which the arrow button
-    flips. Pass the whole control to `apply_sort`/`sort_description` and
-    both parts are taken into account.
-    """
+    """The "Sortierung" control: the select plus its direction toggle."""
 
     def __init__(self, select: ui.select, button: ui.button, on_change: Callable[[], None]) -> None:
-        """Wire the toggle button to its own state and the page's refresh.
-
-        Args:
-            select: The rendered "Sortierung" select.
-            button: The ascending/descending toggle button.
-            on_change: The page's refresh, called after a direction flip.
-        """
+        """Wire the toggle button to its own state and the page's refresh."""
         self._select = select
         self._button = button
         self._on_change = on_change
@@ -98,47 +53,21 @@ class SortControl:
         select.on_value_change(lambda _: self._notify())
 
     def set_value(self, key: str, *, descending: bool = False) -> None:
-        """Put the control back the way a previous visit left it.
-
-        Does not call the page's refresh: a page sets this while building
-        itself and reads the control once afterwards anyway.
-
-        Args:
-            key: One of the options' keys.
-            descending: The direction to restore.
-
-        Returns:
-            None.
-        """
+        """Put the control back the way a previous visit left it."""
         self._select.value = key
         self.descending = descending
         self._show_direction()
 
     def _show_direction(self) -> None:
-        """Point the arrow the way the current direction says.
-
-        Returns:
-            None.
-        """
+        """Point the arrow the way the current direction says."""
         self._button.props(f"icon={'arrow_downward' if self.descending else 'arrow_upward'}")
 
     def on_any_change(self, watcher: Callable[[], None]) -> None:
-        """Call `watcher` after the key or the direction changes.
-
-        Args:
-            watcher: Zero-argument callable.
-
-        Returns:
-            None.
-        """
+        """Call `watcher` after the key or the direction changes."""
         self._watchers.append(watcher)
 
     def _notify(self) -> None:
-        """Tell the watchers the selection changed.
-
-        Returns:
-            None.
-        """
+        """Tell the watchers the selection changed."""
         for watcher in self._watchers:
             watcher()
 
@@ -161,28 +90,7 @@ def render_sort_select(
     *,
     value: Optional[str] = None,
 ) -> SortControl:
-    """Render the standard "Sortierung" control for a list view.
-
-    Always looks and sits the same: same label, same width, last control in
-    the page's filter row, with the direction arrow immediately beside it.
-    Call it from every list that offers more than one sensible order; a
-    list with only one sensible order simply sorts that way and shows no
-    control.
-
-    The arrow exists because the `ui.table` pages this mechanism replaced
-    could sort descending by clicking a column header twice. One toggle
-    that applies to whichever order is selected keeps that possible
-    without doubling the length of every select.
-
-    Args:
-        options: The orders this list offers; the first is the default.
-        on_change: Called whenever the selection or direction changes --
-            normally the page's `refresh`.
-        value: Initially selected key, defaulting to the first option.
-
-    Returns:
-        The `SortControl`, whose `value`/`descending` the page reads.
-    """
+    """Render the standard "Sortierung" control for a list view."""
     select = ui.select(
         {option.key: option.label for option in options},
         value=value or options[0].key,
@@ -197,21 +105,7 @@ def render_sort_select(
 def _resolve(
     options: Sequence[SortOption], selected: Union[str, None, SortControl]
 ) -> tuple[SortOption, bool]:
-    """Resolve a selection into the option to use and the direction.
-
-    Read by attribute rather than by `isinstance`, so a bare key still
-    works (as the tests use) and neither function needs a rendered
-    NiceGUI page to be exercised.
-
-    Args:
-        options: The page's options.
-        selected: A `SortControl`, or a bare key.
-
-    Returns:
-        `(option, descending)`; an unknown or missing key falls back to
-        the first option, so a page always has a defined order even
-        before the control has been touched.
-    """
+    """Resolve a selection into the option to use and the direction."""
     key = getattr(selected, "value", selected)
     descending = bool(getattr(selected, "descending", False))
     return next((o for o in options if o.key == key), options[0]), descending
@@ -220,18 +114,7 @@ def _resolve(
 def apply_sort(
     rows: Iterable[Any], options: Sequence[SortOption], selected: Union[str, None, SortControl]
 ) -> list:
-    """Sort rows by the selected option, in the selected direction.
-
-    Args:
-        rows: The rows to sort; left untouched.
-        options: The same options passed to `render_sort_select`.
-        selected: The page's `SortControl`, or a bare option key.
-
-    Returns:
-        A new, sorted list. An option that already reads "meiste zuerst"
-        (because its key negates a number) flips back to fewest-first when
-        the direction is reversed, which is what the arrow is for.
-    """
+    """Sort rows by the selected option, in the selected direction."""
     option, descending = _resolve(options, selected)
     # XOR: an option that is inherently descending and a reversed
     # direction cancel out, rather than the arrow doing nothing.
@@ -239,18 +122,6 @@ def apply_sort(
 
 
 def sort_description(options: Sequence[SortOption], selected: Union[str, None, SortControl]) -> str:
-    """Name the active order for the printout's "Sortierung:" line.
-
-    The printed list is read away from the screen, where neither the order
-    nor its direction is self-evident.
-
-    Args:
-        options: The page's options.
-        selected: The page's `SortControl`, or a bare option key.
-
-    Returns:
-        A German phrase such as `"nach Nachname"`, or
-        `"nach Nachname (absteigend)"`.
-    """
+    """Name the active order for the printout's "Sortierung:" line."""
     option, descending = _resolve(options, selected)
     return f"nach {option.label}" + (" (absteigend)" if descending else "")

@@ -1,11 +1,4 @@
-"""A linked year/quarter dropdown pair that only ever offers periods for
-which readings actually exist.
-
-Used everywhere the user picks a billing period (Abrechnung, Auswertungen)
-so it is impossible to select a year or quarter that has no data --
-selecting a year narrows the quarter dropdown to the quarters that have
-data within that year.
-"""
+"""A linked year/quarter dropdown pair that only ever offers periods for which readings actually exist."""
 
 from typing import NamedTuple, Optional
 
@@ -17,16 +10,7 @@ QUARTER_LABELS = {1: "Q1 (Jan-Mär)", 2: "Q2 (Apr-Jun)", 3: "Q3 (Jul-Sep)", 4: "
 
 
 class PeriodSelector(NamedTuple):
-    """The two linked dropdown elements making up a period selector.
-
-    Attributes:
-        year_select: Dropdown restricted to years that have readings.
-        quarter_select: Dropdown restricted to quarters with readings
-            within the currently selected year; updates automatically
-            when `year_select` changes.
-        has_data: Whether any period at all was available to select. If
-            `False`, both dropdowns are empty and disabled.
-    """
+    """The two linked dropdown elements making up a period selector."""
 
     year_select: ui.select
     quarter_select: ui.select
@@ -34,27 +18,14 @@ class PeriodSelector(NamedTuple):
 
     @property
     def selected_period(self) -> Optional[tuple[int, int]]:
-        """The currently selected `(year, quarter)`, if any.
-
-        Returns:
-            A `(year, quarter)` tuple, or `None` if nothing is selectable.
-        """
+        """The currently selected `(year, quarter)`, if any."""
         if self.year_select.value is None or self.quarter_select.value is None:
             return None
         return int(self.year_select.value), int(self.quarter_select.value)
 
 
 def build_period_selector(available: dict[int, set[int]]) -> PeriodSelector:
-    """Create a year dropdown and a dependent quarter dropdown.
-
-    Args:
-        available: Mapping of year to the set of quarters with data, as
-            returned by `app.domain.period.list_available_periods`.
-
-    Returns:
-        A `PeriodSelector` with both dropdowns already added to the
-        current NiceGUI context.
-    """
+    """Create a year dropdown and a dependent quarter dropdown."""
     if not available:
         year_select = ui.select({}, label="Jahr").classes("w-28")
         quarter_select = ui.select({}, label="Quartal").classes("w-48")
@@ -74,11 +45,7 @@ def build_period_selector(available: dict[int, set[int]]) -> PeriodSelector:
     ).classes("w-48")
 
     def on_year_change() -> None:
-        """Refresh the quarter dropdown to match the newly selected year.
-
-        Returns:
-            None.
-        """
+        """Refresh the quarter dropdown to match the newly selected year."""
         options = quarter_options_for_year(int(year_select.value))
         new_value = max(options) if options else None
         quarter_select.set_options(options, value=new_value)

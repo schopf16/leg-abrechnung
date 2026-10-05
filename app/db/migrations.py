@@ -1,30 +1,11 @@
-"""Explicit, numbered database migrations.
-
-Every schema change is expressed as a new entry in ``MIGRATIONS`` with the
-next consecutive version number. Migrations are plain SQL scripts executed
-in order; nothing is ever edited in place, so old backups can always be
-brought up to the current schema by replaying the migrations they are
-missing (see :mod:`app.db.schema`).
-
-To add a schema change: append a new ``Migration`` with
-``version = last_version + 1`` and a short ``description``. Never renumber
-or remove existing entries.
-"""
+"""Explicit, numbered database migrations."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Migration:
-    """A single, immutable schema migration step.
-
-    Attributes:
-        version: Target schema version this migration brings the database
-            to. Must be exactly one higher than the previous migration.
-        description: Short human-readable summary, shown in logs.
-        sql: One or more SQL statements (semicolon separated) applied via
-            ``executescript``.
-    """
+    """A single, immutable schema migration step."""
 
     version: int
     description: str
@@ -1689,6 +1670,283 @@ Freundliche Grüsse';
             ALTER TABLE site ADD COLUMN locality_confirmed TEXT NOT NULL DEFAULT '';
             ALTER TABLE person ADD COLUMN billing_address_confirmed TEXT NOT NULL DEFAULT '';
             ALTER TABLE person ADD COLUMN billing_city_confirmed TEXT NOT NULL DEFAULT '';
+        """,
+    ),
+    Migration(
+        version=52,
+        description="Message templates (Textbausteine) with attachments, a "
+        "per-person send log, and the Wallbox capacity the membership "
+        "contract asks for. Email texts used to live as column pairs on "
+        "leg_settings -- three of them, one each for the invoice and the two "
+        "dunning notices -- while the broadcast had no stored text at all "
+        "and was retyped every time. That shape cannot hold what the "
+        "administrator needs next: a text per step of the Aufnahme and "
+        "Austritt processes, and **several per step**, because a reminder "
+        "is a second text about the same step. "
+        "`trigger_kind` is the whole vocabulary: a template is due either "
+        "'step_done' (the step has a date, so the mail reports something "
+        "that happened) or 'step_pending' (the step is still open, which is "
+        "where `deadline_days` lives -- 30 days for a contract that has not "
+        "come back). Nothing sends by itself: the trigger decides when a "
+        "button appears, never when a mail goes out. "
+        "An attachment's `role` is why the filled-in membership contract is "
+        "declared in data rather than recognised by filename: that one is "
+        "not attached but **generated** -- page 1 from the person's own "
+        "record, pages 2 onward from the stored original. "
+        "person_message_log is dunning_log's shape applied to this, and it "
+        "is also what the interface reads: it answers 'have I already sent "
+        "this to this person, and when', which is the administrator's own "
+        "safeguard against sending twice. "
+        "The three existing texts are carried over by "
+        "app.db.schema._seed_message_templates, not by this migration: on a "
+        "fresh database the leg_settings row does not exist yet when "
+        "migrations run (it is seeded afterwards), so an INSERT..SELECT here "
+        "copied nothing and a new installation ended up with no invoice text "
+        "at all. Seeding sits beside _seed_default_settings and handles both "
+        "cases with one code path. The six columns stay where they are, "
+        "unread, exactly as leg_settings.leg_founding_min_persons does -- old "
+        "migrations are never rewritten.",
+        sql="""
+            CREATE TABLE message_template (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                occasion TEXT NOT NULL,
+                step TEXT NOT NULL DEFAULT '',
+                trigger_kind TEXT NOT NULL DEFAULT '',
+                deadline_days INTEGER,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE message_template_attachment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id INTEGER NOT NULL
+                    REFERENCES message_template(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL,
+                role TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX idx_message_template_attachment_template
+                ON message_template_attachment(template_id);
+
+            CREATE TABLE person_message_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at TEXT NOT NULL,
+                person_id INTEGER NOT NULL
+                    REFERENCES person(id) ON DELETE CASCADE,
+                template_id INTEGER
+                    REFERENCES message_template(id) ON DELETE SET NULL,
+                occasion TEXT NOT NULL,
+                step TEXT NOT NULL DEFAULT '',
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                recipient_emails TEXT NOT NULL,
+                attachment_filenames TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX idx_person_message_log_person
+                ON person_message_log(person_id);
+
+            ALTER TABLE metering_point ADD COLUMN wallbox_capacity_kw REAL;
+        """,
+    ),
+    Migration(
+        version=53,
+        description="Tick what gets attached automatically, and keep the LEG's "
+        "own documents in one place. Migration 52 put a `role` on each "
+        "attachment, so the dialog had to ask 'treat new attachments as' per "
+        "upload -- which the administrator could not make sense of, and "
+        "rightly: the question is not what kind of file this is, it is "
+        "**which of our documents should go along**. That is a checkbox per "
+        "document, and the list of documents will grow. "
+        "So `message_template.auto_attachments` holds the keys of a declared "
+        "registry (`app.domain.auto_attachments`), newline separated, and "
+        "adding a document later is one entry there plus an upload -- no "
+        "migration and no change to how the dialog looks, the same bargain "
+        "`app.gui.filter_bar` makes for filters. "
+        "`leg_document` is where those documents live, keyed by the same "
+        "registry key: the blank Gesellschaftsvertrag is a LEG-wide form, not "
+        "something belonging to one text, so it is uploaded once under "
+        "Einstellungen and every template can tick it. In the database rather "
+        "than beside it, so it travels with every backup and it stays "
+        "knowable which version went out. "
+        "`message_template_attachment.role` is left in place and unread, the "
+        "same treatment `leg_settings.leg_founding_min_persons` got -- old "
+        "migrations are never rewritten.",
+        sql="""
+            ALTER TABLE message_template
+                ADD COLUMN auto_attachments TEXT NOT NULL DEFAULT '';
+
+            CREATE TABLE leg_document (
+                key TEXT PRIMARY KEY,
+                filename TEXT NOT NULL,
+                content BLOB NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """,
+    ),
+    Migration(
+        version=54,
+        description="Give the LEG's own address a house number field of its "
+        "own. It had street and number in one box labelled 'Strasse', and "
+        "that cost the administrator the number: the address check compares "
+        "the box against street names, so 'Im Feld 3' matched nothing, it "
+        "offered 'Im Feld', and clicking Ja wrote that over the whole value. "
+        "One field, one meaning -- the same shape `person.billing_house_number` "
+        "and `site.house_number` already have, which is also why the address "
+        "check now works here exactly as it does there. "
+        "The QR-bill gains by it too: the Swiss standard has separate street "
+        "and house-number fields and `qrbill` takes them separately, while "
+        "this crammed both into `street`. "
+        "The existing value is moved by `app.db.schema."
+        "_split_sender_house_number` rather than here, because 'the last word "
+        "if it starts with a digit' is not something SQLite can express "
+        "without a reverse() it does not have -- and it is one row.",
+        sql="""
+            ALTER TABLE leg_settings
+                ADD COLUMN address_house_number TEXT NOT NULL DEFAULT '';
+        """,
+    ),
+    Migration(
+        version=55,
+        description="Seed the four Textbausteine that had no text anywhere to "
+        "carry over. Migration 52 moved the invoice and the two Mahnungen out "
+        "of `leg_settings`, but the Aufnahme and Austritt mails had never "
+        "existed as stored texts -- they were typed by hand each time, which "
+        "is the whole reason this feature exists. Drafts, deliberately: the "
+        "administrator overwrites them on the Textbausteine page. "
+        "Seeded here rather than in `app.db.schema` because a migration runs "
+        "exactly once per database, so a draft that gets deleted stays "
+        "deleted -- a seeding routine that checks for absence on every start "
+        "would resurrect it. "
+        "The steps they hang off are `person_onboarding.STEPS` and "
+        "`person_offboarding.STEPS` attribute names; the welcome mail hangs "
+        "off 'leg_assigned_at' and not 'registered_at' because the attached "
+        "Beitrittserklärung prints the Trafokreis, which is blank until the "
+        "person is assigned.",
+        sql="""
+            INSERT INTO message_template
+                (name, occasion, step, trigger_kind, deadline_days,
+                 subject, body, sort_order, created_at, auto_attachments)
+            VALUES
+                ('Willkommen', 'onboarding', 'leg_assigned_at', 'step_done',
+                 NULL,
+                 'Willkommen in der LEG',
+                 '{briefanrede}
+
+schön, dass Sie bei unserer lokalen Elektrizitätsgemeinschaft mitmachen. Ihr
+Messpunkt ist einem Trafokreis zugeteilt, damit sind die Vorbereitungen
+abgeschlossen.
+
+Im Anhang finden Sie die Beitrittserklärung und den Gesellschaftsvertrag. Die
+erste Seite haben wir mit Ihren Angaben ausgefüllt. Bitte prüfen Sie diese,
+unterschreiben Sie das Blatt und senden Sie es uns zurück.
+
+Ihre Kundennummer lautet {kundennummer}. Bitte geben Sie sie bei Rückfragen an.
+
+Freundliche Grüsse',
+                 40, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 'membership_contract'),
+
+                ('Erinnerung Gesellschaftsvertrag', 'onboarding',
+                 'contract_signed_at', 'step_pending', 30,
+                 'Erinnerung: Gesellschaftsvertrag',
+                 '{briefanrede}
+
+vor einiger Zeit haben wir Ihnen die Beitrittserklärung und den
+Gesellschaftsvertrag zugestellt. Das unterschriebene Exemplar ist bei uns
+noch nicht eingetroffen.
+
+Bitte senden Sie es uns zu -- ohne Ihre Unterschrift können wir die Teilnahme
+nicht abschliessen. Sollten die Unterlagen nicht mehr auffindbar sein, melden
+Sie sich kurz bei uns, wir stellen sie erneut zu.
+
+Freundliche Grüsse',
+                 50, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ''),
+
+                ('Bei der BKW angemeldet', 'onboarding', 'bkw_registered_at',
+                 'step_done', NULL,
+                 'Ihre Anmeldung bei der BKW',
+                 '{briefanrede}
+
+wir haben Ihren Messpunkt bei der BKW für die Elektrizitätsgemeinschaft
+angemeldet.
+
+Ein Schritt fehlt noch, und den können nur Sie selbst machen: Bitte melden Sie
+sich unter my.bkw.ch an und bestätigen Sie dort in Ihrem Profil die Teilnahme.
+Erst danach gibt die BKW den Messpunkt frei.
+
+Sobald die Bestätigung bei der BKW eingetroffen ist, sind Sie dabei, und Sie
+hören es von uns.
+
+Freundliche Grüsse',
+                 60, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ''),
+
+                ('Austritt bestätigt', 'offboarding',
+                 'metering_point_exit_at', 'step_done', NULL,
+                 'Ihr Austritt aus der Elektrizitätsgemeinschaft',
+                 '{briefanrede}
+
+wir bestätigen Ihren Austritt. Das Austrittsdatum Ihres Messpunkts ist
+festgelegt und der BKW gemeldet.
+
+Bis zu diesem Datum rechnen wir wie gewohnt ab. Die letzte Abrechnung erhalten
+Sie nach Ablauf des laufenden Quartals.
+
+Freundliche Grüsse',
+                 70, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '');
+        """,
+    ),
+    Migration(
+        version=56,
+        description="Say how a logged message reached the person. The feature "
+        "arrives on a deployment where 77 of 91 participants already hold the "
+        "signed Gesellschaftsvertrag, handed over on paper -- the log starts "
+        "empty, so every one of those cards would offer to send the welcome "
+        "mail again. Marking one done without sending needs a row in the log, "
+        "and such a row must not claim a mail went out: 'manual' is the "
+        "difference, and the card prints 'von Hand' rather than a bare date. "
+        "Existing rows are 'email', which is what they were.",
+        sql="""
+            ALTER TABLE person_message_log
+                ADD COLUMN channel TEXT NOT NULL DEFAULT 'email';
+        """,
+    ),
+    Migration(
+        version=57,
+        description="Let a Textbaustein carry a signature, the same named "
+        "ones the Rundmail already offers (`signatures`). A reference and not "
+        "a copy of the text: a signature that changes has to change "
+        "everywhere, which is the whole reason those rows are named and "
+        "reusable -- and it is the opposite of the 'frozen at the time of "
+        "the action' pattern, because nothing has been communicated yet when "
+        "a template is edited. What *was* sent stays frozen in "
+        "`person_message_log`, which stores the composed body. NULL means no "
+        "signature, which is where every existing template starts.",
+        sql="""
+            ALTER TABLE message_template
+                ADD COLUMN signature_id INTEGER REFERENCES signatures(id);
+        """,
+    ),
+    Migration(
+        version=58,
+        description="How many Wohneinheiten a Standort has, typed in by "
+        "hand. It cannot be derived: a metering point only exists once "
+        "somebody has signed up, so counting those answers who is already "
+        "in, never how many could be -- and the administrator walks the "
+        "neighbourhoods to find out. One for a Einfamilienhaus, several for "
+        "a Mehrfamilienhaus. "
+        "NULL and not 0 for a Standort nobody has counted yet: 'not "
+        "surveyed' and 'nobody lives here' are different statements, and "
+        "`app.domain.statistics.substation_area_potential` has to report the "
+        "first one rather than quietly adding nothing.",
+        sql="""
+            ALTER TABLE site
+                ADD COLUMN dwelling_count INTEGER;
         """,
     ),
 ]

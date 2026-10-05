@@ -1,12 +1,4 @@
-"""Tests for a couple held as one Person: two names, two addresses, one bill.
-
-The model side is cheap to check and easy to get wrong in ways that reach a
-real letter -- an address block that cannot be matched to a salutation, a
-payment slip that refuses an over-long name. The click paths at the bottom
-exist because a page rendering proves only that it builds: the "Nur
-Genossenschafter" switch and the form's own save handler are driven for
-real (see CLAUDE.md on the nicegui 3.16 upload handler).
-"""
+"""Tests for a couple held as one Person: two names, two addresses, one bill."""
 
 from datetime import date
 
@@ -21,14 +13,7 @@ from app.pdf.qr_bill_render import QR_NAME_MAX_LENGTH, qr_debtor_name, qr_debtor
 
 
 def _couple(**overrides) -> Person:
-    """Build a Person naming two people.
-
-    Args:
-        **overrides: Fields to override on the person.
-
-    Returns:
-        An unpersisted `Person` holding a couple.
-    """
+    """Build a Person naming two people."""
     fields = dict(
         id=None,
         salutation="Frau",
@@ -143,10 +128,7 @@ def test_deactivating_records_the_date_and_reactivating_clears_it(db):
 
 
 def test_a_person_deactivated_before_the_column_existed_has_no_date(db):
-    """Migration 50 leaves the date NULL rather than inventing one.
-
-    A made-up date would be printed on a list as though it were recorded.
-    """
+    """Migration 50 leaves the date NULL rather than inventing one."""
     person_id = person_repo.create(db, _couple())
     # Exactly what the old `set_active` did, and what migration 50 left behind.
     db.execute("UPDATE person SET active = 0, deactivated_at = NULL WHERE id = ?", (person_id,))
@@ -169,12 +151,7 @@ def test_a_normal_couple_keeps_both_names_on_the_payment_part(db):
 
 
 def test_an_over_long_couple_name_falls_back_to_the_first_person(db):
-    """An unusable document is worse than a shortened name on the slip.
-
-    `qrbill` raises for a name over 70 characters, and that used to surface
-    as "check the QR-IBAN and sender address" -- an error about something
-    entirely unrelated, for an invoice that then did not exist at all.
-    """
+    """An unusable document is worse than a shortened name on the slip."""
     person = _couple(
         first_name="Anna-Katharina",
         last_name="von Muster-Lindenberg",
@@ -207,10 +184,7 @@ def test_the_full_name_still_appears_in_the_address_block(db):
 
 
 def test_an_over_long_single_name_is_truncated_rather_than_dropped(db):
-    """There is no first person to fall back to, so it is cut.
-
-    A name is still better than no bill.
-    """
+    """There is no first person to fall back to, so it is cut."""
     person = _couple(
         company="Ausserordentlich lange Liegenschaftsverwaltungs- und "
         "Immobilientreuhand Aktiengesellschaft Bern",
@@ -228,15 +202,7 @@ def test_an_over_long_single_name_is_truncated_rather_than_dropped(db):
 
 
 def _probe(page_callable, route: str) -> Client:
-    """Render one page function inside a throwaway NiceGUI client.
-
-    Args:
-        page_callable: Zero-argument callable rendering the page.
-        route: A unique probe route, since each `ui.page` registers itself.
-
-    Returns:
-        The client, whose `elements` hold what was rendered.
-    """
+    """Render one page function inside a throwaway NiceGUI client."""
     client = Client(ui.page(route)(lambda: None), request=None)
     with client:
         page_callable()
@@ -244,17 +210,7 @@ def _probe(page_callable, route: str) -> Client:
 
 
 def _labels(client: Client) -> list[str]:
-    """Collect the text of every rendered label and badge.
-
-    Badges as well as labels: the membership marker on a card is a
-    `ui.badge`, and checking only labels silently missed it.
-
-    Args:
-        client: The client to read.
-
-    Returns:
-        The non-empty texts.
-    """
+    """Collect the text of every rendered label and badge."""
     return [
         element.text
         for element in client.elements.values()
@@ -263,15 +219,7 @@ def _labels(client: Client) -> list[str]:
 
 
 def _switch(client: Client, label: str):
-    """Find one switch by its label.
-
-    Args:
-        client: The client to search.
-        label: The switch's German label.
-
-    Returns:
-        The matching switch element.
-    """
+    """Find one switch by its label."""
     matches = [
         element
         for element in client.elements.values()
@@ -284,15 +232,7 @@ def _switch(client: Client, label: str):
 
 
 def _set_switch(switch, value: bool) -> None:
-    """Flip a switch and fire its change handler, as a click would.
-
-    Args:
-        switch: The switch element.
-        value: The new value.
-
-    Returns:
-        None.
-    """
+    """Flip a switch and fire its change handler, as a click would."""
     assert switch._change_handlers, "der Schalter hat keinen Change-Handler -- er tut nichts"
     # Assigning `.value` is what NiceGUI itself does on a real click: the
     # setter runs `_handle_value_change`, which calls the registered
@@ -301,29 +241,13 @@ def _set_switch(switch, value: bool) -> None:
 
 
 def _rows(client):
-    """The entries of a list table.
-
-    The Personen list is a table since the card version cost 2'108
-    interface elements for 92 people, so what used to be read off the
-    screen is read off `rows`.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The row dicts.
-    """
+    """The entries of a list table."""
     table = next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
     return table.rows
 
 
 def test_the_list_names_both_of_a_couple():
-    """One customer, one row, two names.
-
-    The list shows Kunden-Nr., Name and Adresse; the second address and the
-    internal note are behind the eye, which the next test checks -- that is
-    the administrator's own cut: "alles andere dann hinter auge".
-    """
+    """One customer, one row, two names."""
     with connection_scope() as connection:
         person_repo.create(connection, _couple(note="Zahlt per Dauerauftrag."))
 
@@ -351,11 +275,7 @@ def test_the_detail_page_still_carries_what_the_list_dropped():
 
 
 def test_the_cooperative_filter_actually_filters():
-    """Pressing the switch has to change the list, not just exist.
-
-    The filter is the members' list: whatever it leaves visible is what
-    gets printed.
-    """
+    """Pressing the switch has to change the list, not just exist."""
     with connection_scope() as connection:
         member_id = person_repo.create(connection, _couple(last_name="Mitglied"))
         person_repo.create(
@@ -431,25 +351,14 @@ def test_the_detail_page_shows_the_membership_history_and_the_salutation():
 
 
 def _persons_page() -> None:
-    """Render the persons list page.
-
-    Returns:
-        None.
-    """
+    """Render the persons list page."""
     from app.gui.pages import persons as persons_module
 
     persons_module.persons_page()
 
 
 def _person_detail_page(person_id: int) -> None:
-    """Render one person's detail page.
-
-    Args:
-        person_id: The person to show.
-
-    Returns:
-        None.
-    """
+    """Render one person's detail page."""
     from app.gui.pages import persons as persons_module
 
     persons_module.person_detail_page(person_id)

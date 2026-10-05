@@ -1,16 +1,4 @@
-"""Tests for the one problem marker and filter every list uses.
-
-The triangle carries **no text** -- it says "look at this one" and nothing
-more, exactly like the eye and the pencil beside it. What is wrong is shown
-by the eye and fixed by the pencil, because a table row has no space to
-explain a finding. The first attempt at explaining in the list proved the
-point: a name beside "Meinten Sie: Untere Zollgasse?" said neither which
-field was meant nor what stood in it.
-
-The filter exists so the marked handful can be worked off without scrolling
-ninety entries, and disappears while nothing is marked -- a control that can
-only ever empty the list is clutter.
-"""
+"""Tests for the one problem marker and filter every list uses."""
 
 import pytest
 from nicegui import Client, ui
@@ -28,15 +16,7 @@ from app.models.person import Person
 
 
 def _person(last_name: str = "Muster", street: str = "Erstweg") -> int:
-    """Create a person with a billing address.
-
-    Args:
-        last_name: Their surname.
-        street: Billing street.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person with a billing address."""
     with connection_scope() as connection:
         return person_repo.create(
             connection,
@@ -64,11 +44,7 @@ def _person(last_name: str = "Muster", street: str = "Erstweg") -> int:
 
 
 def _persons_page() -> Client:
-    """Render the Personen page.
-
-    Returns:
-        The client holding the rendered page.
-    """
+    """Render the Personen page."""
     from app.gui.pages import persons as persons_module
 
     client = Client(ui.page("/probe-problem-filter")(lambda: None), request=None)
@@ -78,14 +54,7 @@ def _persons_page() -> Client:
 
 
 def _switch(client: Client):
-    """The problem filter on a rendered page.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The switch element.
-    """
+    """The problem filter on a rendered page."""
     matches = [
         element
         for element in client.elements.values()
@@ -96,46 +65,17 @@ def _switch(client: Client):
 
 
 def _table(client: Client):
-    """The list's table.
-
-    The Personen list is a table since the card version cost 2'108
-    interface elements for 92 people. A table is one element with its rows
-    as data, so what used to be counted on screen is counted in `rows`.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The first table element.
-    """
+    """The list's table."""
     return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
 
 
 def _rows(client: Client) -> int:
-    """How many entries the list shows.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The count.
-    """
+    """How many entries the list shows."""
     return len(_table(client).rows)
 
 
 def _markers(client: Client) -> int:
-    """How many entries carry a warning triangle.
-
-    A table cell is markup, not an element, so the flag on the row is what
-    the slot reads -- see `TABLE_MARKER_HTML`. Card lists are still counted
-    by their icons.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The count.
-    """
+    """How many entries carry a warning triangle."""
     tables = [element for element in client.elements.values() if element.__class__.__name__ == "Table"]
     if tables:
         return sum(1 for row in tables[0].rows if row.get("has_problem"))
@@ -158,11 +98,7 @@ def test_a_faulty_entry_is_marked(address_register):
 
 
 def test_the_marker_carries_no_text(address_register):
-    """It says "look at this one" and nothing else.
-
-    A row cannot explain a finding, and a tooltip nobody hovers is not an
-    explanation either -- the eye shows it and the pencil fixes it.
-    """
+    """It says "look at this one" and nothing else."""
     from app.gui.problem_markers import TABLE_MARKER_HTML
 
     _person(street="Nirgendweg")
@@ -178,8 +114,7 @@ def test_the_marker_carries_no_text(address_register):
 
 
 def test_the_filter_shows_only_the_marked_entries(address_register):
-    """Driven rather than rendered: a switch that is drawn but not wired
-    looks exactly the same on screen."""
+    """Driven rather than rendered: a switch that is drawn but not wired looks exactly the same on..."""
     _person(street="Nirgendweg")
     _person(street="Erstweg")
     client = _persons_page()
@@ -308,15 +243,7 @@ def test_problems_are_grouped_by_the_record_they_belong_to(address_register):
 
 
 def _build_a_broken_deployment() -> None:
-    """One Trafokreis with a single feed-in meter and no LEG.
-
-    That is two findings at once, on two different lists: the meter has no
-    LEG, and the Trafokreis has only one direction so nothing can be shared
-    there.
-
-    Returns:
-        None.
-    """
+    """One Trafokreis with a single feed-in meter and no LEG."""
     from app.models import metering_point as metering_point_repo
     from app.models import site as site_repo
     from app.models import substation_area as substation_area_repo
@@ -358,16 +285,7 @@ def _build_a_broken_deployment() -> None:
 
 
 def _page(module: str, function: str, probe: str) -> Client:
-    """Render one list page.
-
-    Args:
-        module: Module under `app.gui.pages`.
-        function: The page function's name.
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        The client holding the rendered page.
-    """
+    """Render one list page."""
     import importlib
 
     page_module = importlib.import_module(f"app.gui.pages.{module}")
@@ -385,12 +303,7 @@ def _page(module: str, function: str, probe: str) -> Client:
     ],
 )
 def test_a_card_list_marks_and_offers_the_filter(module, function, probe):
-    """The overview says "7 Messpunkte ohne LEG" and links to the list.
-
-    Before the summarising it named every one of them; without a marker the
-    reader arrives and cannot tell which. That is the gap this closes, and
-    it is the administrator's own report.
-    """
+    """The overview says "7 Messpunkte ohne LEG" and links to the list."""
     _build_a_broken_deployment()
 
     client = _page(module, function, probe)
@@ -408,11 +321,7 @@ def test_a_sound_list_shows_no_marker_and_no_filter():
 
 
 def test_the_table_list_marks_its_rows(address_register):
-    """Standorte is a table, so its marker is markup rather than an element.
-
-    The flag on the row is what the slot reads, so that is what is checked
-    here; `TABLE_MARKER_HTML` keeps the two renderings from drifting.
-    """
+    """Standorte is a table, so its marker is markup rather than an element."""
     from app.models import site as site_repo
     from app.models.site import Site
 
@@ -470,11 +379,7 @@ def test_the_table_filter_reduces_to_the_marked_rows(address_register):
 
 
 def test_the_table_marker_comes_from_the_shared_constant():
-    """A table renders markup, a card renders elements.
-
-    The triangle therefore exists twice, and the slot is built from the
-    constant so the two cannot drift apart.
-    """
+    """A table renders markup, a card renders elements."""
     from app.gui.problem_markers import TABLE_MARKER_HTML
 
     client = _page("sites", "sites_page", "/probe-marker-site-slot")
@@ -490,14 +395,7 @@ def test_the_table_marker_comes_from_the_shared_constant():
 
 
 def _labels(client: Client) -> list[str]:
-    """Every label text on a rendered page or dialog.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The non-empty texts.
-    """
+    """Every label text on a rendered page or dialog."""
     return [
         element.text
         for element in client.elements.values()
@@ -506,12 +404,7 @@ def _labels(client: Client) -> list[str]:
 
 
 def test_the_detail_page_names_the_finding(address_register):
-    """The marker says "look at this one"; this is the looking.
-
-    Without it the triangle is a dead end -- which is how the administrator
-    met it: a summary line in the overview, a link to a list, and nothing
-    saying what was wrong or where.
-    """
+    """The marker says "look at this one"; this is the looking."""
     person_id = _person(street="Nirgendweg")
 
     from app.gui.pages import persons as persons_module
@@ -539,11 +432,7 @@ def test_a_sound_record_shows_no_box_on_its_detail_page(address_register):
 
 
 def test_the_dialog_leaves_the_address_finding_at_its_field(address_register):
-    """It is already shown beside the input it is about.
-
-    Repeating it in the block at the top would say the same thing twice,
-    once far from the field it concerns.
-    """
+    """It is already shown beside the input it is about."""
     from app.db.connection import connection_scope as scope
     from app.gui.person_form import open_person_form
     from app.models import person as repo
@@ -562,11 +451,7 @@ def test_the_dialog_leaves_the_address_finding_at_its_field(address_register):
 
 
 def test_the_dialog_names_a_finding_that_has_no_field(address_register):
-    """Everything that is not shown beside an input belongs in the block.
-
-    A cooperative member with no shares has no field of its own in this
-    dialog, so without the block the pencil would say nothing.
-    """
+    """Everything that is not shown beside an input belongs in the block."""
     from datetime import date
 
     from app.db.connection import connection_scope as scope

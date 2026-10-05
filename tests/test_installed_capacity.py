@@ -1,10 +1,4 @@
-"""Tests for the installed PV/battery totals shown on the overview.
-
-These figures are informational -- nothing bills from them -- which is
-exactly why they must not quietly disagree with the metering points they
-claim to summarise, or look complete while several meters carry no value at
-all. Same reasoning as `tests/test_quarter_statistics.py`.
-"""
+"""Tests for the installed PV/battery totals shown on the overview."""
 
 from app.domain.demo_data import create_demo_data
 from app.domain.statistics import CAPACITY_PLAUSIBLE_MAX, installed_capacity_totals
@@ -16,14 +10,7 @@ from app.models.site import Site
 
 
 def _site(db) -> int:
-    """Create a site to hang metering points off.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a site to hang metering points off."""
     return site_repo.create(
         db,
         Site(
@@ -40,19 +27,7 @@ def _site(db) -> int:
 
 
 def _meter(db, site_id, *, direction=DIRECTION_FEED_IN, pv=None, battery=None, suffix="01") -> int:
-    """Create one metering point with the given capacities.
-
-    Args:
-        db: Database connection fixture.
-        site_id: Site to attach it to.
-        direction: Consumption or feed-in.
-        pv: `pv_capacity_kwp`, or `None`.
-        battery: `battery_capacity_kwh`, or `None`.
-        suffix: Two digits making the designation unique.
-
-    Returns:
-        The new metering point's id.
-    """
+    """Create one metering point with the given capacities."""
     return metering_point_repo.create(
         db,
         MeteringPoint(
@@ -125,11 +100,7 @@ def test_none_zero_and_an_absurd_value_are_all_excluded(db):
 
 
 def test_a_pv_figure_on_a_consumption_meter_is_discarded(db):
-    """Installed production belongs on the feed-in side.
-
-    The field is editable on both directions, so the sum has to be the one
-    that refuses it rather than trusting the form.
-    """
+    """Installed production belongs on the feed-in side."""
     site_id = _site(db)
     _meter(db, site_id, direction=DIRECTION_FEED_IN, pv=9.0, suffix="01")
     _meter(db, site_id, direction=DIRECTION_CONSUMPTION, pv=99.0, suffix="02")

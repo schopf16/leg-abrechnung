@@ -1,34 +1,4 @@
-"""dunning: detects who needs a dunning notice and sends it.
-
-Deliberately follows the LEG's own 2-stage Reglement, not the generic
-3-stage/fee model common in accounting software (see the receivables plan
-for the research behind this decision):
-
-    Level 0 -> 1: the invoice's own due date (`BillingRunItem.due_date`)
-        has passed. The 1. dunning notice grants a new deadline
-        (`LegSettings.dunning_new_deadline_days` days) and warns that
-        missing it leads to a membership-termination review -- the claim
-        itself is never affected by that review, see
-        `app.models.person_offboarding`.
-    Level 1 -> 2: the new deadline granted by the 1. dunning notice has also
-        passed. The 2. dunning notice is the trigger point for that review
-        (never automatic -- a human always confirms the actual exclusion,
-        see `app.gui.pages.dunning`).
-    No fee at any stage -- not contractually provided for.
-
-Multiple overdue items for the same person are consolidated into a single
-letter/email (mirroring how Banana Buchhaltung's dunning run works), with the
-*highest* stage among them driving the letter's tone -- a documented
-simplification given how rarely a small LEG's member would have more than
-one overdue quarter at once.
-
-Eligibility is gated by the person's overall running balance (see
-`app.models.account_entry`), not just this item's own paid/unpaid state:
-a payment matched elsewhere (e.g. a generic correction, or a prepayment
-credit) can already cover this item even if no payment was matched to it
-specifically -- checking the aggregate balance avoids sending a dunning notice to
-someone who is, overall, already square.
-"""
+"""dunning: detects who needs a dunning notice and sends it."""
 
 import re
 from dataclasses import dataclass
@@ -38,7 +8,9 @@ from typing import Optional
 
 from app.config import GraphConfig
 from app.emailing import graph_client
+from app.domain import message_templates
 from app.emailing.templates import person_placeholder_values, render_template
+from app.models.message_template import OCCASION_DUNNING1, OCCASION_DUNNING2
 from app.models import account_entry as account_entry_repo
 from app.models import billing_run as billing_run_repo
 from app.models import dunning_log as dunning_log_repo
@@ -57,29 +29,7 @@ DUNNING_EXTRA_PLACEHOLDERS = ("betrag", "neue_frist")
 
 @dataclass
 class DunningCandidate:
-    """One person currently due for a dunning notice, with every open item that
-    should be included in the (single, consolidated) letter.
-
-    Attributes:
-        person: The person to send the dunning notice to.
-        items: Every `BillingRunItem` newly reaching a dunning level, oldest
-            first.
-        item_target_levels: Each included item's own individually-computed
-            target stage, keyed by `item.id` -- kept separate from `items`
-            (a plain list, for display/PDF code that just wants the
-            objects) so `send_dunning` can advance every item to *its own*
-            stage rather than force-advancing all of them to the letter's
-            highest one (see that function's docstring for why this
-            distinction matters).
-        level: The stage that drives the *letter's* tone/template -- the
-            highest stage among `items` (see module docstring for why the
-            highest, not each separately, for the letter's wording).
-        total_open_rappen: The person's current overall balance (positive =
-            owed to the LEG), shown as the amount due in the letter --
-            not simply the sum of `items`' own amounts, since that could
-            understate or overstate what is actually still owed once
-            payments/credits elsewhere on the account are accounted for.
-    """
+    """One person currently due for a dunning notice, with every open item that should be included in..."""
 
     person: Person
     items: list[BillingRunItem]
@@ -89,20 +39,7 @@ class DunningCandidate:
 
 
 def _next_level(item: BillingRunItem, today: date, new_deadline_days: int) -> Optional[int]:
-    """Determine whether `item` newly reaches the next dunning level today.
-
-    Args:
-        item: The billing run item to check.
-        today: Reference date.
-        new_deadline_days: `LegSettings.dunning_new_deadline_days`, used only
-            as a fallback for the 1->2 check -- see the `item.dunning_level
-            == 1` branch below for why the item's own frozen value is
-            preferred.
-
-    Returns:
-        `1` or `2` if `item` is newly eligible for that stage, else `None`
-        (not yet due, or already at the final stage `2`).
-    """
+    """Determine whether `item` newly reaches the next dunning level today."""
     if item.dunning_level == 0:
         if not item.due_date:
             return None
@@ -124,15 +61,7 @@ def _next_level(item: BillingRunItem, today: date, new_deadline_days: int) -> Op
 
 
 def list_due_dunnings(connection) -> list[DunningCandidate]:
-    """Find every person currently due for a (possibly consolidated) dunning notice.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `DunningCandidate` per person needing a dunning notice, in no particular
-        order.
-    """
+    """Find every person currently due for a (possibly consolidated) dunning notice."""
     settings = settings_repo.get_settings(connection)
     today = date.today()
     saldi = account_entry_repo.get_all_saldi(connection)
@@ -169,44 +98,15 @@ def list_due_dunnings(connection) -> list[DunningCandidate]:
 
 
 def _sanitize_filename_part(text: str) -> str:
-    """Turn arbitrary text into a safe filesystem path segment.
-
-    Mirrors `app.pdf.export_service._sanitize_filename_part` (kept as a
-    small local copy rather than importing a private helper across
-    modules).
-
-    Args:
-        text: Text to sanitize.
-
-    Returns:
-        A filesystem-safe version, capped at 60 characters.
-    """
+    """Turn arbitrary text into a safe filesystem path segment."""
     cleaned = re.sub(r"[^\w\säöüÄÖÜ-]", "_", text, flags=re.UNICODE).strip()
     return cleaned[:60] or "Person"
 
 
-def render_dunning_text(settings, candidate: DunningCandidate) -> tuple[str, str]:
-    """Render a dunning notice's subject/body from the stage-appropriate template.
-
-    The single source of truth for this rendering -- both `send_dunning`
-    (below) and the GUI's pre-send preview (see `app.gui.pages.dunning`)
-    call this, so the preview Michael reviews can never silently drift
-    from what actually gets sent.
-
-    Args:
-        settings: Current `LegSettings` (provides the two dunning notice
-            templates and `dunning_new_deadline_days`).
-        candidate: The `DunningCandidate` to render for.
-
-    Returns:
-        `(subject, body)`, placeholders already substituted.
-    """
-    if candidate.level == 1:
-        subject_template = settings.dunning1_email_subject
-        body_template = settings.dunning1_email_body
-    else:
-        subject_template = settings.dunning2_email_subject
-        body_template = settings.dunning2_email_body
+def render_dunning_text(connection, settings, candidate: DunningCandidate) -> tuple[str, str]:
+    """Render a dunning notice's subject/body from the stage-appropriate template."""
+    occasion = OCCASION_DUNNING1 if candidate.level == 1 else OCCASION_DUNNING2
+    subject_template, body_template = message_templates.text_for(connection, occasion)
 
     new_deadline = (date.today() + timedelta(days=settings.dunning_new_deadline_days)).strftime("%d.%m.%Y")
     values = {
@@ -218,32 +118,10 @@ def render_dunning_text(settings, candidate: DunningCandidate) -> tuple[str, str
 
 
 async def send_dunning(connection, config: Optional[GraphConfig], candidate: DunningCandidate) -> Path:
-    """Render, send (or leave for manual printing) and log one dunning notice.
-
-    Always generates the PDF (needed either as an email attachment or for
-    Michael to print/send by post -- mirrors `Person.paper_invoice`'s
-    existing invoice-email behavior). Always advances every included item
-    to *its own* target stage (not necessarily `candidate.level`, which is
-    only the letter's tone -- see `DunningCandidate.item_target_levels`) and
-    records a `dunning_log` entry, regardless of the send channel.
-
-    Args:
-        connection: Open SQLite connection.
-        config: Graph API credentials, or `None` if the person has no
-            email address / prefers paper -- must not be `None` if an
-            email will actually be attempted.
-        candidate: The `DunningCandidate` to process.
-
-    Returns:
-        Path of the generated PDF.
-
-    Raises:
-        app.emailing.graph_client.GraphAuthError: If credentials are invalid.
-        app.emailing.graph_client.GraphApiError: For any other send failure.
-    """
+    """Render, send (or leave for manual printing) and log one dunning notice."""
     settings = settings_repo.get_settings(connection)
     person = candidate.person
-    subject, body = render_dunning_text(settings, candidate)
+    subject, body = render_dunning_text(connection, settings, candidate)
 
     output_dir = OUTPUT_DIR / "Mahnungen" / date.today().isoformat()
     output_dir.mkdir(parents=True, exist_ok=True)

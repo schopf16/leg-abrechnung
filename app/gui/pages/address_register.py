@@ -1,14 +1,4 @@
-"""Adressregister page: how old the local copy is, and the button to renew it.
-
-One button and one date, plus the source reference swisstopo's terms require.
-The administrator should never have to find, download and place a file by
-hand, which is the whole reason this page exists rather than a note in the
-README.
-
-The progress bar here is the detailed view; the header line rendered by
-`app.gui.navigation` is what makes the update followable after leaving this
-page. Both read the same module-level state, so they cannot disagree.
-"""
+"""Adressregister page: how old the local copy is, and the button to renew it."""
 
 from nicegui import ui
 
@@ -22,33 +12,18 @@ _DATE_FORMAT = "%d.%m.%Y"
 
 
 def _format_count(value: int) -> str:
-    """Write a row count the way a German reader expects.
-
-    Args:
-        value: The count.
-
-    Returns:
-        E.g. `"3'303'319"`.
-    """
+    """Write a row count the way a German reader expects."""
     return f"{value:,}".replace(",", "'")
 
 
 @ui.page("/address-register")
 def address_register_page() -> None:
-    """Render the Adressregister page.
-
-    Returns:
-        None.
-    """
+    """Render the Adressregister page."""
     with page_frame("/address-register", "Adressregister"):
         container = ui.column().classes("w-full")
 
         def refresh() -> None:
-            """Redraw the card from the current register and task state.
-
-            Returns:
-                None.
-            """
+            """Redraw the card from the current register and task state."""
             container.clear()
             with container, ui.card().classes("w-full"):
                 info = read_info()
@@ -77,11 +52,7 @@ def address_register_page() -> None:
                 button = ui.button("Jetzt aktualisieren", icon="cloud_download")
 
                 def tick() -> None:
-                    """Mirror the running update into this card.
-
-                    Returns:
-                        None.
-                    """
+                    """Mirror the running update into this card."""
                     progress.visible = STATE.running
                     progress_label.visible = STATE.running
                     progress.value = STATE.progress
@@ -92,11 +63,7 @@ def address_register_page() -> None:
                 ui.timer(0.5, tick)
 
                 async def start() -> None:
-                    """Run the update, then redraw with the new figures.
-
-                    Returns:
-                        None.
-                    """
+                    """Run the update, then redraw with the new figures."""
                     if STATE.running:
                         return
                     ok = await run_update()

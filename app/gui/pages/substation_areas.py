@@ -1,21 +1,9 @@
-"""substation areas management page: list, search, create, edit, delete.
-
-Rendered as one card per substation area (not a single-row-per-substation area
-table): once note has any real content, a flat table either forces
-horizontal scrolling (wide fixed columns) or, if wrapped, very tall rows
-that push everything else below the fold -- neither is acceptable. Cards
-let the note wrap onto its own full-width line instead, so one entry
-takes the 2-3 lines it actually needs and no more (same rationale as
-`app.gui.pages.persons`).
-
-A substation area cannot be deleted while sites still reference it (see
-`app.models.substation_area.SubstationAreaInUseError`). Its `name` must be unique,
-checked live as the administrator types.
-"""
+"""substation areas management page: list, search, create, edit, delete."""
 
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.formatting import MISSING
 from app.domain.participant_mix import compute_participant_mix_for_substation_area
 from app.domain.quality_checks import SUBJECT_SUBSTATION_AREA
 from app.gui.filter_bar import FilterBar
@@ -27,6 +15,7 @@ from app.gui.safe_notify import safe_notify
 from app.gui.table_list import paged_table
 from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
 from app.models import site as site_repo
+from app.models.site import Site
 from app.models import substation_area as substation_area_repo
 from app.models.substation_area import SubstationArea, SubstationAreaInUseError
 
@@ -49,6 +38,7 @@ COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
     {"name": "bkw_designation", "label": "BKW-Bezeichnung", "field": "bkw_designation", "align": "left"},
     {"name": "sites_count", "label": "Standorte", "field": "sites_count", "align": "right"},
+    {"name": "dwellings", "label": "Wohneinheiten", "field": "dwellings", "align": "right"},
     {
         "name": "producer_consumer",
         "label": "Produzenten / Konsumenten",
@@ -83,15 +73,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge.
-
-    Args:
-        mix: The `app.domain.participant_mix.ParticipantMix` to display.
-
-    Returns:
-        A short text badge -- 🟢 if both sides are present, 🔴 if the
-        substation area is one-sided (or empty).
-    """
+    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge."""
     symbol = "🔴" if mix.is_one_sided else "🟢"
     # Metering points, not persons: these two numbers sit beside the
     # metering point count and have to add up against it.
@@ -101,23 +83,26 @@ def _mix_badge(mix) -> str:
     return text
 
 
+def _dwellings_cell(sites: list[Site]) -> str:
+    """The Wohneinheiten of this Trafokreis, saying how complete the count is.
+
+    The sum alone would read as the whole answer while half the addresses
+    have never been walked. "48 (3 offen)" says what it is, and an area with
+    nothing counted yet says so instead of claiming zero.
+    """
+    counted = [site.dwelling_count for site in sites if site.dwelling_count is not None]
+    missing = len(sites) - len(counted)
+    if not counted:
+        return MISSING if missing else ""
+    return f"{sum(counted)}" + (f" ({missing} offen)" if missing else "")
+
+
 def _to_row(
     connection,
     substation_area: SubstationArea,
-    site_ids: set[int],
+    own_sites: list[Site],
 ) -> dict:
-    """Convert a `substation area` into a row dict backing both the card and the printout.
-
-    Args:
-        connection: Open SQLite connection.
-        substation area: substation area to convert.
-        site_ids: This substation area's own site ids (preloaded by the
-            caller to avoid re-querying every site per row).
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS` and `render_card`,
-        plus a hidden `_search` key used for client-side filtering.
-    """
+    """Convert a `substation area` into a row dict backing both the card and the printout."""
     mix = compute_participant_mix_for_substation_area(connection, substation_area.id)
     # No "Potential für eigenes LEG" hint any more: both sides being present
     # says nothing about whether a dedicated LEG would work, and saying so
@@ -132,7 +117,8 @@ def _to_row(
         "id": substation_area.id,
         "name": substation_area.name,
         "bkw_designation": substation_area.bkw_designation,
-        "sites_count": len(site_ids),
+        "sites_count": len(own_sites),
+        "dwellings": _dwellings_cell(own_sites),
         "producer_consumer": producer_consumer,
         "hint": mix.hint,
         "note": substation_area.note,
@@ -142,11 +128,7 @@ def _to_row(
 
 @ui.page("/substation-areas")
 def substation_areas_page() -> None:
-    """Render the substation areas CRUD page with search.
-
-    Returns:
-        None.
-    """
+    """Render the substation areas CRUD page with search."""
     with page_frame("/substation-areas", "Trafokreise"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -201,11 +183,7 @@ def substation_areas_page() -> None:
         visible_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded rows by the search input's value."""
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
@@ -219,11 +197,7 @@ def substation_areas_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all substation areas from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all substation areas from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 sites = site_repo.list_all(connection)
@@ -231,7 +205,7 @@ def substation_areas_page() -> None:
                     _to_row(
                         connection,
                         substation_area,
-                        {s.id for s in sites if s.substation_area_id == substation_area.id},
+                        [s for s in sites if s.substation_area_id == substation_area.id],
                     )
                     for substation_area in substation_area_repo.list_all(connection)
                 ]
@@ -243,14 +217,7 @@ def substation_areas_page() -> None:
         search_input.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: SubstationArea | None) -> None:
-            """Open the create/edit dialog for a substation area.
-
-            Args:
-                existing: substation area to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a substation area."""
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
                 ui.label("Trafokreis bearbeiten" if existing else "Neuer Trafokreis").classes(
                     "text-lg font-bold"
@@ -284,13 +251,7 @@ def substation_areas_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
-                    """Check whether the current name input is already used by another substation area.
-
-                    Updates `duplicate_warning` as a side effect.
-
-                    Returns:
-                        `True` if the name is a duplicate of a different substation area.
-                    """
+                    """Check whether the current name input is already used by another substation area."""
                     typed = name.value.strip()
                     if not typed:
                         duplicate_warning.text = ""
@@ -304,11 +265,7 @@ def substation_areas_page() -> None:
                 name.on_value_change(lambda _: check_duplicate())
 
                 def save() -> None:
-                    """Validate the form and persist the substation area.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and persist the substation area."""
                     if not name.value.strip():
                         error_label.text = "Name darf nicht leer sein."
                         return
@@ -353,27 +310,13 @@ def substation_areas_page() -> None:
             dialog.open()
 
         def on_edit(row: dict) -> None:
-            """Card edit-button handler: open the edit dialog for this row.
-
-            Args:
-                row: Row dict of the substation area to edit.
-
-            Returns:
-                None.
-            """
+            """Card edit-button handler: open the edit dialog for this row."""
             with connection_scope() as connection:
                 existing = substation_area_repo.get(connection, row["id"])
             open_form(existing)
 
         def on_remove(row: dict) -> None:
-            """Card delete-button handler: delete the substation area after confirmation.
-
-            Args:
-                row: Row dict of the substation area to delete.
-
-            Returns:
-                None.
-            """
+            """Card delete-button handler: delete the substation area after confirmation."""
             substation_area_id = row["id"]
             name = row["name"]
 

@@ -110,9 +110,7 @@ def test_valid_qrr_reference_auto_matches(db):
 
 
 def test_qrr_reference_with_mismatched_customer_number_falls_through_to_candidates(db):
-    """A structurally valid reference whose decoded customer_number does not
-    match the item's actual person must not be trusted -- it should fall
-    back to the suggestion path instead of a wrong auto-match."""
+    """A structurally valid reference whose decoded customer_number does not match the item's actual..."""
     person = _person(db, iban="CH9300762011623852957")
     run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
     # A reference encoding a *different* customer_number than the real one.
@@ -187,8 +185,7 @@ def test_no_candidates_at_all_results_in_unmatched(db):
 
 
 def test_prepayment_before_any_invoice_exists_still_finds_a_candidate(db):
-    """A person with zero billing history yet (a prepayment) must still
-    be findable by name/IBAN -- amount matching is a bonus, not a filter."""
+    """A person with zero billing history yet (a prepayment) must still be findable by name/IBAN --..."""
     person = _person(db, name="Vorauszahler")
     tx = _tx(counterparty_name="Vorauszahler", amount_rappen=99_999)
 
@@ -200,8 +197,7 @@ def test_prepayment_before_any_invoice_exists_still_finds_a_candidate(db):
 
 
 def test_book_transaction_records_actual_paid_amount_on_overpayment(db):
-    """Paying more than invoiced must book the real amount -- the excess
-    simply becomes a credit on the running balance, no special-casing."""
+    """Paying more than invoiced must book the real amount -- the excess simply becomes a credit on the..."""
     person = _person(db)
     _run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
     tx = _tx(amount_rappen=15_000)
@@ -327,9 +323,7 @@ def test_undo_match_removes_account_entry_and_resets_status(db):
 
 
 def test_double_payment_of_the_same_invoice_via_two_bank_references(db):
-    """Two distinct real bank transactions (different bank_reference)
-    paying the same invoice must both book -- see the receivables plan's
-    explicit "no one-payment-per-invoice lock" requirement."""
+    """Two distinct real bank transactions (different bank_reference) paying the same invoice must both..."""
     person = _person(db)
     _run_id, item_id = _billing_item(db, person.id, net_amount_rappen=10_000)
     batch_id = bank_transaction_repo.create_batch(
@@ -360,9 +354,7 @@ def test_double_payment_of_the_same_invoice_via_two_bank_references(db):
 
 
 def test_resolve_open_transaction_assigns_a_person_with_the_correct_sign(db):
-    """The manual-resolution path used by the permanent "Offene Bank-
-    Buchungen" queue on /receivables (Finding #8: previously duplicated the
-    booking logic inline instead of sharing it with book_transaction)."""
+    """The manual-resolution path used by the permanent "Offene Bank- Buchungen" queue on /receivables..."""
     person = _person(db)
     batch_id = bank_transaction_repo.create_batch(
         db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=1
@@ -410,9 +402,7 @@ def test_resolve_open_transaction_with_no_person_ignores_it(db):
 
 
 def test_book_transaction_with_commit_false_still_books_within_the_connection(db):
-    """Finding #12: a bulk statement import passes commit=False for every
-    row and relies on the enclosing connection_scope's single commit --
-    the row must still be immediately visible on the same connection."""
+    """Finding #12: a bulk statement import passes commit=False for every row and relies on the..."""
     person = _person(db)
     batch_id = bank_transaction_repo.create_batch(
         db, filename="x.xml", account_iban="", statement_from=None, statement_to=None, entry_count=1

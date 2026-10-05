@@ -1,13 +1,4 @@
-"""Dashboard / Übersicht page.
-
-Structured by what the administrator actually needs to know, in that
-order: is anything wrong right now (Handlungsbedarf), what does the
-current data look like (Kennzahlen, LEGs im Überblick), and only then --
-if there is barely any data yet -- how to get started. Earlier versions
-of this page led with a flat welcome paragraph and a fixed set of
-counters; this follows the same "status first" structure used throughout
-`app.domain.quality_checks`.
-"""
+"""Dashboard / Übersicht page."""
 
 from typing import Optional
 
@@ -51,38 +42,12 @@ _TILE_CLASSES = "w-40 justify-center"
 
 
 def _format_capacity(value: float) -> str:
-    """Format a kWp/kWh figure the way a German reader writes it.
-
-    Args:
-        value: The figure.
-
-    Returns:
-        Two decimals with a comma, e.g. `"317,87"`. Matches
-        `app.domain.production_capacity.format_percent`'s convention, so
-        the same kind of number never appears two ways.
-    """
+    """Format a kWp/kWh figure the way a German reader writes it."""
     return f"{value:.2f}".replace(".", ",")
 
 
 def _load_overview(connection) -> dict:
-    """Gather everything the dashboard shows in a single pass.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A dict with "counts" (headline numbers), "action_items" (list of
-        `(message, link)` tuples needing attention -- `link` is a route
-        path to jump straight to the object in question, or `None` if no
-        detail page exists for it), "legs" (per-LEG summary rows),
-        "open_registrations" (count of not-yet-fully-processed Web-Registrierungen)
-        "open_onboardings" (count of in-progress onboarding trackers,
-        see `app.models.person_onboarding`), "capacity" (the installed
-        PV/battery figures on record, see
-        `app.domain.statistics.installed_capacity_totals`) and "roles"
-        (how many Prosumer and Konsumer, see
-        `app.domain.participant_mix.compute_participant_roles`) keys.
-    """
+    """Gather everything the dashboard shows in a single pass."""
     substation_areas = substation_area_repo.list_all(connection)
     legs = leg_repo.list_all(connection)
     sites = site_repo.list_all(connection)
@@ -185,11 +150,7 @@ def _load_overview(connection) -> dict:
 
 @ui.page("/")
 def dashboard_page() -> None:
-    """Render the dashboard page showing an overview of the LEG data.
-
-    Returns:
-        None. Registered as the NiceGUI handler for the root route.
-    """
+    """Render the dashboard page showing an overview of the LEG data."""
     with page_frame("/", "Übersicht"):
         with connection_scope() as connection:
             overview = _load_overview(connection)

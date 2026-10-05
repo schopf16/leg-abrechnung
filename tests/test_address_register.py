@@ -1,22 +1,4 @@
-"""Tests for building the local copy of swisstopo's address register.
-
-Everything here runs against a handful of invented addresses in a real ZIP
-(`write_register_zip` in `conftest.py`), never against the 143 MB download:
-a test that needs the network is a test that gets skipped.
-
-What is pinned here is mostly *what not to do*, because each of these was
-the obvious choice and each one is wrong:
-
-- Do not filter `ADR_OFFICIAL = true`. It reads like the correct filter and
-  loses real addresses -- on one live deployment, 86 of 92 sites validated
-  against the whole register and only 83 against the official rows.
-- Do not split the house number into a figure and a letter. 331'401 of the
-  official numbers are dotted ("31.1"), 25'403 are shaped differently
-  again, and 7'078 are empty.
-- Do not split `ZIP_LABEL` on every space. Localities have several words.
-- Do not write the register in place. A download that dies half-way has to
-  leave the working one alone.
-"""
+"""Tests for building the local copy of swisstopo's address register."""
 
 import sqlite3
 import zipfile
@@ -38,15 +20,7 @@ from tests.conftest import build_test_register, write_register_zip
 
 
 def _rows(register) -> list[tuple]:
-    """Read every address back out, joined to its street.
-
-    Args:
-        register: Path of the built register.
-
-    Returns:
-        `(street, postal_code, locality, municipality, number, official,
-        status)` per row.
-    """
+    """Read every address back out, joined to its street."""
     connection = sqlite3.connect(register)
     try:
         return connection.execute(
@@ -76,11 +50,7 @@ def _rows(register) -> list[tuple]:
     ],
 )
 def test_zip_label_splits_on_the_first_space_only(label, expected):
-    """A locality with several words must survive intact.
-
-    Splitting on every space would turn "Bolligen Dorf" into "Bolligen" and
-    lose the half that distinguishes it.
-    """
+    """A locality with several words must survive intact."""
     assert split_zip_label(label) == expected
 
 
@@ -99,11 +69,7 @@ def test_an_empty_house_number_is_kept(address_register):
 
 
 def test_non_official_and_planned_rows_are_kept(address_register):
-    """The filter that looks right and is not.
-
-    `ADR_OFFICIAL = true` cost 3 of 92 real addresses when it was measured,
-    so both flags are carried and only ever influence ordering.
-    """
+    """The filter that looks right and is not."""
     rows = _rows(address_register)
 
     assert 0 in {row[5] for row in rows}, "official=false muss erhalten bleiben"
@@ -111,11 +77,7 @@ def test_non_official_and_planned_rows_are_kept(address_register):
 
 
 def test_the_postal_locality_and_the_municipality_are_both_stored(address_register):
-    """They differ, and only one of them belongs on an invoice.
-
-    The app fills the postal locality; the municipality is kept so a
-    perfectly valid municipality is not reported as a mistake.
-    """
+    """They differ, and only one of them belongs on an invoice."""
     row = next(r for r in _rows(address_register) if r[0] == "Erstweg")
 
     assert row[2] == "Musterdorf"
@@ -155,10 +117,7 @@ def test_one_street_row_per_street_and_locality(address_register):
 
 
 def test_progress_rises_and_reaches_one(tmp_path):
-    """The generator is what keeps the window alive, so it has to report.
-
-    A bar that sits at zero for 35 seconds is the complaint this answers.
-    """
+    """The generator is what keeps the window alive, so it has to report."""
     zip_path = write_register_zip(tmp_path / "r.zip")
 
     steps = list(build_register(zip_path, tmp_path / "reg.sqlite3"))
@@ -251,11 +210,7 @@ def test_an_unknown_data_date_counts_as_stale():
 
 
 def test_the_swiss_csv_asset_is_picked_out_of_the_catalogue():
-    """The URL is read from STAC rather than hard-coded.
-
-    swisstopo versions the file name, and a hard-coded one would break
-    silently on the next release.
-    """
+    """The URL is read from STAC rather than hard-coded."""
     payload = {
         "features": [
             {
@@ -293,13 +248,7 @@ def test_a_catalogue_without_the_csv_is_an_error():
     ],
 )
 def test_a_download_address_outside_swisstopo_is_refused(href):
-    """The URL comes out of a remote JSON document.
-
-    This is the only path in an otherwise offline app that fetches from the
-    network and writes to disk, so where it may fetch from is worth
-    bounding -- a forged catalogue is needed to exploit it at all, which
-    makes this a limit on the damage rather than a closed hole.
-    """
+    """The URL comes out of a remote JSON document."""
     payload = {"features": [{"properties": {}, "assets": {"x_ch_2056.csv.zip": {"href": href}}}]}
 
     with pytest.raises(AddressRegisterError):
@@ -310,15 +259,7 @@ def test_a_download_address_outside_swisstopo_is_refused(href):
 
 
 def test_reading_alone_leaves_the_old_register_in_place(tmp_path):
-    """The swap happens in `finalise_register`, not when the rows are read.
-
-    The split is not cosmetic: indexing is a single 1.8-second SQLite
-    statement that cannot be broken up, so the caller runs it in a thread.
-    Measured on the real file, the parse yields every 46 ms while that one
-    statement blocked for 2'070 ms -- past the second NiceGUI allows the
-    browser to answer, which is what filled the log with TimeoutErrors
-    during an update.
-    """
+    """The swap happens in `finalise_register`, not when the rows are read."""
     target = tmp_path / "reg.sqlite3"
     build_test_register(write_register_zip(tmp_path / "first.zip"), target)
     before = target.read_bytes()

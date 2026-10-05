@@ -1,8 +1,4 @@
-"""Tests for the dashboard's headline numbers (app.gui.pages.dashboard).
-
-`_load_overview` takes a plain connection and returns a dict, so it is
-testable without rendering any NiceGUI page.
-"""
+"""Tests for the dashboard's headline numbers (app.gui.pages.dashboard)."""
 
 from app.gui.pages.dashboard import _load_overview
 from app.models import person as person_repo
@@ -56,9 +52,7 @@ def _site(db, street: str, house_number: str, municipality: str = "Ittigen") -> 
 
 
 def test_person_count_ignores_deactivated_persons(db):
-    """A person who finished offboarding (and was therefore deactivated,
-    because billing history blocked deletion) must not keep inflating the
-    headline number -- the Personen page hides them by default too."""
+    """A person who finished offboarding (and was therefore deactivated, because billing history..."""
     active_id = _person(db, "Aktiv")
     gone_id = _person(db, "Ausgetreten")
     person_repo.set_active(db, gone_id, False)
@@ -71,8 +65,7 @@ def test_person_count_ignores_deactivated_persons(db):
 
 
 def test_person_count_is_zero_when_every_person_is_deactivated(db):
-    """The "noch keine Personen erfasst" hint keys off this number, so an
-    all-deactivated database must read as empty rather than as populated."""
+    """The "noch keine Personen erfasst" hint keys off this number, so an all-deactivated database must..."""
     person_id = _person(db)
     person_repo.set_active(db, person_id, False)
 
@@ -80,8 +73,7 @@ def test_person_count_is_zero_when_every_person_is_deactivated(db):
 
 
 def test_site_count_still_includes_sites_without_persons(db):
-    """Sites are physical infrastructure and are never removed along with a
-    person -- they keep counting even once nobody is assigned to them."""
+    """Sites are physical infrastructure and are never removed along with a person -- they keep..."""
     _site(db, "Fischrain", "68")
 
     assert _load_overview(db)["counts"]["sites"] == 1

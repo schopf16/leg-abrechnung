@@ -1,29 +1,5 @@
-"""E-Mail-Versand page: a guided, step-by-step assistant for sending a
-personalized email to all persons or to one LEG's current members, plus
-a history of past sends.
-
-Every recipient gets their own, separate Graph API call (see
-`app.emailing` module docstring) -- never CC/BCC -- so nobody sees who
-else received the message. The recipient list resolved from "Alle
-Personen"/"eine LEG" is only a starting suggestion: the administrator can
-remove or add individual people before sending (step 2), which affects
-only this one send, never the underlying LEG membership.
-
-Step 3 ("E-Mail verfassen") also accepts attachments -- the same set for
-every recipient of this send, with Microsoft's `app.emailing.
-graph_client.MAX_INLINE_ATTACHMENT_BYTES` applying to their **total**.
-They are kept in memory (`attachments`) until `do_send()` actually sends,
-at which point each is written to a temp file (the shape
-`graph_client.send_email` expects, matching how an invoice PDF is
-attached) and removed again immediately afterwards, success or failure --
-never left lying around.
-
-What is attached is stated three times, and that is deliberate: once as a
-named list on step 3, once in the step 4 validation summary, and once
-directly above the send button on step 5. A real send went out without
-its attachment and nothing on the final step said either way -- so the
-last thing read before an irreversible action now names every file.
-"""
+"""E-Mail-Versand page: a guided, step-by-step assistant for sending a personalized email to all
+persons or to one LEG's current members, plus a history of past sends."""
 
 import tempfile
 from pathlib import Path
@@ -37,6 +13,7 @@ from app.format_size import format_size
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
     PERSON_PLACEHOLDERS,
+    compose_with_signature,
     find_invalid_email_addresses,
     find_unknown_placeholders,
     person_placeholder_values,
@@ -44,6 +21,7 @@ from app.emailing.templates import (
     validate_person_placeholders,
 )
 from app.gui.navigation import page_frame
+from app.gui.upload import read_uploaded_file
 from app.gui.person_form import open_person_form
 from app.gui.safe_notify import safe_notify
 from app.models import email_log as email_log_repo
@@ -55,61 +33,14 @@ from app.models.person import Person
 #: Shown as a hint above the subject/body fields.
 PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in PERSON_PLACEHOLDERS)
 
-#: Classic plain-text signature delimiter (RFC 3676) -- some mail clients
-#: recognize "-- " on its own line and render/strip a trailing signature
-#: specially (e.g. dimmed, or omitted from a reply quote).
-_SIGNATURE_DELIMITER = "\n\n-- \n"
-
-
-async def read_uploaded_file(file) -> tuple[str, bytes]:
-    """Read one uploaded file into the `(name, content)` pair this page keeps.
-
-    Deliberately a module-level function rather than inline in the upload
-    handler: reading the event is exactly where this page broke silently
-    once already. NiceGUI 3.16 replaced `event.name`/`event.content.read()`
-    with `event.file.name`/`await event.file.read()`; the old call raised
-    `AttributeError` inside the handler, which NiceGUI logs and swallows,
-    so every broadcast went out without its attachment and nothing said so.
-
-    Args:
-        file: NiceGUI `FileUpload` (`UploadEventArguments.file`) -- needs
-            `.name` and an awaitable `.read()`.
-
-    Returns:
-        `(filename, content bytes)`.
-    """
-    return file.name, await file.read()
-
 
 def attachments_too_large(attachments: list[tuple[str, bytes]]) -> bool:
-    """Whether this set exceeds what one Graph request can carry.
-
-    Args:
-        attachments: `(filename, content)` pairs.
-
-    Returns:
-        `True` if the total is over `graph_client.
-        MAX_INLINE_ATTACHMENT_BYTES`. Stated on every step that shows the
-        attachments, not just where it is enforced: being told at the send
-        button that the last ten minutes were wasted is not good enough.
-    """
+    """Whether this set exceeds what one Graph request can carry."""
     return sum(len(content) for _, content in attachments) > graph_client.MAX_INLINE_ATTACHMENT_BYTES
 
 
 def describe_attachments(attachments: list[tuple[str, bytes]]) -> str:
-    """State plainly whether anything is attached, and what.
-
-    The one sentence shown before an irreversible send. Names every file
-    rather than counting them: a send went out without its attachment and
-    nothing on the final step said either way.
-
-    Args:
-        attachments: `(filename, content)` pairs, in the order chosen.
-
-    Returns:
-        A German one-liner, e.g. `"Mit 2 Anhängen (412 KB): a.pdf, b.pdf"`
-        or `"Ohne Anhang."`.
-    """
+    """State plainly whether anything is attached, and what."""
     if not attachments:
         return "Ohne Anhang."
     total = format_size(sum(len(content) for _, content in attachments))
@@ -119,40 +50,10 @@ def describe_attachments(attachments: list[tuple[str, bytes]]) -> str:
     return f"Mit {len(attachments)} Anhängen ({total}): {names}"
 
 
-def _compose_body(body: str, signature_content: str) -> str:
-    """Append a signature to a message body, if one was chosen.
-
-    Args:
-        body: The composed message text, as typed (unrendered).
-        signature_content: The chosen signature's text, or `""` if "Keine
-            Signatur" is selected.
-
-    Returns:
-        `body` unchanged if `signature_content` is empty, else `body` with
-        the signature appended after `_SIGNATURE_DELIMITER`.
-    """
-    if not signature_content.strip():
-        return body
-    return f"{body}{_SIGNATURE_DELIMITER}{signature_content}"
-
-
 def _validation_warnings(
     subject: str, body: str, recipients: list[Person]
 ) -> tuple[set[str], list[Person], list[tuple[Person, list[str]]]]:
-    """Compute every warning the "Validierung" step should show.
-
-    Args:
-        subject: Current subject text (with placeholders, unrendered).
-        body: Current body text (with placeholders, unrendered).
-        recipients: Current recipient list.
-
-    Returns:
-        `(unknown_placeholders, invalid_email_persons, missing_field_problems)`
-        -- `missing_field_problems` merges subject- and body-derived
-        problems per person (a person appears once with the union of
-        their missing fields, even if different placeholders are missing
-        in the subject vs. the body).
-    """
+    """Compute every warning the "Validierung" step should show."""
     unknown = find_unknown_placeholders(subject, PERSON_PLACEHOLDERS) | find_unknown_placeholders(
         body, PERSON_PLACEHOLDERS
     )
@@ -179,26 +80,13 @@ _SCOPE_LABELS = {
 
 
 def _addresses(person: Person) -> str:
-    """Every address of one person, for display in the recipient list.
-
-    Args:
-        person: The person whose addresses to show.
-
-    Returns:
-        The addresses separated by ", " -- a couple has two, and the
-        administrator has to see both before pressing send, because both go
-        into the same message (see `app.emailing.graph_client.send_email`).
-    """
+    """Every address of one person, for display in the recipient list."""
     return ", ".join(person.contact_emails)
 
 
 @ui.page("/email-dispatch")
 def email_dispatch_page() -> None:
-    """Render the E-Mail-Versand assistant and sent-history page.
-
-    Returns:
-        None.
-    """
+    """Render the E-Mail-Versand assistant and sent-history page."""
     with page_frame("/email-dispatch", "E-Mail versenden"):
         ui.label(
             "Sendet eine persönliche E-Mail an alle Personen oder an die "
@@ -229,11 +117,7 @@ def email_dispatch_page() -> None:
                 leg_select.bind_visibility_from(scope_select, "value", value="leg")
 
                 def go_to_recipients() -> None:
-                    """Resolve the initial recipient list and advance to step 2.
-
-                    Returns:
-                        None.
-                    """
+                    """Resolve the initial recipient list and advance to step 2."""
                     nonlocal recipients
                     if scope_select.value is None:
                         safe_notify("Bitte eine Empfänger-Art wählen.", type="warning")
@@ -258,27 +142,12 @@ def email_dispatch_page() -> None:
                 recipients_container = ui.column().classes("w-full gap-1")
 
                 def remove_recipient(person: Person) -> None:
-                    """Remove one person from this send's recipient list.
-
-                    Args:
-                        person: Person to remove.
-
-                    Returns:
-                        None.
-                    """
+                    """Remove one person from this send's recipient list."""
                     recipients.remove(person)
                     refresh_recipients_step()
 
                 def add_recipient(person_id: Optional[int]) -> None:
-                    """Add one person to this send's recipient list.
-
-                    Args:
-                        person_id: Id of the person to add, or `None` if
-                            nothing was selected.
-
-                    Returns:
-                        None.
-                    """
+                    """Add one person to this send's recipient list."""
                     if person_id is None:
                         return
                     with connection_scope() as inner_connection:
@@ -288,11 +157,7 @@ def email_dispatch_page() -> None:
                     refresh_recipients_step()
 
                 def refresh_recipients_step() -> None:
-                    """(Re-)render the recipient list and the "add person" picker.
-
-                    Returns:
-                        None.
-                    """
+                    """(Re-)render the recipient list and the "add person" picker."""
                     recipients_container.clear()
                     with connection_scope() as inner_connection:
                         already_ids = {p.id for p in recipients}
@@ -323,11 +188,7 @@ def email_dispatch_page() -> None:
                             )
 
                 def go_to_compose() -> None:
-                    """Validate the recipient list and advance to step 3.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the recipient list and advance to step 3."""
                     if not recipients:
                         safe_notify("Bitte mindestens einen Empfänger.", type="warning")
                         return
@@ -353,15 +214,7 @@ def email_dispatch_page() -> None:
                 attachment_list = ui.column().classes("w-full gap-1")
 
                 def render_attachments() -> None:
-                    """(Re-)render the attachment list and its running total.
-
-                    Named and listed rather than summarised: the whole
-                    reason this exists is that a send went out without its
-                    attachment and nobody noticed.
-
-                    Returns:
-                        None.
-                    """
+                    """(Re-)render the attachment list and its running total."""
                     attachment_list.clear()
                     with attachment_list:
                         if not attachments:
@@ -384,27 +237,7 @@ def email_dispatch_page() -> None:
                             ).classes("text-negative text-body2")
 
                 async def handle_attachment_upload(event: events.MultiUploadEventArguments) -> None:
-                    """Keep every selected file in memory as this send's attachments.
-
-                    One handler for the whole selection, and exactly one
-                    `reset()` after it. Deliberately NOT a per-file
-                    `on_upload` handler: NiceGUI only sets Quasar's `batch`
-                    prop when `multiple` *and* `on_multi_upload` are given
-                    (see `nicegui.elements.upload.Upload.__init__`), so
-                    without this handler Quasar starts one request per file
-                    in parallel -- and `reset()` aborts the requests still
-                    in flight, silently attaching only the first file. Same
-                    shape as `app.gui.pages.import_page`.
-
-                    Async because `FileUpload.read()` is a coroutine since
-                    NiceGUI 3.16 -- see `read_uploaded_file`.
-
-                    Args:
-                        event: NiceGUI upload event carrying every selected file.
-
-                    Returns:
-                        None.
-                    """
+                    """Keep every selected file in memory as this send's attachments."""
                     added = []
                     for file in event.files:
                         name, content = await read_uploaded_file(file)
@@ -421,25 +254,14 @@ def email_dispatch_page() -> None:
                         )
 
                 def remove_attachment(index: int) -> None:
-                    """Remove one attachment, by position in the list.
-
-                    Args:
-                        index: Position in `attachments`.
-
-                    Returns:
-                        None.
-                    """
+                    """Remove one attachment, by position in the list."""
                     if 0 <= index < len(attachments):
                         removed = attachments.pop(index)[0]
                         safe_notify(f"Anhang „{removed}“ entfernt.", type="info")
                     render_attachments()
 
                 def handle_attachment_rejected() -> None:
-                    """Notify when the upload widget rejects a too-large file.
-
-                    Returns:
-                        None.
-                    """
+                    """Notify when the upload widget rejects a too-large file."""
                     max_mb = graph_client.MAX_INLINE_ATTACHMENT_BYTES // 1024 // 1024
                     safe_notify(f"Anhang zu gross -- maximal {max_mb} MB.", type="negative")
 
@@ -461,11 +283,7 @@ def email_dispatch_page() -> None:
                 render_attachments()
 
                 def go_to_validation() -> None:
-                    """Validate the subject and advance to step 4.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the subject and advance to step 4."""
                     if not subject_input.value.strip():
                         safe_notify("Bitte einen Betreff eingeben.", type="warning")
                         return
@@ -480,14 +298,7 @@ def email_dispatch_page() -> None:
                 validation_container = ui.column().classes("w-full gap-2")
 
                 def fix_person(person: Person) -> None:
-                    """Open the shared Person dialog to fix a validation issue.
-
-                    Args:
-                        person: Person to edit.
-
-                    Returns:
-                        None.
-                    """
+                    """Open the shared Person dialog to fix a validation issue."""
 
                     def on_saved(saved_person: Person) -> None:
                         for index, existing in enumerate(recipients):
@@ -501,15 +312,11 @@ def email_dispatch_page() -> None:
                     open_person_form(existing=existing_person, on_saved=on_saved)
 
                 def refresh_validation_step() -> None:
-                    """(Re-)render the preview and all validation warnings.
-
-                    Returns:
-                        None.
-                    """
+                    """(Re-)render the preview and all validation warnings."""
                     validation_container.clear()
                     subject = subject_input.value
                     signature = signatures_by_id.get(signature_select.value)
-                    body = _compose_body(body_textarea.value, signature.content if signature else "")
+                    body = compose_with_signature(body_textarea.value, signature.content if signature else "")
                     unknown, invalid_emails, missing = _validation_warnings(subject, body, recipients)
                     with validation_container:
                         ui.label(f"Empfänger: {len(recipients)}").classes("font-bold")
@@ -551,11 +358,7 @@ def email_dispatch_page() -> None:
                                 )
 
                 def go_to_send() -> None:
-                    """Refresh the pre-send summary and advance to step 5.
-
-                    Returns:
-                        None.
-                    """
+                    """Refresh the pre-send summary and advance to step 5."""
                     refresh_send_summary()
                     stepper.next()
 
@@ -570,11 +373,7 @@ def email_dispatch_page() -> None:
                 send_summary = ui.column().classes("w-full gap-0 mb-2")
 
                 def refresh_send_summary() -> None:
-                    """State recipient count and attachments before sending.
-
-                    Returns:
-                        None.
-                    """
+                    """State recipient count and attachments before sending."""
                     send_summary.clear()
                     with send_summary:
                         ui.label(f"An {len(recipients)} Empfänger").classes("font-bold")
@@ -599,11 +398,7 @@ def email_dispatch_page() -> None:
                 send_result_container = ui.column().classes("w-full mt-2")
 
                 async def do_send() -> None:
-                    """Send the composed email to every current recipient.
-
-                    Returns:
-                        None.
-                    """
+                    """Send the composed email to every current recipient."""
                     if attachments_too_large(attachments):
                         safe_notify(
                             "Die Anhänge sind zusammen zu gross -- bitte unter "
@@ -630,7 +425,9 @@ def email_dispatch_page() -> None:
                         progress_label.text = f"{done} von {total} gesendet"
 
                     signature = signatures_by_id.get(signature_select.value)
-                    final_body = _compose_body(body_textarea.value, signature.content if signature else "")
+                    final_body = compose_with_signature(
+                        body_textarea.value, signature.content if signature else ""
+                    )
 
                     # Written to disk only for the duration of this one
                     # send -- graph_client.send_email expects a Path (the
@@ -691,11 +488,7 @@ def email_dispatch_page() -> None:
         history_container = ui.column().classes("w-full")
 
         def refresh_history() -> None:
-            """(Re-)render the sent-history list.
-
-            Returns:
-                None.
-            """
+            """(Re-)render the sent-history list."""
             history_container.clear()
             with connection_scope() as connection:
                 entries = email_log_repo.list_all(connection)
@@ -728,3 +521,36 @@ def email_dispatch_page() -> None:
                         ui.label(", ".join(entry.recipient_emails) or "-")
 
         refresh_history()
+
+        ui.separator().classes("my-6")
+
+        ui.label("Verbindung").classes("text-lg font-bold")
+        ui.label(
+            "Holt ein Zugriffstoken bei Microsoft Graph, ohne etwas zu "
+            "versenden -- die Zugangsdaten aus `config.local.json` prüfen, "
+            "bevor der erste echte Versand gestartet wird. Stand bis jetzt "
+            "unter Einstellungen; es gehört dorthin, wo versendet wird."
+        ).classes("text-body2 text-grey-8")
+        with ui.card().classes("w-full max-w-lg"):
+            connection_test_result = ui.label("").classes("text-caption")
+
+            async def test_graph_connection() -> None:
+                """Acquire a Graph API access token without sending anything."""
+                connection_test_result.text = "Prüfe Verbindung..."
+                connection_test_result.classes(remove="text-negative text-positive")
+                try:
+                    config = get_graph_config()
+                except ConfigError as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                try:
+                    await graph_client.get_access_token(config)
+                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    connection_test_result.text = str(exc)
+                    connection_test_result.classes(add="text-negative")
+                    return
+                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
+                connection_test_result.classes(add="text-positive")
+
+            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")

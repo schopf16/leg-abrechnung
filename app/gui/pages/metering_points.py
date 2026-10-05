@@ -1,6 +1,5 @@
-"""metering points management page: list, search, create, edit, delete, and a
-detail drill-down showing the site, LEG and currently assigned Person.
-"""
+"""metering points management page: list, search, create, edit, delete, and a detail drill-down showing
+the site, LEG and currently assigned Person."""
 
 from datetime import date, datetime
 
@@ -87,29 +86,13 @@ SORT_OPTIONS = [
 
 
 def _copy_metering_point_designation(designation: str) -> None:
-    """Copy a MeteringPoint's designation to the clipboard and confirm.
-
-    Args:
-        designation: The metering point designation to copy.
-
-    Returns:
-        None.
-    """
+    """Copy a MeteringPoint's designation to the clipboard and confirm."""
     ui.clipboard.write(designation)
     safe_notify("Messpunktbezeichnung kopiert.")
 
 
 def _metering_point_designation_row(designation: str, *, classes: str = "font-bold") -> None:
-    """Render the metering point designation with an inline copy-to-clipboard
-    button (same pattern as `app.gui.pages.persons._customer_number_row`).
-
-    Args:
-        designation: The metering point designation to show.
-        classes: CSS classes applied to the label itself.
-
-    Returns:
-        None.
-    """
+    """Render the metering point designation with an inline copy-to-clipboard button (same pattern as..."""
     with ui.row().classes("items-center gap-1"):
         ui.label(designation).classes(classes)
         ui.button(
@@ -119,19 +102,7 @@ def _metering_point_designation_row(designation: str, *, classes: str = "font-bo
 
 
 def _current_person_display(connection, metering_point_id: int) -> tuple[str, bool]:
-    """Find the name of the Person (currently or soon) assigned to a MeteringPoint.
-
-    Args:
-        connection: Open SQLite connection.
-        metering_point_id: Primary key of the metering point.
-
-    Returns:
-        `(name, is_future)` -- `name` is "-" if there is no current or
-        upcoming Assignment at all (see `app.models.assignment.
-        get_relevant_for_metering_point`); `is_future` is `True` if the
-        assignment shown has not started yet, so the caller can mark it
-        visually without spelling out the exact date.
-    """
+    """Find the name of the Person (currently or soon) assigned to a MeteringPoint."""
     assignment = assignment_repo.get_relevant_for_metering_point(
         connection, metering_point_id, datetime.now()
     )
@@ -144,18 +115,7 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
 
 
 def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
-    """Convert a `MeteringPoint` into a row dict for the card-based list.
-
-    Args:
-        connection: Open SQLite connection.
-        mp: MeteringPoint to convert.
-        sites: Preloaded `{site_id: site}` lookup.
-        legs: Preloaded `{leg_id: Leg}` lookup.
-
-    Returns:
-        A dict with the fields required by `COLUMNS`, plus a hidden
-        `_search` key used for client-side filtering.
-    """
+    """Convert a `MeteringPoint` into a row dict for the card-based list."""
     site = sites.get(mp.site_id)
     site_address = site.full_address if site else "?"
     site_street = " ".join(p for p in (site.street, site.house_number) if p) if site else "?"
@@ -195,11 +155,7 @@ def _to_row(connection, mp: MeteringPoint, sites: dict, legs: dict) -> dict:
 
 @ui.page("/metering-points")
 def metering_points_page() -> None:
-    """Render the metering points CRUD page with search.
-
-    Returns:
-        None.
-    """
+    """Render the metering points CRUD page with search."""
     with page_frame("/metering-points", "Messpunkte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -265,18 +221,7 @@ def metering_points_page() -> None:
         visible_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value
-            and the "Nur ohne Assignment" switch.
-
-            A MeteringPoint counts as "ohne Assignment" here if it has no
-            current-or-upcoming Assignment at all (see `_current_person_display`/
-            `app.models.assignment.get_relevant_for_metering_point`) -- a
-            pre-entered future assignment still counts as assigned, so it
-            is deliberately excluded from this filter too.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded rows by the search input's value and the "Nur ohne..."""
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
@@ -292,11 +237,7 @@ def metering_points_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all metering points from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all metering points from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 sites = {s.id: s for s in site_repo.list_all(connection)}
@@ -313,38 +254,17 @@ def metering_points_page() -> None:
         without_assignment_switch.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: MeteringPoint | None) -> None:
-            """Open the create/edit dialog for a MeteringPoint.
-
-            Args:
-                existing: MeteringPoint to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a MeteringPoint."""
             open_metering_point_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_edit(row: dict) -> None:
-            """Card edit-button handler: open the edit dialog for this MeteringPoint.
-
-            Args:
-                row: Row dict built by `_to_row`.
-
-            Returns:
-                None.
-            """
+            """Card edit-button handler: open the edit dialog for this MeteringPoint."""
             with connection_scope() as connection:
                 existing = metering_point_repo.get(connection, row["id"])
             open_form(existing)
 
         def on_remove(row: dict) -> None:
-            """Card delete-button handler: delete the MeteringPoint after confirmation.
-
-            Args:
-                row: Row dict built by `_to_row`.
-
-            Returns:
-                None.
-            """
+            """Card delete-button handler: delete the MeteringPoint after confirmation."""
             metering_point_id = row["id"]
             designation_text = row["designation"]
 
@@ -376,15 +296,7 @@ def metering_points_page() -> None:
 
 @ui.page("/metering-points/{metering_point_id}")
 def metering_point_detail_page(metering_point_id: int) -> None:
-    """Render one MeteringPoint's detail view: designation, direction,
-    site, LEG and currently assigned Person.
-
-    Args:
-        metering_point_id: Database id of the MeteringPoint, from the URL path.
-
-    Returns:
-        None.
-    """
+    """Render one MeteringPoint's detail view: designation, direction, site, LEG and currently assigned..."""
     with connection_scope() as connection:
         mp = metering_point_repo.get(connection, metering_point_id)
         site = site_repo.get(connection, mp.site_id) if mp else None

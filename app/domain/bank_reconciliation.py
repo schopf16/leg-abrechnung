@@ -1,25 +1,5 @@
-"""Matches imported bank statement entries (see `app.importers.camt_parser`)
-to a Person and, where applicable, a specific invoice/payout, and books
-the result as an `AccountEntry`.
-
-Two paths, by design (see the receivables plan):
-
-1. **Deterministic**: a CRDT entry whose structured reference decodes
-   (via `app.pdf.qr_reference.parse_qrr_reference`) to a real billing run
-   item, whose person's customer number matches the decoded one. This is
-   booked automatically -- no human confirmation needed, since the
-   reference already proves which invoice this is.
-
-2. **Suggested**: everything else (no/invalid reference, a reversal, or a
-   DBIT payout, which never carries a QRR reference at all). Candidates
-   are found by exact IBAN match, a customer number mentioned in the
-   remittance free text, or name similarity -- never auto-booked, always
-   presented for a human to confirm or correct.
-
-A reversal (`is_reversal`) is *never* auto-matched, regardless of what
-its reference decodes to -- a reversed payment must not be silently
-booked like a normal one.
-"""
+"""Matches imported bank statement entries (see `app.importers.camt_parser`) to a Person and, where
+applicable, a specific invoice/payout, and books the result as an `AccountEntry`."""
 
 import difflib
 import re
@@ -45,20 +25,7 @@ _MAX_CANDIDATES = 5
 
 @dataclass
 class MatchCandidate:
-    """One candidate Person (and, if found, a specific invoice/payout) for
-    a bank transaction that could not be auto-matched.
-
-    Attributes:
-        person_id: Primary key of the candidate Person.
-        person_name: Display name, for the review UI.
-        billing_run_item_id: A specific open invoice/payout of this
-            person whose amount matches the transaction, if one was
-            found -- `None` if no amount match exists (e.g. a
-            prepayment before any invoice exists yet for this person).
-        confidence: `"iban_exact"`, `"customer_number_text"` or `"name_amount"`.
-        name_similarity: The `difflib` ratio behind a `"name_amount"`
-            candidate, `None` for the other confidence levels.
-    """
+    """One candidate Person (and, if found, a specific invoice/payout) for a bank transaction that..."""
 
     person_id: int
     person_name: str
@@ -69,16 +36,7 @@ class MatchCandidate:
 
 @dataclass
 class MatchResult:
-    """Outcome of `find_match` for one parsed bank transaction.
-
-    Attributes:
-        status: `"auto_matched"`, `"suggested_pending_review"` or
-            `"unmatched"`.
-        matched_person_id: Set only when `status == "auto_matched"`.
-        matched_billing_run_item_id: Set only when `status == "auto_matched"`.
-        candidates: Ranked candidates, non-empty only when
-            `status == "suggested_pending_review"`.
-    """
+    """Outcome of `find_match` for one parsed bank transaction."""
 
     status: str
     matched_person_id: Optional[int] = None
@@ -87,18 +45,7 @@ class MatchResult:
 
 
 def find_match(connection: sqlite3.Connection, transaction: ParsedBankTransaction) -> MatchResult:
-    """Determine how a parsed bank transaction should be matched.
-
-    Read-only -- books nothing. Used both for the import preview and by
-    `book_transaction` immediately before committing.
-
-    Args:
-        connection: Open SQLite connection.
-        transaction: One parsed bank statement entry.
-
-    Returns:
-        The determined `MatchResult`.
-    """
+    """Determine how a parsed bank transaction should be matched."""
     if not transaction.is_reversal and transaction.credit_debit_indicator == "CRDT":
         auto = _try_auto_match(connection, transaction)
         if auto is not None:
@@ -113,18 +60,7 @@ def find_match(connection: sqlite3.Connection, transaction: ParsedBankTransactio
 def _try_auto_match(
     connection: sqlite3.Connection, transaction: ParsedBankTransaction
 ) -> Optional[MatchResult]:
-    """Attempt the deterministic QRR-decode auto-match path.
-
-    Args:
-        connection: Open SQLite connection.
-        transaction: One parsed bank statement entry (already known to be
-            a non-reversal CRDT entry).
-
-    Returns:
-        An `"auto_matched"` `MatchResult` if the reference decodes to a
-        real item whose person's customer number matches, else `None`
-        (falls through to the suggestion path).
-    """
+    """Attempt the deterministic QRR-decode auto-match path."""
     if not transaction.structured_reference:
         return None
     decoded = parse_qrr_reference(transaction.structured_reference)
@@ -144,22 +80,7 @@ def _try_auto_match(
 def _find_candidates(
     connection: sqlite3.Connection, transaction: ParsedBankTransaction
 ) -> list[MatchCandidate]:
-    """Find ranked candidate Persons for a transaction needing review.
-
-    Searches every Person (active and inactive -- a payment can still
-    legitimately arrive against a former member's old debt, see the
-    Austritts-/Ausschlussprozess: exclusion ends membership, never the
-    claim), not only those with a currently open invoice/payout of a
-    matching amount -- otherwise a prepayment made before any invoice
-    exists yet for that person would never surface a candidate at all.
-
-    Args:
-        connection: Open SQLite connection.
-        transaction: One parsed bank statement entry.
-
-    Returns:
-        Up to `_MAX_CANDIDATES` candidates, best match first.
-    """
+    """Find ranked candidate Persons for a transaction needing review."""
     counterparty_iban = normalize_iban(transaction.counterparty_iban) if transaction.counterparty_iban else ""
     remittance_numbers = set(re.findall(r"\d{6}", transaction.remittance_text))
 
@@ -208,18 +129,7 @@ def _find_candidates(
 
 
 def _priority_for(confidence: str, name_similarity: Optional[float]) -> float:
-    """Sort key for a not-yet-built candidate, used to decide whether a
-    newly found signal should replace an already-recorded one for the
-    same person.
-
-    Args:
-        confidence: The candidate's confidence level.
-        name_similarity: Its `difflib` ratio, if `confidence` is
-            `"name_amount"`.
-
-    Returns:
-        A comparable priority value, higher is better.
-    """
+    """Sort key for a not-yet-built candidate, used to decide whether a newly found signal should..."""
     if confidence == "iban_exact":
         return 3.0
     if confidence == "customer_number_text":
@@ -228,32 +138,14 @@ def _priority_for(confidence: str, name_similarity: Optional[float]) -> float:
 
 
 def _priority(candidate: MatchCandidate) -> float:
-    """`_priority_for` applied to an already-built `MatchCandidate`.
-
-    Args:
-        candidate: The candidate to score.
-
-    Returns:
-        Its priority value, higher is better.
-    """
+    """`_priority_for` applied to an already-built `MatchCandidate`."""
     return _priority_for(candidate.confidence, candidate.name_similarity)
 
 
 def _best_matching_item_id(
     connection: sqlite3.Connection, person_id: int, transaction: ParsedBankTransaction
 ) -> Optional[int]:
-    """Find an open invoice/payout of this person whose amount matches
-    the transaction, to attach for traceability (never a hard filter).
-
-    Args:
-        connection: Open SQLite connection.
-        person_id: Candidate person.
-        transaction: One parsed bank statement entry.
-
-    Returns:
-        A matching `BillingRunItem`'s id, or `None` if none of that
-        person's items has a matching amount (e.g. a prepayment).
-    """
+    """Find an open invoice/payout of this person whose amount matches the transaction, to attach for..."""
     for item in billing_run_repo.list_items_for_person(connection, person_id):
         if transaction.credit_debit_indicator == "CRDT" and item.is_owed_to_leg:
             if item.net_amount_rappen == transaction.amount_rappen:
@@ -275,35 +167,7 @@ def book_transaction(
     status: str,
     commit: bool = True,
 ) -> Optional[int]:
-    """Store one parsed bank transaction and, if resolved, book its
-    `AccountEntry`.
-
-    Args:
-        connection: Open SQLite connection.
-        bank_import_batch_id: The import batch this entry belongs to.
-        transaction: The parsed entry.
-        source_format: `"camt053"` or `"camt054"`, whichever file this
-            entry was parsed from.
-        person_id: The Person to book against, or `None` to store the
-            transaction without booking anything yet (`status` must then
-            be `"unmatched"` or `"suggested_pending_review"`).
-        billing_run_item_id: The specific invoice/payout this pays, if any.
-        status: The `bank_transactions.status` to record -- `"ignored"`
-            also stores with no booking.
-        commit: Whether each underlying write commits immediately. A
-            statement import calls this once per parsed transaction
-            (potentially dozens) within one `connection_scope` -- pass
-            `False` there so only that enclosing scope commits, instead of
-            one SQLite fsync per row (see `app.models.account_entry.
-            create`'s `commit` parameter).
-
-    Returns:
-        The new `bank_transactions.id`, or `None` if this exact entry was
-        already imported by an earlier batch (see `app.models.
-        bank_transaction.insert_transaction`'s idempotency contract) --
-        in that case nothing else happens: no duplicate booking, no
-        duplicate row, the earlier import's resolution is left untouched.
-    """
+    """Store one parsed bank transaction and, if resolved, book its `AccountEntry`."""
     transaction_id = bank_transaction_repo.insert_transaction(
         connection,
         bank_import_batch_id=bank_import_batch_id,
@@ -362,28 +226,7 @@ def _book_account_entry(
     bank_transaction_id: Optional[int] = None,
     commit: bool = True,
 ) -> int:
-    """Create the `AccountEntry` for one resolved bank transaction.
-
-    The single place the CRDT/DBIT-to-`kind`/sign mapping is written --
-    shared by `book_transaction` (fresh import) and `resolve_open_transaction`
-    (resolving an already-stored, still-open transaction from the
-    permanent "Offene Bank-Buchungen" queue on `/receivables`) so the two
-    call sites can never drift apart on the sign convention.
-
-    Args:
-        connection: Open SQLite connection.
-        person_id: The Person to book against.
-        credit_debit_indicator: `"CRDT"` or `"DBIT"`.
-        amount_rappen: Always-positive transaction amount.
-        booking_date: ISO-8601 date this booking is dated to.
-        billing_run_item_id: The specific invoice/payout this pays, if any.
-        bank_transaction_id: The bank transaction this originated from.
-        commit: Whether to commit immediately -- see `app.models.
-            account_entry.create`'s `commit` parameter for the rationale.
-
-    Returns:
-        The new `account_entries.id`.
-    """
+    """Create the `AccountEntry` for one resolved bank transaction."""
     kind = "payment_received" if credit_debit_indicator == "CRDT" else "payout"
     # Internal sign convention (see app.models.account_entry): an
     # incoming payment reduces what the person owes (negative), an
@@ -404,26 +247,7 @@ def _book_account_entry(
 def resolve_open_transaction(
     connection: sqlite3.Connection, bank_transaction_id: int, *, person_id: Optional[int]
 ) -> None:
-    """Resolve one already-imported, still-open bank transaction.
-
-    The manual-resolution counterpart to `book_transaction`: used by the
-    permanent "Offene Bank-Buchungen" queue on `/receivables` to assign (or
-    ignore) a transaction left unresolved from an earlier import, whereas
-    `book_transaction` only ever runs once, while committing a fresh
-    import batch.
-
-    Args:
-        connection: Open SQLite connection.
-        bank_transaction_id: Primary key of the already-stored transaction.
-        person_id: The Person to book against, or `None` to mark the
-            transaction `"ignored"` instead.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: If no such transaction exists.
-    """
+    """Resolve one already-imported, still-open bank transaction."""
     transaction = bank_transaction_repo.get(connection, bank_transaction_id)
     if transaction is None:
         raise ValueError(f"Keine Bank-Buchung mit id={bank_transaction_id}.")
@@ -450,24 +274,7 @@ def resolve_open_transaction(
 
 
 def undo_match(connection: sqlite3.Connection, bank_transaction_id: int) -> None:
-    """Reverse a bank transaction's match: delete its `AccountEntry` and
-    reset it back to an open status.
-
-    Re-runs candidate search on the stored entry so it falls back to
-    `"suggested_pending_review"` (not plain `"unmatched"`) if candidates
-    still exist -- e.g. undoing a wrong manual match should not hide the
-    right suggestion that was available all along.
-
-    Args:
-        connection: Open SQLite connection.
-        bank_transaction_id: Primary key of the transaction to unmatch.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: If no such transaction exists.
-    """
+    """Reverse a bank transaction's match: delete its `AccountEntry` and reset it back to an open..."""
     transaction = bank_transaction_repo.get(connection, bank_transaction_id)
     if transaction is None:
         raise ValueError(f"Keine Bank-Buchung mit id={bank_transaction_id}.")

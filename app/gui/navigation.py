@@ -1,9 +1,4 @@
-"""Shared page shell: header, side navigation and page-content container.
-
-Every page module calls :func:`page_frame` at the top of its ``@ui.page``
-handler to get a consistently styled window with the same navigation on
-every screen.
-"""
+"""Shared page shell: header, side navigation and page-content container."""
 
 from contextlib import contextmanager
 from typing import Iterator, Optional
@@ -71,12 +66,14 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/statistics/receivables", "Debitorenverlauf"),
             ("/statistics/distribution", "Verteilung"),
             ("/statistics/balance", "Ausgewogenheit"),
+            ("/statistics/potential", "Potenzial"),
         ],
     ),
     (
         "Kommunikation",
         [
             ("/email-dispatch", "E-Mail versenden"),
+            ("/message-templates", "Textbausteine"),
             ("/signatures", "Signaturen"),
         ],
     ),
@@ -92,35 +89,14 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
 
 
 def _nav_link(route: str, label: str, active_route: str, *, indent: bool) -> None:
-    """Render one navigation link, highlighted if it matches the current page.
-
-    Args:
-        route: Target route path.
-        label: Visible link text.
-        active_route: Route path of the currently shown page.
-        indent: Whether to indent the link (used for links inside a
-            collapsible group, as opposed to the top-level "Übersicht").
-
-    Returns:
-        None.
-    """
+    """Render one navigation link, highlighted if it matches the current page."""
     classes = "w-full leg-nav-item" + (" leg-nav-active" if route == active_route else "")
     padding = "6px 12px 6px 28px" if indent else "6px 12px"
     ui.link(label, route).classes(classes).style(f"display:block; padding:{padding};")
 
 
 def _confirm_quit() -> None:
-    """Ask for confirmation, then cleanly shut down the application.
-
-    `app.shutdown()` stops the server and (since the app always runs as a
-    native window, see `app.main.main`) closes that window too -- every
-    change is already committed to SQLite immediately on each action, so
-    there is nothing to lose, but a stray click on "Beenden" closing the
-    whole app without warning would still be an unpleasant surprise.
-
-    Returns:
-        None.
-    """
+    """Ask for confirmation, then cleanly shut down the application."""
     with ui.dialog() as dialog, ui.card():
         ui.label("LEG-Abrechnung wirklich beenden?")
         with ui.row().classes("w-full justify-end gap-2"):
@@ -131,17 +107,7 @@ def _confirm_quit() -> None:
 
 @contextmanager
 def page_frame(active_route: str, title: str) -> Iterator[None]:
-    """Render the common header and drawer, yielding a container for content.
-
-    Args:
-        active_route: The route path of the currently shown page, used to
-            highlight the matching navigation entry.
-        title: Page title shown in the header bar.
-
-    Yields:
-        None. Code inside the ``with`` block is placed in the page's main
-        content area.
-    """
+    """Render the common header and drawer, yielding a container for content."""
     ui.add_head_html(
         "<style>"
         # An entry is navigation, not a link inside a text: blue and
@@ -234,32 +200,13 @@ def page_frame(active_route: str, title: str) -> Iterator[None]:
 
 
 def _render_address_register_progress() -> None:
-    """Show the running address-register update in the header, everywhere.
-
-    The update takes about a minute and the administrator is meant to keep
-    working during it, so they will leave the page that started it. A
-    progress bar that lived on that page would disappear with it and leave
-    them unable to tell whether the update had finished -- which is the
-    whole complaint this answers. The state is therefore module-level (see
-    `app.gui.address_register_task`) and read here, on every page.
-
-    A one-second timer rather than a push: the state is a plain object with
-    no change notification, and polling once a second is cheaper than wiring
-    one up for a line of text.
-
-    Returns:
-        None.
-    """
+    """Show the running address-register update in the header, everywhere."""
     from app.gui.address_register_task import STATE
 
     label = ui.label().classes("text-caption")
 
     def refresh() -> None:
-        """Copy the current phase and percentage into the header label.
-
-        Returns:
-            None.
-        """
+        """Copy the current phase and percentage into the header label."""
         label.text = STATE.label
         label.visible = bool(STATE.label)
 

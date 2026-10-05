@@ -17,14 +17,7 @@ from app.models.person import Person
 
 
 def _make_live_db(path) -> None:
-    """Initialize a schema-migrated database at `path` with one person.
-
-    Args:
-        path: Filesystem path to create the database at.
-
-    Returns:
-        None.
-    """
+    """Initialize a schema-migrated database at `path` with one person."""
     connection = create_connection(path)
     initialize_database(connection)
     person_repo.create(
@@ -181,11 +174,7 @@ def test_restore_backup_migrates_database_to_current_schema(tmp_path):
 
 
 def test_restore_backup_accepts_backup_from_before_table_renames(tmp_path, monkeypatch):
-    """A backup taken before migration 39 still calls the metering-point
-    table "messpunkt". Validation runs before the restored file is migrated,
-    so it must only require tables whose name never changed -- otherwise
-    every pre-rename backup becomes un-restorable, which is exactly what
-    replayable migrations exist to prevent."""
+    """A backup taken before migration 39 still calls the metering-point table "messpunkt"."""
     import app.db.schema as schema_module
     from app.db.migrations import MIGRATIONS
     from app.db.schema import CURRENT_SCHEMA_VERSION
@@ -232,11 +221,7 @@ def test_a_backup_reports_what_is_inside_it(tmp_path):
 
 
 def test_the_creation_time_comes_from_the_filename_not_the_file(tmp_path):
-    """Copying a backup rewrites its modification time; the name still holds.
-
-    The name is what `create_backup` stamped at the moment the snapshot
-    was taken, so it is the honest answer to "when is this from".
-    """
+    """Copying a backup rewrites its modification time; the name still holds."""
     import os
     from datetime import datetime
 
@@ -256,12 +241,7 @@ def test_the_creation_time_comes_from_the_filename_not_the_file(tmp_path):
 
 
 def test_a_backup_from_an_older_schema_reports_nothing_rather_than_zero(tmp_path):
-    """ "Unreadable" and "empty" must not look the same.
-
-    Real backups predate the English table names; showing them as
-    0 LEG / 0 Personen would invite restoring one in the belief it holds
-    nothing worth keeping.
-    """
+    """ "Unreadable" and "empty" must not look the same."""
     backups_dir = tmp_path / "backups"
     backups_dir.mkdir()
     old = backups_dir / "leg_abrechnung_20250101_120000_000000.sqlite3"
@@ -289,12 +269,7 @@ def test_the_counts_never_modify_the_backup(tmp_path):
 
 
 def test_a_backup_saved_under_a_describing_name_is_listed(tmp_path):
-    """Whether a file is a backup is a question about its contents.
-
-    Filtering on the filename hid real backups: a copy saved under a
-    describing name -- exactly what one does before something risky --
-    was simply absent, with nothing anywhere saying why.
-    """
+    """Whether a file is a backup is a question about its contents."""
     db_path = tmp_path / "live.sqlite3"
     backups_dir = tmp_path / "backups"
     _make_live_db(db_path)
@@ -377,14 +352,7 @@ def test_listing_never_writes_beside_the_files_it_inspects(tmp_path):
 
 
 def test_a_backup_whose_name_contains_a_hash_is_still_recognised(tmp_path):
-    """ "Backup #3 vor Umbau.sqlite3" is a name people really use.
-
-    The file is opened through a `file:` URI, and an unencoded "#" ends
-    the URI's path -- SQLite then opened something else entirely and the
-    list declared a perfectly good backup to be no LEG database at all.
-    Harmless while only `leg_abrechnung_*.sqlite3` was listed; reachable
-    the moment any filename could appear.
-    """
+    """ "Backup #3 vor Umbau.sqlite3" is a name people really use."""
     db_path = tmp_path / "live.sqlite3"
     backups_dir = tmp_path / "backups"
     _make_live_db(db_path)

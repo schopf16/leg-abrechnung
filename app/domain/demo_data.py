@@ -1,19 +1,6 @@
-"""Generates demo/test data: one substation area, one LEG, four sites,
-seven metering points, five persons (including a mid-quarter move), and
-synthetic 15-minute readings for one winter and one summer quarter.
-
-Used both to let the administrator click through the app with realistic
-data, and as the fixture basis for the distribution-engine unit tests (see
-`tests/test_distribution.py`), per the project brief's edge-case list:
-
-- Winter quarter: no local feed-in at all (`P(t) = 0` throughout).
-- Summer quarter: feed-in sometimes exceeds consumption (`S(t) =
-  min(P, C) = C`, testing the consumption-limited case) and sometimes falls
-  short of it (testing the production-limited case).
-- A MeteringPoint that changes Person mid-quarter (tenant move), exercising
-  the time-sliced Assignment lookup, while its site/substation area and its
-  LEG never change.
-"""
+"""Generates demo/test data: one substation area, one LEG, four sites, seven metering points, five
+persons (including a mid-quarter move), and synthetic 15-minute readings for one winter and one
+summer quarter."""
 
 import math
 import sqlite3
@@ -101,13 +88,7 @@ _SOLAR_DAY_SCALE = [0.5, 1.0, 1.4]
 
 @dataclass
 class DemoDataSummary:
-    """Result of a successful demo data generation run.
-
-    Attributes:
-        person_ids: Database ids of the created persons.
-        metering_point_ids: Database ids of the created metering points.
-        reading_count: Total number of reading rows inserted.
-    """
+    """Result of a successful demo data generation run."""
 
     person_ids: list[int]
     metering_point_ids: list[int]
@@ -119,14 +100,7 @@ class DemoDataAlreadyExists(Exception):
 
 
 def demo_data_exists(connection: sqlite3.Connection) -> bool:
-    """Check whether the demo data set has already been created.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        `True` if a person with the demo marker name exists.
-    """
+    """Check whether the demo data set has already been created."""
     row = connection.execute(
         "SELECT 1 FROM person WHERE first_name = ? AND last_name = ?",
         (_DEMO_MARKER_FIRST_NAME, _DEMO_MARKER_LAST_NAME),
@@ -135,35 +109,13 @@ def demo_data_exists(connection: sqlite3.Connection) -> bool:
 
 
 def _consumption_kwh(moment: datetime, scale: float) -> float:
-    """Compute a synthetic consumption value for one 15-minute interval.
-
-    Args:
-        moment: Interval start.
-        scale: Per-MeteringPoint scale factor (relative household size).
-
-    Returns:
-        Energy for the interval in kWh, always positive.
-    """
+    """Compute a synthetic consumption value for one 15-minute interval."""
     kw = _HOURLY_LOAD_KW[moment.hour] * _WEEKDAY_FACTOR[moment.weekday()] * scale
     return round(kw * (INTERVAL_MINUTES / 60), 3)
 
 
 def _production_kwh(moment: datetime, scale: float, day_index: int) -> float:
-    """Compute a synthetic feed-in value for one 15-minute interval.
-
-    Follows a bell curve between 06:00 and 20:00, zero outside daylight
-    hours, scaled per day by `_SOLAR_DAY_SCALE` cycling through
-    cloudy/mixed/sunny days so both surplus and deficit occur.
-
-    Args:
-        moment: Interval start.
-        scale: Per-MeteringPoint scale factor (relative installation size).
-        day_index: Zero-based day offset since the start of the quarter,
-            used to pick the day's weather scale.
-
-    Returns:
-        Energy for the interval in kWh, zero outside daylight hours.
-    """
+    """Compute a synthetic feed-in value for one 15-minute interval."""
     hour = moment.hour + moment.minute / 60
     if hour < 6 or hour > 20:
         return 0.0
@@ -181,21 +133,7 @@ def _generate_readings_for_quarter(
     quarter: int,
     feed_in_disabled: bool,
 ) -> list[Reading]:
-    """Generate one quarter's worth of 15-minute synthetic readings.
-
-    Args:
-        metering_point_id: Database id of the MeteringPoint to generate readings for.
-        direction: The MeteringPoint's `direction`, determining consumption vs.
-            feed-in shape.
-        scale: Per-MeteringPoint scale factor.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-        feed_in_disabled: If `True`, feed-in-metering points yield
-            all-zero readings (used for the winter fixture).
-
-    Returns:
-        One `Reading` per 15-minute interval in the quarter.
-    """
+    """Generate one quarter's worth of 15-minute synthetic readings."""
     start, end = quarter_bounds(year, quarter)
     is_feed_in = direction == DIRECTION_FEED_IN
 
@@ -222,22 +160,7 @@ def _generate_readings_for_quarter(
 
 
 def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
-    """Create the full demo data set: LEG, sites, metering points,
-    persons, assignments, readings.
-
-    Idempotent guard: raises `DemoDataAlreadyExists` if the marker person
-    is already present, so the button in the UI can be clicked safely
-    without creating duplicates.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `DemoDataSummary` describing what was created.
-
-    Raises:
-        DemoDataAlreadyExists: If demo data was already generated before.
-    """
+    """Create the full demo data set: LEG, sites, metering points, persons, assignments, readings."""
     if demo_data_exists(connection):
         raise DemoDataAlreadyExists(
             "Demo-Daten wurden bereits erzeugt (Person "
@@ -261,14 +184,7 @@ def create_demo_data(connection: sqlite3.Connection) -> DemoDataSummary:
 
 
 def _create_demo_substation_area(connection: sqlite3.Connection) -> SubstationArea:
-    """Insert the single demo substation area all demo sites share.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The persisted `substation area` (with `id` set).
-    """
+    """Insert the single demo substation area all demo sites share."""
     substation_area = SubstationArea(
         id=None,
         name="Bern_TRA00001",
@@ -281,17 +197,7 @@ def _create_demo_substation_area(connection: sqlite3.Connection) -> SubstationAr
 
 
 def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
-    """Insert the single demo LEG all demo metering points share.
-
-    By default matches the demo substation area 1:1 -- same name, since no
-    cross-substation-area grouping is demonstrated in the showcase data.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The persisted `Leg` (with `id` set).
-    """
+    """Insert the single demo LEG all demo metering points share."""
     leg = Leg(
         id=None,
         name="Bern_TRA00001",
@@ -303,16 +209,7 @@ def _create_demo_leg(connection: sqlite3.Connection) -> Leg:
 
 
 def _create_demo_sites(connection: sqlite3.Connection, substation_area: SubstationArea) -> dict[str, Site]:
-    """Insert the four demo sites, all on the demo substation area.
-
-    Args:
-        connection: Open SQLite connection.
-        substation area: substation area created by `_create_demo_substation_area`.
-
-    Returns:
-        A dict keyed by short handle ("anna", "beat", "carla",
-        "bergstrasse4") mapping to the persisted `site` (with `id` set).
-    """
+    """Insert the four demo sites, all on the demo substation area."""
     definitions = {
         "anna": Site(
             id=None,
@@ -388,19 +285,7 @@ def _create_demo_sites(connection: sqlite3.Connection, substation_area: Substati
 def _create_demo_metering_points(
     connection: sqlite3.Connection, sites: dict[str, Site], leg: Leg
 ) -> dict[str, MeteringPoint]:
-    """Insert the demo metering points for the showcase sites, all on the demo LEG.
-
-    Args:
-        connection: Open SQLite connection.
-        sites: sites created by `_create_demo_sites`.
-        leg: LEG created by `_create_demo_leg`.
-
-    Returns:
-        A dict keyed by short handle ("anna_bezug", "anna_einspeisung",
-        "beat_bezug", "beat_einspeisung", "carla_bezug_1", "carla_bezug_2",
-        "bergstrasse4_bezug") mapping to the persisted `MeteringPoint` (with
-        `id` set).
-    """
+    """Insert the demo metering points for the showcase sites, all on the demo LEG."""
     definitions = {
         "anna_bezug": MeteringPoint(
             id=None,
@@ -554,15 +439,7 @@ def _create_demo_metering_points(
 
 
 def _create_demo_persons(connection: sqlite3.Connection) -> dict[str, Person]:
-    """Insert the four showcase persons plus one "previous tenant".
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A dict keyed by short handle ("anna", "beat", "carla", "david",
-        "erika") mapping to the persisted `Person` (with `id` set).
-    """
+    """Insert the four showcase persons plus one "previous tenant"."""
     definitions = {
         "anna": Person(
             id=None,
@@ -697,22 +574,7 @@ def _create_demo_assignments(
     persons: dict[str, Person],
     metering_points: dict[str, MeteringPoint],
 ) -> None:
-    """Insert assignments, including the mid-quarter move example.
-
-    The "bergstrasse4_bezug" MeteringPoint is assigned to Erika (previous
-    tenant) until 2025-08-15 and to David from 2025-08-16 onward, so a
-    single MeteringPoint's readings are split between two persons within the
-    summer demo quarter -- while its site (Bergstrasse 4) and its own
-    LEG never change.
-
-    Args:
-        connection: Open SQLite connection.
-        persons: persons created by `_create_demo_persons`.
-        metering_points: metering points created by `_create_demo_metering_points`.
-
-    Returns:
-        None.
-    """
+    """Insert assignments, including the mid-quarter move example."""
     summer_start, _ = quarter_bounds(*SUMMER_QUARTER)
     move_date = date(2025, 8, 16)
 
@@ -792,15 +654,7 @@ _METERING_POINT_SCALES = {
 
 
 def _create_demo_readings(connection: sqlite3.Connection, metering_points: dict[str, MeteringPoint]) -> int:
-    """Generate and store synthetic readings for the winter and summer quarters.
-
-    Args:
-        connection: Open SQLite connection.
-        metering_points: metering points created by `_create_demo_metering_points`.
-
-    Returns:
-        The total number of reading rows inserted.
-    """
+    """Generate and store synthetic readings for the winter and summer quarters."""
     total = 0
     for handle, metering_point in metering_points.items():
         scale = _METERING_POINT_SCALES[handle]
@@ -827,22 +681,10 @@ def _create_demo_readings(connection: sqlite3.Connection, metering_points: dict[
 
 
 def _set_demo_leg_settings(connection: sqlite3.Connection) -> None:
-    """Fill in plausible sender data, a valid demo QR-IBAN and demo fees.
-
-    Lets the administrator generate real QR-invoice PDFs from the demo
-    data without first having to configure real settings. Only ever
-    called as part of `create_demo_data`, which itself only runs once on a
-    fresh database (see `demo_data_exists`). The LEG's own name is set
-    separately, on the `Leg` record itself (see `_create_demo_leg`).
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        None.
-    """
+    """Fill in plausible sender data, a valid demo QR-IBAN and demo fees."""
     settings = settings_repo.get_settings(connection)
-    settings.address_street = "Sonnenweg 10"
+    settings.address_street = "Sonnenweg"
+    settings.address_house_number = "10"
     settings.address_zip = "3000"
     settings.address_city = "Bern"
     settings.address_country = "CH"

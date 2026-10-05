@@ -1,5 +1,4 @@
-"""Tests for app.emailing.graph_client (mocked httpx.AsyncClient -- no
-real contact with Microsoft)."""
+"""Tests for app.emailing.graph_client (mocked httpx.AsyncClient -- no real contact with Microsoft)."""
 
 import asyncio
 import base64
@@ -27,13 +26,7 @@ _CONFIG = GraphConfig(
 
 
 def _async_client_mock(*, post_result=None, post_side_effect=None):
-    """Build a replacement for `httpx.AsyncClient` whose `.post()` is mocked.
-
-    Returns:
-        `(client_class, client)`: `client_class` is what replaces
-        `httpx.AsyncClient` itself (patch target); `client` is the mock
-        instance so callers can assert on `client.post.call_args`.
-    """
+    """Build a replacement for `httpx.AsyncClient` whose `.post()` is mocked."""
     client = MagicMock()
     client.post = AsyncMock(return_value=post_result, side_effect=post_side_effect)
     context = MagicMock()
@@ -129,9 +122,7 @@ def test_send_email_attaches_pdf_as_base64(tmp_path):
 
 
 def test_send_email_guesses_content_type_from_filename(tmp_path):
-    """A non-PDF attachment (e.g. a broadcast email's administrator-chosen
-    file, see app.emailing.bulk_send.send_broadcast_email) still gets a
-    sensible contentType instead of the old hardcoded application/pdf."""
+    """A non-PDF attachment (e.g."""
     image_path = tmp_path / "einladung.png"
     image_path.write_bytes(b"\x89PNG-fake-content")
     response = httpx.Response(202)
@@ -176,8 +167,7 @@ def test_send_email_falls_back_to_octet_stream_for_unknown_extension(tmp_path):
 
 
 def test_send_email_raises_api_error_for_oversized_attachment(tmp_path):
-    """Enforced client-side, before ever calling Graph -- a too-large
-    attachment must not produce N confusing per-recipient failures."""
+    """Enforced client-side, before ever calling Graph -- a too-large attachment must not produce N..."""
     from app.emailing.graph_client import MAX_INLINE_ATTACHMENT_BYTES
 
     big_path = tmp_path / "gross.bin"
@@ -200,9 +190,7 @@ def test_send_email_raises_api_error_for_oversized_attachment(tmp_path):
 
 
 def test_send_email_raises_api_error_if_attachment_missing(tmp_path):
-    """A PDF deleted/moved after being generated must be a clean
-    GraphApiError (so bulk_send can skip just that one recipient), not an
-    unhandled OSError that crashes the whole batch."""
+    """A PDF deleted/moved after being generated must be a clean GraphApiError (so bulk_send can skip..."""
     missing_path = tmp_path / "does-not-exist.pdf"
     client_class, client = _async_client_mock()
     with patch("app.emailing.graph_client.httpx.AsyncClient", client_class):
@@ -368,12 +356,7 @@ def test_no_cc_or_bcc_is_ever_set():
 
 
 def test_sending_to_nobody_is_a_clean_per_party_error():
-    """A `GraphApiError`, so a batch send skips this party instead of aborting.
-
-    `app.emailing.bulk_send` catches only `Graph*` exceptions per recipient
-    (see the attachment-read path for the same reasoning), so anything else
-    would take the whole run down over one person with no address.
-    """
+    """A `GraphApiError`, so a batch send skips this party instead of aborting."""
     client_class, client = _async_client_mock(post_result=httpx.Response(202))
     with patch("app.emailing.graph_client.httpx.AsyncClient", client_class):
         with pytest.raises(GraphApiError) as exc_info:

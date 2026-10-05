@@ -1,18 +1,4 @@
-"""Tests for the shared sorting mechanism (`app.gui.sorting`).
-
-Everything here is a pure function over already-loaded rows, so none of it
-needs a rendered NiceGUI page. `render_sort_select` is the one function
-this file does not cover: it builds a NiceGUI element, and the project
-has no harness that renders a page, so it is verified by hand instead.
-
-The page-level option sets are tested alongside these, because what they
-have to guarantee is a property of the whole app rather than of any one
-page: every list offers the same control, and -- crucially -- every one
-of its options survives being run over a real row. The shared helpers
-below are easy to test and were never the risk; a page keying on a dict
-field that its row builder does not produce is, and only
-`test_every_option_sorts_real_rows_without_raising` catches that.
-"""
+"""Tests for the shared sorting mechanism (`app.gui.sorting`)."""
 
 from dataclasses import dataclass
 
@@ -62,14 +48,7 @@ def test_fold_for_sort(text, expected):
 
 
 def test_umlauts_sort_as_their_base_letter():
-    """German rule (DIN 5007 Variant 1): "Bühler" belongs between
-    "Buchser" and "Burri".
-
-    Plain code-point ordering (SQLite's BINARY/NOCASE, verified) gives
-    `Buchser, Burri, Bühler, Zimmermann, Zwahlen, Zürcher, Ärni` instead:
-    a non-leading umlaut slips past its own initial group, and a leading
-    one goes behind every "Z..." name.
-    """
+    """German rule (DIN 5007 Variant 1): "Bühler" belongs between "Buchser" and "Burri"."""
     names = ["Zimmermann", "Burri", "Bühler", "Buchser", "Ärni", "Zwahlen", "Zürcher"]
 
     assert sorted(names, key=fold_for_sort) == [
@@ -87,11 +66,7 @@ def test_umlauts_sort_as_their_base_letter():
 
 
 def test_numbers_inside_a_name_sort_as_numbers():
-    """The reported case: BKW's Trafokreis names run three to five digits.
-
-    Compared character by character, "1" beats "9", so every five-digit
-    circuit landed ahead of every four-digit one.
-    """
+    """The reported case: BKW's Trafokreis names run three to five digits."""
     names = ["TRA19400", "TRA9365", "TRA365", "TRA45200"]
 
     assert sorted(names, key=natural_key) == ["TRA365", "TRA9365", "TRA19400", "TRA45200"]
@@ -121,24 +96,12 @@ def test_a_number_in_the_middle_sorts_numerically_too():
     ],
 )
 def test_natural_key_alternates_text_and_number_parts(text, expected):
-    """Even positions are text, odd ones numeric parts -- always.
-
-    That is the whole type guarantee: two keys can never compare a number
-    against a str, whatever the strings were. Pinned rather than trusted,
-    because losing it turns a sort into a TypeError on one page's data.
-    """
+    """Even positions are text, odd ones numeric parts -- always."""
     assert natural_key(text) == expected
 
 
 def test_a_very_long_run_of_digits_does_not_raise():
-    """`int()` would, and the input is not all typed by the administrator.
-
-    Since Python 3.11, converting more than `sys.get_int_max_str_digits()`
-    (4300) digits raises ValueError. Names and addresses arrive from the
-    leg-ittigen.ch web form via `app.importers.cloudflare_client`, which
-    imposes no length limit, and they are sorted in the Webanmeldungen
-    inbox -- so this was a way to stop a page rendering, not a curiosity.
-    """
+    """`int()` would, and the input is not all typed by the administrator."""
     long_digits = "9" * (sys.get_int_max_str_digits() + 700)
 
     assert natural_key("Muster" + long_digits) > natural_key("Muster1")
@@ -146,11 +109,7 @@ def test_a_very_long_run_of_digits_does_not_raise():
 
 
 def test_a_longer_number_is_the_bigger_one():
-    """What makes comparing (length, digits) correct without converting.
-
-    With leading zeros stripped, more digits means a larger number, and two
-    runs of equal length compare the same way as text and as numbers.
-    """
+    """What makes comparing (length, digits) correct without converting."""
     assert natural_key("x9") < natural_key("x10")
     assert natural_key("x11600") < natural_key("x11919")
 
@@ -163,11 +122,7 @@ def test_any_two_strings_are_comparable():
 
 
 def test_leading_zeros_tie():
-    """Documented behaviour, not an accident -- see `numeric_part`.
-
-    Stripping them is what makes "longer means larger" true; two circuits
-    differing only in padding do not occur, and `sorted` is stable.
-    """
+    """Documented behaviour, not an accident -- see `numeric_part`."""
     assert natural_key("TRA007") == natural_key("TRA7")
 
 
@@ -180,11 +135,7 @@ def test_umlauts_still_fold_when_a_number_is_present():
 
 
 def test_text_key_keeps_each_part_separate():
-    """A part's own text/number boundaries must not bleed into the next.
-
-    Flattened into one sequence, `("a", 1)` for "a1" and `("a", "1")` for
-    the two parts "a" and "1" would collide; nested, they cannot.
-    """
+    """A part's own text/number boundaries must not bleed into the next."""
     assert text_key("a", "1") != text_key("a1")
 
 
@@ -216,8 +167,7 @@ def test_number_key_can_put_missing_values_first():
 
 
 def test_house_numbers_sort_numerically_not_as_text():
-    """The user's complaint: "Fischrain 68" must not come before
-    "Fischrain 9" just because "6" < "9" as a character."""
+    """The user's complaint: "Fischrain 68" must not come before "Fischrain 9" just because "6" < "9"..."""
     addresses = [("Fischrain", "68"), ("Fischrain", "9"), ("Fischrain", "10"), ("Fischrain", "2")]
 
     ordered = sorted(addresses, key=lambda a: address_key(*a))
@@ -297,12 +247,7 @@ def test_missing_person_sorts_first_instead_of_crashing():
 
 
 def test_a_missing_person_is_comparable_with_a_present_one():
-    """The two branches must produce the same *shape*, not just sort right.
-
-    A bare `("", "")` next to `text_key`'s nested tuples raises TypeError on
-    the first comparison, and it would do so only on a page that happens to
-    hold a row whose person is gone.
-    """
+    """The two branches must produce the same *shape*, not just sort right."""
     present = person_name_key(_FakePerson("Muster", "Adrian"))
 
     assert person_name_key(None) < present
@@ -343,12 +288,7 @@ def test_sort_description_names_the_selected_option():
 
 
 def _page_option_sets() -> list[tuple[str, list[SortOption]]]:
-    """Collect every list page's options, so the checks below hold app-wide.
-
-    Returns:
-        `(page name, options)` pairs, including the two pages that build
-        their options from a person lookup rather than a constant.
-    """
+    """Collect every list page's options, so the checks below hold app-wide."""
     from app.gui.pages import (
         assignments,
         dunning,
@@ -381,8 +321,7 @@ def _page_option_sets() -> list[tuple[str, list[SortOption]]]:
 
 @pytest.mark.parametrize("page,options", _page_option_sets(), ids=lambda v: v if isinstance(v, str) else "")
 def test_every_list_page_offers_at_least_two_orders(page, options):
-    """A page with only one sensible order should show no select at all
-    (see `app.gui.pages.signatures`), so anything listed here needs two."""
+    """A page with only one sensible order should show no select at all (see..."""
     assert len(options) >= 2, page
 
 
@@ -399,9 +338,7 @@ def test_every_option_produces_a_printable_description(page, options):
 
 
 def test_the_person_lists_all_default_to_the_surname():
-    """The administrator looks people up by name, and gets the same
-    default wherever people are listed -- that is the whole point of the
-    shared mechanism."""
+    """The administrator looks people up by name, and gets the same default wherever people are listed..."""
     from app.gui.pages import offboardings, onboardings, persons, receivables
 
     for page, options in (
@@ -415,17 +352,7 @@ def test_the_person_lists_all_default_to_the_surname():
 
 
 def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
-    """Build two rows per page, in the exact shape that page's own row
-    builder produces.
-
-    Each pair deliberately includes the awkward half of the real data --
-    a missing person, a `None` customer number, a site that could not be
-    resolved, an empty tracker, an unparseable timestamp -- because those
-    are what a sort key actually trips over in production.
-
-    Returns:
-        `(page name, rows, options)` triples covering every list page.
-    """
+    """Build two rows per page, in the exact shape that page's own row builder produces."""
     from datetime import date
 
     from app.domain.dunning import DunningCandidate
@@ -720,14 +647,7 @@ def _representative_rows() -> list[tuple[str, list, list[SortOption]]]:
     "page,rows,options", _representative_rows(), ids=lambda v: v if isinstance(v, str) else ""
 )
 def test_every_option_sorts_real_rows_without_raising(page, rows, options):
-    """Every option of every page must survive the awkward half of the data.
-
-    The other page-level tests only inspect option metadata, so a key that
-    reads a dict field its row builder never produces -- or an attribute
-    that was renamed on the model -- would pass them and then crash the
-    page the moment someone picks that entry in the select. This is the
-    test that fails instead.
-    """
+    """Every option of every page must survive the awkward half of the data."""
     for option in options:
         ordered = apply_sort(rows, options, option.key)
         assert len(ordered) == len(rows), f"{page} / {option.key}"
@@ -741,11 +661,7 @@ def test_every_option_sorts_real_rows_without_raising(page, rows, options):
 
 
 class _FakeControl:
-    """Stands in for `SortControl`, which needs a rendered NiceGUI page.
-
-    `_resolve` reads both fields by attribute, so this is enough to drive
-    every direction case without a browser.
-    """
+    """Stands in for `SortControl`, which needs a rendered NiceGUI page."""
 
     def __init__(self, value: str, descending: bool = False) -> None:
         self.value = value
@@ -763,11 +679,7 @@ def test_direction_toggle_reverses_the_selected_order():
 
 
 def test_toggling_an_already_descending_option_flips_it_back():
-    """The arrow must do something visible on "meiste zuerst" options too.
-
-    Those are descending by construction, so a naive "apply reverse on
-    top" would leave them unchanged; the two cancel out instead.
-    """
+    """The arrow must do something visible on "meiste zuerst" options too."""
     options = [SortOption("count", "Anzahl (meiste zuerst)", lambda row: row["count"], reverse=True)]
     rows = [{"count": 1}, {"count": 3}, {"count": 2}]
 
@@ -794,8 +706,7 @@ def test_printout_names_the_direction_only_when_it_is_reversed():
     "page,rows,options", _representative_rows(), ids=lambda v: v if isinstance(v, str) else ""
 )
 def test_every_option_also_sorts_descending_without_raising(page, rows, options):
-    """The arrow applies to every option on every page, so every option
-    has to survive being reversed too."""
+    """The arrow applies to every option on every page, so every option has to survive being reversed..."""
     for option in options:
         ordered = apply_sort(rows, options, _FakeControl(option.key, descending=True))
         assert len(ordered) == len(rows), f"{page} / {option.key}"
@@ -810,15 +721,7 @@ def test_every_option_also_sorts_descending_without_raising(page, rows, options)
 
 
 def _person_with(salutation: str = "", **overrides):
-    """Build an unpersisted Person for sort-key checks.
-
-    Args:
-        salutation: The first person's salutation.
-        **overrides: Any other Person field.
-
-    Returns:
-        The `Person`.
-    """
+    """Build an unpersisted Person for sort-key checks."""
     from app.models.person import Person
 
     fields = dict(
@@ -846,14 +749,7 @@ def _person_with(salutation: str = "", **overrides):
 
 
 def _salutation_order(people):
-    """Sort people by the Anrede option and return their names.
-
-    Args:
-        people: The persons to order.
-
-    Returns:
-        The display names, in the order the option produces.
-    """
+    """Sort people by the Anrede option and return their names."""
     from app.gui.pages import persons
 
     option = next(o for o in persons.SORT_OPTIONS if o.key == "salutation")
@@ -869,8 +765,7 @@ def test_persons_without_a_salutation_come_first():
 
 
 def test_a_company_without_a_contact_person_is_not_treated_as_missing():
-    """It legitimately has no salutation, and burying the real gaps in
-    those would make the order useless."""
+    """It legitimately has no salutation, and burying the real gaps in those would make the order..."""
     company = _person_with("", company="Hauswartung AG", first_name="", last_name="")
     gap = _person_with("", last_name="Ohne")
     fine = _person_with("Herr", last_name="Bekannt")

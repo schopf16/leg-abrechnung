@@ -1,14 +1,4 @@
-"""One search box that reaches every Stammdaten record.
-
-A record used to be findable only from the list it lives on, which asked the
-reader to know this app's filing before looking anything up: a street could
-be a Standort or somebody's billing address, and a Messpunktbezeichnung meant
-going to Messpunkte first.
-
-The matching is checked against the domain function and the box is driven for
-real, because a result list that renders and does not navigate looks exactly
-like one that works.
-"""
+"""One search box that reaches every Stammdaten record."""
 
 from datetime import date
 
@@ -42,11 +32,7 @@ from app.models.substation_area import SubstationArea
 
 
 def _deployment() -> dict:
-    """One record of every kind, findable by street, name or designation.
-
-    Returns:
-        The ids, by kind.
-    """
+    """One record of every kind, findable by street, name or designation."""
     with connection_scope() as connection:
         area = substation_area_repo.create(
             connection,
@@ -135,14 +121,7 @@ def _deployment() -> dict:
 
 
 def _groups(query: str) -> dict:
-    """Run one search.
-
-    Args:
-        query: What was typed.
-
-    Returns:
-        `{kind: SearchGroup}`.
-    """
+    """Run one search."""
     with connection_scope() as connection:
         return {group.kind: group for group in search(connection, query)}
 
@@ -194,11 +173,7 @@ def test_a_query_too_short_to_mean_anything_finds_nothing(query):
 
 
 def test_the_groups_come_in_the_order_of_the_data_model():
-    """The same order the drawer lists them in.
-
-    A relevance score would put a person above a metering point for reasons
-    nobody can see.
-    """
+    """The same order the drawer lists them in."""
     _deployment()
 
     with connection_scope() as connection:
@@ -242,14 +217,7 @@ def test_a_hit_leads_to_the_record():
 
 
 def _box(probe: str):
-    """Render the search box on its own.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        `(client, GlobalSearch)`.
-    """
+    """Render the search box on its own."""
     from app.gui.global_search import render_global_search
 
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -259,8 +227,7 @@ def _box(probe: str):
 
 
 def test_typing_fills_the_list_and_marks_the_first_hit():
-    """So Enter after typing is one keystroke to the obvious answer -- and
-    the mark says which answer that is."""
+    """So Enter after typing is one keystroke to the obvious answer -- and the mark says which answer..."""
     _deployment()
     client, box = _box("/probe-search-type")
 
@@ -308,14 +275,7 @@ def test_escape_puts_the_list_away_and_keeps_the_text(press):
 
 
 def test_enter_goes_to_the_marked_record(press, monkeypatch):
-    """Driven, because a list that renders and does not navigate looks the
-    same as one that works.
-
-    The mark starts on the first hit of the first group, which is the data
-    model's order and not a guess at relevance: searching a surname finds
-    the person *and* the metering point they sit on, and Messpunkte come
-    before Personen. One ArrowDown from there reaches the person.
-    """
+    """Driven, because a list that renders and does not navigate looks the same as one that works."""
     ids = _deployment()
     client, box = _box("/probe-search-enter")
 
@@ -349,8 +309,7 @@ def test_the_person_is_one_arrow_away(press, monkeypatch):
 
 
 def test_leaving_empties_the_box(monkeypatch):
-    """Coming back to a page with yesterday's query in the header and no list
-    under it reads as broken."""
+    """Coming back to a page with yesterday's query in the header and no list under it reads as broken."""
     _deployment()
     client, box = _box("/probe-search-clears")
     monkeypatch.setattr(ui.navigate, "to", lambda *_, **__: None)

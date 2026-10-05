@@ -1,11 +1,4 @@
-"""Tests for collapsing repeated findings on the overview.
-
-Thirteen address lines pushed everything else off the screen, and a list
-that long stops being read -- which costs more than the detail it bought.
-Several findings of one kind become one counted line; a single finding keeps
-its own message, because naming the one metering point without a LEG is more
-useful than "1 Messpunkt ohne LEG" and takes the same room.
-"""
+"""Tests for collapsing repeated findings on the overview."""
 
 import pytest
 
@@ -13,18 +6,7 @@ from app.domain.quality_checks import QualityWarning, summarise_warnings
 
 
 def _warning(category: str, message: str, link: str = "/x", summary: str = "", summary_link=None):
-    """Build a warning.
-
-    Args:
-        category: Its category.
-        message: Its own message.
-        link: Where the single line points.
-        summary: Plural phrase for a collapsed group, empty to never collapse.
-        summary_link: Where a collapsed line points.
-
-    Returns:
-        The `QualityWarning`.
-    """
+    """Build a warning."""
     return QualityWarning(
         category=category, message=message, link=link, summary=summary, summary_link=summary_link
     )
@@ -52,11 +34,7 @@ def test_a_single_finding_keeps_its_own_message():
 
 
 def test_a_collapsed_line_points_at_the_list_not_at_one_record():
-    """Most per-record warnings link to their own record.
-
-    Grouping by link would collapse nothing, and linking the group to one
-    arbitrary record would send the reader to a single case out of seven.
-    """
+    """Most per-record warnings link to their own record."""
     warnings = [
         _warning(
             "onboarding_overdue",
@@ -74,10 +52,7 @@ def test_a_collapsed_line_points_at_the_list_not_at_one_record():
 
 
 def test_one_check_can_still_speak_twice_for_two_pages():
-    """Addresses on Standorte and on Personen are two jobs.
-
-    Same category, different summaries, so they stay apart.
-    """
+    """Addresses on Standorte and on Personen are two jobs."""
     warnings = [
         _warning("address_not_official", "a", summary="Standort-Adressen prüfen", summary_link="/sites"),
         _warning("address_not_official", "b", summary="Standort-Adressen prüfen", summary_link="/sites"),

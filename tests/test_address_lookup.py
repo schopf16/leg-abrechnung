@@ -1,17 +1,4 @@
-"""Tests for narrowing while typing, and for checking a finished address.
-
-Two operations, two sets of tests, because they are not the same question.
-Typing wants *narrowing* -- fewer candidates per keystroke, no scoring.
-Checking wants *similarity* -- a wrong string is already there and the
-useful answer is "did you mean Worblaufen?".
-
-The locality rule is pinned hard here: the app offers the **postal**
-locality and never the political municipality, because that is the name the
-member reads on the invoice, and because the municipality is not even
-determined by the postal code -- 3048 Worblaufen lies in both Ittigen and
-Bern. A later session reading `COM_NAME` and thinking it looks more
-official would break exactly these tests.
-"""
+"""Tests for narrowing while typing, and for checking a finished address."""
 
 import pytest
 
@@ -29,14 +16,7 @@ from app.domain.address_lookup import (
 
 
 def _labels(suggestions) -> list[str]:
-    """The display lines of a suggestion list.
-
-    Args:
-        suggestions: What a suggest function returned.
-
-    Returns:
-        One label per suggestion.
-    """
+    """The display lines of a suggestion list."""
     return [suggestion.label for suggestion in suggestions]
 
 
@@ -55,11 +35,7 @@ def _labels(suggestions) -> list[str]:
     ],
 )
 def test_a_trailing_number_is_read_as_the_house_number(query, expected):
-    """So "Erstweg 4" narrows to one address while "Erstweg" offers the street.
-
-    A street name can itself contain numbers, so only a *trailing* one
-    counts.
-    """
+    """So "Erstweg 4" narrows to one address while "Erstweg" offers the street."""
     assert split_query(query) == expected
 
 
@@ -135,12 +111,7 @@ def test_a_misspelled_locality_is_offered_the_right_one(address_register):
 
 
 def test_the_political_municipality_is_offered_the_postal_locality(address_register):
-    """The administrator's own rule, and the reason it exists.
-
-    "Grossgemeinde" is a perfectly correct municipality for this postal
-    code. It is still not what belongs on the letter, because the resident
-    lives in Musterdorf and reads the envelope.
-    """
+    """The administrator's own rule, and the reason it exists."""
     findings = verify("Erstweg", "4", "3048", "Grossgemeinde", path=address_register)
 
     assert [(f.field, f.suggestion) for f in findings] == [(FIELD_LOCALITY, "Musterdorf")]
@@ -154,11 +125,7 @@ def test_the_postal_code_typed_into_the_locality_field_is_caught(address_registe
 
 
 def test_any_of_several_localities_for_one_postal_code_is_accepted(address_register):
-    """3065 is both "Bolligen" and "Bolligen Dorf", and both are correct.
-
-    Flagging one of them would report sound data, which is how a check
-    earns itself the habit of being ignored.
-    """
+    """3065 is both "Bolligen" and "Bolligen Dorf", and both are correct."""
     assert verify("Drittweg", "1", "3065", "Beispiel Dorf", path=address_register) == []
 
 
@@ -194,12 +161,7 @@ def test_a_wrong_street_and_a_wrong_locality_are_both_reported(address_register)
 
 
 def test_a_po_box_is_reported_and_proposes_nothing(address_register):
-    """Legitimate, and the register cannot know it.
-
-    One finding with no suggestion, which the UI turns into a single "Nein"
-    that retires it for good -- the trade the administrator chose over
-    leaving billing addresses unchecked.
-    """
+    """Legitimate, and the register cannot know it."""
     findings = verify("Postfach", "", "3048", "Musterdorf", path=address_register)
 
     assert [(f.field, f.suggestion) for f in findings] == [(FIELD_STREET, "")]
@@ -209,11 +171,7 @@ def test_a_po_box_is_reported_and_proposes_nothing(address_register):
 
 
 def test_everything_goes_quiet_without_a_register(tmp_path):
-    """The app has to work before the first download, and after a failure.
-
-    An absent register is not evidence against an address, so verification
-    reports nothing rather than flagging everything.
-    """
+    """The app has to work before the first download, and after a failure."""
     absent = tmp_path / "gibt-es-nicht.sqlite3"
 
     assert register_available(absent) is False
@@ -228,30 +186,14 @@ def test_a_register_that_exists_is_reported_as_available(address_register):
 
 
 def test_a_street_that_exists_elsewhere_blames_the_postal_code(address_register):
-    """Found by running the real data, and it was offering a harmful fix.
-
-    The street was spelled perfectly; it simply sat behind a different
-    postal code. Offered the closest street *within* the typed code, the
-    register proposed a different real street -- they share the "strasse"
-    ending, which alone carries the similarity score -- and a click would
-    have written it into the record.
-
-    Raising the cutoff cannot separate these: that bad suggestion scored
-    0.733 while a genuine postal-code-in-the-locality-field error scores
-    0.737. The street existing elsewhere is the fact that distinguishes
-    them.
-    """
+    """Found by running the real data, and it was offering a harmful fix."""
     findings = verify("Drittweg", "1", "3048", "Musterdorf", path=address_register)
 
     assert [(f.field, f.value, f.suggestion) for f in findings] == [(FIELD_POSTAL_CODE, "3048", "3065")]
 
 
 def test_a_wrong_postal_code_does_not_also_report_the_locality(address_register):
-    """One mistake, one finding.
-
-    Checking the locality against the localities of a postal code that is
-    itself wrong would report a second finding for the same error.
-    """
+    """One mistake, one finding."""
     findings = verify("Drittweg", "1", "3048", "Beispiel Dorf", path=address_register)
 
     assert [f.field for f in findings] == [FIELD_POSTAL_CODE]
@@ -272,11 +214,7 @@ def test_a_misspelled_street_is_offered_the_right_spelling(address_register):
 
 
 def test_an_unrelated_street_name_is_offered_nothing(address_register):
-    """The stricter cutoff for streets, stated as a test.
-
-    Every Swiss street ends in "strasse" or "weg", so the shared suffix
-    alone pushes unrelated names over the default threshold.
-    """
+    """The stricter cutoff for streets, stated as a test."""
     findings = verify("Zwölfterweg", "1", "3048", "Musterdorf", path=address_register)
 
     assert [(f.field, f.suggestion) for f in findings] == [(FIELD_STREET, "")]

@@ -17,14 +17,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 def _make_site(db) -> int:
-    """Create a minimal site and return its id.
-
-    Args:
-        db: Database connection fixture.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a minimal site and return its id."""
     return site_repo.create(
         db,
         Site(
@@ -41,16 +34,7 @@ def _make_site(db) -> int:
 
 
 def _make_metering_point(designation: str, direction: str, site_id: int) -> MeteringPoint:
-    """Build an unpersisted `MeteringPoint` for use in tests.
-
-    Args:
-        designation: Business key to assign.
-        direction: Measurement direction.
-        site_id: Foreign key of the site the MeteringPoint belongs to.
-
-    Returns:
-        A `MeteringPoint` with `id=None`.
-    """
+    """Build an unpersisted `MeteringPoint` for use in tests."""
     return MeteringPoint(
         id=None,
         designation=designation,

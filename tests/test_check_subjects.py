@@ -1,17 +1,4 @@
-"""The table that lets a list skip the checks it cannot be marked by.
-
-Measured on the live deployment: every list page ran all eleven checks, so
-`problems_for` cost 128 ms -- 49 ms of it `check_substation_area_one_sided`
-and 41 ms `check_addresses`, and on the Personen page the first of those
-cannot produce a single finding. The administrator reported the pages
-opening slowly and this was most of the server's share.
-
-The table is declared rather than discovered, because a check's subject is
-only known after running it, which is the thing being avoided. The risk is
-therefore drift, and that is what these tests are for -- derived from the
-source rather than from a run, because no test data triggers all eleven
-checks at once.
-"""
+"""The table that lets a list skip the checks it cannot be marked by."""
 
 import ast
 from pathlib import Path
@@ -21,11 +8,7 @@ from app.domain.quality_checks import ALL_CHECKS, CHECK_SUBJECTS, checks_for
 
 
 def _subjects_in_the_source() -> dict[str, set[str]]:
-    """Which `SUBJECT_*` each check's body mentions.
-
-    Returns:
-        `{check name: {constant name}}`.
-    """
+    """Which `SUBJECT_*` each check's body mentions."""
     tree = ast.parse(Path("app/domain/quality_checks.py").read_text(encoding="utf-8"))
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     found: dict[str, set[str]] = {}
@@ -40,12 +23,7 @@ def _subjects_in_the_source() -> dict[str, set[str]]:
 
 
 def test_every_check_declares_the_subjects_it_can_mark():
-    """A check that gains a subject must gain a table entry with it.
-
-    Otherwise its findings would quietly stop reaching the list they belong
-    to: the overview would show them and the list would have no triangle,
-    which is exactly the gap the markers were built to close.
-    """
+    """A check that gains a subject must gain a table entry with it."""
     in_source = _subjects_in_the_source()
 
     for check in ALL_CHECKS:
@@ -81,10 +59,6 @@ def test_the_checks_keep_the_order_the_overview_uses():
 
 
 def test_deployment_wide_checks_mark_no_list():
-    """They belong on the overview and have no record to point at.
-
-    Declared as an empty tuple rather than left out, so the table stays a
-    statement about every check instead of a list of some of them.
-    """
+    """They belong on the overview and have no record to point at."""
     assert CHECK_SUBJECTS[quality_checks.check_open_billing_cycle] == ()
     assert CHECK_SUBJECTS[quality_checks.check_unresolved_bank_transactions] == ()

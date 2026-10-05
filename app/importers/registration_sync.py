@@ -1,21 +1,4 @@
-"""Synchronizes the leg-ittigen.ch registration inbox into `web_registration`.
-
-Orchestrates `app.importers.cloudflare_client` -> `app.models.
-web_registration`: fetches every submission newer than the stored cursor
-(looping while the API's 500-entry page limit is hit, until an empty
-response confirms there is nothing left), applies each one to the local
-inbox, and advances the cursor so the same Cloudflare entry is never
-re-fetched.
-
-Matching is done by email address -- the only identity field every
-registration is guaranteed to carry (a registration can report zero, one
-or several meters, so the meter set cannot serve as the key). Accepted,
-deliberate limitation: if two different people happen to submit with the
-same email address (e.g. a couple), a second submission overwrites the
-first's row instead of creating its own -- at the expected scale of a
-single-municipality LEG, and since the administrator reviews every entry
-manually before acting on it anyway, no extra heuristic is built for this.
-"""
+"""Synchronizes the leg-ittigen.ch registration inbox into `web_registration`."""
 
 import sqlite3
 from dataclasses import dataclass, field
@@ -46,18 +29,7 @@ _COMPARED_FIELDS = (
 
 @dataclass
 class RegistrationSyncResult:
-    """Outcome of one `sync_registrations` run, for display in the GUI.
-
-    Attributes:
-        created: Number of newly created inbox rows.
-        updated: Number of existing rows updated because a repeat
-            submission for the same email changed its content (any
-            compared field, or its reported meters).
-        unchanged: Number of repeat submissions with identical content
-            to what is already stored (no-ops).
-        warnings: Human-readable (German) messages about skipped entries
-            (currently: submissions with no email address).
-    """
+    """Outcome of one `sync_registrations` run, for display in the GUI."""
 
     created: int = 0
     updated: int = 0
@@ -66,22 +38,7 @@ class RegistrationSyncResult:
 
 
 def sync_registrations(connection: sqlite3.Connection, token: str) -> RegistrationSyncResult:
-    """Fetch and apply every new/changed registration since the last sync.
-
-    Args:
-        connection: Open SQLite connection.
-        token: Bearer token for the leg-ittigen.ch API (see
-            `app.config.get_leg_api_token`).
-
-    Returns:
-        A `RegistrationSyncResult` summarizing what happened.
-
-    Raises:
-        app.importers.cloudflare_client.CloudflareAuthError: If the token
-            is missing or invalid.
-        app.importers.cloudflare_client.CloudflareApiError: For any other
-            failure talking to the API.
-    """
+    """Fetch and apply every new/changed registration since the last sync."""
     result = RegistrationSyncResult()
     settings = settings_repo.get_settings(connection)
     cursor = settings.web_registration_cursor
@@ -109,16 +66,7 @@ def _apply_submission(
     submission: RegistrationSubmission,
     result: RegistrationSyncResult,
 ) -> None:
-    """Insert, update or ignore one submission, updating `result` in place.
-
-    Args:
-        connection: Open SQLite connection.
-        submission: One fetched registration submission.
-        result: Running tally to update in place.
-
-    Returns:
-        None.
-    """
+    """Insert, update or ignore one submission, updating `result` in place."""
     if not submission.email:
         who = f"{submission.first_name} {submission.last_name}".strip() or submission.company or "?"
         result.warnings.append(
@@ -142,17 +90,7 @@ def _apply_submission(
 
 
 def _content_unchanged(existing: WebRegistration, incoming: WebRegistration) -> bool:
-    """Check whether a repeat submission's visible content is identical.
-
-    Args:
-        existing: Currently stored row for this email address.
-        incoming: Newly fetched submission for the same email address,
-            already converted to a `WebRegistration`.
-
-    Returns:
-        `True` if every compared field and the reported meter set are
-        both unchanged.
-    """
+    """Check whether a repeat submission's visible content is identical."""
     if any(getattr(existing, name) != getattr(incoming, name) for name in _COMPARED_FIELDS):
         return False
     existing_meters = {(m.meter_number, m.note) for m in existing.meters}
@@ -163,16 +101,7 @@ def _content_unchanged(existing: WebRegistration, incoming: WebRegistration) -> 
 def _to_registration(
     submission: RegistrationSubmission, existing: Optional[WebRegistration]
 ) -> WebRegistration:
-    """Convert a fetched submission into a `WebRegistration` ready to upsert.
-
-    Args:
-        submission: The fetched submission.
-        existing: The currently stored row for this email, if any (so the
-            result carries the right `id` for an update).
-
-    Returns:
-        A `WebRegistration` ready for `web_registration_repo.upsert_from_submission`.
-    """
+    """Convert a fetched submission into a `WebRegistration` ready to upsert."""
     return WebRegistration(
         id=existing.id if existing else None,
         cloudflare_id=submission.cloudflare_id,

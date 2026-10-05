@@ -1,18 +1,4 @@
-"""Shared Genossenschaft membership editor and read-only history.
-
-Two renderers over `app.models.cooperative_membership`, deliberately split
-along what the two icons in the Personen list mean: the eye shows, the
-pencil changes. Joining, leaving and buying shares are changes, so they
-live in the Person edit dialog (`app.gui.person_form`); the detail page
-only displays the history (`app.gui.pages.persons`).
-
-Why a history at all, rather than two fields on `person`: a cooperative has
-to be able to say who held how many shares on a given day, years later.
-So a share purchase does not overwrite a number -- it ends the running
-period and opens a new one, and `render_cooperative_editor` does exactly
-that from three plain controls, without making the administrator think
-about periods.
-"""
+"""Shared Genossenschaft membership editor and read-only history."""
 
 from datetime import date, timedelta
 from typing import Callable, Optional
@@ -27,30 +13,13 @@ from app.models.cooperative_membership import CooperativeMembership
 
 
 def _period_text(membership: CooperativeMembership) -> str:
-    """One membership period as a single readable line.
-
-    Args:
-        membership: The period to describe.
-
-    Returns:
-        E.g. `"01.01.2024 - 30.06.2026: 12 Anteil(e)"`.
-    """
+    """One membership period as a single readable line."""
     end = membership.valid_to.strftime("%d.%m.%Y") if membership.valid_to else "läuft"
     return f"{membership.valid_from.strftime('%d.%m.%Y')} - {end}: {membership.shares} Anteil(e)"
 
 
 def render_cooperative_history(person_id: int) -> None:
-    """Show one person's membership history, read-only.
-
-    For the detail page, which is what the eye icon opens. No buttons: a
-    view does not change anything -- see the module docstring.
-
-    Args:
-        person_id: The person whose history to show.
-
-    Returns:
-        None.
-    """
+    """Show one person's membership history, read-only."""
     with connection_scope() as connection:
         memberships = cooperative_membership_repo.list_for_person(connection, person_id)
         warnings = cooperative_membership_repo.find_warnings(connection, person_id)
@@ -72,34 +41,10 @@ def render_cooperative_history(person_id: int) -> None:
 
 
 class CooperativeEditor:
-    """The editable Genossenschaft controls inside the Person edit dialog.
-
-    Three plain controls -- member yes/no, how many shares, from when --
-    which `apply()` turns into the right period bookkeeping: opening a
-    period, closing one, or closing one and opening the next so the
-    previous share count stays answerable.
-
-    A correction on the very day a period started overwrites that period
-    instead of opening a zero-length one, because that is what it is: a
-    typo being fixed, not a change of holding.
-
-    Attributes:
-        person_id: The person being edited, or `None` while creating one --
-            a membership cannot hang on a person who does not exist yet.
-    """
+    """The editable Genossenschaft controls inside the Person edit dialog."""
 
     def __init__(self, person_id: Optional[int], *, on_changed: Optional[Callable[[], None]] = None) -> None:
-        """Render the controls for one person.
-
-        Args:
-            person_id: The person being edited, or `None` when creating.
-            on_changed: Called after a correction or deletion made here,
-                which commits immediately -- so the calling page can drop
-                its now-stale badge even if the dialog is then cancelled.
-
-        Returns:
-            None.
-        """
+        """Render the controls for one person."""
         self.person_id = person_id
         self._on_changed = on_changed
         self._current: Optional[CooperativeMembership] = None
@@ -144,18 +89,7 @@ class CooperativeEditor:
         self._render_history()
 
     def _resync(self) -> None:
-        """Re-read the membership after an in-dialog correction or deletion.
-
-        Both write to the database straight away, so without this the
-        checkbox would still be ticked over a period that no longer exists
-        and `apply()` would act on a row it read before the change. The
-        calling page is told as well, because its list still shows the old
-        badge -- and the administrator may well close this dialog with
-        Abbrechen, which never saves anything and so never refreshed it.
-
-        Returns:
-            None.
-        """
+        """Re-read the membership after an in-dialog correction or deletion."""
         with connection_scope() as connection:
             self._current = cooperative_membership_repo.current_for_person(connection, self.person_id)
         if self.is_member is not None:
@@ -166,11 +100,7 @@ class CooperativeEditor:
             self._on_changed()
 
     def _render_history(self) -> None:
-        """(Re-)render the period list with its correction buttons.
-
-        Returns:
-            None.
-        """
+        """(Re-)render the period list with its correction buttons."""
         if self._history_column is None:
             return
         with connection_scope() as connection:
@@ -196,17 +126,7 @@ class CooperativeEditor:
                     ).props("dense flat size=sm color=negative").tooltip("Zeitraum löschen")
 
     def _open_period_dialog(self, membership: CooperativeMembership) -> None:
-        """Correct one recorded period outright.
-
-        For a mistyped date or share count -- not for an ordinary change,
-        which the three controls above handle by opening a new period.
-
-        Args:
-            membership: The period to correct.
-
-        Returns:
-            None.
-        """
+        """Correct one recorded period outright."""
         with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
             ui.label("Zeitraum korrigieren").classes("text-lg font-bold")
             ui.label(
@@ -233,11 +153,7 @@ class CooperativeEditor:
             error_label = ui.label("").classes("text-negative")
 
             def save() -> None:
-                """Validate and persist the correction.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the correction."""
                 try:
                     start = date.fromisoformat(valid_from.value)
                     end = date.fromisoformat(valid_to.value) if valid_to.value else None
@@ -265,14 +181,7 @@ class CooperativeEditor:
         dialog.open()
 
     def _open_delete_dialog(self, membership: CooperativeMembership) -> None:
-        """Remove one recorded period after confirmation.
-
-        Args:
-            membership: The period to delete.
-
-        Returns:
-            None.
-        """
+        """Remove one recorded period after confirmation."""
         with ui.dialog() as confirm, ui.card():
             ui.label("Diesen Zeitraum wirklich aus dem Verlauf löschen?")
             ui.label(
@@ -292,11 +201,7 @@ class CooperativeEditor:
         confirm.open()
 
     def validate(self) -> Optional[str]:
-        """Check the controls before the surrounding form saves.
-
-        Returns:
-            A German error message, or `None` if the input is usable.
-        """
+        """Check the controls before the surrounding form saves."""
         if self.is_member is None:
             return None
         try:
@@ -311,16 +216,7 @@ class CooperativeEditor:
         return None
 
     def apply(self, person_id: int, on_warning: Optional[Callable[[str], None]] = None) -> None:
-        """Turn the controls into the right period bookkeeping.
-
-        Args:
-            person_id: The person the membership belongs to.
-            on_warning: Called with each overlap warning the change
-                produced, so the caller can surface it. Optional.
-
-        Returns:
-            None.
-        """
+        """Turn the controls into the right period bookkeeping."""
         if self.is_member is None:
             return
 

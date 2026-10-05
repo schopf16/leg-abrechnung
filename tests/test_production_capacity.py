@@ -1,10 +1,4 @@
-"""Tests for the LEG production-capacity figure and what it implies.
-
-Art. 19e Abs. 1 StromVV requires a LEG's installed production capacity to
-be at least 5% of the participants' total Anschlussleistung. BKW's LEG
-portal shows the current figure on every metering point registration; the
-app only records it and works out whether another consumer still fits.
-"""
+"""Tests for the LEG production-capacity figure and what it implies."""
 
 import pytest
 
@@ -30,14 +24,12 @@ def _leg(name="LEG Ittigen", **overrides) -> Leg:
 
 
 def test_the_legal_floor_is_five_percent():
-    """Art. 19e Abs. 1 StromVV. Not this app's number to choose, so it is a
-    constant rather than a setting."""
+    """Art."""
     assert REQUIRED_PERCENT == 5.0
 
 
 def test_a_never_recorded_figure_is_unknown_not_a_problem():
-    """The value can only come from BKW's portal, so not having looked yet
-    must not be reported as trouble."""
+    """The value can only come from BKW's portal, so not having looked yet must not be reported as..."""
     headroom = compute_headroom(None, warn_percent=10.0)
 
     assert headroom.status == STATUS_UNKNOWN
@@ -52,8 +44,7 @@ def test_below_five_percent_is_flagged_as_below():
 
 
 def test_exactly_five_percent_still_satisfies_the_rule():
-    """ "mindestens 5 %" -- the floor is inclusive, and being exactly on it
-    is not a violation."""
+    """ "mindestens 5 %" -- the floor is inclusive, and being exactly on it is not a violation."""
     assert compute_headroom(5.0, warn_percent=10.0).status != STATUS_BELOW
 
 
@@ -70,15 +61,13 @@ def test_above_the_warning_threshold_is_comfortable():
 
 
 def test_the_warning_threshold_is_configurable():
-    """Where "tight" begins is judgement, so it comes from the settings --
-    the same reasoning as `leg_founding_min_persons`."""
+    """Where "tight" begins is judgement, so it comes from the settings -- the same reasoning as..."""
     assert compute_headroom(12.0, warn_percent=10.0).status == STATUS_COMFORTABLE
     assert compute_headroom(12.0, warn_percent=20.0).status == STATUS_TIGHT
 
 
 def test_numbers_are_written_the_german_way_everywhere():
-    """A decimal point in one place and a comma in the next is how the
-    warning and the overview card ended up disagreeing about 8,2 %."""
+    """A decimal point in one place and a comma in the next is how the warning and the overview card..."""
     from app.domain.production_capacity import format_factor, format_percent
 
     assert format_percent(37.6) == "37,6 %"
@@ -96,10 +85,7 @@ def test_numbers_are_written_the_german_way_everywhere():
     [(37.6, 7.52), (10.0, 2.0), (5.0, 1.0), (2.5, 0.5)],
 )
 def test_growth_factor_says_how_much_more_load_fits(percent, expected_factor):
-    """Adding a consumer raises the denominator, so the percentage falls.
-    With production unchanged, the participants' total Anschlussleistung may
-    grow by percent/5 before hitting the floor -- this is the number that
-    answers "does another consumer still fit here?"."""
+    """Adding a consumer raises the denominator, so the percentage falls."""
     assert compute_headroom(percent, warn_percent=10.0).growth_factor == pytest.approx(expected_factor)
 
 
@@ -109,9 +95,7 @@ def test_a_factor_of_one_means_no_room_left():
 
 
 def test_the_label_says_grow_TO_the_factor_not_BY_it():
-    """ "darf noch ~1,2× wachsen" reads as +120 % when it means +20 %, and
-    in the whole warning band the factor is 1.0-2.0 -- so the misreading
-    always errs towards admitting a consumer that breaks the floor."""
+    """ "darf noch ~1,2× wachsen" reads as +120 % when it means +20 %, and in the whole warning band the..."""
     comfortable = compute_headroom(37.6, warn_percent=10.0)
 
     assert "37,6 %" in comfortable.label
@@ -120,8 +104,7 @@ def test_the_label_says_grow_TO_the_factor_not_BY_it():
 
 
 def test_every_label_names_the_assumption_it_rests_on():
-    """The factor only holds with production unchanged, and the subject is
-    the consumers' *total* Anschlussleistung, not the new customer's own."""
+    """The factor only holds with production unchanged, and the subject is the consumers' *total*..."""
     for percent in (6.0, 37.6):
         label = compute_headroom(percent, warn_percent=10.0).label
         assert "bei unveränderter Produktion" in label, percent
@@ -159,8 +142,7 @@ def test_the_figure_and_its_date_round_trip(db):
 
 
 def test_the_figure_can_be_updated_after_a_new_registration(db):
-    """Every metering point registration yields a fresh figure from the
-    portal; recording it must overwrite both the value and its date."""
+    """Every metering point registration yields a fresh figure from the portal; recording it must..."""
     leg_id = leg_repo.create(
         db, _leg(production_capacity_percent=37.6, production_capacity_recorded_at="2026-09-18")
     )
@@ -237,9 +219,7 @@ def test_the_row_status_drives_the_colour(db):
 
 
 def test_a_percentage_above_one_hundred_is_allowed(db):
-    """Art. 19e sets only a minimum -- a big producer with few consumers
-    legitimately shows more than 100 % in the portal, and an upper bound on
-    the input would silently clamp it."""
+    """Art."""
     leg_id = leg_repo.create(db, _leg(production_capacity_percent=150.0))
 
     assert leg_repo.get(db, leg_id).production_capacity_percent == pytest.approx(150.0)
