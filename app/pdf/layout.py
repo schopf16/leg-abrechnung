@@ -1,6 +1,5 @@
-"""Shared A4 letterhead and table drawing helpers for the combined
-per-person billing document (see `app.pdf.person_bill_pdf`).
-"""
+"""Shared A4 letterhead and table drawing helpers for the combined per-person billing document (see
+`app.pdf.person_bill_pdf`)."""
 
 from dataclasses import dataclass
 
@@ -24,31 +23,12 @@ _RIGHT_MARGIN = 20 * mm
 
 
 def new_canvas(path) -> Canvas:
-    """Create a new A4 PDF canvas at the given filesystem path.
-
-    Args:
-        path: Destination path (`str` or `Path`) for the PDF file.
-
-    Returns:
-        A `reportlab.pdfgen.canvas.Canvas` ready to draw on, page size A4.
-    """
+    """Create a new A4 PDF canvas at the given filesystem path."""
     return Canvas(str(path), pagesize=A4)
 
 
 def draw_sender_block(canvas: Canvas, settings: LegSettings, leg: Leg) -> None:
-    """Draw the sender address in the top-left corner.
-
-    The displayed name is the LEG's own name (invoices are per-LEG, see
-    `app.models.leg`); address is shared across all LEGs (`settings`).
-
-    Args:
-        canvas: Target canvas.
-        settings: LEG-wide settings providing the sender address.
-        leg: The LEG this document is billed under.
-
-    Returns:
-        None.
-    """
+    """Draw the sender address in the top-left corner."""
     y = PAGE_HEIGHT - 20 * mm
     canvas.setFont("Helvetica", 8)
     for line in (
@@ -61,15 +41,7 @@ def draw_sender_block(canvas: Canvas, settings: LegSettings, leg: Leg) -> None:
 
 
 def draw_recipient_block(canvas: Canvas, person: Person) -> None:
-    """Draw the recipient's billing address, positioned for a windowed envelope.
-
-    Args:
-        canvas: Target canvas.
-        person: Recipient of the document.
-
-    Returns:
-        None.
-    """
+    """Draw the recipient's billing address, positioned for a windowed envelope."""
     y = PAGE_HEIGHT - 55 * mm
     canvas.setFont("Helvetica", 10)
     lines = [
@@ -84,15 +56,7 @@ def draw_recipient_block(canvas: Canvas, person: Person) -> None:
 
 
 def draw_meta_block(canvas: Canvas, lines: list[str]) -> None:
-    """Draw a right-aligned metadata block (document number, date, period).
-
-    Args:
-        canvas: Target canvas.
-        lines: Lines of text to display, top to bottom.
-
-    Returns:
-        None.
-    """
+    """Draw a right-aligned metadata block (document number, date, period)."""
     y = PAGE_HEIGHT - 20 * mm
     canvas.setFont("Helvetica", 9)
     for line in lines:
@@ -101,18 +65,7 @@ def draw_meta_block(canvas: Canvas, lines: list[str]) -> None:
 
 
 def draw_title(canvas: Canvas, title: str, y_mm_from_top: float = 90) -> float:
-    """Draw the document title (e.g. "Rechnung" or "credit note").
-
-    Args:
-        canvas: Target canvas.
-        title: Title text.
-        y_mm_from_top: Vertical position, in millimeters from the top of
-            the page.
-
-    Returns:
-        The y-coordinate (in points, from the page bottom) directly below
-        the title, for placing subsequent content.
-    """
+    """Draw the document title (e.g. "Rechnung" or "credit note")."""
     y = PAGE_HEIGHT - y_mm_from_top * mm
     canvas.setFont("Helvetica-Bold", 16)
     canvas.drawString(_LEFT_MARGIN, y, title)
@@ -120,16 +73,7 @@ def draw_title(canvas: Canvas, title: str, y_mm_from_top: float = 90) -> float:
 
 
 def draw_intro_text(canvas: Canvas, text: str, top_y: float) -> float:
-    """Draw a paragraph of intro text below the title.
-
-    Args:
-        canvas: Target canvas.
-        text: Text to display (single line; caller pre-wraps if needed).
-        top_y: Y-coordinate (points from page bottom) to start at.
-
-    Returns:
-        The y-coordinate directly below the drawn text.
-    """
+    """Draw a paragraph of intro text below the title."""
     canvas.setFont("Helvetica", 10)
     canvas.drawString(_LEFT_MARGIN, top_y, text)
     return top_y - 10 * mm
@@ -171,19 +115,7 @@ _GROUP_LEAD = 9
 
 @dataclass(frozen=True)
 class TableLine:
-    """One drawable line of a billing table.
-
-    Attributes:
-        label: Left-hand text.
-        kwh: Quantity column, or `""` to leave it blank.
-        price: Rate column, or `""`.
-        amount: Amount column, or `""`. A *display* figure only -- see
-            the module docstring of `app.domain.billing` for why rounding
-            never happens at this layer.
-        style: One of `"group"` (a site heading), `"subgroup"` (Bezug /
-            Einspeisung within a site), `"row"` (one metering point) or
-            `"total"` (a subtotal line).
-    """
+    """One drawable line of a billing table."""
 
     label: str
     kwh: str = ""
@@ -198,25 +130,7 @@ _LABEL_GUTTER = 45
 
 
 def _fit(text: str, font: str, size: float, max_width: float) -> str:
-    """Shorten text with an ellipsis until it fits a given width.
-
-    `label` on a metering point is free text (see
-    `app.models.metering_point`), and a perfectly reasonable one --
-    "Wohnung 3. Obergeschoss links" beside a 33-character designation --
-    already overruns the label column and collides with the kWh figures.
-    reportlab draws happily past any boundary, so the column has to
-    enforce its own.
-
-    Args:
-        text: Text to draw.
-        font: Font name it will be drawn in.
-        size: Font size in points.
-        max_width: Available width in points.
-
-    Returns:
-        `text`, or a shortened version ending in a single-character
-        ellipsis that fits.
-    """
+    """Shorten text with an ellipsis until it fits a given width."""
     if stringWidth(text, font, size) <= max_width:
         return text
     ellipsis = "…"
@@ -227,17 +141,7 @@ def _fit(text: str, font: str, size: float, max_width: float) -> str:
 
 
 def _draw_table_header(canvas: Canvas, y: float, section_title: str, label_header: str) -> float:
-    """Draw a table's title and column headers.
-
-    Args:
-        canvas: Target canvas.
-        y: Y-coordinate to start at.
-        section_title: Heading above the columns.
-        label_header: Header of the left-hand column.
-
-    Returns:
-        The y-coordinate of the first content line.
-    """
+    """Draw a table's title and column headers."""
     canvas.setFont("Helvetica-Bold", 11)
     canvas.drawString(_LEFT_MARGIN, y, section_title)
     y -= 8 * mm
@@ -260,30 +164,7 @@ def draw_billing_table(
     *,
     label_header: str = "Position",
 ) -> float:
-    """Draw a billing table, breaking onto further pages when it runs long.
-
-    The page break is the reason this exists. A document used to hold at
-    most two energy lines, so drawing straight down the page was always
-    safe; itemising per metering point removed that guarantee. A
-    participant with a dozen metering points would otherwise have run off
-    the bottom of the page and straight through the area reserved for the
-    QR-bill (`CONTENT_BOTTOM_Y`) -- silently, because nothing in
-    reportlab complains about drawing outside the page.
-
-    A `group` or `subgroup` line is never left stranded as the last line
-    of a page: it is only drawn where its following line fits too.
-
-    Args:
-        canvas: Target canvas.
-        top_y: Y-coordinate (points from page bottom) of the section's top edge.
-        section_title: Section heading, e.g. "Lokal geteilter Strom".
-        lines: The lines to draw, in order.
-        label_header: Header of the left-hand column.
-
-    Returns:
-        The y-coordinate directly below the section, on whichever page it
-        ended up finishing.
-    """
+    """Draw a billing table, breaking onto further pages when it runs long."""
     y = _draw_table_header(canvas, top_y, section_title, label_header)
     current_group: "TableLine | None" = None
     current_subgroup: "TableLine | None" = None
@@ -355,21 +236,7 @@ def draw_billing_table(
 
 
 def ensure_space(canvas: Canvas, y: float, needed_mm: float) -> float:
-    """Start a new page if the next block would not fit on this one.
-
-    For blocks drawn in one piece, which therefore cannot break the way
-    `draw_billing_table` does -- the net settlement in particular. All
-    page geometry lives in this module, so callers reason in millimetres
-    of content and never in page coordinates.
-
-    Args:
-        canvas: Target canvas.
-        y: Current y-coordinate.
-        needed_mm: Height the block about to be drawn needs, in millimetres.
-
-    Returns:
-        `y` unchanged, or the top of a freshly started page.
-    """
+    """Start a new page if the next block would not fit on this one."""
     if y - needed_mm * mm < TABLE_BOTTOM_Y:
         canvas.showPage()
         return CONTINUATION_TOP_Y
@@ -377,22 +244,7 @@ def ensure_space(canvas: Canvas, y: float, needed_mm: float) -> float:
 
 
 def draw_net_settlement(canvas: Canvas, top_y: float, label: str, value: str, note: str) -> float:
-    """Draw the final, rounded net settlement line and an explanatory note.
-
-    This is the only place a rounded monetary figure appears on the page
-    (see `app.domain.billing`): everything above it is either an unrounded
-    display figure or a per-month kWh quantity.
-
-    Args:
-        canvas: Target canvas.
-        top_y: Y-coordinate (points from page bottom) to start at.
-        label: Label for the net amount, e.g. "Netto-Betrag (keine MWST)".
-        value: Formatted, rounded net amount, e.g. "34.50 CHF".
-        note: Short explanatory sentence shown below the amount.
-
-    Returns:
-        The y-coordinate directly below the drawn section.
-    """
+    """Draw the final, rounded net settlement line and an explanatory note."""
     y = top_y
     canvas.line(_LEFT_MARGIN, y, PAGE_WIDTH - _RIGHT_MARGIN, y)
     y -= 16

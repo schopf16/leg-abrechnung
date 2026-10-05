@@ -1,19 +1,4 @@
-"""The LEG's own forms, kept once and attached by whoever ticks them.
-
-The blank Gesellschaftsvertrag is a LEG-wide document: seven pages that
-every new participant gets, and page 1 of it is what
-`app.pdf.membership_contract` fills in. It belongs to the LEG, not to one
-email text, so it is uploaded once under Einstellungen and any Textbaustein
-can tick it (`app.domain.auto_attachments`).
-
-Keyed by the registry key rather than by an id, because there is exactly
-one current version of each form -- uploading replaces it, which is how a
-new Reglement edition is taken on. **In the database rather than beside
-it**, for two reasons: it travels with every backup (which a file under
-`data/` does not -- see CLAUDE.md on the address register, which is a file
-*because* it can be re-downloaded), and a contract's version has to stay
-knowable after it has been sent.
-"""
+"""The LEG's own forms, kept once and attached by whoever ticks them."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -23,14 +8,7 @@ from typing import Optional
 
 @dataclass
 class LegDocument:
-    """One stored LEG form.
-
-    Attributes:
-        key: The `app.domain.auto_attachments` key this is the form for.
-        filename: Name the recipient sees.
-        content: The file's bytes.
-        updated_at: ISO-8601 timestamp of the last upload.
-    """
+    """One stored LEG form."""
 
     key: str
     filename: str
@@ -39,14 +17,7 @@ class LegDocument:
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "LegDocument":
-        """Build a `LegDocument` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `leg_document` table.
-
-        Returns:
-            The corresponding dataclass instance.
-        """
+        """Build a `LegDocument` from a `sqlite3.Row`."""
         return LegDocument(
             key=row["key"],
             filename=row["filename"],
@@ -56,15 +27,7 @@ class LegDocument:
 
 
 def get(connection: sqlite3.Connection, key: str) -> Optional[LegDocument]:
-    """Load one stored form.
-
-    Args:
-        connection: Open SQLite connection.
-        key: The registry key.
-
-    Returns:
-        The document, or `None` if none has been uploaded yet.
-    """
+    """Load one stored form."""
     row = connection.execute(
         "SELECT key, filename, content, updated_at FROM leg_document WHERE key = ?",
         (key,),
@@ -73,29 +36,12 @@ def get(connection: sqlite3.Connection, key: str) -> Optional[LegDocument]:
 
 
 def stored_keys(connection: sqlite3.Connection) -> set[str]:
-    """Which forms have a file.
-
-    One query for the whole dialog, which needs to know this for every
-    checkbox it draws.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The keys that have a document.
-    """
+    """Which forms have a file."""
     return {row[0] for row in connection.execute("SELECT key FROM leg_document")}
 
 
 def list_all(connection: sqlite3.Connection) -> list[LegDocument]:
-    """Every stored form.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The documents, by key.
-    """
+    """Every stored form."""
     rows = connection.execute(
         "SELECT key, filename, content, updated_at FROM leg_document ORDER BY key"
     ).fetchall()
@@ -110,21 +56,7 @@ def put(
     *,
     commit: bool = True,
 ) -> None:
-    """Store or replace one form.
-
-    Replacing is how a new edition of the Reglement is taken on, so this is
-    deliberately an upsert rather than refusing a second upload.
-
-    Args:
-        connection: Open SQLite connection.
-        key: The registry key.
-        filename: Name the recipient sees.
-        content: The file's bytes.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        None.
-    """
+    """Store or replace one form."""
     connection.execute(
         """
         INSERT INTO leg_document (key, filename, content, updated_at)
@@ -141,20 +73,7 @@ def put(
 
 
 def delete(connection: sqlite3.Connection, key: str, *, commit: bool = True) -> None:
-    """Remove one stored form.
-
-    A template that ticks it keeps the tick: the dialog then says the form
-    is missing, which is the honest state rather than silently unticking
-    something the administrator chose.
-
-    Args:
-        connection: Open SQLite connection.
-        key: The registry key.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        None.
-    """
+    """Remove one stored form."""
     connection.execute("DELETE FROM leg_document WHERE key = ?", (key,))
     if commit:
         connection.commit()

@@ -1,23 +1,4 @@
-"""Shared in-app invoice/credit-note detail view.
-
-Renders every detail that also appears on the generated PDF (see
-`app.pdf.person_bill_pdf`), reading it straight from the persisted
-`BillingRunItem`/`BillingRun`/`Leg`/`Person` rows -- deliberately never
-from the PDF file itself, which may have been moved, renamed, or deleted
-since it was generated, and never from the live `LegSettings` either
-(the admin-fee rates actually charged are frozen onto the item itself,
-see `app.domain.billing`). This is the primary way to inspect a past
-invoice from the receivables detail view (see `app.gui.pages.receivables`),
-not a fallback for when the PDF is missing.
-
-Reuses `item.consumed_kwh`/`item.produced_kwh` directly rather than
-recomputing the distribution engine: `app.domain.billing.
-create_or_replace_billing_run` sets those fields from exactly the same
-`PersonQuarterResult` totals `app.pdf.person_bill_pdf` prints, so they are
-already the authoritative, frozen-at-billing-time figures -- recomputing
-them live would risk a mismatch if readings changed since, and could fail
-outright (`LegNotAssignedError`) for old data.
-"""
+"""Shared in-app invoice/credit-note detail view."""
 
 from datetime import date, timedelta
 
@@ -33,30 +14,14 @@ from app.pdf.person_bill_pdf import PAYMENT_TERM
 
 
 def _period_range_label(year: int, quarter: int) -> str:
-    """Format a quarter's date range for display, e.g. "01.07.2026 – 30.09.2026".
-
-    Args:
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        The quarter's first and last calendar day, German-formatted.
-    """
+    """Format a quarter's date range for display, e.g. "01.07.2026 – 30.09.2026"."""
     start, end = quarter_bounds(year, quarter)
     last_day = end.date() - timedelta(days=1)
     return f"{start.strftime('%d.%m.%Y')} – {last_day.strftime('%d.%m.%Y')}"
 
 
 def open_invoice_detail(item_id: int) -> None:
-    """Open a dialog showing every detail of one billing run item, as it
-    would appear on its generated PDF.
-
-    Args:
-        item_id: Primary key of the `BillingRunItem` to show.
-
-    Returns:
-        None.
-    """
+    """Open a dialog showing every detail of one billing run item, as it would appear on its generated..."""
     with connection_scope() as connection:
         item = billing_run_repo.get_item(connection, item_id)
         if item is None:

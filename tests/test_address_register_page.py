@@ -1,15 +1,4 @@
-"""Tests for the update task and the Adressregister page.
-
-No test here reaches the network. `httpx.MockTransport` is used rather than
-a hand-written stub, so the real client code -- streaming, `raise_for_status`,
-headers -- is exercised and a change in how the download is made cannot pass
-unnoticed.
-
-The progress state is checked because of what it is for: the update takes
-about a minute, the administrator is told they can keep working, and a run
-whose progress cannot be followed after leaving the page is the complaint
-this answers.
-"""
+"""Tests for the update task and the Adressregister page."""
 
 import asyncio
 from pathlib import Path
@@ -34,14 +23,7 @@ _ASSET_URL = (
 
 @pytest.fixture(autouse=True)
 def _reset_state():
-    """Leave the module-level state clean for the next test.
-
-    It is deliberately global -- that is what lets the header show progress
-    on every page -- so each test has to put it back.
-
-    Yields:
-        None.
-    """
+    """Leave the module-level state clean for the next test."""
     yield
     STATE.phase = ""
     STATE.progress = 0.0
@@ -50,16 +32,7 @@ def _reset_state():
 
 
 def _client(zip_bytes: bytes, *, stac_status: int = 200, asset_status: int = 200):
-    """Build an httpx client that answers both requests from memory.
-
-    Args:
-        zip_bytes: The archive the asset URL should return.
-        stac_status: Status code for the catalogue request.
-        asset_status: Status code for the download.
-
-    Returns:
-        An `httpx.AsyncClient` on a mock transport.
-    """
+    """Build an httpx client that answers both requests from memory."""
     payload = {
         "features": [
             {
@@ -86,15 +59,7 @@ def _client(zip_bytes: bytes, *, stac_status: int = 200, asset_status: int = 200
 
 
 def _run(target: Path, client) -> bool:
-    """Drive `run_update` from a synchronous test.
-
-    Args:
-        target: Where the register should end up.
-        client: The mock client.
-
-    Returns:
-        What `run_update` returned.
-    """
+    """Drive `run_update` from a synchronous test."""
 
     async def go() -> bool:
         async with client:
@@ -209,11 +174,7 @@ def test_a_corrupt_download_is_reported_and_removed(tmp_path):
 
 
 def _render() -> Client:
-    """Render the Adressregister page.
-
-    Returns:
-        The client holding the rendered page.
-    """
+    """Render the Adressregister page."""
     from app.gui.pages import address_register as page_module
 
     client = Client(ui.page("/probe-address-register")(lambda: None), request=None)
@@ -223,14 +184,7 @@ def _render() -> Client:
 
 
 def _texts(client: Client) -> list[str]:
-    """Every label text on the page.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The non-empty texts.
-    """
+    """Every label text on the page."""
     return [
         element.text
         for element in client.elements.values()
@@ -239,11 +193,7 @@ def _texts(client: Client) -> list[str]:
 
 
 def test_the_page_says_when_nothing_has_been_downloaded():
-    """The one place the absence of a register is stated.
-
-    The lists stay silent about it on purpose; nagging there would put a
-    notice on a page that has nothing to do with it.
-    """
+    """The one place the absence of a register is stated."""
     assert "Noch nicht heruntergeladen." in _texts(_render())
 
 
@@ -262,9 +212,5 @@ def test_the_page_carries_the_required_source_reference(address_register):
 
 
 def test_the_page_states_that_no_address_leaves_the_machine(address_register):
-    """The reason the whole register is downloaded instead of queried.
-
-    The federal fuzzy-search API would see fragments of a member's address
-    on every keystroke; this does not, and the page says so.
-    """
+    """The reason the whole register is downloaded instead of queried."""
     assert any("keine Adresse abgefragt" in text for text in _texts(_render()))

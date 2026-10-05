@@ -1,6 +1,5 @@
-"""Tests for app.emailing.bulk_send (recipient resolution and send
-orchestration -- graph_client is mocked throughout, no real network calls
-and no real SMTP/Graph server involved)."""
+"""Tests for app.emailing.bulk_send (recipient resolution and send orchestration -- graph_client is
+mocked throughout, no real network calls and no real SMTP/Graph server involved)."""
 
 import asyncio
 from dataclasses import replace
@@ -37,12 +36,7 @@ from app.models.assignment import Assignment
 
 
 def _person(db, name: str = "P", email: str = "p@example.invalid", paper_invoice: bool = False) -> int:
-    """Create a Person (fantasy email, never a real address) and return its id.
-
-    Always created active -- `person_repo.create` ignores any `active`
-    value and always creates active; use `person_repo.set_active` afterwards
-    to deactivate.
-    """
+    """Create a Person (fantasy email, never a real address) and return its id."""
     return person_repo.create(
         db,
         Person(
@@ -157,11 +151,7 @@ def test_list_leg_recipients_includes_current_member(db):
 
 
 def test_list_leg_recipients_includes_not_yet_started_assignment(db):
-    """An administrator who pre-enters next quarter's move-ins weeks or
-    months in advance still gets them included -- this is the behaviour
-    real customer data forced: a strict "already started" check had every
-    LEG's recipient list come back empty until the Assignment's exact start
-    date arrived (`Assignment.is_current_or_upcoming`, unconditional)."""
+    """An administrator who pre-enters next quarter's move-ins weeks or months in advance still gets..."""
     leg_id = _leg(db)
     site_id = _site(db)
     metering_point_id = _metering_point(db, "CH-A", site_id, leg_id)
@@ -480,11 +470,7 @@ def test_send_invoice_emails_continues_after_error(db):
 
 
 def test_send_invoice_emails_treats_missing_pdf_file_as_error_not_crash(db, tmp_path):
-    """A PDF recorded in pdf_path but since deleted/moved from disk must be
-    a clean per-person error, not an unhandled exception that aborts the
-    whole batch -- exercises the real graph_client.send_email attachment
-    handling (only get_access_token is mocked, no real network call is
-    ever reached since the missing file is caught before any HTTP call)."""
+    """A PDF recorded in pdf_path but since deleted/moved from disk must be a clean per-person error..."""
     missing_pdf = tmp_path / "verschwunden.pdf"
     run, _ = _run_with_item(db, pdf_path=str(missing_pdf))
     with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")):
@@ -519,18 +505,7 @@ def test_resend_invoice_email_raises_if_no_pdf(db):
 
 
 def _member(db, person_id: int, *, valid_from: date, valid_to=None, shares: int = 5) -> int:
-    """Make one person a Genossenschaft member for a period.
-
-    Args:
-        db: Database connection fixture.
-        person_id: The member.
-        valid_from: First day of the membership.
-        valid_to: Last day, or `None` while it runs.
-        shares: Share count.
-
-    Returns:
-        The membership period's id.
-    """
+    """Make one person a Genossenschaft member for a period."""
     return cooperative_membership_repo.create(
         db,
         CooperativeMembership(
@@ -563,11 +538,7 @@ def test_list_cooperative_recipients_is_todays_roll(db):
 
 
 def test_list_cooperative_recipients_excludes_a_future_membership(db):
-    """Somebody who joins next month is not a member yet.
-
-    Deliberately stricter than `list_leg_recipients`, which counts a
-    pre-entered assignment -- see `app.models.cooperative_membership`.
-    """
+    """Somebody who joins next month is not a member yet."""
     joining = _person(db, "Kuenftig", "kuenftig@example.invalid")
     _member(db, joining, valid_from=date.today() + timedelta(days=30))
 

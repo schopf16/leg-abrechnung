@@ -1,10 +1,4 @@
-"""Tests for the email check, and for it being asked at the field.
-
-The restraint is the point: this must complain only where something is
-certainly wrong. A false complaint about an address that works trains the
-administrator to click past the warning, and then the IBAN warning beside it
-gets clicked past too.
-"""
+"""Tests for the email check, and for it being asked at the field."""
 
 import pytest
 from nicegui import Client, ui
@@ -49,12 +43,7 @@ def test_what_is_certainly_wrong_is_named(value):
 
 
 def test_the_check_runs_when_the_field_loses_focus(address_register):
-    """Point 16 of the list: the IBAN was the only field that said anything.
-
-    An email mistake is otherwise found at send time, in the middle of a
-    quarter going out -- long after the dialog that knew the address was
-    closed.
-    """
+    """Point 16 of the list: the IBAN was the only field that said anything."""
     from app.gui.person_form import open_person_form
 
     client = Client(ui.page("/probe-person-email-blur")(lambda: None), request=None)

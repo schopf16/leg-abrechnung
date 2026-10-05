@@ -1,28 +1,4 @@
-"""The Beitrittserklärung, filled in: page 1 drawn, the rest appended.
-
-The official document (`LEG-Ittigen-Beitrittserklaerung-und-Gesellschafts⁠
-vertrag.pdf`, seven pages) is a **static** PDF with no form fields, so there
-is nothing to fill in the usual sense. Three ways were weighed and the
-administrator chose this one:
-
-1. Stamp the values onto the original's page 1 at fixed coordinates. Looks
-   exactly like the official sheet, logo and all -- and breaks the moment
-   anybody re-lays-out the document, which is a Word file on a website this
-   app does not control.
-2. **Draw page 1 here and append pages 2 onward unchanged.** No coordinates
-   to drift. Page 1 does not look pixel-for-pixel like the original, so it
-   carries the original's wording verbatim instead -- every label, in order
-   -- which is what makes it recognisable as the same form.
-3. Two separate attachments. No PDF library needed at all, but the recipient
-   gets two files and has to work out which one to sign.
-
-`reportlab` can create a PDF and not read one, so appending needs `pypdf`
-(BSD-3-Clause, pure Python, no dependencies of its own on 3.11+).
-
-**Three lines stay empty on purpose**: Ort, Datum and the signature. They
-come from the participant, with a pen, and filling them in would be this
-app asserting something it cannot know.
-"""
+"""The Beitrittserklärung, filled in: page 1 drawn, the rest appended."""
 
 from pathlib import Path
 from typing import Optional
@@ -56,16 +32,7 @@ _INTRO = (
 
 
 def _draw_wrapped(canvas: Canvas, text: str, top: float) -> float:
-    """Draw a paragraph, breaking it at the right margin.
-
-    Args:
-        canvas: The canvas to draw on.
-        text: The paragraph.
-        top: Baseline of the first line.
-
-    Returns:
-        The baseline below the last line drawn.
-    """
+    """Draw a paragraph, breaking it at the right margin."""
     canvas.setFont("Helvetica", 9)
     words, line, y = text.split(), "", top
     for word in words:
@@ -82,21 +49,7 @@ def _draw_wrapped(canvas: Canvas, text: str, top: float) -> float:
 
 
 def _draw_field(canvas: Canvas, label: str, value: str, y: float) -> float:
-    """Draw one labelled line, with a rule where the value would be written.
-
-    The rule is drawn whether or not there is a value: the original has a
-    row of underscores on every line, and an empty line has to look like
-    something that *can* be filled in by hand rather than like a mistake.
-
-    Args:
-        canvas: The canvas to draw on.
-        label: The form's own wording for this field.
-        value: What this app knows, possibly `""`.
-        y: Baseline.
-
-    Returns:
-        The next baseline.
-    """
+    """Draw one labelled line, with a rule where the value would be written."""
     canvas.setFont("Helvetica", 9)
     canvas.drawString(_LEFT, y, label)
     canvas.setFont("Helvetica-Bold", 9)
@@ -116,31 +69,14 @@ def _draw_field(canvas: Canvas, label: str, value: str, y: float) -> float:
 
 
 def _draw_heading(canvas: Canvas, text: str, y: float) -> float:
-    """Draw one of the form's section headings.
-
-    Args:
-        canvas: The canvas to draw on.
-        text: The heading.
-        y: Baseline.
-
-    Returns:
-        The next baseline.
-    """
+    """Draw one of the form's section headings."""
     canvas.setFont("Helvetica-Bold", 9)
     canvas.drawString(_LEFT, y, text)
     return y - _LINE
 
 
 def draw_first_page(canvas: Canvas, fields: ContractFields) -> None:
-    """Draw the filled-in Beitrittserklärung onto one page.
-
-    Args:
-        canvas: A canvas positioned at a fresh page.
-        fields: What to write, from `app.domain.membership_contract.gather`.
-
-    Returns:
-        None.
-    """
+    """Draw the filled-in Beitrittserklärung onto one page."""
     canvas.setFont("Helvetica-Bold", 13)
     y = PAGE_HEIGHT - 28 * mm
     canvas.drawString(_LEFT, y, _TITLE)
@@ -196,20 +132,7 @@ def build_contract(
     source_pdf: Optional[bytes],
     target: Path,
 ) -> Path:
-    """Write the filled-in Beitrittserklärung, with the contract behind it.
-
-    Args:
-        fields: What goes on page 1.
-        source_pdf: The stored official document's bytes. Its **first** page
-            is replaced by the one drawn here and the rest are appended. When
-            `None` -- no form stored under Einstellungen -- only page 1 is
-            written, so the result is still a usable sheet and the caller can
-            say what is missing.
-        target: Where to write. Its parent is created.
-
-    Returns:
-        `target`.
-    """
+    """Write the filled-in Beitrittserklärung, with the contract behind it."""
     target.parent.mkdir(parents=True, exist_ok=True)
 
     first_page = target.with_suffix(".page1.pdf")
@@ -233,14 +156,7 @@ def build_contract(
 
 
 def _as_stream(content: bytes):
-    """Wrap bytes so `PdfReader` can read them.
-
-    Args:
-        content: The stored document.
-
-    Returns:
-        A seekable stream.
-    """
+    """Wrap bytes so `PdfReader` can read them."""
     from io import BytesIO
 
     return BytesIO(content)

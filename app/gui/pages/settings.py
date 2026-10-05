@@ -1,7 +1,6 @@
-"""LEG-wide settings page: sender address, QR-IBAN, price, admin fees
-(shared across all LEGs -- see `app.models.leg` for the per-LEG name),
-MeteringPoint Land/identifier defaults, and demo data generation.
-"""
+"""LEG-wide settings page: sender address, QR-IBAN, price, admin fees (shared across all LEGs -- see
+`app.models.leg` for the per-LEG name), MeteringPoint Land/identifier defaults, and demo data
+generation."""
 
 from nicegui import ui
 
@@ -23,11 +22,7 @@ from app.models import settings as settings_repo
 
 @ui.page("/settings")
 def settings_page() -> None:
-    """Render the LEG-wide settings page.
-
-    Returns:
-        None.
-    """
+    """Render the LEG-wide settings page."""
     with page_frame("/settings", "Allgemein"):
         with connection_scope() as connection:
             current = settings_repo.get_settings(connection)
@@ -73,11 +68,7 @@ def settings_page() -> None:
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
             def check_qr_iban() -> None:
-                """Validate the QR-IBAN once the field loses focus.
-
-                Returns:
-                    None.
-                """
+                """Validate the QR-IBAN once the field loses focus."""
                 qr_iban_error.text = validate_qr_iban(qr_iban.value) or ""
 
             qr_iban.on("blur", check_qr_iban)
@@ -112,11 +103,7 @@ def settings_page() -> None:
             error_label = ui.label("").classes("text-negative")
 
             def save() -> None:
-                """Validate and persist the LEG-wide settings form.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the LEG-wide settings form."""
                 if price.value is None or price.value < 0:
                     error_label.text = "Preis muss positiv sein."
                     return
@@ -178,11 +165,7 @@ def settings_page() -> None:
             metering_point_defaults_error = ui.label("").classes("text-negative")
 
             def save_metering_point_defaults() -> None:
-                """Validate and persist the MeteringPoint Land/identifier defaults.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the MeteringPoint Land/identifier defaults."""
                 country_value = metering_point_country.value.strip().upper()
                 identifier_value = metering_point_identifier.value.strip().upper()
                 country_problem = validate_country(country_value)
@@ -227,11 +210,7 @@ def settings_page() -> None:
             onboarding_error = ui.label("").classes("text-negative")
 
             def save_onboarding_threshold() -> None:
-                """Validate and persist the onboarding overdue threshold.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the onboarding overdue threshold."""
                 if onboarding_overdue_days.value is None or onboarding_overdue_days.value < 1:
                     onboarding_error.text = "Muss mindestens 1 Tag sein."
                     return
@@ -256,14 +235,7 @@ def settings_page() -> None:
         documents_column = ui.column().classes("w-full gap-2")
 
         def render_documents() -> None:
-            """Draw one row per form that a checkbox can attach.
-
-            Driven by the registry in `app.domain.auto_attachments`, so a
-            form added there appears here without this page changing.
-
-            Returns:
-                None.
-            """
+            """Draw one row per form that a checkbox can attach."""
             with connection_scope() as connection:
                 stored = {document.key: document for document in leg_document_repo.list_all(connection)}
             documents_column.clear()
@@ -289,15 +261,7 @@ def settings_page() -> None:
                                 ).props("dense flat color=negative").classes("ml-auto")
 
                         async def handle_upload(event, key=entry.key) -> None:
-                            """Store the picked file as this form.
-
-                            Args:
-                                event: NiceGUI upload event.
-                                key: The registry key being replaced.
-
-                            Returns:
-                                None.
-                            """
+                            """Store the picked file as this form."""
                             for file in event.files:
                                 filename, content = await read_uploaded_file(file)
                                 if len(content) > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
@@ -318,17 +282,7 @@ def settings_page() -> None:
                             ui.label(entry.hint).classes("text-caption text-grey-6")
 
         def remove_document(key: str) -> None:
-            """Remove one stored form.
-
-            A template that ticks it keeps the tick and says the form is
-            missing, which is the honest state.
-
-            Args:
-                key: The registry key.
-
-            Returns:
-                None.
-            """
+            """Remove one stored form."""
             with connection_scope() as connection:
                 leg_document_repo.delete(connection, key)
             safe_notify("Datei entfernt.", type="warning")
@@ -359,11 +313,7 @@ def settings_page() -> None:
             capacity_error = ui.label("").classes("text-negative")
 
             def save_production_capacity_warn_percent() -> None:
-                """Validate and persist the production-capacity warning threshold.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the production-capacity warning threshold."""
                 value = production_capacity_warn_percent.value
                 # Exactly 5 would empty the warning band entirely: a LEG
                 # sitting on the legal floor would show a green tick.
@@ -409,11 +359,7 @@ def settings_page() -> None:
             dunning_error = ui.label("").classes("text-negative")
 
             def save_dunning() -> None:
-                """Validate and persist the dunning settings and templates.
-
-                Returns:
-                    None.
-                """
+                """Validate and persist the dunning settings and templates."""
                 if dunning_new_deadline_days.value is None or dunning_new_deadline_days.value < 1:
                     dunning_error.text = "Neue Zahlungsfrist muss mindestens 1 Tag sein."
                     return
@@ -442,11 +388,7 @@ def settings_page() -> None:
         ).classes("text-body2")
 
         def generate_demo_data() -> None:
-            """Run the demo data generator and report the outcome via a toast.
-
-            Returns:
-                None.
-            """
+            """Run the demo data generator and report the outcome via a toast."""
             try:
                 with connection_scope() as connection:
                     summary = create_demo_data(connection)

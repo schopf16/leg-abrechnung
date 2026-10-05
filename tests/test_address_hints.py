@@ -1,25 +1,4 @@
-"""Tests for the address hints: what is flagged, and what a click does.
-
-The two halves worth testing are the ones a rendered page cannot show.
-
-**The dismissal has to expire by itself.** "Nein" records the confirmed
-*value*, not a flag and not a date, so the hint comes back the moment the
-text changes. Had it been a date, dismissing a hint would keep silencing a
-different wrong address forever, and a tick that no longer holds is worse
-than no tick.
-
-**A click has to fill, and no click has to leave the text alone.** That is
-the promise the suggestion list makes, and it is exactly the kind of thing
-`2a33e40` broke for nine days while every page still rendered: the handlers
-are therefore driven directly rather than looked at.
-
-**The question belongs at the field.** The first build asked it in a card
-above the Standorte and Personen lists, where a line read as a name and
-"Meinten Sie: Untere Zollgasse?" with no sight of which field was meant or
-what stood in it. The administrator could not answer that, and was right.
-The lists now only mark a record; the hint is rendered beside the value it
-would replace, and the tests below check both halves.
-"""
+"""Tests for the address hints: what is flagged, and what a click does."""
 
 import pytest
 from nicegui import Client, ui
@@ -47,20 +26,7 @@ from app.models.site import Site
 
 
 def _site(street: str = "Erstweg", number: str = "4", locality: str = "Musterdorf") -> int:
-    """Create a site through `connection_scope`.
-
-    The dialogs and the hint card open their own connection, so the data has
-    to live in the scratch database `conftest.py` points them at -- the `db`
-    fixture is a separate in-memory one.
-
-    Args:
-        street: Street name.
-        number: House number.
-        locality: What goes in the Ort field.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a site through `connection_scope`."""
     with connection_scope() as connection:
         return site_repo.create(
             connection,
@@ -78,16 +44,7 @@ def _site(street: str = "Erstweg", number: str = "4", locality: str = "Musterdor
 
 
 def _person(street: str = "Erstweg", locality: str = "Musterdorf", country: str = "CH") -> int:
-    """Create a person with a billing address.
-
-    Args:
-        street: Billing street.
-        locality: Billing locality.
-        country: Billing country code.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person with a billing address."""
     with connection_scope() as connection:
         return person_repo.create(
             connection,
@@ -115,11 +72,7 @@ def _person(street: str = "Erstweg", locality: str = "Musterdorf", country: str 
 
 
 def _issues():
-    """Collect the current issues.
-
-    Returns:
-        The list of `AddressIssue`.
-    """
+    """Collect the current issues."""
     with connection_scope() as connection:
         return find_address_issues(connection)
 
@@ -147,12 +100,7 @@ def test_a_sites_locality_is_flagged_with_the_postal_name(address_register):
 
 
 def test_a_persons_billing_address_is_flagged_too(address_register):
-    """Reversed from the first design on purpose.
-
-    Leaving street and house number unchecked for persons would have spared
-    the occasional PO box one click and left every ordinary typo in a
-    billing address standing.
-    """
+    """Reversed from the first design on purpose."""
     _person(street="Nirgendweg")
 
     assert [i.kind for i in _issues()] == [KIND_PERSON]
@@ -193,11 +141,7 @@ def test_a_dismissed_locality_stays_quiet(address_register):
 
 
 def test_changing_the_text_brings_the_hint_back(address_register):
-    """The reason the confirmed *value* is stored rather than a flag.
-
-    A flag or a date would keep silencing a hint about a value that is no
-    longer there.
-    """
+    """The reason the confirmed *value* is stored rather than a flag."""
     site_id = _site(locality="Grossgemeinde")
     with connection_scope() as connection:
         site_repo.confirm_locality(connection, site_id, "Grossgemeinde")
@@ -223,11 +167,7 @@ def test_dismissing_the_street_does_not_silence_the_locality(address_register):
 
 
 def test_a_dismissed_po_box_survives_an_unrelated_edit(address_register):
-    """`update` must not touch the confirmation columns.
-
-    Editing the Lage field would otherwise rebuild the record from a fresh
-    dataclass and quietly clear the dismissal.
-    """
+    """`update` must not touch the confirmation columns."""
     site_id = _site(street="Postfach")
     with connection_scope() as connection:
         site_repo.confirm_address(connection, site_id, address_signature("Postfach", "4", "3048"))
@@ -253,12 +193,7 @@ def test_a_persons_dismissal_works_the_same_way(address_register):
 
 
 def test_an_affected_record_is_marked(address_register):
-    """The list says "look at this one" and nothing more.
-
-    It cannot say more honestly: a row has no room to show which field is
-    wrong and what stands in it, and a suggestion without its subject is
-    unanswerable.
-    """
+    """The list says "look at this one" and nothing more."""
     bad = _site(locality="Grossgemeinde")
     good = _site()
 
@@ -291,16 +226,7 @@ def test_nothing_is_marked_without_a_register():
 
 
 def _fields(register, *, with_hints: bool = False):
-    """Build the address inputs of a dialog, wired to a `SuggestionBox`.
-
-    Args:
-        register: Path of the test register.
-        with_hints: Whether to attach the hint containers, as the real
-            dialogs do.
-
-    Returns:
-        `(box, street, house_number, postal_code, locality)`.
-    """
+    """Build the address inputs of a dialog, wired to a `SuggestionBox`."""
     client = Client(ui.page("/probe-address-input")(lambda: None), request=None)
     with client:
         street = ui.input("Adresse")
@@ -346,11 +272,7 @@ def test_without_a_click_the_typed_text_survives(address_register):
 
 
 def test_escape_clears_the_list_without_touching_the_text(address_register):
-    """The list floats over the form, so it has to be dismissable.
-
-    An inline list resized the dialog on every keystroke, which is exactly
-    when the administrator is reading what they type.
-    """
+    """The list floats over the form, so it has to be dismissable."""
     box, street, _, _, _ = _fields(address_register)
     street.value = "Erstweg"
     box.update()
@@ -363,13 +285,7 @@ def test_escape_clears_the_list_without_touching_the_text(address_register):
 
 
 def test_a_postal_code_already_in_the_form_ranks_the_suggestions(address_register):
-    """Typing a street with the postal code filled in offered six streets
-    from other cantons above the one that fitted.
-
-    Ranked rather than filtered: a street really can sit behind a different
-    postal code, and that case is what `verify` reports -- hiding it would
-    make the correction unreachable.
-    """
+    """Typing a street with the postal code filled in offered six streets from other cantons above the..."""
     box, street, _, postal_code, _ = _fields(address_register)
     postal_code.value = "3065"
     street.value = "Drittweg"
@@ -453,11 +369,7 @@ def test_changing_the_text_after_a_no_asks_again(address_register):
 
 
 def test_a_dismissal_reaches_the_database_on_save(address_register):
-    """The dialog collects it; saving writes it.
-
-    After the save rather than inside it: a new record has no id while the
-    dialog is open.
-    """
+    """The dialog collects it; saving writes it."""
     site_id = _site(street="Postfach")
     box, street, house_number, postal_code, locality = _fields(address_register)
     street.value, house_number.value = "Postfach", "4"
@@ -518,14 +430,7 @@ def test_the_suggestion_source_is_the_shared_lookup(address_register):
 def test_yes_writes_only_the_field_the_finding_is_about(
     address_register, street, number, postal_code, locality, field_index, expected
 ):
-    """Twice now a suggestion has landed in the wrong field.
-
-    First a postal code went into the street. The if/elif that replaced the
-    mapping then did the same to a house number: correcting "4a" to "4"
-    overwrote the street with "4" and left the number wrong -- a click that
-    destroyed data. An explicit mapping, and every field it can write
-    checked here.
-    """
+    """Twice now a suggestion has landed in the wrong field."""
     box, *fields = _fields(address_register)
     fields[0].value, fields[1].value = street, number
     fields[2].value, fields[3].value = postal_code, locality
@@ -555,12 +460,7 @@ def test_yes_leaves_everything_alone_when_the_field_is_unknown(address_register)
 
 
 def test_a_form_without_a_house_number_field_is_not_written_into(address_register):
-    """The settings page keeps street and number in one field.
-
-    Writing a house-number suggestion there would replace "Strasse 4" with
-    "4". The mapping has no fallback for that reason, and this pins it even
-    though `verify` cannot produce the finding in that form today.
-    """
+    """The settings page keeps street and number in one field."""
     from app.domain.address_lookup import AddressFinding
 
     client = Client(ui.page("/probe-no-number-field")(lambda: None), request=None)
@@ -591,14 +491,7 @@ def test_a_form_without_a_house_number_field_is_not_written_into(address_registe
 
 
 def _open_locality_list(register):
-    """Type a postal code that matches both localities.
-
-    Args:
-        register: Path of the test register.
-
-    Returns:
-        `(box, street, postal_code, locality)`.
-    """
+    """Type a postal code that matches both localities."""
     box, street, _, postal_code, locality = _fields(register)
     postal_code.value = "30"
     box.update_locality(postal_code)
@@ -607,11 +500,7 @@ def _open_locality_list(register):
 
 
 def test_the_open_list_is_the_innermost_thing_and_owns_the_keys(address_register):
-    """It takes the keys when it opens and gives them back when it closes.
-
-    Pushed above the dialog's own layer on purpose: Escape dismisses the
-    list first, and only a second press closes the form behind it.
-    """
+    """It takes the keys when it opens and gives them back when it closes."""
     box, _, _, _ = _open_locality_list(address_register)
 
     assert layers()[-1] is box._layer
@@ -681,12 +570,7 @@ def test_escape_pushes_the_list_aside_and_keeps_the_text(address_register, press
 
 
 def test_enter_takes_nothing_that_was_not_stepped_onto(address_register, press):
-    """Deliberate, and the project has already paid for the lesson.
-
-    A street suggestion can be a correctly spelled *different* real street
-    (see CLAUDE.md on `FIELD_POSTAL_CODE`), so a blind Enter taking the
-    first entry is exactly the destructive case that was fixed once before.
-    """
+    """Deliberate, and the project has already paid for the lesson."""
     box, _, postal_code, locality = _open_locality_list(address_register)
     assert box._highlight == -1
 

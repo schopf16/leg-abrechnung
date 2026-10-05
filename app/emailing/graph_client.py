@@ -1,22 +1,4 @@
-"""Client for sending mail via the Microsoft Graph API.
-
-Fixed API contract:
-
-    POST https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token
-    POST https://graph.microsoft.com/v1.0/users/{sender_address}/sendMail
-
-Authenticated via OAuth2 client-credentials (an Entra ID app registration
-with the `Mail.Send` *application* permission, admin-consented) -- plain
-SMTP with a username/password is not a viable option here since Microsoft
-has retired Basic Auth for SMTP AUTH across Exchange Online tenants.
-
-Deliberately `async` (using `httpx.AsyncClient` rather than the sync
-`httpx.get`/`.post` used by `app.importers.cloudflare_client`): sending to
-many recipients means one `sendMail` call per person (see module
-docstring of `app.emailing`), and `await`ing each one lets NiceGUI's event
-loop repaint a progress indicator between sends instead of freezing the
-UI for the whole batch.
-"""
+"""Client for sending mail via the Microsoft Graph API."""
 
 import asyncio
 import base64
@@ -64,46 +46,22 @@ MAX_INLINE_ATTACHMENT_BYTES = ((MAX_REQUEST_BYTES - _ENVELOPE_ALLOWANCE_BYTES) *
 
 @dataclass(frozen=True)
 class Attachment:
-    """One file to attach to an outgoing email.
-
-    Attributes:
-        path: File to read the bytes from at send time.
-        filename: Name the recipient sees, which is not necessarily the
-            name on disk -- a broadcast attachment is held in a temp file
-            with a generated name (see `app.gui.pages.email_dispatch`).
-    """
+    """One file to attach to an outgoing email."""
 
     path: Path
     filename: str
 
 
 class GraphAuthError(Exception):
-    """Raised when Microsoft rejects the request due to invalid/expired
-    credentials or insufficient permission (token request failure, or a
-    401/403 from the Graph API itself)."""
+    """Raised when Microsoft rejects the request due to invalid/expired credentials or insufficient..."""
 
 
 class GraphApiError(Exception):
-    """Raised for any other failure talking to the Graph API (network
-    error, non-2xx status after retries, or an unparseable response)."""
+    """Raised for any other failure talking to the Graph API (network error, non-2xx status after..."""
 
 
 async def get_access_token(config: GraphConfig) -> str:
-    """Acquire an OAuth2 access token via the client-credentials flow.
-
-    Args:
-        config: Graph API credentials (see `app.config.get_graph_config`).
-
-    Returns:
-        A bearer token valid for the standard Entra ID token lifetime
-        (typically ~60-90 minutes) -- long enough to reuse for an entire
-        bulk-send batch without reacquiring it per recipient.
-
-    Raises:
-        GraphAuthError: If the tenant/client id or secret are invalid.
-        GraphApiError: For any other network or HTTP failure, or an
-            unparseable response body.
-    """
+    """Acquire an OAuth2 access token via the client-credentials flow."""
     url = _TOKEN_URL_TEMPLATE.format(tenant_id=config.tenant_id)
     try:
         async with httpx.AsyncClient() as client:
@@ -146,47 +104,7 @@ async def send_email(
     body: str,
     attachments: Sequence[Attachment] = (),
 ) -> None:
-    """Send one plain-text email to exactly one contract party.
-
-    Deliberately never any CC/BCC, and never two different parties in one
-    message -- that is the whole privacy mechanism for bulk sends (see
-    `app.emailing` module docstring): call this once per party rather than
-    once with everybody's addresses.
-
-    `to_addresses` may hold more than one address only because one party
-    can: a couple is one `Person` with two addresses (see
-    `Person.contact_emails`), both of whom are parties to the same
-    contract. They see each other's address, which they already know.
-
-    Args:
-        config: Graph API credentials.
-        access_token: Bearer token from `get_access_token`.
-        to_addresses: The party's email addresses -- normally one, two for
-            a couple. All of them appear in `toRecipients` of this single
-            message.
-        to_name: The party's display name, used for every address (a
-            couple's `Person.display_name` names both people).
-        subject: Email subject.
-        body: Plain-text email body.
-        attachments: Files to attach (any type -- an invoice PDF, see
-            `app.emailing.bulk_send._send_one_invoice_email`, a dunning
-            notice, or the administrator's own files for a broadcast, see
-            `app.emailing.bulk_send.send_broadcast_email`). Each content
-            type is guessed from its `filename` via `mimetypes`, falling
-            back to `application/octet-stream`. The size limit applies to
-            the **total** and is checked across all of them -- see
-            `MAX_INLINE_ATTACHMENT_BYTES` for why it is not a flat 3 MB.
-
-    Returns:
-        None.
-
-    Raises:
-        GraphAuthError: If the access token is invalid/expired, or the
-            app registration lacks permission to send as this mailbox.
-        GraphApiError: For any other failure (including an empty
-            `to_addresses`, exhausting the 429-retry budget, or an
-            attachment over `MAX_INLINE_ATTACHMENT_BYTES`).
-    """
+    """Send one plain-text email to exactly one contract party."""
     if not to_addresses:
         # A GraphApiError rather than a ValueError on purpose: callers
         # (app.emailing.bulk_send) catch Graph* per recipient, so this
@@ -270,17 +188,7 @@ async def send_email(
 
 
 def _parse_retry_after(raw_value: Optional[str]) -> float:
-    """Parse a `Retry-After` header value into a wait time in seconds.
-
-    Args:
-        raw_value: The header's raw value (seconds as an integer string
-            per RFC 9110 -- Graph does not use the HTTP-date form), or
-            `None` if the header was absent.
-
-    Returns:
-        The parsed number of seconds, or `_DEFAULT_RETRY_AFTER_SECONDS` if
-        `raw_value` is missing or not a plain number.
-    """
+    """Parse a `Retry-After` header value into a wait time in seconds."""
     if raw_value is None:
         return _DEFAULT_RETRY_AFTER_SECONDS
     try:

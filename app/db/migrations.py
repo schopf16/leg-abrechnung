@@ -1,30 +1,11 @@
-"""Explicit, numbered database migrations.
-
-Every schema change is expressed as a new entry in ``MIGRATIONS`` with the
-next consecutive version number. Migrations are plain SQL scripts executed
-in order; nothing is ever edited in place, so old backups can always be
-brought up to the current schema by replaying the migrations they are
-missing (see :mod:`app.db.schema`).
-
-To add a schema change: append a new ``Migration`` with
-``version = last_version + 1`` and a short ``description``. Never renumber
-or remove existing entries.
-"""
+"""Explicit, numbered database migrations."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Migration:
-    """A single, immutable schema migration step.
-
-    Attributes:
-        version: Target schema version this migration brings the database
-            to. Must be exactly one higher than the previous migration.
-        description: Short human-readable summary, shown in logs.
-        sql: One or more SQL statements (semicolon separated) applied via
-            ``executescript``.
-    """
+    """A single, immutable schema migration step."""
 
     version: int
     description: str

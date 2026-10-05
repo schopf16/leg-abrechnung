@@ -1,48 +1,4 @@
-"""One guard for every dialog that holds typed-in data.
-
-Quasar closes a `q-dialog` when the click lands outside it, and nothing in
-this app said otherwise: **none** of the 39 dialogs was `persistent`. The
-Person dialog holds seventeen inputs, so a click a few pixels off the card
-discarded a filled-in membership without a word -- there is no undo, no
-draft, and no notification that anything was lost.
-
-`form_guard` is applied once, after a dialog's body is built and before it
-is opened:
-
-```python
-with ui.dialog() as dialog, ui.card():
-    ...
-    with ui.row():
-        ui.button("Abbrechen", on_click=dialog.close).props("flat")
-        ui.button("Speichern", on_click=save)
-form_guard(dialog, on_save=save)
-dialog.open()
-```
-
-It does three things, and each is the answer to one way of losing work:
-
-- **`persistent`**, so a click beside the card does nothing at all.
-- **Escape closes, but asks first when something was typed.** Making the
-  keyboard work must not make discarding easier than it was: before this,
-  Escape and an outside click were the same gesture, and now Escape is the
-  deliberate one -- so it is the one that has to be sure.
-- **Enter saves**, from any single-line input. Not from a textarea, where
-  Enter is a newline, and not from a field that carries a lookup menu (the
-  address fields, `app.gui.address_input`), where Enter belongs to the
-  suggestion list rather than to the form.
-
-Dirtiness is measured rather than wired up: the guard snapshots the value of
-every `ValueElement` inside the dialog at the moment it is applied, and
-compares on Escape. That is why it needs no cooperation from the dialog it
-guards -- and also where its limit is. A field created *after* the guard
-(a sub-editor that rebuilds itself) is not in the snapshot, so a change made
-only there reads as clean and Escape closes without asking. The protection
-that matters for an accidental click is `persistent`, which has no such gap.
-
-Read-only dialogs deliberately do **not** get this. An invoice preview or a
-detail view holds nothing to lose, and clicking beside it is the fastest way
-to dismiss it.
-"""
+"""One guard for every dialog that holds typed-in data."""
 
 from typing import Callable, Optional
 
@@ -53,22 +9,10 @@ from app.gui.keyboard import KeyboardLayer, push, remove
 
 
 class FormGuard:
-    """Protects one dialog's typed-in data.
-
-    Attributes:
-        dialog: The guarded dialog.
-    """
+    """Protects one dialog's typed-in data."""
 
     def __init__(self, dialog: ui.dialog, *, on_save: Optional[Callable[[], None]] = None) -> None:
-        """Make the dialog persistent and wire the keyboard up.
-
-        Args:
-            dialog: The dialog, with its body already built.
-            on_save: The dialog's save handler, if Enter should call it.
-
-        Returns:
-            None.
-        """
+        """Make the dialog persistent and wire the keyboard up."""
         self.dialog = dialog
         self._on_save = on_save
         self._fields = [element for element in dialog.descendants() if isinstance(element, ValueElement)]
@@ -106,14 +50,7 @@ class FormGuard:
 
     @staticmethod
     def _enter_belongs_to_the_form(field: ValueElement) -> bool:
-        """Whether pressing Enter in this field should save.
-
-        Args:
-            field: One field inside the dialog.
-
-        Returns:
-            `True` for a single-line input that owns no lookup menu.
-        """
+        """Whether pressing Enter in this field should save."""
         if field.__class__.__name__ != "Input":
             return False
         if field._props.get("type") == "textarea":
@@ -124,49 +61,26 @@ class FormGuard:
         return not any(descendant.__class__.__name__ == "Menu" for descendant in field.descendants())
 
     def _values(self) -> list:
-        """The current value of every field, in a stable order.
-
-        Returns:
-            One entry per field.
-        """
+        """The current value of every field, in a stable order."""
         return [field.value for field in self._fields]
 
     def _note_typing(self) -> None:
-        """Remember that a key was pressed inside this dialog.
-
-        Returns:
-            None.
-        """
+        """Remember that a key was pressed inside this dialog."""
         self._typed = True
 
     def _follow_the_dialog(self, is_open: bool) -> None:
-        """Take the keys while the dialog is open, and give them back after.
-
-        Args:
-            is_open: The dialog's new state.
-
-        Returns:
-            None.
-        """
+        """Take the keys while the dialog is open, and give them back after."""
         if is_open:
             push(self._layer)
         else:
             remove(self._layer)
 
     def dirty(self) -> bool:
-        """Whether anything has been typed or picked since the dialog opened.
-
-        Returns:
-            `True` when a key was pressed or a field's value differs.
-        """
+        """Whether anything has been typed or picked since the dialog opened."""
         return self._typed or self._values() != self._snapshot
 
     def _build_confirm(self) -> ui.dialog:
-        """The question asked when Escape would discard something.
-
-        Returns:
-            The confirmation dialog, closed.
-        """
+        """The question asked when Escape would discard something."""
 
         def discard() -> None:
             """Close both the question and the form."""
@@ -208,17 +122,7 @@ class FormGuard:
         return confirm
 
     def _follow_the_question(self, is_open: bool) -> None:
-        """Take the keys while the question is open.
-
-        It is pushed above the form's own layer, so Escape answers the
-        question rather than closing the form behind it.
-
-        Args:
-            is_open: The question's new state.
-
-        Returns:
-            None.
-        """
+        """Take the keys while the question is open."""
         if is_open:
             self._marked = 0
             self._show_the_mark()
@@ -227,27 +131,12 @@ class FormGuard:
             remove(self._confirm_layer)
 
     def _move_mark(self, step: int) -> None:
-        """Move the mark between the two answers.
-
-        Args:
-            step: `-1` or `+1`.
-
-        Returns:
-            None.
-        """
+        """Move the mark between the two answers."""
         self._marked = (self._marked + step) % len(self._answers)
         self._show_the_mark()
 
     def _show_the_mark(self) -> None:
-        """Draw the mark on the answer the keys would take.
-
-        Exactly one answer is drawn filled and the other flat, the way
-        every operating system marks the default button -- and unlike the
-        thin ring this started with, it cannot be overlooked.
-
-        Returns:
-            None.
-        """
+        """Draw the mark on the answer the keys would take."""
         for index, (button, _) in enumerate(self._answers):
             if index == self._marked:
                 button.props(remove="flat")
@@ -257,33 +146,11 @@ class FormGuard:
                 button.style("font-weight: 400;")
 
     def _answer(self, index: int) -> None:
-        """Take one of the two answers.
-
-        Args:
-            index: `0` to keep editing, `1` to discard.
-
-        Returns:
-            None.
-        """
+        """Take one of the two answers."""
         self._answers[index][1]()
 
     def _keep_the_footer_in_view(self) -> None:
-        """Pin the button row to the bottom of the visible dialog.
-
-        A dialog with seventeen fields is taller than the window, and the
-        administrator pressed Enter in the middle of it: the save handler
-        ran, refused, and wrote its message underneath the last field --
-        off screen. It read as "Enter does nothing", which is the worst
-        possible outcome of adding a key.
-
-        So the row that carries Abbrechen and Speichern (and, where the
-        dialog puts it there, the error) sticks to the bottom edge while
-        the fields scroll behind it. Nothing in this app needs scrolling
-        to reach an action any more.
-
-        Returns:
-            None.
-        """
+        """Pin the button row to the bottom of the visible dialog."""
         card = next(iter(self.dialog.default_slot.children), None)
         if card is None:
             return
@@ -301,34 +168,18 @@ class FormGuard:
         )
 
     def _escape(self) -> None:
-        """Close the dialog, asking first if there is something to lose.
-
-        Returns:
-            None.
-        """
+        """Close the dialog, asking first if there is something to lose."""
         if not self.dirty():
             self.dialog.close()
             return
         self._confirm.open()
 
     def _save(self) -> None:
-        """Call the dialog's own save handler.
-
-        Returns:
-            None.
-        """
+        """Call the dialog's own save handler."""
         if self._on_save is not None:
             self._on_save()
 
 
 def form_guard(dialog: ui.dialog, *, on_save: Optional[Callable[[], None]] = None) -> FormGuard:
-    """Guard one dialog that holds typed-in data.
-
-    Args:
-        dialog: The dialog, with its body already built.
-        on_save: The dialog's save handler, if Enter should call it.
-
-    Returns:
-        The guard, so a test can ask it whether the dialog is dirty.
-    """
+    """Guard one dialog that holds typed-in data."""
     return FormGuard(dialog, on_save=on_save)

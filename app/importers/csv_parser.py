@@ -1,23 +1,4 @@
-"""Parser for the CSV fallback export BKW offers as an EBIX alternative.
-
-Expected columns (semicolon- or comma-separated, header row required,
-column order does not matter, matching is case-insensitive):
-
-    MeteringPoint;Zeitstempel;Richtung;Wert_kWh
-    CH1000000000000000000000001;2025-07-01T00:00:00;consumption;0.123
-    CH1000000000000000000000001;2025-07-01T00:15:00;consumption;0.150
-
-- `MeteringPoint`: metering point designation (business key, "designation").
-- `Zeitstempel`: ISO-8601 interval start (`YYYY-MM-DDTHH:MM:SS`).
-- `Richtung`: "Bezug" or "Einspeisung" (case-insensitive; the English
-  synonyms "consumption"/"production"/"import"/"export" are also accepted,
-  see `app.importers.base.validate_direction`), stored as "consumption"/"feed_in" (the persisted values).
-- `Wert_kWh`: energy for the interval, decimal point or comma.
-
-As with the EBIX parser, no real BKW CSV sample was available; adjust the
-`_COLUMN_ALIASES` mapping below if the real export uses different header
-names -- the rest of the pipeline is unaffected.
-"""
+"""Parser for the CSV fallback export BKW offers as an EBIX alternative."""
 
 import csv
 from datetime import datetime
@@ -45,31 +26,12 @@ _REQUIRED_FIELDS = {"designation", "timestamp", "direction", "kwh"}
 
 
 def _sniff_delimiter(sample: str) -> str:
-    """Guess the CSV delimiter used by a sample of file content.
-
-    Args:
-        sample: First chunk of the file's text content.
-
-    Returns:
-        Either ";" or "," -- whichever appears more often in the sample,
-        defaulting to ";" as commonly used in Swiss/German exports.
-    """
+    """Guess the CSV delimiter used by a sample of file content."""
     return ";" if sample.count(";") >= sample.count(",") else ","
 
 
 def parse_csv_file(path: Path) -> ParseResult:
-    """Parse a BKW CSV reading export into `ParsedReading` objects.
-
-    Args:
-        path: Filesystem path of the `.csv` file to parse.
-
-    Returns:
-        The parsed readings plus any non-fatal warnings.
-
-    Raises:
-        ImportValidationError: If the file has no header row, or is
-            missing one of the required columns.
-    """
+    """Parse a BKW CSV reading export into `ParsedReading` objects."""
     text = path.read_text(encoding="utf-8-sig")
     if not text.strip():
         raise ImportValidationError("CSV-Datei ist leer.")

@@ -1,12 +1,5 @@
-"""Tests for the energy chart's series: consumption, feed-in, and how much
-of the production actually found a taker inside the LEG.
-
-The last one is the reason this module exists, and it is also the one that
-is easy to get quietly wrong: `min(daily production, daily consumption)`
-looks like the same number as the sum of the per-interval minima, and is
-not. It would claim energy was shared when the sun shone at noon and the
-washing machine ran at nine in the evening.
-"""
+"""Tests for the energy chart's series: consumption, feed-in, and how much of the production actually
+found a taker inside the LEG."""
 
 from datetime import datetime
 
@@ -31,15 +24,7 @@ from app.models.site import Site
 
 
 def _leg(db, name: str = "LEG") -> int:
-    """Create a LEG.
-
-    Args:
-        db: Database connection fixture.
-        name: Its name.
-
-    Returns:
-        The new LEG's id.
-    """
+    """Create a LEG."""
     return leg_repo.create(
         db,
         Leg(
@@ -54,17 +39,7 @@ def _leg(db, name: str = "LEG") -> int:
 
 
 def _meter(db, leg_id: int, direction: str, suffix: str) -> int:
-    """Create one metering point in a LEG.
-
-    Args:
-        db: Database connection fixture.
-        leg_id: The LEG it belongs to.
-        direction: Consumption or feed-in.
-        suffix: Two digits making the designation unique.
-
-    Returns:
-        The new metering point's id.
-    """
+    """Create one metering point in a LEG."""
     site_id = site_repo.create(
         db,
         Site(
@@ -94,18 +69,7 @@ def _meter(db, leg_id: int, direction: str, suffix: str) -> int:
 
 
 def _reading(db, metering_point_id: int, direction: str, moment: datetime, kwh: float) -> None:
-    """Record one 15-minute reading.
-
-    Args:
-        db: Database connection fixture.
-        metering_point_id: The meter.
-        direction: Its direction, stored alongside as the schema does.
-        moment: The interval's start.
-        kwh: Energy in that interval.
-
-    Returns:
-        None.
-    """
+    """Record one 15-minute reading."""
     db.execute(
         "INSERT INTO readings (metering_point_id, timestamp, direction, kwh, source) VALUES (?, ?, ?, ?, ?)",
         (metering_point_id, moment.isoformat(), direction, kwh, "test"),
@@ -114,14 +78,7 @@ def _reading(db, metering_point_id: int, direction: str, moment: datetime, kwh: 
 
 
 def test_production_and_consumption_at_different_hours_share_nothing(db):
-    """The test this module exists for.
-
-    Ten kWh produced in the morning and ten kWh drawn in the evening have
-    identical daily totals -- and share **nothing**, because at no moment
-    was there production and consumption at the same time. A `min` over
-    the daily sums would report 10 kWh of sharing that never happened, and
-    the resulting chart would be entirely plausible and entirely wrong.
-    """
+    """The test this module exists for."""
     leg_id = _leg(db)
     pv = _meter(db, leg_id, DIRECTION_FEED_IN, "01")
     house = _meter(db, leg_id, DIRECTION_CONSUMPTION, "02")
@@ -156,11 +113,7 @@ def test_production_and_consumption_in_the_same_interval_do_share(db):
 
 
 def test_two_legs_never_share_with_each_other(db):
-    """Energy is shared *within* a LEG, never between neighbours.
-
-    Pooling every reading first and taking one `min` would invent sharing
-    between two communities that have nothing to do with each other.
-    """
+    """Energy is shared *within* a LEG, never between neighbours."""
     moment = datetime(2026, 7, 15, 12, 0)
     producing = _leg(db, "LEG-Produktion")
     drawing = _leg(db, "LEG-Bezug")
@@ -176,12 +129,7 @@ def test_two_legs_never_share_with_each_other(db):
 
 
 def test_the_totals_match_a_plain_sql_sum(db):
-    """A figure that drifts from the readings is worse than no figure.
-
-    Same check as `test_totals_match_the_raw_readings` for the quarterly
-    overview, and for the same reason: these numbers get compared against
-    reality by eye.
-    """
+    """A figure that drifts from the readings is worse than no figure."""
     create_demo_data(db)
     window = period.window_for(GRANULARITY_MONTH, datetime(SUMMER_QUARTER[0], 8, 15))
     series = energy_series(db, GRANULARITY_MONTH, window)
@@ -225,10 +173,7 @@ def test_empty_buckets_are_present_and_zero(db):
 
 
 def test_a_bucket_without_feed_in_has_no_share_rather_than_zero(db):
-    """Night is not "0 % self-consumption" -- there was nothing to consume.
-
-    Drawing it as zero would put a false floor on the percentage line.
-    """
+    """Night is not "0 % self-consumption" -- there was nothing to consume."""
     leg_id = _leg(db)
     house = _meter(db, leg_id, DIRECTION_CONSUMPTION, "01")
     _reading(db, house, DIRECTION_CONSUMPTION, datetime(2026, 7, 15, 2), 1.5)
@@ -242,10 +187,7 @@ def test_a_bucket_without_feed_in_has_no_share_rather_than_zero(db):
 
 
 def test_the_quarter_hour_view_is_power_and_the_rest_is_energy(db):
-    """kW for the load curve, kWh for everything coarser.
-
-    The factor comes from `INTERVAL_MINUTES`, not from a hardcoded four.
-    """
+    """kW for the load curve, kWh for everything coarser."""
     leg_id = _leg(db)
     pv = _meter(db, leg_id, DIRECTION_FEED_IN, "01")
     house = _meter(db, leg_id, DIRECTION_CONSUMPTION, "02")

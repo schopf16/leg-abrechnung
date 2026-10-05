@@ -1,9 +1,4 @@
-"""Tests for the guard on every dialog that holds typed-in data.
-
-The defect being fixed cannot be seen by rendering: the dialog looked right
-in every test while a click beside it threw seventeen filled-in fields away.
-So these drive the keyboard and read the prop that decides it.
-"""
+"""Tests for the guard on every dialog that holds typed-in data."""
 
 import pytest
 from nicegui import Client, ui
@@ -12,20 +7,7 @@ from app.gui.form_dialog import form_guard
 
 
 def _listener(element, event_type: str):
-    """The handler registered for one event type.
-
-    Only the clicks and the per-element Enter are looked up this way. The
-    keys a dialog owns come from `app.gui.keyboard`'s stack and are pressed
-    through the `press` fixture, because that is how they arrive in the
-    running app.
-
-    Args:
-        element: The element to look at.
-        event_type: e.g. "click".
-
-    Returns:
-        The handler, callable with one argument.
-    """
+    """The handler registered for one event type."""
     for listener in element._event_listeners.values():
         if listener.type == event_type:
             return listener.handler
@@ -33,16 +15,7 @@ def _listener(element, event_type: str):
 
 
 def _dialog(probe: str, *, with_save: bool = True):
-    """A small form dialog with one input and one textarea.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-        with_save: Whether Enter should be wired to a save handler.
-
-    Returns:
-        `(client, dialog, guard, fields, saved)` where `saved` is a list the
-        save handler appends to.
-    """
+    """A small form dialog with one input and one textarea."""
     client = Client(ui.page(probe)(lambda: None), request=None)
     saved: list[bool] = []
 
@@ -77,11 +50,7 @@ def test_escape_closes_a_dialog_nothing_was_typed_into(press):
 
 
 def test_escape_asks_before_throwing_typed_input_away(press):
-    """Escape used to be the same gesture as a stray click.
-
-    Now it is the deliberate one, which is exactly why it has to be sure:
-    there is no undo and no draft anywhere in this app.
-    """
+    """Escape used to be the same gesture as a stray click."""
     client, dialog, guard, fields, _ = _dialog("/probe-guard-escape-dirty")
 
     fields["text"].value = "Muster"
@@ -124,12 +93,7 @@ def test_enter_saves_from_a_single_line_field():
 
 @pytest.mark.parametrize("field", ["note", "lookup"])
 def test_enter_belongs_to_the_field_not_the_form(field):
-    """In a textarea Enter is a newline; in an address field it is the list.
-
-    `app.gui.address_input` anchors its suggestion menu to the input, so a
-    form-wide Enter would save the record instead of taking the suggestion
-    the administrator is looking at.
-    """
+    """In a textarea Enter is a newline; in an address field it is the list."""
     _, _, _, fields, _ = _dialog("/probe-guard-enter-" + field)
 
     with pytest.raises(AssertionError):
@@ -137,11 +101,7 @@ def test_enter_belongs_to_the_field_not_the_form(field):
 
 
 def test_a_dialog_without_a_save_handler_binds_no_enter():
-    """The override, the invoice mail and the billing run keep the guard.
-
-    They deliberately do not get the key: none of them can be taken back,
-    and a stray Enter would be enough to set them off.
-    """
+    """The override, the invoice mail and the billing run keep the guard."""
     _, _, _, fields, _ = _dialog("/probe-guard-no-enter", with_save=False)
 
     with pytest.raises(AssertionError):
@@ -157,12 +117,7 @@ def test_a_dialog_without_a_save_handler_binds_no_enter():
     ],
 )
 def test_the_real_edit_dialogs_are_guarded(module, function, address_register):
-    """The helper being right proves nothing about the forms using it.
-
-    The same reasoning as `tests/test_page_routes.py`: a dialog's own tests
-    call the function directly, and the prop that decides whether work can
-    be lost is set at the very end of it.
-    """
+    """The helper being right proves nothing about the forms using it."""
     import importlib
 
     page_module = importlib.import_module(module)
@@ -182,13 +137,7 @@ def test_the_real_edit_dialogs_are_guarded(module, function, address_register):
 
 
 def test_the_question_survives_the_keystroke_that_opened_it(press):
-    """It appeared and vanished in one blink.
-
-    The Escape keydown that opens the question goes on to reach the
-    question, and Quasar closes a non-persistent dialog on exactly that
-    event. Escape here therefore means "Weiter bearbeiten" -- which is also
-    the safe reading of pressing it twice.
-    """
+    """It appeared and vanished in one blink."""
     client, dialog, guard, fields, _ = _dialog("/probe-guard-question-stays")
 
     fields["text"].value = "Muster"
@@ -206,12 +155,7 @@ def test_the_question_survives_the_keystroke_that_opened_it(press):
 
 
 def test_the_buttons_stay_in_view_when_the_dialog_is_taller_than_the_window():
-    """The Person dialog is taller than a laptop screen.
-
-    Enter pressed in the middle of it ran the save, got a refusal, and wrote
-    the message underneath the last field -- off screen. It read as "Enter
-    does nothing", which is the worst possible outcome of adding a key.
-    """
+    """The Person dialog is taller than a laptop screen."""
     client = Client(ui.page("/probe-guard-sticky")(lambda: None), request=None)
     with client:
         with ui.dialog() as dialog, ui.card():
@@ -263,12 +207,7 @@ def test_the_person_dialog_shows_its_error_beside_the_save_button(address_regist
 
 
 def test_the_question_can_be_answered_without_the_mouse(press):
-    """Reported from use: "bei escape kann ich die pfeiltasten links rechts
-    nicht brauchen, auch enter nicht".
-
-    The question is two buttons and no text, so it is the one place where
-    the arrows have nothing else to do.
-    """
+    """Reported from use: "bei escape kann ich die pfeiltasten links rechts nicht brauchen, auch enter..."""
     client, dialog, guard, fields, _ = _dialog("/probe-guard-question-keys")
 
     fields["text"].value = "Muster"
@@ -304,13 +243,7 @@ def test_enter_on_the_safe_answer_goes_back_to_editing(press):
 
 
 def test_a_key_counts_as_typing_even_before_the_value_arrives(press):
-    """The defect the administrator found on the LEG dialog.
-
-    That field carries `debounce=300` for its duplicate check, so what was
-    typed had not reached the server yet -- the value snapshot still matched
-    and Escape closed the dialog without asking. A key press needs no round
-    trip.
-    """
+    """The defect the administrator found on the LEG dialog."""
     client, dialog, guard, _, _ = _dialog("/probe-guard-typed-flag")
 
     assert guard.dirty() is False
@@ -327,13 +260,7 @@ def test_a_key_counts_as_typing_even_before_the_value_arrives(press):
 
 
 def test_the_leg_dialog_asks_before_discarding_what_was_typed(address_register, press):
-    """The exact sequence the administrator reported.
-
-    "neues leg öffnen / test eintippen / neben das popup klicken (schliesst
-    nicht) / esc drücken schliesst ohne rückmeldung". Driven through the
-    page's own button, because the dialog only exists once that is clicked
-    -- which is why no earlier test saw it.
-    """
+    """The exact sequence the administrator reported."""
     from app.gui.pages import legs as legs_page
 
     client = Client(ui.page("/probe-guard-leg")(lambda: None), request=None)
@@ -370,12 +297,7 @@ def test_the_leg_dialog_asks_before_discarding_what_was_typed(address_register, 
 
 
 def test_the_marked_answer_is_visibly_the_marked_one(press):
-    """Reported from use: "ich sehe nicht welcher button ausgewählt wurde".
-
-    The first attempt drew a thin ring around it, which was invisible on a
-    small card. Exactly one answer is filled and the other flat now -- the
-    way every operating system marks the default button.
-    """
+    """Reported from use: "ich sehe nicht welcher button ausgewählt wurde"."""
     client, _, guard, fields, _ = _dialog("/probe-guard-mark-visible")
 
     fields["text"].value = "Muster"

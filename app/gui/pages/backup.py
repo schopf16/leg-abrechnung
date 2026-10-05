@@ -19,18 +19,7 @@ from app.models import settings as settings_repo
 
 
 def _backup_row(info) -> dict:
-    """Describe one backup file for the table.
-
-    The counts are what makes two backups tellable apart -- a filename
-    and a size say nothing about which state a snapshot holds -- so they
-    come before the filename rather than after it.
-
-    Args:
-        info: A `app.backup.backup_service.BackupFileInfo`.
-
-    Returns:
-        A row dict matching the table's columns.
-    """
+    """Describe one backup file for the table."""
     contents = info.contents
     return {
         "filename": info.path.name,
@@ -52,11 +41,7 @@ def _backup_row(info) -> dict:
 
 @ui.page("/backup")
 def backup_page() -> None:
-    """Render the backup and restore page.
-
-    Returns:
-        None.
-    """
+    """Render the backup and restore page."""
     with page_frame("/backup", "Backup"):
         ui.label(
             "Ein Backup ist eine einzelne Datei mit der gesamten Datenbank. "
@@ -82,11 +67,7 @@ def backup_page() -> None:
             ).classes("w-full")
 
             def save_extra_path() -> None:
-                """Persist the extra backup path setting.
-
-                Returns:
-                    None.
-                """
+                """Persist the extra backup path setting."""
                 with connection_scope() as connection:
                     settings = settings_repo.get_settings(connection)
                     settings.extra_backup_dir = extra_path_input.value.strip()
@@ -125,20 +106,12 @@ def backup_page() -> None:
         )
 
         def refresh_backups_table() -> None:
-            """Reload the list of backup files.
-
-            Returns:
-                None.
-            """
+            """Reload the list of backup files."""
             backups_table.rows = [_backup_row(b) for b in list_backups()]
             backups_table.update()
 
         def do_create_backup() -> None:
-            """Create a new backup, mirror it to the extra path if configured, and refresh the list.
-
-            Returns:
-                None.
-            """
+            """Create a new backup, mirror it to the extra path if configured, and refresh the list."""
             backup_path = create_backup()
             with connection_scope() as connection:
                 extra_dir = settings_repo.get_settings(connection).extra_backup_dir
@@ -154,14 +127,7 @@ def backup_page() -> None:
         ui.label("Vorhandene Backups").classes("text-lg font-bold mt-6")
 
         def on_restore_clicked(event) -> None:
-            """Ask for confirmation, then restore the selected backup.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Ask for confirmation, then restore the selected backup."""
             filename = event.args["filename"]
             path = event.args["path"]
 

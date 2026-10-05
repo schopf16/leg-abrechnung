@@ -7,106 +7,7 @@ from datetime import datetime, timezone
 
 @dataclass
 class LegSettings:
-    """Settings shared across all LEGs (see `app.models.leg`).
-
-    Every LEG bills under its own name (see `Leg.name`), but the sender
-    address, QR-IBAN, energy price and admin fees below are the same for
-    every LEG in this deployment.
-
-    Attributes:
-        address_street: Street of the sender address, without the
-            house number -- that is `address_house_number`. They were
-            one field until migration 54, which cost the
-            administrator the number: the address check compares the
-            field against street names, so a value with a number in
-            it matched nothing and accepting the suggestion wrote the
-            bare street over the whole thing.
-        address_house_number: House number of the sender address.
-        address_zip: Postal code of the sender address.
-        address_city: City of the sender address.
-        address_country: ISO-3166 alpha-2 country code, e.g. ``"CH"``.
-        qr_iban: QR-IBAN used as the creditor account on invoices.
-        price_rp_per_kwh: Internal energy price in Rappen per kWh.
-        admin_fee_consumption_rp_per_kwh: Administrative surcharge in
-            Rappen per kWh, charged on top of the energy price for a
-            person's locally-sourced consumption ("consumption"). Independent
-            from `admin_fee_feed_in_rp_per_kwh` -- either can
-            be zero while the other is not. Changing this only affects
-            billing runs created afterwards: `app.domain.billing` freezes
-            the rate actually used onto each `BillingRunItem` at creation
-            time, so an already-billed fee never changes retroactively.
-        admin_fee_feed_in_rp_per_kwh: The same kind of
-            administrative surcharge, charged on a person's
-            locally-delivered production ("feed-in") instead.
-        paper_invoice_rappen: Flat fee in Rappen charged to persons with
-            `Person.paper_invoice` set (paper invoice by post).
-        extra_backup_dir: Optional second directory every backup is also
-            copied into (e.g. a network drive), in addition to the fixed
-            `backups/` folder -- see `app.backup.backup_service`. Empty
-            string means no extra copy is made. Stays as set until
-            explicitly changed; if the path is unreachable when a backup
-            runs (e.g. while travelling), that copy is simply skipped
-            with a warning, the primary backup in `backups/` is
-            unaffected.
-        metering_point_country: Default 2-letter country code for new metering points's
-            metering point designation (see `app.domain.metering_point_validation`)
-            -- always the same grid operator's country for a single LEG
-            deployment, e.g. `"CH"`.
-        metering_point_identifier: Default 11-character VSE grid-operator
-            identifier for new metering points -- also always the same across
-            a single LEG deployment (one grid operator), so storing it
-            here saves re-entering it for every MeteringPoint. Editable per
-            MeteringPoint regardless.
-        web_registration_cursor: The highest Cloudflare submission id
-            already fetched from the leg-ittigen.ch registration API --
-            see `app.importers.registration_sync`. Managed exclusively by
-            that sync, never edited through the settings form.
-        onboarding_overdue_days: Number of days a person's current
-            onboarding step (see `app.models.person_onboarding`) may stay
-            open before it is flagged as overdue in the quality checks.
-        leg_founding_min_persons: **Retired, read by nothing.** Was the
-            minimum number of people a substation area had to reach before
-            the app suggested splitting it off into its own LEG. That
-            recommendation was removed because presence of both sides is
-            not viability -- see `app.domain.participant_mix`. The column
-            and this field stay because old migrations are never rewritten
-            (see CLAUDE.md) and dropping a column to look tidy is not worth
-            the risk; the settings form no longer offers it.
-        production_capacity_warn_percent: Below this percentage a LEG's
-            recorded production capacity (see `app.models.leg.Leg.
-            production_capacity_percent`) is flagged as getting tight, so
-            the next consumer can be parked in another LEG before the legal
-            5% floor is actually hit. The floor itself is Art. 19e Abs. 1
-            StromVV and is NOT configurable; this is only the early
-            warning. Default 10.
-        invoice_email_subject: Subject template for invoice emails (see
-            `app.emailing.bulk_send.send_invoice_emails`), may contain
-            `{placeholder}`s (see `app.emailing.templates`). Written once
-            in the settings, reused for every billing run instead of
-            retyping it each quarter.
-        invoice_email_body: Body template for invoice emails, same
-            placeholder support.
-        dunning_new_deadline_days: Number of days the 1. dunning notice's new
-            deadline grants, and the wait before an unpaid item at stage
-            1 becomes eligible for the 2. dunning notice (see `app.domain.
-            dunning`).
-        dunning_minimum_rappen: A person's total open balance must
-            be at least this amount for a dunning notice to be raised at all --
-            avoids chasing a negligible remainder.
-        dunning1_email_subject: Subject template for the 1. dunning notice
-            (grants a new deadline; does not yet threaten exclusion --
-            wait, it does, see the LEG's own Reglement: a missed new
-            deadline leads to membership termination). May contain
-            `{placeholder}`s (person placeholders plus `{betrag}`,
-            `{neue_frist}` -- see `app.domain.dunning`).
-        dunning1_email_body: Body template for the 1. dunning notice.
-        dunning2_email_subject: Subject template for the 2. dunning notice
-            (sent when the 1. dunning notice's new deadline was missed --
-            triggers an exclusion review, never automatic, see
-            `app.models.person_offboarding`).
-        dunning2_email_body: Body template for the 2. dunning notice.
-        updated_at: ISO-8601 timestamp of the last update.
-    """
+    """Settings shared across all LEGs (see `app.models.leg`)."""
 
     address_street: str
     address_house_number: str
@@ -137,31 +38,12 @@ class LegSettings:
 
     @property
     def address_street_with_number(self) -> str:
-        """`"Strasse Hausnummer"`, with either part omitted if empty.
-
-        Mirrors `Person.billing_street_with_number`, and for the same
-        reason: the two parts are stored apart so each can be checked and
-        corrected on its own, and joined again wherever an address is
-        *printed* -- the letterhead of every document
-        (`app.pdf.layout.draw_sender_block`). The QR-bill is the exception
-        that proves it: the Swiss standard has the two fields separately,
-        so `app.pdf.qr_bill_render` passes them unjoined.
-
-        Returns:
-            The sender address's street line, or `""` if both are empty.
-        """
+        """`"Strasse Hausnummer"`, with either part omitted if empty."""
         return " ".join(part for part in (self.address_street, self.address_house_number) if part)
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "LegSettings":
-        """Build a `LegSettings` instance from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `leg_settings` table.
-
-        Returns:
-            The corresponding `LegSettings` dataclass instance.
-        """
+        """Build a `LegSettings` instance from a `sqlite3.Row`."""
         return LegSettings(
             address_street=row["address_street"],
             address_house_number=row["address_house_number"],
@@ -193,18 +75,7 @@ class LegSettings:
 
 
 def get_settings(connection: sqlite3.Connection) -> LegSettings:
-    """Load the single LEG settings row.
-
-    Args:
-        connection: Open SQLite connection with an initialized schema.
-
-    Returns:
-        The current `LegSettings`.
-
-    Raises:
-        RuntimeError: If the settings row is missing (schema not
-            initialized via `app.db.schema.initialize_database`).
-    """
+    """Load the single LEG settings row."""
     row = connection.execute("SELECT * FROM leg_settings WHERE id = 1").fetchone()
     if row is None:
         raise RuntimeError("LEG settings row missing; call initialize_database() first.")
@@ -212,16 +83,7 @@ def get_settings(connection: sqlite3.Connection) -> LegSettings:
 
 
 def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> None:
-    """Persist updated LEG settings.
-
-    Args:
-        connection: Open SQLite connection.
-        settings: New settings values to store (``updated_at`` is
-            overwritten with the current time).
-
-    Returns:
-        None.
-    """
+    """Persist updated LEG settings."""
     connection.execute(
         """
         UPDATE leg_settings SET

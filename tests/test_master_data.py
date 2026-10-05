@@ -26,16 +26,7 @@ from app.models.assignment import Assignment
 
 
 def _make_person(name: str = "Test Person") -> Person:
-    """Build an unpersisted `Person` for use in tests.
-
-    Args:
-        name: Full name to assign, stored entirely in `first_name` (tests
-            only ever compare against the combined `full_name`/
-            `display_name`, never the individual parts).
-
-    Returns:
-        A `Person` with `id=None`.
-    """
+    """Build an unpersisted `Person` for use in tests."""
     return Person(
         id=None,
         salutation="",
@@ -64,17 +55,7 @@ def _make_metering_point(
     site_id: int = 1,
     leg_id: int | None = None,
 ) -> MeteringPoint:
-    """Build an unpersisted `MeteringPoint` for use in tests.
-
-    Args:
-        designation: Business key to assign.
-        direction: Measurement direction.
-        site_id: Foreign key of the site the MeteringPoint belongs to.
-        leg_id: Foreign key of the assigned LEG, or `None`.
-
-    Returns:
-        A `MeteringPoint` with `id=None`.
-    """
+    """Build an unpersisted `MeteringPoint` for use in tests."""
     return MeteringPoint(
         id=None,
         designation=designation,
@@ -88,15 +69,7 @@ def _make_metering_point(
 
 
 def _make_substation_area(db, name: str = "Bern_TRA00001") -> int:
-    """Create a minimal substation area and return its id.
-
-    Args:
-        db: Database connection fixture.
-        name: Name to assign (must be unique).
-
-    Returns:
-        The new substation area's id.
-    """
+    """Create a minimal substation area and return its id."""
     return substation_area_repo.create(
         db, SubstationArea(id=None, name=name, bkw_designation="", note="", created_at="")
     )
@@ -109,18 +82,7 @@ def _make_site(
     house_number: str = "1",
     postal_code: str = "3000",
 ) -> int:
-    """Create a minimal site and return its id.
-
-    Args:
-        db: Database connection fixture.
-        substation_area_id: Foreign key of the assigned substation area, or `None`.
-        street: Street name.
-        house_number: House number.
-        plz: Postal code.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a minimal site and return its id."""
     return site_repo.create(
         db,
         Site(
@@ -162,12 +124,7 @@ def test_person_display_name_combines_company_and_contact(db):
 
 
 def test_person_address_block_lines_puts_the_salutation_on_the_name_line(db):
-    """The salutation goes in front of the name, not on a line of its own.
-
-    Swiss letter practice, and the only form that survives a second named
-    person: with "Frau" and "Herr" on separate lines nothing would say
-    which salutation belongs to which name.
-    """
+    """The salutation goes in front of the name, not on a line of its own."""
     company_only = _make_person("")
     company_only.company = "Nur Firma AG"
     company_only.salutation = "Herr"
@@ -250,9 +207,7 @@ def test_person_formatted_customer_number_groups_digits(db):
 
 
 def test_migration_21_reassigns_existing_8_digit_customer_number_to_6_digits(monkeypatch):
-    """Migration 21 gives every pre-existing Person a fresh, unique 6-digit
-    customer number -- simulates a real database that still has old 8-digit
-    numbers from before the format change."""
+    """Migration 21 gives every pre-existing Person a fresh, unique 6-digit customer number --..."""
     migrations_before_21 = [m for m in MIGRATIONS if m.version < 21]
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
@@ -336,9 +291,7 @@ def test_assignment_covers_respects_open_and_closed_ranges():
 
 
 def test_assignment_is_current_or_upcoming_counts_a_not_yet_started_assignment():
-    """Unlike `covers`, a Assignment entered ahead of its start date (e.g.
-    next quarter's move-ins prepared in advance) already counts -- only
-    one that has actually ended (`valid_to` in the past) does not."""
+    """Unlike `covers`, a Assignment entered ahead of its start date (e.g."""
     future = Assignment(
         id=1,
         person_id=1,
@@ -362,16 +315,7 @@ def test_assignment_is_current_or_upcoming_counts_a_not_yet_started_assignment()
 
 
 def _dt(year: int, month: int, day: int):
-    """Build a naive `datetime` at midnight for the given date.
-
-    Args:
-        year: Calendar year.
-        month: Calendar month.
-        day: Calendar day.
-
-    Returns:
-        A `datetime` at 00:00 on the given date.
-    """
+    """Build a naive `datetime` at midnight for the given date."""
     from datetime import datetime
 
     return datetime(year, month, day)
@@ -402,8 +346,7 @@ def test_assignment_get_finds_by_id(db):
 
 
 def test_get_relevant_for_metering_point_prefers_the_already_started_one(db):
-    """Both an already-started and a not-yet-started Assignment exist --
-    the already-started one is the "currently assigned" answer."""
+    """Both an already-started and a not-yet-started Assignment exist -- the already-started one is the..."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
@@ -437,8 +380,7 @@ def test_get_relevant_for_metering_point_prefers_the_already_started_one(db):
 
 
 def test_get_relevant_for_metering_point_falls_back_to_soonest_upcoming(db):
-    """Nothing has started yet -- falls back to the soonest-starting
-    upcoming Assignment instead of reporting "unassigned"."""
+    """Nothing has started yet -- falls back to the soonest-starting upcoming Assignment instead of..."""
     site_id = _make_site(db)
     person_a = person_repo.create(db, _make_person("Anna"))
     person_b = person_repo.create(db, _make_person("Beat"))
@@ -472,8 +414,7 @@ def test_get_relevant_for_metering_point_falls_back_to_soonest_upcoming(db):
 
 
 def test_get_relevant_for_metering_point_ignores_ended_assignment(db):
-    """A Assignment that has already ended is not "upcoming" -- an empty
-    history (or one with only past assignments) reports `None`."""
+    """A Assignment that has already ended is not "upcoming" -- an empty history (or one with only past..."""
     site_id = _make_site(db)
     person_id = person_repo.create(db, _make_person())
     metering_point_id = metering_point_repo.create(db, _make_metering_point(site_id=site_id))
@@ -596,14 +537,7 @@ def test_find_warnings_none_for_consecutive_periods(db):
 
 
 def _make_leg(name: str = "Ittigen_TRA21359") -> Leg:
-    """Build an unpersisted `Leg` for use in tests.
-
-    Args:
-        name: Name to assign.
-
-    Returns:
-        A `Leg` with `id=None`.
-    """
+    """Build an unpersisted `Leg` for use in tests."""
     return Leg(id=None, name=name, note="", created_at="")
 
 
@@ -727,9 +661,7 @@ def test_site_list_all_sorts_house_number_numerically(db):
 
 
 def test_site_list_all_sorts_by_street_regardless_of_municipality_spelling(db):
-    """Real data spells the same municipality several ways ("Ittigen",
-    "ittigen", "3063 Ittigen"). Ordering by municipality first scattered
-    the list, so the address is what the order follows."""
+    """Real data spells the same municipality several ways ("Ittigen", "ittigen", "3063 Ittigen")."""
     site_repo.create(
         db,
         Site(

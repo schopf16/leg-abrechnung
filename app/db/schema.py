@@ -1,12 +1,4 @@
-"""Schema versioning and migration runner.
-
-The database carries its schema version in the ``schema_meta`` table. On
-every application start (and before restoring a backup) :func:`migrate_to_latest`
-is called: it applies every migration in :data:`app.db.migrations.MIGRATIONS`
-whose version is higher than the currently stored one, in ascending order,
-each inside its own transaction. This is what allows an old backup file to
-be opened by a newer version of the application without manual steps.
-"""
+"""Schema versioning and migration runner."""
 
 import logging
 import sqlite3
@@ -27,42 +19,20 @@ _META_TABLE_SQL = """
 
 
 def _ensure_meta_table(connection: sqlite3.Connection) -> None:
-    """Create the ``schema_meta`` bookkeeping table if it is missing.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        None.
-    """
+    """Create the ``schema_meta`` bookkeeping table if it is missing."""
     connection.execute(_META_TABLE_SQL)
     connection.commit()
 
 
 def get_schema_version(connection: sqlite3.Connection) -> int:
-    """Read the schema version currently stored in the database.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The stored schema version, or ``0`` for a brand-new, empty database.
-    """
+    """Read the schema version currently stored in the database."""
     _ensure_meta_table(connection)
     row = connection.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
     return int(row["value"]) if row else 0
 
 
 def _set_schema_version(connection: sqlite3.Connection, version: int) -> None:
-    """Persist the schema version after a successful migration.
-
-    Args:
-        connection: Open SQLite connection.
-        version: New schema version to store.
-
-    Returns:
-        None.
-    """
+    """Persist the schema version after a successful migration."""
     connection.execute(
         "INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -71,17 +41,7 @@ def _set_schema_version(connection: sqlite3.Connection, version: int) -> None:
 
 
 def migrate_to_latest(connection: sqlite3.Connection) -> int:
-    """Apply all pending migrations to bring the database up to date.
-
-    Safe to call on every application start: if the database is already at
-    :data:`CURRENT_SCHEMA_VERSION`, this is a no-op.
-
-    Args:
-        connection: Open SQLite connection to migrate in place.
-
-    Returns:
-        The schema version the database is at after migrating.
-    """
+    """Apply all pending migrations to bring the database up to date."""
     current_version = get_schema_version(connection)
     pending = [m for m in MIGRATIONS if m.version > current_version]
     pending.sort(key=lambda m: m.version)
@@ -97,19 +57,7 @@ def migrate_to_latest(connection: sqlite3.Connection) -> int:
 
 
 def initialize_database(connection: sqlite3.Connection) -> int:
-    """Ensure a database connection is ready for use by the application.
-
-    Creates the bookkeeping table if needed and migrates the schema to the
-    latest known version. Also seeds the single ``leg_settings`` row if it
-    does not exist yet, and carries the three email texts that used to live
-    on it into ``message_template`` (see ``_seed_message_templates``).
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The schema version the database is at after initialization.
-    """
+    """Ensure a database connection is ready for use by the application."""
     version = migrate_to_latest(connection)
     _seed_default_settings(connection)
     _seed_message_templates(connection)
@@ -118,17 +66,7 @@ def initialize_database(connection: sqlite3.Connection) -> int:
 
 
 def _seed_default_settings(connection: sqlite3.Connection) -> None:
-    """Insert the single default LEG settings row if it does not exist.
-
-    The default internal price is 12 Rp./kWh as specified by the project
-    brief; the administrator can change it freely afterwards.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        None.
-    """
+    """Insert the single default LEG settings row if it does not exist."""
     from datetime import datetime, timezone
 
     exists = connection.execute("SELECT 1 FROM leg_settings WHERE id = 1").fetchone()
@@ -151,28 +89,7 @@ _CARRIED_OVER_TEMPLATES = (
 
 
 def _seed_message_templates(connection: sqlite3.Connection) -> None:
-    """Carry the invoice and dunning texts into `message_template`.
-
-    Not done in migration 52, and the reason is worth keeping: on a fresh
-    database the `leg_settings` row does not exist while migrations run --
-    `_seed_default_settings` above inserts it afterwards -- so an
-    `INSERT .. SELECT FROM leg_settings` inside the migration copied nothing
-    and a new installation ended up with no invoice text at all. Here, after
-    both the migration and the settings row, one code path serves the
-    existing database (which has the administrator's real texts) and a fresh
-    one (which has the column defaults).
-
-    Runs only while the table is empty, so it cannot overwrite a text that
-    has since been edited, and it does not come back after a template is
-    deliberately deleted... except that an empty table is indistinguishable
-    from "deleted them all", which is a state nobody reaches by accident.
-
-    Args:
-        connection: Open SQLite connection, already migrated.
-
-    Returns:
-        None.
-    """
+    """Carry the invoice and dunning texts into `message_template`."""
     from datetime import datetime, timezone
 
     # `initialize_database` is called on deliberately half-migrated
@@ -235,29 +152,7 @@ def _seed_message_templates(connection: sqlite3.Connection) -> None:
 
 
 def _split_sender_house_number(connection: sqlite3.Connection) -> None:
-    """Move a trailing house number out of the LEG's street field.
-
-    Until migration 54 the sender address had street and number in one box
-    labelled "Strasse", which cost the administrator the number: the address
-    check compares that box against street names, so "Im Feld 3" matched
-    nothing, it offered "Im Feld", and accepting the suggestion wrote that
-    over the whole value.
-
-    Not done in the migration because "the last word, if it starts with a
-    digit" needs a `reverse()` SQLite does not have -- and this is one row.
-
-    Runs only while the new field is empty, so it cannot undo a correction.
-    It converges by itself: once the number sits in its own field the street
-    no longer ends in a digit, so a second pass finds nothing. A street
-    deliberately typed as "Hauptstrasse 7" with the number field left empty
-    is split too, which is the helpful reading of that state.
-
-    Args:
-        connection: Open SQLite connection, already migrated.
-
-    Returns:
-        None.
-    """
+    """Move a trailing house number out of the LEG's street field."""
     has_column = any(
         row[1] == "address_house_number" for row in connection.execute("PRAGMA table_info(leg_settings)")
     )

@@ -1,11 +1,4 @@
-"""What a list was showing survives a page change.
-
-The loop the problem markers were built for -- see the triangle, open the
-record, fix it, come back -- threw everything away on the last step: the
-filter was off, the search box empty, the sort back to default and, since the
-lists page, the position back on page one. With ninety-two rows that is the
-difference between correcting a handful and hunting for them twice.
-"""
+"""What a list was showing survives a page change."""
 
 from nicegui import Client, ui
 
@@ -18,14 +11,7 @@ from app.models.person import Person
 
 
 def _person(last_name: str) -> int:
-    """Create one person.
-
-    Args:
-        last_name: Surname, also what a search matches.
-
-    Returns:
-        The new id.
-    """
+    """Create one person."""
     with connection_scope() as connection:
         return person_repo.create(
             connection,
@@ -54,14 +40,7 @@ def _person(last_name: str) -> int:
 
 
 def _persons_page(probe: str) -> Client:
-    """Render the Personen list.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        The client.
-    """
+    """Render the Personen list."""
     from app.gui.pages import persons as persons_module
 
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -71,16 +50,7 @@ def _persons_page(probe: str) -> Client:
 
 
 def _element(client: Client, kind: str, **props):
-    """Find one element by class name and props.
-
-    Args:
-        client: The rendered client.
-        kind: The element class name, e.g. "Switch".
-        **props: Props that must match.
-
-    Returns:
-        The first match.
-    """
+    """Find one element by class name and props."""
     for element in client.elements.values():
         if element.__class__.__name__ != kind:
             continue
@@ -90,14 +60,7 @@ def _element(client: Client, kind: str, **props):
 
 
 def _search(client: Client):
-    """The list's search field.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The input element.
-    """
+    """The list's search field."""
     return next(
         element
         for element in client.elements.values()
@@ -106,26 +69,12 @@ def _search(client: Client):
 
 
 def _table(client: Client):
-    """The list's table.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The table element.
-    """
+    """The list's table."""
     return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
 
 
 def _change(element) -> None:
-    """Fire an element's change handlers, as a click or a keystroke would.
-
-    Args:
-        element: The element whose value was just set.
-
-    Returns:
-        None.
-    """
+    """Fire an element's change handlers, as a click or a keystroke would."""
     for handler in element._change_handlers:
         handler(None)
 
@@ -174,8 +123,7 @@ def test_the_sort_order_and_its_direction_come_back():
 
 
 def test_the_page_and_the_page_size_come_back():
-    """Correcting a record on page four and returning to page one is the
-    thing this answers."""
+    """Correcting a record on page four and returning to page one is the thing this answers."""
     _person("Muster")
     remember("/persons", "pagination", {"page": 2, "rowsPerPage": 30})
 

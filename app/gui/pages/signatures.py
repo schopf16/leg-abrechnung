@@ -1,20 +1,4 @@
-"""Signaturen page: list, create, edit, delete named email signatures
-(see `app.models.signature`).
-
-A signature is never applied automatically -- it is only ever added to an
-outgoing email when explicitly chosen on the E-Mail-Versand page (see
-`app.gui.pages.email_dispatch`). Deleting one here has no effect on
-already-sent emails: their final text (signature included, if any) is
-already part of the logged history, not a live reference back to this
-table.
-
-This is the one list without a "Sortierung" select (see
-`app.gui.sorting`): a signature has a name and nothing else worth
-ordering by, so it is always sorted by name and there is no choice to
-offer. The name column is deliberately not click-sortable either -- a
-second, differently-shaped mechanism on a single page is exactly the
-inconsistency the shared select exists to remove.
-"""
+"""Signaturen page: list, create, edit, delete named email signatures (see `app.models.signature`)."""
 
 from nicegui import ui
 
@@ -35,15 +19,7 @@ COLUMNS = [
 
 
 def _to_row(signature: Signature) -> dict:
-    """Convert a `Signature` into a row dict for the NiceGUI table.
-
-    Args:
-        signature: Signature to convert.
-
-    Returns:
-        A dict with the fields required by `COLUMNS`, plus a hidden
-        `_search` key used for client-side filtering.
-    """
+    """Convert a `Signature` into a row dict for the NiceGUI table."""
     first_line = signature.content.strip().splitlines()[0] if signature.content.strip() else ""
     return {
         "id": signature.id,
@@ -55,11 +31,7 @@ def _to_row(signature: Signature) -> dict:
 
 @ui.page("/signatures")
 def signatures_page() -> None:
-    """Render the Signaturen CRUD page with search.
-
-    Returns:
-        None.
-    """
+    """Render the Signaturen CRUD page with search."""
     with page_frame("/signatures", "Signaturen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -97,11 +69,7 @@ def signatures_page() -> None:
         all_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded rows by the search input's value."""
             needle = (search_input.value or "").strip().lower()
             rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             # Always by name: `signature_repo.list_all` already orders by
@@ -110,11 +78,7 @@ def signatures_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all signatures from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all signatures from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 signatures = signature_repo.list_all(connection)
@@ -124,14 +88,7 @@ def signatures_page() -> None:
         search_input.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: Signature | None) -> None:
-            """Open the create/edit dialog for a signature.
-
-            Args:
-                existing: Signature to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a signature."""
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
                 ui.label("Signatur bearbeiten" if existing else "Neue Signatur").classes("text-lg font-bold")
                 name = (
@@ -151,13 +108,7 @@ def signatures_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:
-                    """Check whether the current name is already used by another signature.
-
-                    Updates `duplicate_warning` as a side effect.
-
-                    Returns:
-                        `True` if the name is a duplicate of a different signature.
-                    """
+                    """Check whether the current name is already used by another signature."""
                     typed = name.value.strip()
                     if not typed:
                         duplicate_warning.text = ""
@@ -171,11 +122,7 @@ def signatures_page() -> None:
                 name.on_value_change(lambda _: check_duplicate())
 
                 def save() -> None:
-                    """Validate the form and persist the signature.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and persist the signature."""
                     if not name.value.strip():
                         error_label.text = "Name darf nicht leer sein."
                         return
@@ -221,27 +168,13 @@ def signatures_page() -> None:
             dialog.open()
 
         def on_edit(event) -> None:
-            """Table row-edit handler: open the edit dialog for the clicked row.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row-edit handler: open the edit dialog for the clicked row."""
             with connection_scope() as connection:
                 existing = signature_repo.get(connection, event.args["id"])
             open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete the signature after confirmation.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row-delete handler: delete the signature after confirmation."""
             signature_id = event.args["id"]
             name = event.args["name"]
 

@@ -1,15 +1,4 @@
-"""The Personen list as a paged table.
-
-Paging the wrong collection is the obvious way to build this and it looks
-right until the list is longer than one page: the search would only find
-what is already on screen, and the printout would hold fifty rows instead of
-the ninety-two the filter left. Both are pinned here.
-
-The move from cards to a table was a performance fix the administrator
-asked for -- 92 cards of 23 interface elements each, 2'108 in all, against
-one table whose rows are data -- and a trade: "wichtig wäre mir sicher
-kundennummer, name vielleicht noch adresse? alles andere dann hinter auge".
-"""
+"""The Personen list as a paged table."""
 
 from nicegui import Client, ui
 
@@ -20,16 +9,7 @@ from app.models.person import Person
 
 
 def _person(last_name: str, *, street: str = "Erstweg", city: str = "Musterdorf") -> int:
-    """Create one person.
-
-    Args:
-        last_name: Surname, also what the tests search for.
-        street: Billing street.
-        city: Billing locality.
-
-    Returns:
-        The new id.
-    """
+    """Create one person."""
     with connection_scope() as connection:
         return person_repo.create(
             connection,
@@ -58,14 +38,7 @@ def _person(last_name: str, *, street: str = "Erstweg", city: str = "Musterdorf"
 
 
 def _page(probe: str) -> Client:
-    """Render the Personen list.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        The client.
-    """
+    """Render the Personen list."""
     from app.gui.pages import persons as persons_module
 
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -75,26 +48,12 @@ def _page(probe: str) -> Client:
 
 
 def _table(client: Client):
-    """The list's table.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The table element.
-    """
+    """The list's table."""
     return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
 
 
 def _search(client: Client):
-    """The list's search field.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The input element.
-    """
+    """The list's search field."""
     return next(
         element
         for element in client.elements.values()
@@ -123,8 +82,7 @@ def test_the_table_pages_rather_than_growing_without_end():
 
 
 def test_the_page_size_can_be_changed_from_the_list():
-    """ "irgendwo sollte vielleicht ein drop-down sein wieviele personen pro
-    liste angezeigt werden?" -- it is Quasar's own, in the table's footer."""
+    """ "irgendwo sollte vielleicht ein drop-down sein wieviele personen pro liste angezeigt werden?" --..."""
     _person("Muster")
 
     table = _table(_page("/probe-table-page-sizes"))
@@ -139,12 +97,7 @@ def test_the_page_size_can_be_changed_from_the_list():
 
 
 def test_the_search_runs_over_everything_and_not_over_the_page():
-    """The requirement in the administrator's words: "die suche / filter muss
-    über alle gehen und nicht nur auf das was aktuell angezeigt wird".
-
-    More people than fit on one page, and the one searched for is last in
-    the sort order -- so a search over the visible page would find nothing.
-    """
+    """The requirement in the administrator's words: "die suche / filter muss über alle gehen und nicht..."""
     for index in range(DEFAULT_PAGE_SIZE + 5):
         _person(f"Aaa{index:03d}")
     _person("Zyz")
@@ -162,8 +115,7 @@ def test_the_search_runs_over_everything_and_not_over_the_page():
 
 
 def test_the_printout_holds_every_filtered_row_not_just_the_page():
-    """A printout is read away from the screen; fifty of ninety-two rows
-    would be wrong without saying so."""
+    """A printout is read away from the screen; fifty of ninety-two rows would be wrong without saying..."""
     for index in range(DEFAULT_PAGE_SIZE + 5):
         _person(f"Aaa{index:03d}")
 
@@ -179,12 +131,7 @@ def test_the_printout_holds_every_filtered_row_not_just_the_page():
 
 
 def test_a_deactivated_person_says_so_in_the_name_column():
-    """There is no status column: it would be empty for nearly everyone.
-
-    The information is not dropped, though -- a list that silently showed a
-    deactivated person as an ordinary one would be worse than the card it
-    replaced.
-    """
+    """There is no status column: it would be empty for nearly everyone."""
     person_id = _person("Weggezogen")
     with connection_scope() as connection:
         person_repo.set_active(connection, person_id, False)
@@ -214,12 +161,7 @@ def test_the_address_column_reads_as_one_address():
 
 
 def test_the_cells_can_be_marked_and_copied():
-    """Quasar renders a table inside `.non-selectable`.
-
-    So a Kunden-Nr. could be read and not copied, and it exists to be pasted
-    into a bank form. The class is what `page_frame`'s stylesheet undoes,
-    with the same `!important` weight Quasar's own rule carries.
-    """
+    """Quasar renders a table inside `.non-selectable`."""
     _person("Muster")
 
     table = _table(_page("/probe-table-selectable"))
@@ -228,11 +170,7 @@ def test_the_cells_can_be_marked_and_copied():
 
 
 def test_the_page_shell_allows_the_selection_the_table_asks_for():
-    """The class is nothing without the rule, and they live apart.
-
-    `paged_table` sets the class and `page_frame` carries the stylesheet, so
-    a test on either alone would pass while copying stayed impossible.
-    """
+    """The class is nothing without the rule, and they live apart."""
     from nicegui import Client
 
     from app.gui.navigation import page_frame

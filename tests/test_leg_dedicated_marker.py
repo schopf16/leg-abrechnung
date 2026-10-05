@@ -1,14 +1,4 @@
-"""Tests for the marker that replaced the LEG-upgrade recommendation.
-
-The recommendation is gone because presence of both sides is not
-viability -- see `app.domain.participant_mix`. What stands in its place
-states one fact per metering point: does this substation area already have a
-LEG of its own (🟢, switch the row over) or would one have to be founded
-first (🟠). No judgement, no threshold.
-
-These tests therefore check two things: that the marker is right, and that
-the old advice really is silent everywhere it used to appear.
-"""
+"""Tests for the marker that replaced the LEG-upgrade recommendation."""
 
 from datetime import date
 
@@ -31,15 +21,7 @@ from app.models.substation_area import SubstationArea
 
 
 def _area(connection, name: str) -> int:
-    """Create a substation area.
-
-    Args:
-        connection: Open SQLite connection.
-        name: Its name.
-
-    Returns:
-        The new substation area's id.
-    """
+    """Create a substation area."""
     return substation_area_repo.create(
         connection,
         SubstationArea(id=None, name=name, bkw_designation="", note="", created_at=""),
@@ -47,15 +29,7 @@ def _area(connection, name: str) -> int:
 
 
 def _leg(connection, name: str) -> int:
-    """Create a LEG.
-
-    Args:
-        connection: Open SQLite connection.
-        name: Its name.
-
-    Returns:
-        The new LEG's id.
-    """
+    """Create a LEG."""
     return leg_repo.create(
         connection,
         Leg(
@@ -70,16 +44,7 @@ def _leg(connection, name: str) -> int:
 
 
 def _site(connection, area_id: int, street: str) -> int:
-    """Create a site in one substation area.
-
-    Args:
-        connection: Open SQLite connection.
-        area_id: The substation area it belongs to.
-        street: Street name, to keep sites distinguishable.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a site in one substation area."""
     return site_repo.create(
         connection,
         Site(
@@ -96,18 +61,7 @@ def _site(connection, area_id: int, street: str) -> int:
 
 
 def _meter(connection, site_id: int, leg_id: int, direction: str, suffix: str) -> int:
-    """Create one metering point.
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: Site it sits at.
-        leg_id: LEG it is billed under.
-        direction: Consumption or feed-in.
-        suffix: Two digits making the designation unique.
-
-    Returns:
-        The new metering point's id.
-    """
+    """Create one metering point."""
     return metering_point_repo.create(
         connection,
         MeteringPoint(
@@ -124,15 +78,7 @@ def _meter(connection, site_id: int, leg_id: int, direction: str, suffix: str) -
 
 
 def _person(connection, last_name: str) -> int:
-    """Create a person to assign meters to.
-
-    Args:
-        connection: Open SQLite connection.
-        last_name: Their surname.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person to assign meters to."""
     return person_repo.create(
         connection,
         Person(
@@ -159,18 +105,7 @@ def _person(connection, last_name: str) -> int:
 
 
 def _pooled_deployment(connection) -> dict:
-    """Build a pooled LEG spanning two substation areas, one of which has its own LEG.
-
-    Mirrors the real deployment: a LEG-Ittigen-Gemeinde pooling several
-    substation areas, beside dedicated single-substation-area LEGs.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        `{"pooled": leg_id, "dedicated": leg_id, "with_own": area_id,
-        "without_own": area_id}`.
-    """
+    """Build a pooled LEG spanning two substation areas, one of which has its own LEG."""
     with_own = _area(connection, "TRA-9369")
     without_own = _area(connection, "TRA-1024")
     pooled = _leg(connection, "LEG-Ittigen-Gemeinde")
@@ -210,14 +145,7 @@ def _pooled_deployment(connection) -> dict:
 
 
 def _rows_of(leg_id: int) -> list[dict]:
-    """Render one LEG's detail page and return its metering point rows.
-
-    Args:
-        leg_id: The LEG to open.
-
-    Returns:
-        The table's row dicts.
-    """
+    """Render one LEG's detail page and return its metering point rows."""
     from app.gui.pages import legs as legs_module
 
     client = Client(ui.page(f"/probe-leg-{leg_id}")(lambda: None), request=None)
@@ -229,14 +157,7 @@ def _rows_of(leg_id: int) -> list[dict]:
 
 
 def _columns_of(leg_id: int) -> list[str]:
-    """Render one LEG's detail page and return its table column names.
-
-    Args:
-        leg_id: The LEG to open.
-
-    Returns:
-        The column `name` values.
-    """
+    """Render one LEG's detail page and return its table column names."""
     from app.gui.pages import legs as legs_module
 
     client = Client(ui.page(f"/probe-cols-{leg_id}")(lambda: None), request=None)
@@ -316,21 +237,12 @@ def test_a_site_without_a_substation_area_gets_no_marker():
 
 
 def test_the_dashboard_no_longer_recommends_a_leg_change(db):
-    """The overview must not carry the suggestion any more.
-
-    Checked by name, because this is the removal itself: an
-    `action_item` generated from the old check would mean it came back.
-    """
+    """The overview must not carry the suggestion any more."""
     assert not hasattr(quality_checks, "check_leg_upgrade_potential")
 
 
 def test_the_one_sided_warning_is_deliberately_kept(db):
-    """Only the recommendation went, not the factual warning.
-
-    A substation area with participants on one side only cannot share
-    locally, whoever is in which LEG. That is a statement about the
-    installation, not advice about whom to move.
-    """
+    """Only the recommendation went, not the factual warning."""
     assert hasattr(quality_checks, "check_substation_area_one_sided")
 
     area_id = _area(db, "TRA-Einseitig")

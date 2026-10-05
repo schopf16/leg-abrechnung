@@ -1,10 +1,4 @@
-"""Tests for `app.domain.registration_matching`.
-
-Covers what the Web-Registrierungen inbox actually decides: which
-existing record a registration matches, and which actions that leaves the
-administrator. Both are pure functions over loaded rows, so none of this
-needs a rendered page.
-"""
+"""Tests for `app.domain.registration_matching`."""
 
 import pytest
 
@@ -38,8 +32,7 @@ from app.models.web_registration import WebRegistration, WebRegistrationMeter
     ],
 )
 def test_email_key_folds_case_and_padding(raw, expected):
-    """A capitalised spelling must not create a second Person -- and it
-    would, since `app.gui.person_form` has no duplicate-email check."""
+    """A capitalised spelling must not create a second Person -- and it would, since..."""
     assert email_key(raw) == expected
 
 
@@ -48,10 +41,7 @@ def test_email_key_folds_case_and_padding(raw, expected):
     [("ch1001", "CH1001"), (" ch1001 ", "CH1001"), ("CH1001", "CH1001"), (None, "")],
 )
 def test_designation_key_matches_how_the_app_stores_it(raw, expected):
-    """`assemble_metering_point_designation` stores designations
-    uppercased, and `designation` is UNIQUE -- so a lowercase submission
-    of an existing Messpunkt has to find it rather than run into the
-    constraint in the create form."""
+    """`assemble_metering_point_designation` stores designations uppercased, and `designation` is..."""
     assert designation_key(raw) == expected
 
 
@@ -72,9 +62,7 @@ def test_done_offers_nothing_but_the_badge():
 
 
 def test_an_identifying_match_offers_linking_and_suppresses_creating():
-    """The reported bug: the second member of an apartment block was
-    offered a create dialog whose only honest outcome was a duplicate
-    site at the same address."""
+    """The reported bug: the second member of an apartment block was offered a create dialog whose only..."""
     choice = decide_take_over(done=False, existing="Fischrain 68", match_is_identity=True)
 
     assert choice.offer_link
@@ -82,9 +70,7 @@ def test_an_identifying_match_offers_linking_and_suppresses_creating():
 
 
 def test_a_merely_suggested_match_keeps_creating_available():
-    """An email is not an identity (see `person_repo.get_by_email`): a
-    household sharing one address resolves to whoever registered first,
-    so the administrator must still be able to create the other person."""
+    """An email is not an identity (see `person_repo.get_by_email`): a household sharing one address..."""
     choice = decide_take_over(done=False, existing="Hans Muster", match_is_identity=False)
 
     assert choice.offer_link
@@ -101,8 +87,7 @@ def test_no_match_offers_creating_and_the_hand_marking_escape_hatch():
 
 
 def test_no_state_ever_leaves_an_item_without_a_way_to_close_it():
-    """The dead end this whole change exists to remove: every state must
-    offer at least one action that ends with the item closed."""
+    """The dead end this whole change exists to remove: every state must offer at least one action that..."""
     for done in (True, False):
         for existing in (None, "Irgendetwas"):
             for identity in (True, False):
@@ -224,8 +209,7 @@ def test_a_lowercase_meter_number_still_finds_the_metering_point(db):
 
 
 def test_a_typo_in_the_street_deliberately_finds_nothing(db):
-    """No fuzzy matching: linking to the wrong address is worse than not
-    finding it. Hand-marking covers this instead."""
+    """No fuzzy matching: linking to the wrong address is worse than not finding it."""
     _site(db, street="Fischrain")
 
     match = load_matches(db, [_registration(street="Fishrain")])[1]
@@ -234,8 +218,7 @@ def test_a_typo_in_the_street_deliberately_finds_nothing(db):
 
 
 def test_an_empty_email_matches_no_person(db):
-    """An empty address is not an identity -- a Person without an email
-    must not match every registration that lacks one."""
+    """An empty address is not an identity -- a Person without an email must not match every..."""
     _person(db, "")
 
     match = load_matches(db, [_registration(email="")])[1]
@@ -244,8 +227,7 @@ def test_an_empty_email_matches_no_person(db):
 
 
 def test_persons_sharing_one_email_resolve_deterministically(db):
-    """`contact_email` is not unique. Which of them a dialog names must
-    not depend on `list_all`'s ordering changing under us."""
+    """`contact_email` is not unique."""
     _person(db, "haushalt@example.ch", first_name="Hans", last_name="Muster")
     _person(db, "haushalt@example.ch", first_name="Anna", last_name="Zwahlen")
 

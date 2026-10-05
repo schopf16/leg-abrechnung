@@ -1,17 +1,5 @@
-"""Generates the dunning notice PDF sent (or printed) for one person, covering
-every billing run item included in that dunning notice.
-
-One page per open item, each ending in that item's own QR-bill -- not one
-combined QR-bill for the consolidated total. This is deliberate: the bank
-reconciliation in `app.domain.bank_reconciliation` decodes a QRR reference
-back to exactly one billing run item (see `app.pdf.qr_reference.
-parse_qrr_reference`), so a dunning notice must keep reusing each item's own,
-already-generated reference rather than inventing a single reference for
-a lumped total that could never be decoded back to which invoices it paid.
-The "consolidation" the receivables plan describes is about the *letter*
-(one mailing, one overview, one email) -- never about merging several
-invoices' payment slips into one.
-"""
+"""Generates the dunning notice PDF sent (or printed) for one person, covering every billing run item
+included in that dunning notice."""
 
 from datetime import date
 from decimal import Decimal
@@ -37,24 +25,7 @@ from app.pdf.qr_reference import generate_qrr_reference
 def generate_dunning_pdf(
     connection, candidate, rendered_body: str, settings: LegSettings, output_path
 ) -> Path:
-    """Render one dunning notice PDF covering every item in `candidate`.
-
-    Args:
-        connection: Open SQLite connection.
-        candidate: The `app.domain.dunning.DunningCandidate` to render.
-        rendered_body: The dunning notice body text, placeholders already
-            substituted (see `app.domain.dunning.send_dunning`),
-            printed once per page above each item's QR-bill.
-        settings: Current LEG-wide settings (address, QR-IBAN).
-        output_path: Destination path for the generated PDF.
-
-    Returns:
-        `output_path`, for convenience.
-
-    Raises:
-        app.pdf.qr_bill_render.QrBillConfigurationError: If the LEG
-            settings are missing required fields for a valid QR-bill.
-    """
+    """Render one dunning notice PDF covering every item in `candidate`."""
     person = candidate.person
     canvas = new_canvas(output_path)
 

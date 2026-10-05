@@ -1,12 +1,6 @@
-"""dunning page: shows everyone currently due for a dunning notice (see
-`app.domain.dunning` for the escalation logic -- the LEG's own 2-stage
-Reglement, no fees), lets Michael preview and send it, and keeps a sent-
-history log.
-
-Sending is always a deliberate, per-person click -- there is no "send all"
-button, since a 2. dunning notice is the trigger point for an exclusion review
-that must never happen as a side effect of a bulk action.
-"""
+"""dunning page: shows everyone currently due for a dunning notice (see `app.domain.dunning` for the
+escalation logic -- the LEG's own 2-stage Reglement, no fees), lets Michael preview and send it, and
+keeps a sent- history log."""
 
 from datetime import date
 
@@ -39,14 +33,7 @@ PRINT_COLUMNS = [
 
 
 def _print_row(candidate: dunning.DunningCandidate) -> dict:
-    """Convert one dunning candidate into a row dict for the printed table.
-
-    Args:
-        candidate: The candidate to convert.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS`.
-    """
+    """Convert one dunning candidate into a row dict for the printed table."""
     return {
         "person": candidate.person.display_name,
         "customer_number": candidate.person.formatted_customer_number,
@@ -75,11 +62,7 @@ SORT_OPTIONS = [
 
 @ui.page("/dunning")
 def dunning_page() -> None:
-    """Render the dunning overview and sent-history page.
-
-    Returns:
-        None.
-    """
+    """Render the dunning overview and sent-history page."""
     with page_frame("/dunning", "Mahnwesen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -135,19 +118,7 @@ def dunning_page() -> None:
                     render_candidate_card(candidate)
 
         def open_prepare_offboarding_dialog(person: Person) -> None:
-            """Offer to start the Austritts-/Ausschlussprozess for `person`.
-
-            Never automatic -- shown only after a 2. dunning notice was just
-            sent, and only creates a `person_offboarding` row on an
-            explicit confirm click here (idempotent otherwise, see
-            `person_offboarding_repo.start_for_person`).
-
-            Args:
-                person: The person whose 2. dunning notice was just sent.
-
-            Returns:
-                None.
-            """
+            """Offer to start the Austritts-/Ausschlussprozess for `person`."""
             with connection_scope() as connection:
                 already_tracked = person_offboarding_repo.get_by_person(connection, person.id)
             if already_tracked is not None:

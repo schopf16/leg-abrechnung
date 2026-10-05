@@ -1,22 +1,4 @@
-"""Checks the app's own addresses against the register, minus the dismissed.
-
-Kept apart from `app.domain.address_lookup`, which knows only the register
-file: this module is the one that joins it to the members' data, and that is
-a different job with a different reason to change.
-
-A dismissal is stored as the **confirmed value**, never as a flag or a date
-(migration 51). The hint therefore comes back by itself the moment the text
-changes, and `address_signature` is what both sides compare -- defined once
-here so the check and the confirm button cannot drift apart. Had this been a
-date, dismissing a hint in 2026 would still silence a different wrong
-address in 2027, and a tick that no longer holds is worse than no tick.
-
-Persons are checked only when the billing country is Switzerland. Street and
-house number *are* checked there, which was a deliberate reversal: a PO box
-or a "c/o" line produces one hint that one click retires for good, and that
-is a better trade than leaving every ordinary typo in a billing address
-unchecked.
-"""
+"""Checks the app's own addresses against the register, minus the dismissed."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -36,37 +18,13 @@ KIND_PERSON = "person"
 
 
 def address_signature(street: str, house_number: str, postal_code: str) -> str:
-    """Compose the text a street/house-number dismissal is recorded against.
-
-    Args:
-        street: Street name.
-        house_number: House number.
-        postal_code: Postal code.
-
-    Returns:
-        A single normalised string. Never shown to anybody -- it only has to
-        change whenever any part of the address changes, so that a stored
-        dismissal stops applying by itself.
-    """
+    """Compose the text a street/house-number dismissal is recorded against."""
     return "|".join(part.strip() for part in (street, house_number, postal_code))
 
 
 @dataclass(frozen=True)
 class AddressIssue:
-    """One address the register disagrees with, and which object it belongs to.
-
-    Attributes:
-        kind: `KIND_SITE` or `KIND_PERSON`.
-        object_id: Primary key of that site or person.
-        label: German description of the object, for the list entry.
-        finding: What the register says, with the value as stored.
-        dismiss_value: What a "Nein" writes into the confirmation column.
-            Separate from `finding.value` on purpose: for a locality the two
-            happen to be the same text, but for a street or house number the
-            dismissal has to cover the whole address, or correcting the
-            house number would silently keep a dismissal meant for the old
-            one.
-    """
+    """One address the register disagrees with, and which object it belongs to."""
 
     kind: str
     object_id: int
@@ -76,29 +34,14 @@ class AddressIssue:
 
     @property
     def question(self) -> str:
-        """The one line the UI shows.
-
-        One wording for every cause -- a typo, a political municipality
-        instead of the postal locality, a PO box. No explanation of why the
-        app is asking: it costs space, gets skipped, and in a list of hints
-        it turns into noise.
-
-        Returns:
-            `"Meinten Sie: Worblaufen?"`, or a bare statement when the
-            register holds nothing close enough to propose.
-        """
+        """The one line the UI shows."""
         if self.finding.suggestion:
             return f"Meinten Sie: {self.finding.suggestion}?"
         return "Nicht im amtlichen Verzeichnis."
 
     @property
     def is_locality(self) -> bool:
-        """Whether this is about the locality rather than the street.
-
-        Returns:
-            `True` for a locality finding, which the UI writes into a
-            different column and applies to a different field.
-        """
+        """Whether this is about the locality rather than the street."""
         return self.finding.field == FIELD_LOCALITY
 
 
@@ -111,20 +54,7 @@ def _collect(
     address_confirmed: str,
     locality_confirmed: str,
 ) -> list[AddressIssue]:
-    """Turn one object's findings into issues, dropping the dismissed ones.
-
-    Args:
-        kind: `KIND_SITE` or `KIND_PERSON`.
-        object_id: Its primary key.
-        label: Its German description.
-        findings: What `verify` returned.
-        signature: `address_signature` of this object's address.
-        address_confirmed: Stored street/house-number confirmation.
-        locality_confirmed: Stored locality confirmation.
-
-    Returns:
-        The undismissed issues.
-    """
+    """Turn one object's findings into issues, dropping the dismissed ones."""
     issues: list[AddressIssue] = []
     for finding in findings:
         if finding.field == FIELD_LOCALITY:
@@ -140,16 +70,7 @@ def _collect(
 
 
 def find_address_issues(connection: sqlite3.Connection) -> list[AddressIssue]:
-    """Check every site and every Swiss billing address against the register.
-
-    Args:
-        connection: Open connection to the application database.
-
-    Returns:
-        One `AddressIssue` per undismissed finding, sites first. Empty when
-        no register is installed -- an absent register is not evidence
-        against anybody's address.
-    """
+    """Check every site and every Swiss billing address against the register."""
     register = open_register()
     if register is None:
         return []
@@ -205,20 +126,5 @@ def find_address_issues(connection: sqlite3.Connection) -> list[AddressIssue]:
 
 
 def issue_ids(connection: sqlite3.Connection, kind: str) -> set[int]:
-    """Which records of one kind have an open address finding.
-
-    The lists only *mark* a record; the question itself is asked at the
-    field in the edit dialog. A list cannot show what a suggestion would
-    replace -- a name beside "Meinten Sie: Untere Zollgasse?" says neither
-    which field is meant nor what stands in it -- so a list has no business
-    asking.
-
-    Args:
-        connection: Open connection to the application database.
-        kind: `KIND_SITE` or `KIND_PERSON`.
-
-    Returns:
-        The primary keys with at least one undismissed finding. Empty
-        without a register.
-    """
+    """Which records of one kind have an open address finding."""
     return {issue.object_id for issue in find_address_issues(connection) if issue.kind == kind}

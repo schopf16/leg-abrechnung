@@ -8,21 +8,7 @@ from typing import Optional
 
 @dataclass
 class Reading:
-    """A single 15-minute interval value for one MeteringPoint.
-
-    Attributes:
-        metering_point_id: Foreign key to the MeteringPoint this reading belongs to.
-        timestamp: Interval start, as an ISO-8601 local datetime string
-            (e.g. "2026-04-01T00:00:00").
-        direction: Either "consumption" or "feed_in"
-            as delivered by the source file; independent from the
-            MeteringPoint's configured `direction` so mismatches can be
-            detected.
-        kwh: Energy for this interval, in kWh, non-negative.
-        source: Origin of the value, e.g. "ebix" or "csv".
-        import_batch_id: Foreign key to the `import_batches` row that
-            created this reading, if imported (vs. demo data).
-    """
+    """A single 15-minute interval value for one MeteringPoint."""
 
     metering_point_id: int
     timestamp: str
@@ -34,17 +20,7 @@ class Reading:
 
 @dataclass
 class ImportBatch:
-    """Metadata about one completed import run.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        filename: Name of the imported file, for traceability.
-        format: Either "ebix" or "csv".
-        imported_at: ISO-8601 timestamp of the import.
-        period_from: Earliest interval timestamp seen in the file.
-        period_to: Latest interval timestamp seen in the file.
-        row_count: Number of readings inserted or updated by this batch.
-    """
+    """Metadata about one completed import run."""
 
     id: Optional[int]
     filename: str
@@ -56,15 +32,7 @@ class ImportBatch:
 
 
 def create_import_batch(connection: sqlite3.Connection, batch: ImportBatch) -> int:
-    """Insert a new import batch record.
-
-    Args:
-        connection: Open SQLite connection.
-        batch: Batch metadata to insert; `id` is ignored and generated.
-
-    Returns:
-        The primary key of the newly created import batch.
-    """
+    """Insert a new import batch record."""
     cursor = connection.execute(
         """
         INSERT INTO import_batches
@@ -85,21 +53,7 @@ def create_import_batch(connection: sqlite3.Connection, batch: ImportBatch) -> i
 
 
 def upsert_readings(connection: sqlite3.Connection, readings: list[Reading]) -> int:
-    """Insert readings, idempotently skipping ones that already exist.
-
-    Idempotency relies on the `UNIQUE (metering_point_id, timestamp, direction)`
-    constraint: re-importing the same period is safe and never creates
-    duplicates. If a value for an existing (metering_point, timestamp,
-    direction) changes between imports, the newer value overwrites the old
-    one.
-
-    Args:
-        connection: Open SQLite connection.
-        readings: Readings to insert or update.
-
-    Returns:
-        The number of readings inserted or updated.
-    """
+    """Insert readings, idempotently skipping ones that already exist."""
     connection.executemany(
         """
         INSERT INTO readings (metering_point_id, timestamp, direction, kwh, source, import_batch_id)
@@ -128,17 +82,7 @@ def upsert_readings(connection: sqlite3.Connection, readings: list[Reading]) -> 
 def list_readings_in_period(
     connection: sqlite3.Connection, start: str, end_exclusive: str
 ) -> list[sqlite3.Row]:
-    """Fetch all readings for the given half-open time range, across metering points.
-
-    Args:
-        connection: Open SQLite connection.
-        start: ISO-8601 timestamp, inclusive lower bound.
-        end_exclusive: ISO-8601 timestamp, exclusive upper bound.
-
-    Returns:
-        Rows with columns `metering_point_id`, `timestamp`, `direction`, `kwh`,
-        joined with the MeteringPoint's `direction`, ordered by timestamp.
-    """
+    """Fetch all readings for the given half-open time range, across metering points."""
     return connection.execute(
         """
         SELECT r.metering_point_id, r.timestamp, r.direction, r.kwh, mp.direction
@@ -152,14 +96,7 @@ def list_readings_in_period(
 
 
 def list_import_batches(connection: sqlite3.Connection) -> list[ImportBatch]:
-    """List all import batches, most recent first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        All import batches ordered by `imported_at` descending.
-    """
+    """List all import batches, most recent first."""
     rows = connection.execute("SELECT * FROM import_batches ORDER BY imported_at DESC").fetchall()
     return [
         ImportBatch(
@@ -176,9 +113,5 @@ def list_import_batches(connection: sqlite3.Connection) -> list[ImportBatch]:
 
 
 def now_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string.
-
-    Returns:
-        Current time formatted with `datetime.isoformat`.
-    """
+    """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()

@@ -1,25 +1,4 @@
-"""The one time-axis control used by every chart in the app.
-
-Same idea as `app.gui.sorting`, for the other axis: a chart says which
-resolutions it offers and gets back a control that owns the rest -- the
-select, the back/forward arrows, a "Heute" button and the label naming the
-window on screen. One mechanism, so the question "how do I change the
-period?" has the same answer on every chart.
-
-**The window follows the resolution** rather than being picked separately.
-The tempting alternative -- free from/to dates beside a free resolution --
-lets somebody ask for a year in quarter-hours, which is 35'040 points: a
-chart the browser gives up on, after a query nobody wants to wait for.
-Coupling them means no combination a user can reach produces an unusable
-picture. See `app.domain.period.Granularity`.
-
-The bucket arithmetic itself lives in `app.domain.period`, which imports
-no NiceGUI, and is only driven from here -- the same split as
-`app.sort_keys` against this package, and for the same reason: a chart and
-a later CSV export of the same figures must cut time into identical
-buckets, or the export will quietly disagree with the picture it came
-from.
-"""
+"""The one time-axis control used by every chart in the app."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,25 +13,13 @@ __all__ = ["TimeAxisControl", "render_time_axis"]
 
 @dataclass
 class _Anchor:
-    """A moment inside the window currently shown.
-
-    Held in its own object so the nested button handlers can reassign it
-    without `nonlocal` gymnastics.
-
-    Attributes:
-        moment: Any moment inside the visible window.
-    """
+    """A moment inside the window currently shown."""
 
     moment: datetime
 
 
 class TimeAxisControl:
-    """The resolution select, the navigation arrows and the window label.
-
-    A page passes the whole control to whatever draws the chart and reads
-    `key` and `window` from it, exactly as it passes a `SortControl` to
-    `apply_sort`. Nothing else needs to know how a window is derived.
-    """
+    """The resolution select, the navigation arrows and the window label."""
 
     def __init__(
         self,
@@ -61,14 +28,7 @@ class TimeAxisControl:
         label: ui.label,
         on_change: Callable[[], None],
     ) -> None:
-        """Wire the select and the arrows to the page's refresh.
-
-        Args:
-            select: The rendered resolution select.
-            anchor: Holds the moment the window is derived from.
-            label: The label naming the visible window.
-            on_change: The page's refresh, called after any change.
-        """
+        """Wire the select and the arrows to the page's refresh."""
         self._select = select
         self._anchor = anchor
         self._label = label
@@ -85,49 +45,26 @@ class TimeAxisControl:
         return period.window_for(self.key, self._anchor.moment)
 
     def step(self, steps: int) -> None:
-        """Move one window back or forward and refresh.
-
-        Args:
-            steps: Negative goes back.
-
-        Returns:
-            None.
-        """
+        """Move one window back or forward and refresh."""
         self._anchor.moment = period.shift_anchor(self.key, self._anchor.moment, steps)
         self.refresh()
 
     def go_to_now(self) -> None:
-        """Jump back to the window containing this moment.
-
-        Returns:
-            None.
-        """
+        """Jump back to the window containing this moment."""
         self._anchor.moment = datetime.now()
         self.refresh()
 
     def refresh(self) -> None:
-        """Update the window label and let the page redraw.
-
-        Returns:
-            None.
-        """
+        """Update the window label and let the page redraw."""
         self._label.text = period.window_label(self.key, self.window)
         self._on_change()
 
     def bucket_starts(self) -> list[datetime]:
-        """Every bucket start in the visible window.
-
-        Returns:
-            The bucket start moments, oldest first.
-        """
+        """Every bucket start in the visible window."""
         return period.buckets_in(self.key, self.window)
 
     def axis_labels(self) -> list[str]:
-        """The x-axis tick labels for the visible window.
-
-        Returns:
-            One German label per bucket, in order.
-        """
+        """The x-axis tick labels for the visible window."""
         return [period.bucket_label(self.key, start) for start in self.bucket_starts()]
 
 
@@ -138,23 +75,7 @@ def render_time_axis(
     default: Optional[str] = None,
     anchor: Optional[datetime] = None,
 ) -> TimeAxisControl:
-    """Render the time-axis row above a chart.
-
-    Args:
-        granularity_keys: The resolutions this chart offers, finest first.
-            A chart of monthly bookings has no use for quarter-hours, so
-            each page names its own subset rather than every chart
-            carrying every option.
-        on_change: Called whenever the resolution or the window changes.
-        default: Which resolution to start on; the last of
-            `granularity_keys` if not given, so a chart opens on its
-            broadest view rather than on 96 points of one day.
-        anchor: Moment to start at, defaulting to now.
-
-    Returns:
-        The `TimeAxisControl`. Its `refresh()` is **not** called here, so
-        the caller can finish building its chart before the first draw.
-    """
+    """Render the time-axis row above a chart."""
     options = {key: period.granularity(key).label for key in granularity_keys}
     holder = _Anchor(anchor or datetime.now())
 

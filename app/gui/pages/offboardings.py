@@ -1,13 +1,5 @@
-"""Austritte page: tracks each person's progress through the four
-real-world steps of a LEG membership ending (see `app.models.
-person_offboarding`) -- the reverse of `app.gui.pages.onboardings`.
-
-A tracker only exists once explicitly started -- manually here (for a
-normal voluntary exit), or via the "Ausschluss-Prozess starten" link
-Michael follows from the dunning page once a 2. dunning notice goes unpaid
-(never automatically). Deleting a tracker only discards the tracking
-record; it never touches the Person or their receivables claim.
-"""
+"""Austritte page: tracks each person's progress through the four real-world steps of a LEG membership
+ending (see `app.models. person_offboarding`) -- the reverse of `app.gui.pages.onboardings`."""
 
 from datetime import date, datetime
 
@@ -44,18 +36,7 @@ DEFAULT_SORT = "last_name"
 
 
 def sort_options(persons: dict[int, Person]) -> list[SortOption]:
-    """Build the orders the Austritte list offers.
-
-    Deliberately the same four orders, in the same wording, as the
-    Aufnahmen page (`app.gui.pages.onboardings.sort_options`) -- the two
-    pages are mirror images of each other and are used the same way.
-
-    Args:
-        persons: `{person_id: Person}` lookup for the tracked persons.
-
-    Returns:
-        The options, default first.
-    """
+    """Build the orders the Austritte list offers."""
     step_attributes = [attr for attr, _ in STEPS]
 
     def name(offboarding: PersonOffboarding):
@@ -88,15 +69,7 @@ def sort_options(persons: dict[int, Person]) -> list[SortOption]:
 
 
 def _print_row(offboarding: PersonOffboarding, person: Person) -> dict:
-    """Convert one offboarding tracker into a row dict for the printed table.
-
-    Args:
-        offboarding: Tracker to convert.
-        person: The tracked person.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS`.
-    """
+    """Convert one offboarding tracker into a row dict for the printed table."""
     if offboarding.is_complete:
         status = "Abgeschlossen"
     else:
@@ -114,24 +87,13 @@ def _print_row(offboarding: PersonOffboarding, person: Person) -> dict:
 
 
 def _parse_date(value: str) -> date:
-    """Parse a date string from a NiceGUI date input into a `date`.
-
-    Args:
-        value: Date string in ISO format ("YYYY-MM-DD").
-
-    Returns:
-        The parsed `date`.
-    """
+    """Parse a date string from a NiceGUI date input into a `date`."""
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 @ui.page("/offboardings")
 def offboardings_page() -> None:
-    """Render the Austritte (offboarding tracking) page.
-
-    Returns:
-        None.
-    """
+    """Render the Austritte (offboarding tracking) page."""
     with page_frame("/offboardings", "Austritte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -168,11 +130,7 @@ def offboardings_page() -> None:
         persons: dict[int, Person] = {}
 
         def _filter_description() -> str | None:
-            """Build a short description of the currently active filter.
-
-            Returns:
-                A human-readable summary, or `None` if no filter is active.
-            """
+            """Build a short description of the currently active filter."""
             if show_complete_switch.value:
                 return "inkl. abgeschlossene"
             needs_removal = sum(
@@ -185,15 +143,7 @@ def offboardings_page() -> None:
             return None
 
         def render_card(offboarding: PersonOffboarding, person: Person) -> None:
-            """Render one offboarding tracker as a card.
-
-            Args:
-                offboarding: Tracker to render.
-                person: The tracked person.
-
-            Returns:
-                None.
-            """
+            """Render one offboarding tracker as a card."""
             with ui.card().classes("w-full" + (" opacity-60" if offboarding.is_complete else "")):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[220px]"):
@@ -236,11 +186,7 @@ def offboardings_page() -> None:
                         ).props("dense flat color=negative")
 
         def refresh() -> None:
-            """Reload the offboarding list according to the current filter.
-
-            Returns:
-                None.
-            """
+            """Reload the offboarding list according to the current filter."""
             nonlocal visible_offboardings, persons
             with connection_scope() as connection:
                 all_offboardings = person_offboarding_repo.list_all(connection)
@@ -286,27 +232,11 @@ def offboardings_page() -> None:
         show_complete_switch.on_value_change(lambda _: refresh())
 
         def on_edit(offboarding: PersonOffboarding, person: Person) -> None:
-            """Card button handler: open the edit dialog for this tracker.
-
-            Args:
-                offboarding: Tracker to edit.
-                person: The tracked person.
-
-            Returns:
-                None.
-            """
+            """Card button handler: open the edit dialog for this tracker."""
             open_offboarding_form(offboarding, person, on_saved=lambda _: refresh())
 
         def on_delete(offboarding: PersonOffboarding, person: Person) -> None:
-            """Card button handler: discard a tracker after confirmation.
-
-            Args:
-                offboarding: Tracker to delete.
-                person: The tracked person (display only -- never deleted).
-
-            Returns:
-                None.
-            """
+            """Card button handler: discard a tracker after confirmation."""
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Austritt von "{person.display_name}" wirklich verwerfen?')
                 ui.label(
@@ -328,12 +258,7 @@ def offboardings_page() -> None:
             confirm.open()
 
         def on_start() -> None:
-            """Top button handler: start a voluntary offboarding for an
-            existing Person.
-
-            Returns:
-                None.
-            """
+            """Top button handler: start a voluntary offboarding for an existing Person."""
             with connection_scope() as connection:
                 all_persons = person_repo.list_all(connection)
                 already_tracked = {o.person_id for o in person_offboarding_repo.list_all(connection)}
@@ -357,11 +282,7 @@ def offboardings_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def start() -> None:
-                    """Validate the form and start the offboarding tracker.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and start the offboarding tracker."""
                     if person_select.value is None:
                         error_label.text = "Bitte eine Person wählen."
                         return

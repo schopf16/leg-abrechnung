@@ -40,12 +40,7 @@ def _leg(db, name: str = "LEG Test") -> int:
 
 
 def _billing_item(db, person_id: int, net_amount_rappen: int) -> tuple[int, int]:
-    """Create a minimal billing run (its own, uniquely-named LEG) with one
-    item for `person_id`.
-
-    Returns:
-        `(billing_run_id, item_id)`.
-    """
+    """Create a minimal billing run (its own, uniquely-named LEG) with one item for `person_id`."""
     leg_id = _leg(db, f"LEG Test {person_id}-{net_amount_rappen}")
     run_id = billing_run_repo.create_run(
         db,
@@ -111,9 +106,7 @@ def test_balance_is_zero_with_no_history(db):
 
 
 def test_balance_combines_invoices_and_payments(db):
-    """A person owes 10000 Rappen from an invoice, pays 6000 -- balance
-    should be the remaining 4000 owed to the LEG (positive, internal
-    convention)."""
+    """A person owes 10000 Rappen from an invoice, pays 6000 -- balance should be the remaining 4000..."""
     person_id = _person(db)
     run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -130,8 +123,7 @@ def test_balance_combines_invoices_and_payments(db):
 
 
 def test_balance_reflects_overpayment_as_negative_internal_value(db):
-    """Paying more than invoiced must not be special-cased -- the excess
-    simply shows as a negative (LEG-owes-person) internal balance."""
+    """Paying more than invoiced must not be special-cased -- the excess simply shows as a negative..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -147,9 +139,7 @@ def test_balance_reflects_overpayment_as_negative_internal_value(db):
 
 
 def test_double_payment_of_the_same_invoice_is_never_blocked(db):
-    """Two separate incoming payments against the same billing_run_item_id
-    must both be recorded -- there is deliberately no "one payment per
-    invoice" constraint (see the receivables plan's explicit scenario)."""
+    """Two separate incoming payments against the same billing_run_item_id must both be recorded --..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -174,8 +164,7 @@ def test_double_payment_of_the_same_invoice_is_never_blocked(db):
 
 
 def test_payout_reduces_a_negative_balance_back_toward_zero(db):
-    """The LEG owes the person 8000 (credit); executing the payout must
-    move the balance back to 0, so a payout is recorded POSITIVE."""
+    """The LEG owes the person 8000 (credit); executing the payout must move the balance back to 0, so..."""
     person_id = _person(db)
     _run_id, _item_id = _billing_item(db, person_id, net_amount_rappen=-8_000)
     assert account_entry_repo.get_balance_rappen(db, person_id) == -8_000
@@ -228,10 +217,7 @@ def test_get_remaining_for_item_with_no_payments_is_the_full_amount(db):
 
 
 def test_get_remaining_for_item_subtracts_only_payments_linked_to_it(db):
-    """A payment linked to a *different* item must not reduce this item's
-    own remaining amount, even for the same person -- see Finding #1 of
-    the review this fixes (a dunning notice's QR-bill must never overcharge for
-    an item already partially covered)."""
+    """A payment linked to a *different* item must not reduce this item's own remaining amount, even..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     _run_id_2, other_item_id = _billing_item(db, person_id, net_amount_rappen=5_000)
@@ -257,8 +243,7 @@ def test_get_remaining_for_item_subtracts_only_payments_linked_to_it(db):
 
 
 def test_get_remaining_for_item_never_goes_negative(db):
-    """An overshooting payment against one specific item becomes a general
-    credit on the person's balance, never a negative 'remaining' here."""
+    """An overshooting payment against one specific item becomes a general credit on the person's..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, net_amount_rappen=10_000)
     account_entry_repo.create(
@@ -274,10 +259,7 @@ def test_get_remaining_for_item_never_goes_negative(db):
 
 
 def test_create_with_commit_false_is_visible_within_the_same_connection(db):
-    """`commit=False` must still make the row visible to further reads on
-    the same connection -- only the fsync-to-disk is deferred, not the
-    write itself (see Finding #12: bulk bank-import booking commits once
-    per connection_scope instead of once per row)."""
+    """`commit=False` must still make the row visible to further reads on the same connection -- only..."""
     person_id = _person(db)
     account_entry_repo.create(
         db,

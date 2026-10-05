@@ -1,9 +1,4 @@
-"""Tests for itemising a billing document by site and metering point.
-
-The participant stays one customer with one netted amount -- what these
-tests pin down is that the document now says where that amount came
-from, and that saying so changed no figure.
-"""
+"""Tests for itemising a billing document by site and metering point."""
 
 from datetime import date
 
@@ -41,18 +36,7 @@ def _info(
     address: str,
     direction: str = DIRECTION_CONSUMPTION,
 ) -> MeteringPointInfo:
-    """Build one metering point's printing data.
-
-    Args:
-        designation: Grid operator metering point id.
-        label: The administrator's own name for it, or `""`.
-        site_id: Site the metering point sits at.
-        address: That site's full address.
-        direction: Which section of the bill it is listed under.
-
-    Returns:
-        The `MeteringPointInfo`.
-    """
+    """Build one metering point's printing data."""
     return MeteringPointInfo(
         designation=designation,
         label=label,
@@ -63,14 +47,7 @@ def _info(
 
 
 def _result(totals: dict[int, tuple[float, float]]) -> PersonQuarterResult:
-    """Build a person's quarter result from per-metering-point totals.
-
-    Args:
-        totals: `{metering_point_id: (consumed_kwh, produced_kwh)}`.
-
-    Returns:
-        A `PersonQuarterResult` whose person totals match the breakdown.
-    """
+    """Build a person's quarter result from per-metering-point totals."""
     person_result = PersonQuarterResult(person_id=1)
     for metering_point_id, (consumed, produced) in totals.items():
         person_result.by_metering_point[metering_point_id] = MeteringPointQuarterResult(
@@ -90,11 +67,7 @@ def test_metering_point_without_label_prints_only_its_designation():
 
 
 def test_breakdown_groups_by_site_and_orders_sites_by_address():
-    """Sites come out in the same order the Standorte page lists them.
-
-    "Bahnhofweg" before "Dorfstrasse" alphabetically -- and the order must
-    not depend on which metering point happened to be inserted first.
-    """
+    """Sites come out in the same order the Standorte page lists them."""
     breakdown = build_bill_breakdown(
         _result({20: (100.0, 0.0), 10: (200.0, 0.0)}),
         {
@@ -112,11 +85,7 @@ def test_breakdown_groups_by_site_and_orders_sites_by_address():
 
 
 def test_breakdown_orders_house_numbers_numerically_like_every_other_list():
-    """ "Fischrain 9" before "Fischrain 68" -- as plain text, "68" would win.
-
-    The one address key in `app.sort_keys` is what guarantees an address
-    sorts identically here and on every page that lists it.
-    """
+    """ "Fischrain 9" before "Fischrain 68" -- as plain text, "68" would win."""
     breakdown = build_bill_breakdown(
         _result({1: (10.0, 0.0), 2: (10.0, 0.0)}),
         {
@@ -150,12 +119,7 @@ def test_site_balance_is_consumption_minus_feed_in():
 
 
 def test_a_metering_point_without_shared_energy_is_listed_at_zero():
-    """A meter that shared nothing still appears -- with 0.000 kWh.
-
-    Leaving it out would make the recipient guess whether it was
-    considered at all. Showing the zero says plainly: we looked, there
-    was nothing to share here.
-    """
+    """A meter that shared nothing still appears -- with 0.000 kWh."""
     breakdown = build_bill_breakdown(
         _result({1: (0.0, 0.0), 2: (50.0, 0.0)}),
         {1: _info("CH1", "", 1, "Weg 1"), 2: _info("CH2", "", 1, "Weg 1")},
@@ -170,11 +134,7 @@ def test_a_metering_point_without_shared_energy_is_listed_at_zero():
 
 
 def test_a_feed_in_meter_at_zero_stays_on_the_feed_in_side():
-    """Which side a meter is listed under follows its direction, not its figures.
-
-    A PV meter that delivered nothing this quarter must not silently
-    migrate into the Bezug section, nor disappear.
-    """
+    """Which side a meter is listed under follows its direction, not its figures."""
     breakdown = build_bill_breakdown(
         _result({1: (120.0, 0.0), 2: (0.0, 0.0)}),
         {
@@ -191,13 +151,7 @@ def test_a_feed_in_meter_at_zero_stays_on_the_feed_in_side():
 
 
 def test_the_line_up_of_a_bill_is_the_same_in_a_quarter_that_shared_nothing(db):
-    """The positions must not differ from one quarter to the next.
-
-    This is the assurance the recipient reads: the same metering points
-    in the same order, whatever the quarter happened to produce. Checked
-    against the demo data's two real quarters -- summer shares energy,
-    winter has no feed-in at all.
-    """
+    """The positions must not differ from one quarter to the next."""
     from app.domain.demo_data import WINTER_QUARTER
 
     create_demo_data(db)
@@ -281,12 +235,7 @@ def test_multi_site_bill_without_any_feed_in_omits_the_feed_in_total():
 
 
 def test_site_balances_add_up_to_the_energy_net(db):
-    """The site balances are a finer view of the net, never a different figure.
-
-    Summed, they must equal the item's energy net (its total minus the
-    fees) to within the single rounding step `app.domain.billing`
-    performs -- the whole point of rounding exactly once.
-    """
+    """The site balances are a finer view of the net, never a different figure."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
     run, items, _, distribution = create_or_replace_billing_run(db, leg.id, *SUMMER_QUARTER)
@@ -321,13 +270,7 @@ def test_per_metering_point_totals_sum_to_the_person_totals(db):
 
 
 def test_itemising_changed_no_billed_amount(db):
-    """The amounts are computed from the person totals, untouched by the breakdown.
-
-    `compute_billing_items` reads `consumed_local_kwh`/`produced_local_kwh`
-    only. Feeding it a result stripped of its per-metering-point detail
-    must therefore produce byte-identical items -- the guarantee that
-    this whole change is presentation.
-    """
+    """The amounts are computed from the person totals, untouched by the breakdown."""
     create_demo_data(db)
     leg = leg_repo.list_all(db)[0]
     settings = settings_repo.get_settings(db)
@@ -354,15 +297,7 @@ def test_itemising_changed_no_billed_amount(db):
 
 
 def _make_property_management(db, metering_point_count: int):
-    """Create one person holding many metering points across two sites.
-
-    Args:
-        db: Database connection fixture.
-        metering_point_count: How many consumption metering points to create.
-
-    Returns:
-        A `(person, leg, metering_point_ids)` tuple.
-    """
+    """Create one person holding many metering points across two sites."""
     # A payable QR-bill needs a configured sender; reuse the demo helper's
     # values rather than inventing a second set.
     settings = settings_repo.get_settings(db)
@@ -462,15 +397,7 @@ def _make_property_management(db, metering_point_count: int):
 
 
 def test_long_itemisation_paginates_without_touching_the_payment_slip(db, tmp_path):
-    """A property management's bill breaks across pages cleanly.
-
-    Regression test for the defect this feature exposed: `layout.py`'s
-    table drawing had no page break at all, because no document had ever
-    held more than two energy lines. Twenty-six metering points ran
-    straight off the bottom of the page and through the area reserved for
-    the QR-bill -- silently, since reportlab happily draws outside the
-    page.
-    """
+    """A property management's bill breaks across pages cleanly."""
     person, leg, _ = _make_property_management(db, 26)
     settings = settings_repo.get_settings(db)
     run, items, _, distribution = create_or_replace_billing_run(db, leg.id, 2026, 3)
@@ -539,11 +466,7 @@ def test_long_itemisation_paginates_without_touching_the_payment_slip(db, tmp_pa
 
 
 def test_continuation_page_repeats_the_site_and_section(db, tmp_path):
-    """Rows carried onto a new page still say which building they belong to.
-
-    Without this a property management finds half its flats listed under
-    no address at all -- exactly the reader the itemisation exists for.
-    """
+    """Rows carried onto a new page still say which building they belong to."""
     person, leg, _ = _make_property_management(db, 26)
     settings = settings_repo.get_settings(db)
     run, items, _, distribution = create_or_replace_billing_run(db, leg.id, 2026, 3)
@@ -588,12 +511,7 @@ def test_continuation_page_repeats_the_site_and_section(db, tmp_path):
 
 
 def test_metering_point_form_saves_the_label():
-    """Typing a Bezeichnung and pressing Speichern actually persists it.
-
-    Sets its data up through `connection_scope()` rather than the `db`
-    fixture, because that is the connection the dialog itself opens --
-    the `db` fixture is a separate in-memory database the GUI never sees.
-    """
+    """Typing a Bezeichnung and pressing Speichern actually persists it."""
     from nicegui import Client, ui
 
     from app.db.connection import connection_scope
@@ -661,12 +579,7 @@ def test_metering_point_form_saves_the_label():
 
 
 def test_a_long_label_is_cut_to_its_column_instead_of_overrunning_the_figures():
-    """Free text must not collide with the kWh column.
-
-    "Wohnung 3. Obergeschoss links" beside a 33-character designation is
-    already wider than the label column, and reportlab draws past any
-    boundary without complaint -- so the column enforces its own.
-    """
+    """Free text must not collide with the kWh column."""
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
     from app.pdf.layout import _COL_KWH_X, _LABEL_GUTTER, _LEFT_MARGIN, _LINE_STYLES, _fit

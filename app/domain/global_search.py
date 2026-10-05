@@ -1,31 +1,4 @@
-"""One search box that reaches every Stammdaten record.
-
-Until now a record could only be found from the list it lives on: looking up
-a Messpunktbezeichnung meant going to Messpunkte first, and a street meant
-guessing whether it was filed under Standorte or under a person's billing
-address. That is knowledge about this app's filing, demanded of somebody who
-only wants to find a meter.
-
-What it searches is **what the lists already search**, no more: the per-list
-haystacks were built one at a time and each knows its own record. So this is
-a domain function over the models, and the five lists keep their own filters
-untouched -- two search implementations would drift, and the one in the
-header would be the one nobody tested.
-
-Two deliberate limits:
-
-- **Substring, folded, no fuzziness.** `app.domain.address_lookup` is fuzzy
-  because it compares a typed address against three million official ones
-  and has to tolerate a typo. Here the administrator is looking for
-  something they know exists, and a near miss would offer the wrong member.
-  Folding goes through `app.sort_keys.fold_for_sort`, so "Buhler" finds
-  "Bühler" exactly as the lists' own sorting folds it.
-- **No ranking by score.** Results are grouped by kind in the order of the
-  data model (Trafokreis → Standort → Messpunkt → LEG → Person →
-  Zuordnung), the same order the drawer lists them in, and sorted inside a
-  group by the same keys their list uses. A relevance score would put a
-  person above a metering point for reasons nobody can see.
-"""
+"""One search box that reaches every Stammdaten record."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -87,15 +60,7 @@ MIN_QUERY_LENGTH = 2
 
 @dataclass(frozen=True)
 class SearchHit:
-    """One found record.
-
-    Attributes:
-        kind: One of the `KIND_*` constants.
-        record_id: Database id.
-        title: What the record is called.
-        detail: Where it sits -- an address, a LEG name, a Trafokreis.
-        route: Where clicking it goes.
-    """
+    """One found record."""
 
     kind: str
     record_id: int
@@ -106,14 +71,7 @@ class SearchHit:
 
 @dataclass(frozen=True)
 class SearchGroup:
-    """The hits of one kind.
-
-    Attributes:
-        kind: One of the `KIND_*` constants.
-        label: German plural, as the drawer spells it.
-        hits: Up to `PER_KIND_LIMIT` of them.
-        total: How many there were in all, so the group can say "von 23".
-    """
+    """The hits of one kind."""
 
     kind: str
     label: str
@@ -122,29 +80,12 @@ class SearchGroup:
 
 
 def _matches(needle: str, *parts: Optional[str]) -> bool:
-    """Whether the folded needle occurs in any of the parts.
-
-    Args:
-        needle: Already folded search text.
-        *parts: Record fields, any of which may be `None`.
-
-    Returns:
-        `True` on the first part that contains it.
-    """
+    """Whether the folded needle occurs in any of the parts."""
     return any(needle in fold_for_sort(part or "") for part in parts)
 
 
 def search(connection: sqlite3.Connection, query: str) -> list[SearchGroup]:
-    """Find every Stammdaten record matching one query.
-
-    Args:
-        connection: Open SQLite connection.
-        query: What the administrator typed.
-
-    Returns:
-        Non-empty groups, in `KIND_ORDER`. Empty for a query shorter than
-        `MIN_QUERY_LENGTH`.
-    """
+    """Find every Stammdaten record matching one query."""
     needle = fold_for_sort((query or "").strip())
     if len(needle) < MIN_QUERY_LENGTH:
         return []
@@ -276,17 +217,7 @@ def search(connection: sqlite3.Connection, query: str) -> list[SearchGroup]:
 
 
 def _hit(kind: str, record_id: int, title: str, detail: str) -> SearchHit:
-    """Build one hit, with the route its kind leads to.
-
-    Args:
-        kind: One of the `KIND_*` constants.
-        record_id: Database id.
-        title: What the record is called.
-        detail: Where it sits.
-
-    Returns:
-        The hit.
-    """
+    """Build one hit, with the route its kind leads to."""
     return SearchHit(
         kind=kind,
         record_id=record_id,

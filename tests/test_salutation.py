@@ -1,12 +1,4 @@
-"""Tests for the one salutation both the invoice PDF and the emails use.
-
-The reason this function exists is that every earlier mechanism produced a
-wrong greeting: the PDF printed a fixed "Sehr geehrte Kundin, sehr geehrter
-Kunde" naming nobody, and the email templates let the administrator assemble
-"Sehr geehrte {anrede} {nachname}", which reads "Sehr geehrte Herr Muster"
-for every man. So the cases below are not decoration -- each one is a way of
-addressing somebody that has to come out right.
-"""
+"""Tests for the one salutation both the invoice PDF and the emails use."""
 
 import pytest
 
@@ -15,14 +7,7 @@ from app.models.person import Person
 
 
 def _person(**overrides) -> Person:
-    """Build a Person with only the fields a salutation depends on.
-
-    Args:
-        **overrides: Fields to set on the person.
-
-    Returns:
-        An unpersisted `Person`.
-    """
+    """Build a Person with only the fields a salutation depends on."""
     fields = dict(
         id=1,
         salutation="",
@@ -95,12 +80,7 @@ def test_the_salutation_for_each_constellation(overrides, expected):
 
 
 def test_a_second_person_without_a_salutation_is_greeted_by_name():
-    """A missing salutation is a valid state, not a defect.
-
-    Somebody who does not want to be sorted into Herr or Frau, or whose
-    salutation was simply never recorded, still has to be addressable --
-    which is the whole reason the greeting carries no inflected adjective.
-    """
+    """A missing salutation is a valid state, not a defect."""
     person = _person(
         salutation="Frau",
         first_name="Anna",
@@ -112,12 +92,7 @@ def test_a_second_person_without_a_salutation_is_greeted_by_name():
 
 
 def test_the_greeting_never_carries_an_inflected_adjective():
-    """The property that makes one rule work for every constellation.
-
-    "Sehr geehrte/geehrter/geehrtes" has to agree with gender; "Guten Tag"
-    does not. If somebody ever reintroduces the inflected form, this fails
-    before a single letter goes out with the wrong ending.
-    """
+    """The property that makes one rule work for every constellation."""
     for overrides in (
         {"salutation": "Herr", "last_name": "Muster"},
         {"salutation": "Frau", "last_name": "Muster"},
@@ -134,10 +109,7 @@ def test_a_person_with_no_name_at_all_still_gets_a_salutation():
 
 
 def test_the_second_greeting_keeps_its_capital_noun():
-    """ "Tag" is a noun and stays capitalised mid-sentence.
-
-    Regression test: lower-casing the whole greeting produced "guten tag".
-    """
+    """ "Tag" is a noun and stays capitalised mid-sentence."""
     person = _person(
         salutation="Frau",
         last_name="Muster",

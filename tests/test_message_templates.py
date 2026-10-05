@@ -1,9 +1,4 @@
-"""Textbausteine: the store, the carried-over texts, and the page.
-
-Nothing here sends anything, and that is the point of this stage: the texts
-and their attachments exist and can be maintained before a single mail is
-wired up. `graph_client.send_email` is not even imported.
-"""
+"""Textbausteine: the store, the carried-over texts, and the page."""
 
 import sqlite3
 
@@ -39,21 +34,7 @@ def _template(
     body: str = "{briefanrede}\n\nSchön, dass Sie dabei sind.",
     auto_attachments: list[str] | None = None,
 ) -> MessageTemplate:
-    """Build a template to insert.
-
-    Args:
-        name: Its name.
-        occasion: One of the `OCCASION_*` constants.
-        step: The step attribute it belongs to.
-        trigger_kind: One of the `TRIGGER_*` constants.
-        deadline_days: Days before a pending step becomes due.
-        subject: Subject template.
-        body: Body template.
-        auto_attachments: Keys of the documents it attaches by itself.
-
-    Returns:
-        The unsaved template.
-    """
+    """Build a template to insert."""
     return MessageTemplate(
         id=None,
         name=name,
@@ -89,12 +70,7 @@ def test_a_template_survives_a_round_trip(db):
 
 
 def test_several_templates_can_share_one_step(db):
-    """The whole reason this is a table and not a column pair.
-
-    A reminder is a second text about the same step -- the administrator's
-    own case: the welcome mail and, 30 days later, the reminder that the
-    contract has not come back.
-    """
+    """The whole reason this is a table and not a column pair."""
     template_repo.create(db, _template("Willkommen", step="contract_signed_at"))
     template_repo.create(
         db,
@@ -113,8 +89,7 @@ def test_several_templates_can_share_one_step(db):
 
 
 def test_the_two_processes_do_not_see_each_others_templates(db):
-    """An Austritt step and an Aufnahme step can carry the same attribute
-    name, so the occasion has to narrow it."""
+    """An Austritt step and an Aufnahme step can carry the same attribute name, so the occasion has to..."""
     template_repo.create(db, _template("Aufnahme-Text", occasion=OCCASION_ONBOARDING))
     template_repo.create(db, _template("Austritt-Text", occasion=OCCASION_OFFBOARDING, step="decided_at"))
 
@@ -136,11 +111,7 @@ def test_an_attachment_keeps_its_bytes(db):
 
 
 def test_a_template_remembers_which_documents_it_attaches(db):
-    """The checkboxes, which replaced a per-upload role question.
-
-    "Neue Anhänge behandeln als" asked the wrong thing -- not what kind of
-    file this is, but which of our documents should go along.
-    """
+    """The checkboxes, which replaced a per-upload role question."""
     template_id = template_repo.create(db, _template(auto_attachments=[KEY_MEMBERSHIP_CONTRACT]))
 
     loaded = template_repo.get(db, template_id)
@@ -149,11 +120,7 @@ def test_a_template_remembers_which_documents_it_attaches(db):
 
 
 def test_a_document_this_version_does_not_know_is_kept(db):
-    """A database edited by a later version must stay usable here.
-
-    The registry can grow, so an unknown key is carried rather than
-    silently dropped the next time the template is saved.
-    """
+    """A database edited by a later version must stay usable here."""
     template_id = template_repo.create(
         db, _template(auto_attachments=[KEY_MEMBERSHIP_CONTRACT, "something_newer"])
     )
@@ -165,8 +132,7 @@ def test_a_document_this_version_does_not_know_is_kept(db):
 
 
 def test_a_document_is_only_offered_where_it_can_be_delivered():
-    """There is no invoice while somebody is being taken on, and no
-    membership contract to fill in when a quarter is billed."""
+    """There is no invoice while somebody is being taken on, and no membership contract to fill in when..."""
     onboarding_keys = [entry.key for entry in auto_attachments.for_occasion(OCCASION_ONBOARDING)]
     invoice_keys = [entry.key for entry in auto_attachments.for_occasion(OCCASION_INVOICE)]
 
@@ -175,8 +141,7 @@ def test_a_document_is_only_offered_where_it_can_be_delivered():
 
 
 def test_a_ticked_document_without_a_stored_form_is_reported(db):
-    """A statement, not a refusal: the box may be ticked before the file is
-    to hand, which is what the administrator asked for."""
+    """A statement, not a refusal: the box may be ticked before the file is to hand, which is what the..."""
     missing = auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], set())
     assert [entry.key for entry in missing] == [KEY_MEMBERSHIP_CONTRACT]
 
@@ -188,8 +153,7 @@ def test_a_ticked_document_without_a_stored_form_is_reported(db):
 
 
 def test_a_generated_document_needs_no_stored_form():
-    """The invoice is produced by the billing run and cannot be uploaded
-    in advance."""
+    """The invoice is produced by the billing run and cannot be uploaded in advance."""
     assert auto_attachments.missing_sources([KEY_INVOICE], set()) == []
 
 
@@ -217,11 +181,7 @@ def test_deleting_a_template_takes_its_attachments_with_it(db):
 
 
 def test_a_deadline_only_makes_sense_with_a_pending_trigger(db):
-    """Stored as given; the meaning is the trigger's.
-
-    Pinned because the dialog is what enforces the pairing, and a reader of
-    the model should not conclude the column is free-standing.
-    """
+    """Stored as given; the meaning is the trigger's."""
     template_id = template_repo.create(
         db,
         _template("Erinnerung", trigger_kind=TRIGGER_STEP_PENDING, deadline_days=30),
@@ -237,11 +197,7 @@ def test_a_deadline_only_makes_sense_with_a_pending_trigger(db):
 
 
 def _fresh_database() -> sqlite3.Connection:
-    """A database migrated and seeded from scratch.
-
-    Returns:
-        The open connection.
-    """
+    """A database migrated and seeded from scratch."""
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     initialize_database(connection)
@@ -249,13 +205,7 @@ def _fresh_database() -> sqlite3.Connection:
 
 
 def test_a_fresh_database_comes_with_the_three_carried_over_texts():
-    """They used to be column pairs on `leg_settings`.
-
-    Seeded in `app.db.schema` rather than in migration 52, because on a
-    fresh database the settings row does not exist while migrations run --
-    an `INSERT .. SELECT` inside the migration copied nothing and a new
-    installation ended up with no invoice text at all.
-    """
+    """They used to be column pairs on `leg_settings`."""
     connection = _fresh_database()
 
     templates = template_repo.list_all(connection)
@@ -286,8 +236,7 @@ def test_an_existing_text_is_carried_over_word_for_word():
 
 
 def test_seeding_does_not_run_twice():
-    """Opening the app again must not duplicate the three texts, and must
-    not overwrite one that has since been edited."""
+    """Opening the app again must not duplicate the three texts, and must not overwrite one that has..."""
     connection = _fresh_database()
     invoice = template_repo.list_for_occasion(connection, OCCASION_INVOICE)[0]
     invoice.subject = "Von Hand geändert"
@@ -301,12 +250,7 @@ def test_seeding_does_not_run_twice():
 
 
 def test_a_half_migrated_database_is_not_an_error():
-    """Restoring an old backup replays migrations from where it stopped.
-
-    `tests/test_master_data.py` does the same on purpose to reproduce an old
-    customer number, and the seeding ran into a table that did not exist yet
-    -- which is not a fault, it is the replay this app is built to allow.
-    """
+    """Restoring an old backup replays migrations from where it stopped."""
     from app.db import schema as schema_module
 
     connection = sqlite3.connect(":memory:")
@@ -328,14 +272,7 @@ def test_a_half_migrated_database_is_not_an_error():
 
 
 def _page(probe: str) -> Client:
-    """Render the Textbausteine list.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        The client.
-    """
+    """Render the Textbausteine list."""
     from app.gui.pages import message_templates as page_module
 
     client = Client(ui.page(probe)(lambda: None), request=None)
@@ -345,32 +282,12 @@ def _page(probe: str) -> Client:
 
 
 def _row(client: Client, name: str) -> dict:
-    """One row of the list, by the template's name.
-
-    A migrated database already holds the three carried-over texts
-    (Rechnung, 1./2. Mahnung), so position zero is whichever of those sorts
-    first -- not the template the test just created.
-
-    Args:
-        client: The rendered client.
-        name: The template's name.
-
-    Returns:
-        Its row.
-    """
+    """One row of the list, by the template's name."""
     return next(row for row in _table(client).rows if row["name"] == name)
 
 
 def _open_pencil(client: Client, name: str) -> None:
-    """Click the pencil on one row, as the list's action slot does.
-
-    Args:
-        client: The rendered client.
-        name: The template's name.
-
-    Returns:
-        None.
-    """
+    """Click the pencil on one row, as the list's action slot does."""
     table = _table(client)
     row = next(candidate for candidate in table.rows if candidate["name"] == name)
     with client:
@@ -381,20 +298,12 @@ def _open_pencil(client: Client, name: str) -> None:
 
 
 def _table(client: Client):
-    """The list's table.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The table element.
-    """
+    """The list's table."""
     return next(element for element in client.elements.values() if element.__class__.__name__ == "Table")
 
 
 def test_the_list_shows_every_template_with_its_trigger():
-    """ "Fällig" is the column that says when a button will appear, which is
-    the only thing a trigger does."""
+    """ "Fällig" is the column that says when a button will appear, which is the only thing a trigger..."""
     with connection_scope() as connection:
         template_repo.create(connection, _template("Willkommen", step="registered_at"))
         template_repo.create(
@@ -416,10 +325,7 @@ def test_the_list_shows_every_template_with_its_trigger():
 
 
 def test_the_list_is_ordered_by_occasion_by_default():
-    """The administrator's own reasoning: "ich öffne das weil etwas mit dem
-    gesellschaftsvertrag nicht stimmt, also suche ich danach. den namen
-    habe ich dann vielleicht schon wieder vergessen."
-    """
+    """The administrator's own reasoning: "ich öffne das weil etwas mit dem gesellschaftsvertrag nicht..."""
     from app.gui.pages.message_templates import SORT_OPTIONS
 
     assert SORT_OPTIONS[0].key == "occasion"
@@ -434,8 +340,7 @@ def test_the_columns_are_the_ones_the_reader_needs():
 
 
 def test_the_list_names_the_ticked_documents_before_the_uploaded_ones():
-    """The ticked document is what makes the mail what it is; an uploaded
-    leaflet is the afterthought."""
+    """The ticked document is what makes the mail what it is; an uploaded leaflet is the afterthought."""
     with connection_scope() as connection:
         template_id = template_repo.create(connection, _template(auto_attachments=[KEY_MEMBERSHIP_CONTRACT]))
         template_repo.add_attachment(connection, template_id, "Merkblatt.pdf", b"%PDF")
@@ -447,8 +352,7 @@ def test_the_list_names_the_ticked_documents_before_the_uploaded_ones():
 
 
 def test_the_pencil_opens_the_dialog_with_the_stored_text():
-    """Driven, because a slot that emits an event nobody listens for looks
-    exactly like one that works."""
+    """Driven, because a slot that emits an event nobody listens for looks exactly like one that works."""
     with connection_scope() as connection:
         template_repo.create(connection, _template(subject="Willkommen in der LEG"))
 
@@ -468,8 +372,7 @@ def test_the_pencil_opens_the_dialog_with_the_stored_text():
     [(OCCASION_ONBOARDING, True), (OCCASION_INVOICE, False)],
 )
 def test_the_step_and_trigger_only_appear_where_they_mean_something(occasion, expect_step_select):
-    """The invoice text is used when an invoice is sent, which is not
-    something this page decides -- so it has no step and no trigger."""
+    """The invoice text is used when an invoice is sent, which is not something this page decides -- so..."""
     with connection_scope() as connection:
         template_repo.create(
             connection,
@@ -488,11 +391,7 @@ def test_the_step_and_trigger_only_appear_where_they_mean_something(occasion, ex
 
 
 def test_nothing_on_this_page_can_send_a_mail():
-    """The promise of this stage, as a test rather than as an intention.
-
-    The texts and their attachments can be maintained before any send path
-    exists, and this page must not be the thing that grows one.
-    """
+    """The promise of this stage, as a test rather than as an intention."""
     from pathlib import Path
 
     source = Path("app/gui/pages/message_templates.py").read_text(encoding="utf-8")

@@ -1,15 +1,4 @@
-"""Shared Person create/edit dialog.
-
-Used both by the persons page itself and by the Web-Registrierungen page
-(to prefill a new Person from a reviewed registration without having to
-re-type its data) -- see `open_person_form`'s `prefill` argument.
-
-The "Zweite Person" block holds a couple's second name and email address on
-the same record, because a couple is one customer with one invoice -- see
-`app.models.person`. It repeats the first person's field order and widths on
-purpose: it is the same thing, entered the same way, not a different kind of
-data.
-"""
+"""Shared Person create/edit dialog."""
 
 from typing import Callable, Optional
 
@@ -47,18 +36,7 @@ _PREFILL_KEYS = (
 
 
 def _initial(existing: Optional[Person], attr: str, prefill: dict, key: str, default: str = "") -> str:
-    """Resolve one field's initial form value.
-
-    Args:
-        existing: Person being edited, or `None` when creating.
-        attr: Attribute name on `existing` to read when editing.
-        prefill: Prefill dict passed to `open_person_form`.
-        key: Key to look up in `prefill` when creating.
-        default: Fallback if neither `existing` nor `prefill` has a value.
-
-    Returns:
-        The value the corresponding input should start with.
-    """
+    """Resolve one field's initial form value."""
     if existing is not None:
         return getattr(existing, attr)
     return prefill.get(key, default)
@@ -70,24 +48,7 @@ def open_person_form(
     prefill: Optional[dict] = None,
     on_saved: Optional[Callable[[Person], None]] = None,
 ) -> None:
-    """Open the create/edit dialog for a person.
-
-    Args:
-        existing: Person to edit, or `None` to create a new one.
-        prefill: Initial field values for a new person, ignored if
-            `existing` is set. Keys: any of `_PREFILL_KEYS` (`company`,
-            `salutation`, `first_name`, `last_name`, `street`, `house_number`,
-            `postal_code`, `city`, `country`, `email`, `phone`, `iban`,
-            `bkw_customer_number`); missing keys use the usual defaults
-            (`country` defaults to `"CH"`).
-        on_saved: Called with the created/updated `Person` right after a
-            successful save (dialog already closed) -- e.g. so a caller
-            elsewhere on the page can refresh its own list or react to
-            the new person's id.
-
-    Returns:
-        None.
-    """
+    """Open the create/edit dialog for a person."""
     prefill = prefill or {}
 
     # Wider than the other forms on purpose: this is the one dialog with
@@ -221,24 +182,13 @@ def open_person_form(
         email_error = ui.label("").classes("text-negative text-caption")
 
         def check_iban() -> None:
-            """Validate the IBAN once the field loses focus (not on every keystroke).
-
-            Returns:
-                None.
-            """
+            """Validate the IBAN once the field loses focus (not on every keystroke)."""
             iban_error.text = validate_iban(iban.value) or ""
 
         iban.on("blur", check_iban)
 
         def check_emails() -> None:
-            """Report a certainly-wrong address when a field loses focus.
-
-            Both addresses go into the one message to this contract party
-            (`Person.contact_emails`), so both are checked the same way.
-
-            Returns:
-                None.
-            """
+            """Report a certainly-wrong address when a field loses focus."""
             email_error.text = validate_email(email.value) or validate_email(second_email.value) or ""
 
         email.on("blur", check_emails)
@@ -261,11 +211,7 @@ def open_person_form(
             ui.label("Die Kunden-Nr. wird beim Speichern vergeben.").classes("text-caption text-grey-6")
 
         def save() -> None:
-            """Validate the form and persist the person.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the person."""
             if not company.value.strip() and not (first_name.value.strip() or last_name.value.strip()):
                 error_label.text = "Firma oder Vorname/Nachname sind erforderlich."
                 return

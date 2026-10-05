@@ -1,18 +1,6 @@
-"""Builds the chronological ledger shown in a Person's receivables detail
-view: every invoice/credit issued, every dunning notice sent, and every payment/
-payout/correction booked, merged into one timeline that explains how the
-current balance actually came about -- not just the final number.
-
-Sign convention: `amount_rappen` on a movement entry (`rechnung`,
-`gutschrift`, `payment_received`, `payout`, `correction`) uses the exact
-same internal convention as `BillingRunItem.net_amount_rappen`/
-`AccountEntry.amount_rappen` (positive = increases what the person owes
-the LEG) -- no second convention invented here, so the GUI's existing
-single negate-for-display rule (see `app.gui.pages.receivables`) applies
-identically to every line, not just the aggregate balance. A `mahnung` entry
-is purely informational (sending a dunning notice does not itself move the
-balance), so its `amount_rappen` is always `None`.
-"""
+"""Builds the chronological ledger shown in a Person's receivables detail view: every invoice/credit
+issued, every dunning notice sent, and every payment/ payout/correction booked, merged into one
+timeline that explains how the current balance actually came about -- not just the final number."""
 
 from dataclasses import dataclass
 from datetime import date
@@ -27,20 +15,7 @@ from app.pdf.person_bill_pdf import PAYMENT_TERM
 
 @dataclass
 class LedgerEntry:
-    """One event in a person's receivables history.
-
-    Attributes:
-        entry_date: ISO date this event is dated to, for sorting/display.
-        kind: `"invoice"`, `"credit_note"`, `"dunning"`, `"payment_received"`,
-            `"payout"` or `"correction"`.
-        description: Human-readable (German) summary of this event.
-        amount_rappen: Signed amount in internal convention (see module
-            docstring), or `None` for a purely informational entry (a
-            `mahnung` send -- it does not move the balance by itself).
-        billing_run_item_id: The invoice/credit this event is about or
-            refers to, if any -- lets the GUI offer "Details ansehen"
-            (see `app.gui.invoice_detail`) directly from this line.
-    """
+    """One event in a person's receivables history."""
 
     entry_date: str
     kind: str
@@ -57,17 +32,7 @@ _ACCOUNT_ENTRY_LABELS = {
 
 
 def list_ledger_entries(connection, person_id: int) -> list[LedgerEntry]:
-    """Build one person's full receivables timeline, oldest first.
-
-    Args:
-        connection: Open SQLite connection.
-        person_id: Primary key of the person.
-
-    Returns:
-        Every invoice/credit, dunning notice and payment/payout/correction
-        involving this person, sorted by `entry_date` (ties broken in
-        insertion order: invoices, then dunning notices, then account entries).
-    """
+    """Build one person's full receivables timeline, oldest first."""
     entries: list[LedgerEntry] = []
 
     for item in billing_run_repo.list_items_for_person(connection, person_id):

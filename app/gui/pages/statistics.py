@@ -1,33 +1,5 @@
-"""Statistik: five pages, one per theme -- Energie, Wachstum,
-Debitorenverlauf, Verteilung, Ausgewogenheit.
-
-Four routes rather than four cards on one page. They started as cards, and
-that was still one page to scroll: a chart is worth a screen, and four of
-them stacked means the one you want is never the one in front of you. The
-side navigation's Statistik group lists them, so picking a theme is a click
-rather than a scroll. No `ui.tabs` -- the project uses none, and the
-navigation already does this job everywhere else.
-
-The energy panel is drawn on the shared time axis
-(`app.gui.time_axis`), so the resolution is the reader's choice, from a
-quarter-hour load curve up to a decade, and the window follows it. Beside
-consumption and feed-in it shows the figure the LEG actually exists for:
-**how much of the production found a taker inside the community**.
-`app.domain.distribution` has always computed it, per 15-minute interval,
-and then folded it straight into quarterly per-person totals; as a curve it
-answers "is this working", which the numbers alone never did.
-
-A chart with nothing in it says **why** in one grey line rather than
-showing a white rectangle, and nothing more: an unexplained blank is what
-made this page feel empty, and a paragraph above every chart is what made
-it feel like more text than picture.
-
-The Debitoren panel reports the **LEG's own account only** -- invoiced,
-received, and the open amount that should be coming down. Never a single
-person's balance: the administrator ruled that out on data-protection
-grounds, and the reasoning holds. A statistics page is read over somebody's
-shoulder; a person's detail page is not.
-"""
+"""Statistik: five pages, one per theme -- Energie, Wachstum, Debitorenverlauf, Verteilung,
+Ausgewogenheit."""
 
 from datetime import datetime
 
@@ -80,47 +52,17 @@ _CHART_HEIGHT = "height: 360px"
 
 
 def _month_label(year: int, month: int) -> str:
-    """Format a calendar month as a short chart-axis label.
-
-    Args:
-        year: Calendar year.
-        month: Calendar month, 1 to 12.
-
-    Returns:
-        A label such as "Sep 2025".
-    """
+    """Format a calendar month as a short chart-axis label."""
     return f"{MONTH_NAMES_DE[month][:3]} {year}"
 
 
 def _empty_note(message: str) -> None:
-    """Say in one line that a chart has nothing to draw.
-
-    One grey line, no link, no advice: this page is meant to be read as
-    charts, and a paragraph above every empty one is what made it feel like
-    more text than picture.
-
-    Args:
-        message: Why there is nothing to draw.
-
-    Returns:
-        None.
-    """
+    """Say in one line that a chart has nothing to draw."""
     ui.label(message).classes("text-body2 text-grey-6")
 
 
 def _panel(title: str):
-    """Open one theme's card.
-
-    The heading stays even though each theme now has a page of its own: it
-    is what the tests find a panel by, and it names the theme inside the
-    frame rather than only in the title bar.
-
-    Args:
-        title: The panel's German heading.
-
-    Returns:
-        The card's context manager, already holding the heading.
-    """
+    """Open one theme's card."""
     card = ui.card().classes("w-full")
     with card:
         ui.label(title).classes("text-lg font-bold")
@@ -128,15 +70,7 @@ def _panel(title: str):
 
 
 def _render_energy_panel(legs, latest_reading) -> None:
-    """Draw the Energie panel: flow, shared energy and self-consumption.
-
-    Args:
-        legs: Every LEG, for the filter.
-        latest_reading: ISO timestamp of the newest reading, or `None`.
-
-    Returns:
-        None.
-    """
+    """Draw the Energie panel: flow, shared energy and self-consumption."""
     has_readings = latest_reading is not None
     with _panel("Energie"):
         if not has_readings:
@@ -158,11 +92,7 @@ def _render_energy_panel(legs, latest_reading) -> None:
         chart = ui.echart({}).classes("w-full").style(_CHART_HEIGHT)
 
         def refresh() -> None:
-            """Reload the chart for the current LEG, window and resolution.
-
-            Returns:
-                None.
-            """
+            """Reload the chart for the current LEG, window and resolution."""
             with connection_scope() as connection:
                 series = energy_series(connection, axis.key, axis.window, leg_id=leg_select.value)
                 # The same window a year earlier, bucket for bucket, so the
@@ -245,11 +175,7 @@ def _render_energy_panel(legs, latest_reading) -> None:
 
 
 def _render_people_panel() -> None:
-    """Draw the Personen panel: where the pipeline waits, and how it grew.
-
-    Returns:
-        None.
-    """
+    """Draw the Personen panel: where the pipeline waits, and how it grew."""
     with connection_scope() as connection:
         steps, completed = onboarding_funnel(connection)
         growth = monthly_growth_counts(connection, months=_MONTHS_SHOWN)
@@ -302,11 +228,7 @@ def _render_people_panel() -> None:
 
 
 def _render_money_panel() -> None:
-    """Draw the Debitoren panel: invoiced, received, and what stays open.
-
-    Returns:
-        None.
-    """
+    """Draw the Debitoren panel: invoiced, received, and what stays open."""
     with connection_scope() as connection:
         has_runs = connection.execute("SELECT 1 FROM billing_runs LIMIT 1").fetchone() is not None
 
@@ -318,11 +240,7 @@ def _render_money_panel() -> None:
         chart = ui.echart({}).classes("w-full").style(_CHART_HEIGHT)
 
         def refresh() -> None:
-            """Reload the receivables chart for the current window.
-
-            Returns:
-                None.
-            """
+            """Reload the receivables chart for the current window."""
             with connection_scope() as connection:
                 series = receivables_series(connection, axis.key, axis.window)
             chart.options.clear()
@@ -347,22 +265,7 @@ def _render_money_panel() -> None:
 
 
 def _render_distribution_panel() -> None:
-    """Draw the Verteilung view: how the deployment sits across the LEGs.
-
-    Two pies and a table, replacing a single chart that carried stacked
-    metering-point bars and a PV-capacity line on a second axis: three
-    quantities, two units, seven categories, and no clear question.
-
-    A pie is the right instrument for "which LEG is how big", because that
-    is a share of a whole. It is the wrong one for comparing similar
-    slices -- two LEGs hold 13 metering points each here, and no pie will
-    ever show that they are equal -- so the exact figures, including the
-    direction split a pie cannot express at all, sit in the table
-    underneath. Chart for the shape, table for the numbers.
-
-    Returns:
-        None.
-    """
+    """Draw the Verteilung view: how the deployment sits across the LEGs."""
     with connection_scope() as connection:
         distributions = distribution_by_leg(connection)
 
@@ -409,27 +312,7 @@ def _render_distribution_panel() -> None:
 
 
 def _render_balance_panel() -> None:
-    """Draw the Ausgewogenheit view: how each LEG's two sides compare.
-
-    Two readings of one question, in the order they become available. The
-    bars compare the meter counts, which exist as soon as a LEG does. The
-    table adds the measured share of production that actually found a taker,
-    which needs an import and is the figure that really answers "is this LEG
-    well matched" -- a meter count says nothing about whether the sun shone
-    while anybody was drawing.
-
-    The app states both and grades neither. It once recommended moving
-    people between LEGs, and that was removed because presence is not
-    viability (see `app.domain.participant_mix`); a threshold for "good"
-    would be the same mistake wearing a percentage sign, since the decision
-    turns on economics, on what the participants agree to and on what BKW
-    confirms per location. So the LEGs are ordered on one continuum, from
-    production-heavy to consumption-heavy, and both extremes are where the
-    eye lands first.
-
-    Returns:
-        None.
-    """
+    """Draw the Ausgewogenheit view: how each LEG's two sides compare."""
     with connection_scope() as connection:
         balances = leg_balance(connection)
 
@@ -489,14 +372,7 @@ def _render_balance_panel() -> None:
 
 
 def _balance_row(balance) -> dict:
-    """Build one row of the Ausgewogenheit table.
-
-    Args:
-        balance: One `app.domain.statistics.LegBalance`.
-
-    Returns:
-        The row dict the table renders.
-    """
+    """Build one row of the Ausgewogenheit table."""
     if not balance.metering_points:
         ratio_text = "keine Messpunkte"
     elif balance.one_sided_note:
@@ -518,30 +394,12 @@ def _balance_row(balance) -> dict:
 
 
 def _optional_percent(value) -> str:
-    """Format a percentage that may not exist yet.
-
-    Args:
-        value: The percentage, or `None` when its denominator was zero.
-
-    Returns:
-        The German-formatted percentage, or an em dash. Deliberately not
-        "0 %": nothing fed in and nothing shared of what was fed in are
-        different statements, and printing a zero would assert the second.
-    """
+    """Format a percentage that may not exist yet."""
     return "—" if value is None else format_percent(value)
 
 
 def _pie(title: str, data: list[dict], empty_message: str) -> None:
-    """Draw one share-of-whole pie, or say why there is none.
-
-    Args:
-        title: The pie's German heading.
-        data: `{"name", "value"}` entries; empty draws the note instead.
-        empty_message: What to say when there is nothing to divide up.
-
-    Returns:
-        None.
-    """
+    """Draw one share-of-whole pie, or say why there is none."""
     with ui.column().classes("flex-grow min-w-[320px] gap-0"):
         ui.label(title).classes("text-body1 font-bold")
         if not data:
@@ -573,38 +431,19 @@ def _pie(title: str, data: list[dict], empty_message: str) -> None:
 
 
 def _format_capacity(value: float) -> str:
-    """Format a kWp figure the way a German reader writes it.
-
-    Args:
-        value: The figure.
-
-    Returns:
-        Two decimals with a comma, matching the overview's tiles.
-    """
+    """Format a kWp figure the way a German reader writes it."""
     return f"{value:.2f}".replace(".", ",")
 
 
 @ui.page("/statistics")
 def statistics_page() -> None:
-    """Send the old single-page route to the energy view.
-
-    Kept rather than deleted: it was the one Statistik route for the
-    app's whole life so far, and a dead link is a worse answer than a
-    redirect for something that costs one line.
-
-    Returns:
-        None.
-    """
+    """Send the old single-page route to the energy view."""
     ui.navigate.to("/statistics/energy")
 
 
 @ui.page("/statistics/energy")
 def statistics_energy_page() -> None:
-    """Render the Energie view: flow, shared energy, self-consumption.
-
-    Returns:
-        None.
-    """
+    """Render the Energie view: flow, shared energy, self-consumption."""
     with page_frame("/statistics/energy", "Statistik: Energie"):
         with connection_scope() as connection:
             legs = leg_repo.list_all(connection)
@@ -614,48 +453,27 @@ def statistics_energy_page() -> None:
 
 @ui.page("/statistics/growth")
 def statistics_growth_page() -> None:
-    """Render the Wachstum view: where the pipeline waits, and how it grew.
-
-    Returns:
-        None.
-    """
+    """Render the Wachstum view: where the pipeline waits, and how it grew."""
     with page_frame("/statistics/growth", "Statistik: Wachstum"):
         _render_people_panel()
 
 
 @ui.page("/statistics/receivables")
 def statistics_receivables_page() -> None:
-    """Render the Debitorenverlauf view: invoiced, received, still open.
-
-    Returns:
-        None.
-    """
+    """Render the Debitorenverlauf view: invoiced, received, still open."""
     with page_frame("/statistics/receivables", "Statistik: Debitorenverlauf"):
         _render_money_panel()
 
 
 @ui.page("/statistics/distribution")
 def statistics_distribution_page() -> None:
-    """Render the Verteilung view: how big each LEG is.
-
-    Returns:
-        None.
-    """
+    """Render the Verteilung view: how big each LEG is."""
     with page_frame("/statistics/distribution", "Statistik: Verteilung"):
         _render_distribution_panel()
 
 
 @ui.page("/statistics/balance")
 def statistics_balance_page() -> None:
-    """Render the Ausgewogenheit view: how each LEG's two sides compare.
-
-    A page of its own rather than a fifth card on Verteilung: that view
-    answers how *big* each LEG is, this one whether each LEG is *matched*,
-    and stacking two charts made the one you wanted the one you had to
-    scroll past.
-
-    Returns:
-        None.
-    """
+    """Render the Ausgewogenheit view: how each LEG's two sides compare."""
     with page_frame("/statistics/balance", "Statistik: Ausgewogenheit"):
         _render_balance_panel()

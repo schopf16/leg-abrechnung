@@ -1,10 +1,4 @@
-"""Tests for sending a broadcast with several attachments.
-
-Written after a real send went out without its attachment and nobody
-noticed: nothing on the final step said whether anything was attached.
-The wording shown before that irreversible action is therefore tested as
-carefully as the payload itself.
-"""
+"""Tests for sending a broadcast with several attachments."""
 
 import asyncio
 import dataclasses
@@ -56,8 +50,7 @@ def _person(db, name="Muster", email="a@example.ch") -> Person:
 
 
 def test_no_attachment_is_stated_as_plainly_as_an_attachment():
-    """Silence is what caused the incident: an empty list must produce a
-    sentence, not an empty string."""
+    """Silence is what caused the incident: an empty list must produce a sentence, not an empty string."""
     assert describe_attachments([]) == "Ohne Anhang."
 
 
@@ -78,8 +71,7 @@ def test_several_attachments_are_all_named():
 
 
 def test_the_stated_total_is_the_sum_not_the_largest():
-    """Microsoft's limit is on the message, so the total is the number
-    that decides whether a send will be rejected."""
+    """Microsoft's limit is on the message, so the total is the number that decides whether a send will..."""
     text = describe_attachments([("a.pdf", b"x" * 1024 * 1024), ("b.pdf", b"y" * 1024 * 1024)])
 
     assert "2,0 MB" in text
@@ -133,8 +125,7 @@ def test_no_attachments_means_no_attachments_key(tmp_path):
 
 
 def test_the_size_limit_applies_to_the_total_not_to_each_file(tmp_path):
-    """Files that each pass on their own fail together -- checking them
-    one by one would have let this through."""
+    """Files that each pass on their own fail together -- checking them one by one would have let this..."""
     half = MAX_INLINE_ATTACHMENT_BYTES // 2 + 1024
     paths = []
     for index in range(3):
@@ -163,8 +154,7 @@ def test_a_single_file_within_the_limit_still_passes(tmp_path):
 
 
 def test_every_recipient_gets_every_attachment(db, tmp_path):
-    """The same set for the whole batch -- a second recipient losing the
-    attachment would be exactly the reported symptom."""
+    """The same set for the whole batch -- a second recipient losing the attachment would be exactly..."""
     recipients = [_person(db, "Eins", "eins@example.ch"), _person(db, "Zwei", "zwei@example.ch")]
     first = tmp_path / "a.pdf"
     first.write_bytes(b"%PDF")
@@ -252,8 +242,7 @@ def test_an_uploaded_file_is_read_into_name_and_content():
 
 
 def test_spaces_and_parentheses_in_a_filename_are_not_a_problem():
-    """The name from the real report -- the first suspicion was the spaces,
-    which turned out to be innocent."""
+    """The name from the real report -- the first suspicion was the spaces, which turned out to be..."""
     from app.gui.pages.email_dispatch import read_uploaded_file
 
     name, content = asyncio.run(
@@ -265,13 +254,7 @@ def test_spaces_and_parentheses_in_a_filename_are_not_a_problem():
 
 
 def test_nicegui_still_hands_us_the_event_shape_we_read():
-    """A contract test against NiceGUI itself.
-
-    `read_uploaded_file` is called with `UploadEventArguments.file` and
-    expects `.name` plus an awaitable `.read()`. If a future NiceGUI
-    renames or re-shapes that, this fails loudly here instead of silently
-    inside an event handler, which is exactly how the last change escaped.
-    """
+    """A contract test against NiceGUI itself."""
     import inspect
 
     from nicegui.elements.upload_files import FileUpload
@@ -295,11 +278,7 @@ def test_nicegui_still_hands_us_the_event_shape_we_read():
 
 
 def _rendered_email_page():
-    """Render the E-Mail-Versand page and hand back its upload element.
-
-    Returns:
-        `(upload_element, client)`.
-    """
+    """Render the E-Mail-Versand page and hand back its upload element."""
     from nicegui import Client, ui
     from nicegui.elements.upload import Upload
 
@@ -314,22 +293,7 @@ def _rendered_email_page():
 
 
 async def _upload(upload, files) -> None:
-    """Deliver files to the handler the page actually registered.
-
-    Calls the element's registered `on_multi_upload` handler rather than
-    going through `Upload.handle_uploads`: without a running NiceGUI app,
-    `handle_event` defers the coroutine instead of running it, so nothing
-    would happen. This still fails if the widget is not wired, if the
-    handler reads the event instead of `event.files`, or if the files
-    never reach the page -- which is what these tests are for.
-
-    Args:
-        upload: The page's `ui.upload` element.
-        files: `FileUpload` instances to deliver.
-
-    Returns:
-        None.
-    """
+    """Deliver files to the handler the page actually registered."""
     from nicegui.events import MultiUploadEventArguments
 
     handlers = upload._multi_upload_handlers
@@ -346,8 +310,7 @@ def _file(name: str, content: bytes):
 
 
 def test_an_upload_through_the_page_reaches_the_attachment_list(db):
-    """End to end through the real widget: a regression to reading the
-    event instead of its files, or an unwired handler, fails here."""
+    """End to end through the real widget: a regression to reading the event instead of its files, or..."""
     upload, client = _rendered_email_page()
 
     with client:
@@ -358,9 +321,7 @@ def test_an_upload_through_the_page_reaches_the_attachment_list(db):
 
 
 def test_selecting_several_files_attaches_all_of_them(db):
-    """The assumption behind using `on_multi_upload`: every selected file
-    arrives. With a per-file handler that resets the widget, Quasar aborts
-    the siblings and only the first survives."""
+    """The assumption behind using `on_multi_upload`: every selected file arrives."""
     upload, client = _rendered_email_page()
 
     with client:
@@ -381,11 +342,7 @@ def test_selecting_several_files_attaches_all_of_them(db):
 
 
 def test_the_widget_is_wired_for_multiple_files_in_one_event(db):
-    """NiceGUI only batches the upload when `multiple` *and*
-    `on_multi_upload` are set (`Upload.__init__`). Without the batch prop
-    Quasar uploads each file in its own parallel request, and any reset
-    aborts the ones still in flight -- so this is the property that keeps
-    the attachments from silently disappearing again."""
+    """NiceGUI only batches the upload when `multiple` *and* `on_multi_upload` are set..."""
     upload, _ = _rendered_email_page()
 
     assert upload._props.get("multiple") is True

@@ -1,12 +1,5 @@
-"""sites management page: list, search, create, edit, delete, and a
-detail drill-down showing the site's metering points.
-
-Sorting goes through the shared "Sortierung" select (`app.gui.sorting`)
-like every other list in the app, not through Quasar's clickable column
-headers this table used to offer: the card-based lists have no headers to
-click, so clickable headers could never be the one mechanism that works
-everywhere.
-"""
+"""sites management page: list, search, create, edit, delete, and a detail drill-down showing the
+site's metering points."""
 
 from datetime import date, datetime
 
@@ -79,18 +72,7 @@ SORT_OPTIONS = [
 
 
 def _current_person_display(connection, metering_point_id: int) -> tuple[str, bool]:
-    """Find the name of the Person (currently or soon) assigned to a MeteringPoint.
-
-    Args:
-        connection: Open SQLite connection.
-        metering_point_id: Primary key of the metering point.
-
-    Returns:
-        `(name, is_future)`, see `app.gui.pages.metering_points._current_person_display`
-        (identical logic, duplicated here since this page needs its own
-        `ui.table`-row shape) -- `name` is "-" if there is no current or
-        upcoming Assignment at all.
-    """
+    """Find the name of the Person (currently or soon) assigned to a MeteringPoint."""
     assignment = assignment_repo.get_relevant_for_metering_point(
         connection, metering_point_id, datetime.now()
     )
@@ -103,17 +85,7 @@ def _current_person_display(connection, metering_point_id: int) -> tuple[str, bo
 
 
 def _to_row(site: Site, substation_areas: dict, problems: dict) -> dict:
-    """Convert a `site` into a row dict for the NiceGUI table.
-
-    Args:
-        site: site to convert.
-        substation areas: Preloaded `{substation_area_id: substation area}` lookup.
-        problems: `{site id: findings}` from `load_problems`.
-
-    Returns:
-        A dict with the fields required by `COLUMNS`, plus a hidden
-        `_search` key used for client-side filtering.
-    """
+    """Convert a `site` into a row dict for the NiceGUI table."""
     substation_area = substation_areas.get(site.substation_area_id)
     substation_area_name = substation_area.name if substation_area else "-"
     search_text = " ".join(
@@ -147,11 +119,7 @@ def _to_row(site: Site, substation_areas: dict, problems: dict) -> dict:
 
 @ui.page("/sites")
 def sites_page() -> None:
-    """Render the sites CRUD page with search.
-
-    Returns:
-        None.
-    """
+    """Render the sites CRUD page with search."""
     with page_frame("/sites", "Standorte"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -201,11 +169,7 @@ def sites_page() -> None:
         all_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded rows by the search input's value."""
             needle = (search_input.value or "").strip().lower()
             rows = [r for r in all_rows if needle in r["_search"]] if needle else list(all_rows)
             if problem_filter.active:
@@ -214,11 +178,7 @@ def sites_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all sites from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all sites from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(connection)}
@@ -230,49 +190,21 @@ def sites_page() -> None:
         search_input.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: Site | None) -> None:
-            """Open the create/edit dialog for a site.
-
-            Args:
-                existing: site to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a site."""
             open_site_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_view(event) -> None:
-            """Table row-view handler: navigate to the site's detail page.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row-view handler: navigate to the site's detail page."""
             ui.navigate.to(f"/sites/{event.args['id']}")
 
         def on_edit(event) -> None:
-            """Table row-edit handler: open the edit dialog for the clicked row.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row-edit handler: open the edit dialog for the clicked row."""
             with connection_scope() as connection:
                 existing = site_repo.get(connection, event.args["id"])
             open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete the site after confirmation.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row-delete handler: delete the site after confirmation."""
             site_id = event.args["id"]
             address_text = event.args["address"]
 
@@ -306,15 +238,7 @@ def sites_page() -> None:
 
 @ui.page("/sites/{site_id}")
 def site_detail_page(site_id: int) -> None:
-    """Render one site's detail view: address, Lage, substation area, and its
-    metering points (each with its own LEG, see `app.models.leg`).
-
-    Args:
-        site_id: Database id of the site, from the URL path.
-
-    Returns:
-        None.
-    """
+    """Render one site's detail view: address, Lage, substation area, and its metering points (each..."""
     with connection_scope() as connection:
         site = site_repo.get(connection, site_id)
         substation_area = (

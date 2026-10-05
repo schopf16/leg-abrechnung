@@ -98,9 +98,7 @@ def test_invoice_entry_uses_due_date_minus_payment_term_as_issue_date(db):
 
 
 def test_invoice_entry_falls_back_to_created_at_without_due_date(db):
-    """`add_items` always stamps `created_at` with the real current time
-    (ignoring whatever the caller passed), so this can only be checked
-    against today's date, not a fixed one."""
+    """`add_items` always stamps `created_at` with the real current time (ignoring whatever the caller..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, 10_000, due_date=None)
 
@@ -170,11 +168,7 @@ def test_account_entry_kinds_are_labeled_and_carry_note(db):
 
 
 def test_entries_are_sorted_chronologically_across_all_sources(db):
-    """`dunning_log.create` always stamps `sent_at` with the real current
-    time (not controllable via a parameter), so only the relative order
-    of the invoice and the payment -- both fully controlled here -- is
-    asserted directly; the overall sortedness check still covers the
-    dunning notice entry too, wherever "today" happens to place it."""
+    """`dunning_log.create` always stamps `sent_at` with the real current time (not controllable via a..."""
     person_id = _person(db)
     _run_id, item_id = _billing_item(db, person_id, 10_000, due_date="2026-05-01")
     # Issue date = due_date - PAYMENT_TERM (45 days) = 2026-03-17.

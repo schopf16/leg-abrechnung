@@ -134,8 +134,7 @@ def test_producer_counted_for_feed_in_person(db):
 
 
 def test_true_prosumer_with_both_directions_counts_on_both_sides(db):
-    """A person with both a consumption- and an feed-in-MeteringPoint is
-    deliberately counted in both totals -- see module docstring."""
+    """A person with both a consumption- and an feed-in-MeteringPoint is deliberately counted in both..."""
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
@@ -167,10 +166,7 @@ def test_ended_assignment_before_reference_date_no_longer_counts(db):
 
 
 def test_not_yet_started_assignment_counts_as_producer_and_consumer(db):
-    """Real customer data surfaced this: every LEG showed 0:0 because every
-    Assignment was pre-entered for the following quarter's move-ins. A
-    not-yet-started Assignment is now always relevant here (`Assignment.
-    is_current_or_upcoming`), not just once its start date arrives."""
+    """Real customer data surfaced this: every LEG showed 0:0 because every Assignment was pre-entered..."""
     substation_area_id = _substation_area(db, "TK1")
     site_id = _site(db, substation_area_id)
     person_id = _person(db)
@@ -186,8 +182,7 @@ def test_not_yet_started_assignment_counts_as_producer_and_consumer(db):
 
 
 def test_empty_scope_is_not_flagged_as_one_sided(db):
-    """No participants at all yet is not the same problem as one-sided --
-    nothing to warn about."""
+    """No participants at all yet is not the same problem as one-sided -- nothing to warn about."""
     mix = participant_mix.compute_participant_mix(db, [])
 
     assert mix.producer_count == 0
@@ -246,11 +241,7 @@ def test_the_two_sides_add_up_to_the_metering_point_count(db):
 
 
 def test_a_metering_point_without_a_current_assignment_still_counts(db):
-    """It belongs to the LEG and it has a direction, so it is not invisible.
-
-    Dropping it is one of the two reasons the badge fell short of the
-    metering point count, and nothing on screen said why.
-    """
+    """It belongs to the LEG and it has a direction, so it is not invisible."""
     leg_id = _leg(db, "LEG")
     site_id = _site(db, _substation_area(db, "TRA"))
     person_id = _person(db)
@@ -271,12 +262,7 @@ def test_a_metering_point_without_a_current_assignment_still_counts(db):
 
 
 def test_a_leg_counts_its_own_metering_points_not_its_neighbours(db):
-    """LEG membership hangs on the metering point, not on the address.
-
-    Two meters at one address can belong to different LEGs, so scoping
-    the mix through the sites pulled a neighbour's meter into these
-    figures -- and made them disagree with the count beside them.
-    """
+    """LEG membership hangs on the metering point, not on the address."""
     area_id = _substation_area(db, "TRA")
     site_id = _site(db, area_id)
     ours, theirs = _leg(db, "Unsere"), _leg(db, "Fremde")
@@ -297,11 +283,7 @@ def test_a_leg_counts_its_own_metering_points_not_its_neighbours(db):
 
 
 def test_the_person_count_still_counts_people(db):
-    """Seven meters are not seven members.
-
-    The overview counts metering points; `total_persons` must not follow,
-    or one person with eight meters would look like a community.
-    """
+    """Seven meters are not seven members."""
     area_id = _substation_area(db, "TRA")
     site_id = _site(db, area_id)
     leg_id = _leg(db, "LEG")
@@ -328,12 +310,7 @@ def test_the_person_count_still_counts_people(db):
 
 
 def test_one_party_at_two_locations_is_two_connections(db):
-    """The case that exposed the unit.
-
-    One company, two buildings, each with PV and a supply -- rechnerisch
-    one person, but two Prosumer. Counting people reported one and left
-    two metering points unaccounted for.
-    """
+    """The case that exposed the unit."""
     leg_id = _leg(db, "LEG")
     area_id = _substation_area(db, "TRA")
     company = _person(db, "Verwaltung")
@@ -351,11 +328,7 @@ def test_one_party_at_two_locations_is_two_connections(db):
 
 
 def test_several_parties_at_one_location_stay_separate(db):
-    """A Mehrfamilienhaus is not one Prosumer.
-
-    Whoever holds the PV on the roof is the Prosumer; every tenant is a
-    Konsumer in their own right. Counting sites would have merged them.
-    """
+    """A Mehrfamilienhaus is not one Prosumer."""
     leg_id = _leg(db, "LEG")
     site_id = _site(db, _substation_area(db, "TRA"))
     owner = _person(db, "Eigentuemerin")
@@ -374,13 +347,7 @@ def test_several_parties_at_one_location_stay_separate(db):
 
 
 def test_the_two_sides_account_for_every_metering_point(db):
-    """The arithmetic the administrator actually performs.
-
-    Connections with both directions hold two meters, the gaps and the
-    consumption-only ones hold one each -- and together that has to be
-    every metering point in the database. This is the check that failed
-    before, by exactly two.
-    """
+    """The arithmetic the administrator actually performs."""
     leg_id = _leg(db, "LEG")
     area_id = _substation_area(db, "TRA")
     company = _person(db, "Verwaltung")
@@ -404,12 +371,7 @@ def test_the_two_sides_account_for_every_metering_point(db):
 
 
 def test_a_connection_that_only_feeds_in_is_a_prosumer_and_is_named(db):
-    """The administrator's model: whoever feeds in also draws there.
-
-    Such a connection is not a third kind but a gap, counted with the
-    Prosumer so the tiles stay complete, and named with its **location**
-    so the missing meter can be found -- a party may hold several.
-    """
+    """The administrator's model: whoever feeds in also draws there."""
     leg_id = _leg(db, "LEG")
     site_id = _site(db, _substation_area(db, "TRA"))
     person_id = _person(db, "NurEinspeisung")
@@ -458,12 +420,7 @@ def test_an_ended_assignment_no_longer_counts(db):
 
 
 def test_the_tiles_show_both_counts_and_admit_the_gaps():
-    """Rendered, not just computed -- and the caption has to stay true.
-
-    "Anschlüsse mit Einspeisung und Bezug" describes the intended state;
-    while a few of them have no Bezug, the tile says so itself rather than
-    quietly folding them in.
-    """
+    """Rendered, not just computed -- and the caption has to stay true."""
     from nicegui import Client, ui
 
     from app.db.connection import connection_scope

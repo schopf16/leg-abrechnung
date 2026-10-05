@@ -6,11 +6,7 @@ from app.logging_setup import configure_logging
 
 
 def _reset_root_logger():
-    """Remove every handler so a previous test's setup can't bleed into the next.
-
-    Returns:
-        None.
-    """
+    """Remove every handler so a previous test's setup can't bleed into the next."""
     root = logging.getLogger()
     for handler in root.handlers[:]:
         handler.close()
@@ -85,10 +81,7 @@ def test_redacting_filter_strips_bearer_tokens_and_secrets(tmp_path, monkeypatch
 
 
 def test_httpx_and_httpcore_loggers_are_kept_below_debug(tmp_path, monkeypatch):
-    """These libraries log full request/response detail (including the
-    Authorization header used by app.emailing.graph_client) at DEBUG --
-    the actual safeguard against ever writing a secret to the log is
-    keeping them at WARNING, not just the regex redaction filter."""
+    """These libraries log full request/response detail (including the Authorization header used by..."""
     logs_dir = tmp_path / "logs"
     monkeypatch.setattr("app.logging_setup.LOGS_DIR", logs_dir)
 

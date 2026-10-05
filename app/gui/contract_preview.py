@@ -1,21 +1,4 @@
-"""Look at a filled-in Beitrittserklärung before anybody sends one.
-
-The administrator's question, and it is the right one: *"wie kann ich prüfen
-dass die erste seite korrekt ausgefüllt wird?"* Page 1 is drawn from twelve
-stored values and one hand-entered one, and no test can answer whether the
-result reads correctly to a human. So this builds the document for a person
-of their choosing and says where it is.
-
-Deliberately available from the Textbausteine page, beside the checkbox that
-attaches the contract: the question arises exactly while ticking that box.
-It is also what the send dialog will show later (stage 3) -- the same
-generator, so the preview cannot drift from what goes out.
-
-**It writes into `output/` and names the path**, which is what every other
-document in this app does (`app.pdf.export_service`). The one addition is a
-button that hands the file to the system viewer, because a preview nobody
-opens is not a preview. Windows-only, like the app.
-"""
+"""Look at a filled-in Beitrittserklärung before anybody sends one."""
 
 import os
 from pathlib import Path
@@ -34,28 +17,13 @@ from app.sort_keys import person_name_key
 
 
 def _safe_filename(text: str) -> str:
-    """Reduce a name to something Windows accepts in a filename.
-
-    Args:
-        text: The person's display name.
-
-    Returns:
-        The name with path-unsafe characters replaced.
-    """
+    """Reduce a name to something Windows accepts in a filename."""
     keep = [character if character.isalnum() or character in " -_" else "_" for character in text]
     return "".join(keep).strip() or "Person"
 
 
 def open_contract_preview(*, document_key: str) -> None:
-    """Ask which person, build their Beitrittserklärung, and say where it is.
-
-    Args:
-        document_key: The `app.domain.auto_attachments` key of the stored
-            form, so the preview uses the same file a send would.
-
-    Returns:
-        None.
-    """
+    """Ask which person, build their Beitrittserklärung, and say where it is."""
     with connection_scope() as connection:
         people = sorted(
             (person for person in person_repo.list_all(connection) if person.active),
@@ -89,11 +57,7 @@ def open_contract_preview(*, document_key: str) -> None:
         result = ui.column().classes("w-full gap-1")
 
         def build() -> None:
-            """Write the document and show where it landed.
-
-            Returns:
-                None.
-            """
+            """Write the document and show where it landed."""
             if person_select.value is None:
                 safe_notify("Bitte eine Person wählen.", type="warning")
                 return
@@ -127,19 +91,7 @@ def open_contract_preview(*, document_key: str) -> None:
 
 
 def _render_missing_note(fields) -> None:
-    """Name the fields that came out blank, so a gap is not mistaken for a bug.
-
-    A blank line on the form can mean two things -- nothing is stored, or
-    something went wrong reading it -- and only the first is normal. Saying
-    which fields are empty turns the preview into an answer rather than a
-    new question.
-
-    Args:
-        fields: The gathered `ContractFields`.
-
-    Returns:
-        None.
-    """
+    """Name the fields that came out blank, so a gap is not mistaken for a bug."""
     labels = {
         "names": "Vorname, Name",
         "address": "Adresse",
@@ -157,18 +109,7 @@ def _render_missing_note(fields) -> None:
 
 
 def _open(path: Path) -> None:
-    """Hand one file to the system viewer.
-
-    The only place this app opens a file. Everywhere else it writes into
-    `output/` and names the path, which stays the behaviour here too -- this
-    is the convenience on top, not the mechanism.
-
-    Args:
-        path: The file to open.
-
-    Returns:
-        None.
-    """
+    """Hand one file to the system viewer."""
     opener: Optional[object] = getattr(os, "startfile", None)
     if opener is None:
         safe_notify(f"Datei liegt unter: {path}", type="info")

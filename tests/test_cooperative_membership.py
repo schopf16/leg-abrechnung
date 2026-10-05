@@ -1,12 +1,4 @@
-"""Tests for the Genossenschaft membership history.
-
-The point of storing this as dated periods rather than two columns on
-`person` is that a cooperative has to be able to answer "who held how many
-shares when" years later. So the tests below are mostly about the history
-surviving a change, and about the two places this deliberately behaves
-differently from `app.models.assignment`: a gap is legitimate, and
-membership is judged strictly on today.
-"""
+"""Tests for the Genossenschaft membership history."""
 
 import sqlite3
 from datetime import date
@@ -20,15 +12,7 @@ from app.models.person import Person
 
 
 def _person(db, last_name: str = "Muster") -> int:
-    """Create a minimal Person to hang memberships off.
-
-    Args:
-        db: Database connection fixture.
-        last_name: Surname, so several persons can be told apart.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a minimal Person to hang memberships off."""
     return person_repo.create(
         db,
         Person(
@@ -55,18 +39,7 @@ def _person(db, last_name: str = "Muster") -> int:
 
 
 def _add(db, person_id, shares, valid_from, valid_to=None) -> int:
-    """Add one membership period.
-
-    Args:
-        db: Database connection fixture.
-        person_id: The member.
-        shares: Share count for this period.
-        valid_from: First day of the period.
-        valid_to: Last day, or `None` for a running membership.
-
-    Returns:
-        The new period's id.
-    """
+    """Add one membership period."""
     return coop_repo.create(
         db,
         CooperativeMembership(
@@ -106,11 +79,7 @@ def test_an_open_period_runs_indefinitely(db):
 
 
 def test_changing_the_share_count_keeps_the_previous_figure(db):
-    """The whole reason this is a history and not a column.
-
-    Closing the running period and opening a new one must leave the old
-    share count answerable for the days it applied to.
-    """
+    """The whole reason this is a history and not a column."""
     person_id = _person(db)
     _add(db, person_id, 5, date(2026, 1, 1), date(2026, 5, 31))
     _add(db, person_id, 12, date(2026, 6, 1))
@@ -121,11 +90,7 @@ def test_changing_the_share_count_keeps_the_previous_figure(db):
 
 
 def test_leaving_and_rejoining_produces_no_warning(db):
-    """A gap is the truth about a membership, not an inconsistency.
-
-    Deliberately different from `app.models.assignment.find_warnings`,
-    where an uncovered day means somebody's energy belongs to nobody.
-    """
+    """A gap is the truth about a membership, not an inconsistency."""
     person_id = _person(db)
     _add(db, person_id, 5, date(2024, 1, 1), date(2024, 12, 31))
     _add(db, person_id, 8, date(2026, 6, 1))
@@ -157,13 +122,7 @@ def test_an_earlier_period_left_open_overlaps_everything_after_it(db):
 
 
 def test_membership_is_judged_strictly_on_today(db):
-    """A membership starting next month is not a membership yet.
-
-    This is the one place the cooperative deliberately diverges from
-    `Assignment.is_current_or_upcoming`: a pre-entered assignment counts
-    as planning, but mailing "die Genossenschafter" must not reach
-    somebody who has not joined.
-    """
+    """A membership starting next month is not a membership yet."""
     member_id = _person(db, "Mitglied")
     future_id = _person(db, "Kuenftig")
     _add(db, member_id, 4, date(2020, 1, 1))

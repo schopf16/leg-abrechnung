@@ -1,11 +1,4 @@
-"""Generates the two CSV reconciliation lists for a billing run.
-
-Unlike the per-person billing PDFs, these are not documents sent to
-anyone -- they exist so the administrator can check off incoming bank
-payments against invoices (via the QRR reference number printed on each
-person's Einzahlungsschein, see `app.pdf.qr_reference`) and process
-outgoing payouts to producers, without hunting through individual PDFs.
-"""
+"""Generates the two CSV reconciliation lists for a billing run."""
 
 import csv
 from datetime import date
@@ -25,22 +18,7 @@ def generate_invoice_list_csv(
     persons: dict[int, Person],
     output_path: Path,
 ) -> Path:
-    """Write one row per invoice (person owing the LEG money).
-
-    Lists the same QRR reference number printed on each person's
-    Einzahlungsschein, so incoming payments on a bank statement can be
-    matched back to the right invoice.
-
-    Args:
-        run: The billing run to list invoices for.
-        items: All line items of the run (only persons owing the LEG
-            money, i.e. `net_amount_rappen > 0`, are listed).
-        persons: Person lookup by id, for names and customer numbers.
-        output_path: Destination path for the generated CSV.
-
-    Returns:
-        `output_path`, for convenience.
-    """
+    """Write one row per invoice (person owing the LEG money)."""
     invoice_items = [i for i in items if i.is_owed_to_leg]
     due_date = date.today() + PAYMENT_TERM
 
@@ -71,17 +49,7 @@ def generate_payout_list_csv(
     persons: dict[int, Person],
     output_path: Path,
 ) -> Path:
-    """Write one row per payout (person the LEG owes money to).
-
-    Args:
-        items: All line items of the run (only persons owed money by the
-            LEG, i.e. `net_amount_rappen < 0`, are listed).
-        persons: Person lookup by id, for names, customer numbers and IBANs.
-        output_path: Destination path for the generated CSV.
-
-    Returns:
-        `output_path`, for convenience.
-    """
+    """Write one row per payout (person the LEG owes money to)."""
     payout_items = [i for i in items if i.is_owed_by_leg]
 
     with open(output_path, "w", newline="", encoding="utf-8-sig") as f:

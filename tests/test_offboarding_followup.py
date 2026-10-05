@@ -1,11 +1,4 @@
-"""Tests for the gap that let a fully offboarded member stay active.
-
-Found in the real database: all four Austritt steps dated, the person still
-`active = 1`, still under Personen weeks later. The removal offer exists
-(`app.gui.offboarding_form.open_remove_person_dialog`) but comes exactly
-once, and the finished tracker drops off the Austritte worklist, so nothing
-mentions the person again. These tests are that second chance.
-"""
+"""Tests for the gap that let a fully offboarded member stay active."""
 
 from datetime import date
 
@@ -23,15 +16,7 @@ from app.models.person import Person
 
 
 def _person(connection, last_name: str = "Wyder") -> int:
-    """Create a person with no dependent rows.
-
-    Args:
-        connection: Open SQLite connection.
-        last_name: Their surname.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person with no dependent rows."""
     return person_repo.create(
         connection,
         Person(
@@ -58,15 +43,7 @@ def _person(connection, last_name: str = "Wyder") -> int:
 
 
 def _complete_offboarding(connection, person_id: int) -> None:
-    """Walk one person's offboarding through all four steps.
-
-    Args:
-        connection: Open SQLite connection.
-        person_id: The person being offboarded.
-
-    Returns:
-        None.
-    """
+    """Walk one person's offboarding through all four steps."""
     offboarding = person_offboarding_repo.start_for_person(
         connection, person_id, reason="voluntary", decided_at=date(2026, 9, 13)
     )
@@ -174,12 +151,7 @@ def test_a_person_with_billing_history_is_deactivated_not_deleted(db):
 
 
 def test_the_austritte_page_shows_a_finished_offboarding_that_needs_action():
-    """The regression test for the real case.
-
-    With the default filter, a finished process used to disappear while the
-    person stayed active. It has to stay, badged as unfinished business,
-    with the removal one click away.
-    """
+    """The regression test for the real case."""
     from app.gui.pages import offboardings as offboardings_module
 
     with connection_scope() as connection:
@@ -235,13 +207,7 @@ def test_the_austritte_page_hides_a_finished_offboarding_that_is_settled():
 
 
 def test_the_two_destructive_buttons_do_not_read_alike():
-    """A card can carry both, and they destroy very different things.
-
-    Reported from first use: "Löschen" (discard the tracking) sat beside
-    "Person entfernen" (remove the person), both red, and the only thing
-    telling them apart was the confirmation text -- which is read after the
-    click, not before it. Each label now names its own object.
-    """
+    """A card can carry both, and they destroy very different things."""
     from app.gui.pages import offboardings as offboardings_module
 
     with connection_scope() as connection:

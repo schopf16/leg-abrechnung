@@ -1,33 +1,4 @@
-"""Looks addresses up in the local register: suggestions, and verification.
-
-Two questions that look like one and are not, which is why there are two
-functions rather than one "fuzzy search":
-
-- **While typing**, the useful operation is *narrowing*: each character
-  leaves fewer candidates. That is a prefix match on an index and needs no
-  similarity scoring at all.
-- **While checking a finished address**, the useful operation is
-  *similarity*: a wrong string is already there and the helpful answer is
-  "did you mean Worblaufen?". That needs `difflib`, and only over the
-  shortlist of candidates for one postal code.
-
-Searching runs over the `street` table (about 197'000 rows), not the
-`address` table (3.3 million), so narrowing stays fast without any
-full-text machinery.
-
-**The locality is always the postal one.** swisstopo gives both: the postal
-locality (`ZIP_LABEL`, e.g. "3048 Worblaufen") and the political
-municipality (`COM_NAME`, "Ittigen"). This app fills and suggests the postal
-locality, never the municipality -- it is the name the member reads on the
-invoice, and a resident of Worblaufen should not find their village replaced
-by the larger municipality that absorbed it. It is also the better-defined
-of the two: postal code 3048 lies in *two* municipalities (Ittigen and
-Bern), so the political name is not even determined by the postal code.
-
-Without a register every function here returns "nothing found" rather than
-raising. The app has to work before the first download and after a failed
-one, and it does: no suggestions, no findings, nothing broken.
-"""
+"""Looks addresses up in the local register: suggestions, and verification."""
 
 import difflib
 import re
@@ -70,15 +41,7 @@ _CUTOFF_STREET = 0.8
 
 @dataclass(frozen=True)
 class AddressSuggestion:
-    """One candidate offered while an address is being typed.
-
-    Attributes:
-        street: Official street name.
-        house_number: The house number, or `""` when the suggestion stands
-            for the whole street and the number is still to be typed.
-        postal_code: Postal code.
-        locality: Postal locality -- never the political municipality.
-    """
+    """One candidate offered while an address is being typed."""
 
     street: str
     house_number: str
@@ -87,30 +50,14 @@ class AddressSuggestion:
 
     @property
     def label(self) -> str:
-        """The single line shown in the suggestion list.
-
-        Returns:
-            E.g. `"Erstweg 4, 3048 Musterdorf"`.
-        """
+        """The single line shown in the suggestion list."""
         left = " ".join(part for part in (self.street, self.house_number) if part)
         return f"{left}, {self.postal_code} {self.locality}".strip(", ")
 
 
 @dataclass(frozen=True)
 class AddressFinding:
-    """One thing the register disagrees with about a stored address.
-
-    Carries no severity and no explanation on purpose. The UI shows
-    "Meinten Sie: <suggestion>?" with yes and no, and nothing else -- an
-    explanation of why the app is asking costs space and gets skipped, and
-    in a list of findings it becomes noise.
-
-    Attributes:
-        field: Which part is in question (`FIELD_*`).
-        value: What is stored today.
-        suggestion: The official value to offer, or `""` when the register
-            holds nothing similar enough to propose.
-    """
+    """One thing the register disagrees with about a stored address."""
 
     field: str
     value: str
@@ -118,32 +65,12 @@ class AddressFinding:
 
 
 def _resolve(path: Optional[Path]) -> Path:
-    """Fall back to the configured register location.
-
-    Resolved here rather than as a default argument: a default is bound when
-    the function is defined, so `tests/conftest.py` could not point the
-    whole app at a throwaway register -- and a test that renders a page
-    would read the administrator's real one.
-
-    Args:
-        path: An explicit path, or `None`.
-
-    Returns:
-        The path to use.
-    """
+    """Fall back to the configured register location."""
     return path if path is not None else ADDRESS_REGISTER_PATH
 
 
 def _connect(path: Path) -> Optional[sqlite3.Connection]:
-    """Open the register read-only, or report that there is none.
-
-    Args:
-        path: The register file.
-
-    Returns:
-        A read-only connection, or `None` when the register is absent or
-        unreadable -- a normal state, not an error.
-    """
+    """Open the register read-only, or report that there is none."""
     if not path.exists():
         return None
     try:
@@ -155,31 +82,12 @@ def _connect(path: Path) -> Optional[sqlite3.Connection]:
 
 
 def open_register(path: Optional[Path] = None) -> Optional[sqlite3.Connection]:
-    """Open the register once, for a caller that will check many addresses.
-
-    The dashboard verifies every site and every person on each load. Opening
-    the file per address would be a hundred-odd file opens for one page, so
-    the aggregate checks open it once and hand the connection to `verify`.
-
-    Args:
-        path: The register file.
-
-    Returns:
-        A read-only connection the caller must close, or `None` when no
-        register is installed.
-    """
+    """Open the register once, for a caller that will check many addresses."""
     return _connect(_resolve(path))
 
 
 def register_available(path: Optional[Path] = None) -> bool:
-    """Whether address lookups can do anything at all.
-
-    Args:
-        path: The register file.
-
-    Returns:
-        `True` if a usable register exists.
-    """
+    """Whether address lookups can do anything at all."""
     connection = _connect(_resolve(path))
     if connection is None:
         return False
@@ -193,15 +101,7 @@ def register_available(path: Optional[Path] = None) -> bool:
 
 
 def split_query(query: str) -> tuple[str, str]:
-    """Split a typed query into street text and a trailing house number.
-
-    Args:
-        query: What the administrator has typed so far.
-
-    Returns:
-        `(street_text, house_number)`; the number is `""` when none was
-        typed yet, which is the common case while still typing the street.
-    """
+    """Split a typed query into street text and a trailing house number."""
     match = _QUERY_TAIL.match(query.strip())
     if match:
         return (match.group(1).strip(), match.group(2).strip())
@@ -214,33 +114,7 @@ def suggest_addresses(
     path: Optional[Path] = None,
     postal_code: str = "",
 ) -> list[AddressSuggestion]:
-    """Narrow the register down to what has been typed so far.
-
-    Offers whole **streets** until a house number is typed, and concrete
-    addresses once one is: a street with sixty houses would otherwise bury
-    the list before the number is even known.
-
-    Ordering puts official, existing addresses first -- `official` and
-    `status` never exclude anything (filtering them out loses real
-    addresses, see `app.importers.address_register`), they only decide what
-    is offered first.
-
-    Args:
-        query: What the administrator has typed.
-        limit: Maximum number of suggestions.
-        path: The register file.
-        postal_code: A postal code the form already holds. Matching streets
-            are offered **first** -- without this, typing "untere z" with
-            3063 Ittigen already filled in buried the one relevant street
-            under six from other cantons. Ranked rather than filtered: a
-            street really can sit behind a different postal code, and that
-            case is exactly what `verify` reports, so hiding it here would
-            make the correction unreachable.
-
-    Returns:
-        Up to `limit` suggestions, best match first; empty when the query is
-        too short, nothing matches, or no register is installed.
-    """
+    """Narrow the register down to what has been typed so far."""
     street_text, house_number = split_query(query)
     folded = fold_for_sort(street_text)
     code = postal_code.strip()
@@ -304,20 +178,7 @@ def suggest_localities(
     limit: int = DEFAULT_LIMIT,
     path: Optional[Path] = None,
 ) -> list[AddressSuggestion]:
-    """Narrow postal codes and localities, for the PLZ and Ort fields.
-
-    Accepts either side: digits narrow by postal code, letters by locality
-    name, so typing "3048" and typing "Worbl" both get there.
-
-    Args:
-        query: What the administrator has typed.
-        limit: Maximum number of suggestions.
-        path: The register file.
-
-    Returns:
-        Up to `limit` suggestions carrying only postal code and locality;
-        empty when nothing matches or no register is installed.
-    """
+    """Narrow postal codes and localities, for the PLZ and Ort fields."""
     text = query.strip()
     if len(text) < 2:
         return []
@@ -357,18 +218,7 @@ _BY_LOCALITY = """
 
 
 def _official_localities(connection: sqlite3.Connection, postal_code: str) -> list[str]:
-    """Every postal locality the register lists for one postal code.
-
-    Several are normal: 3065 is both "Bolligen" and "Bolligen Dorf", and all
-    of them are correct, so none of them may be flagged.
-
-    Args:
-        connection: Open register connection.
-        postal_code: The code to look up.
-
-    Returns:
-        The locality names, most-used first.
-    """
+    """Every postal locality the register lists for one postal code."""
     rows = connection.execute(
         """
         SELECT locality, COUNT(*) AS weight FROM street WHERE postal_code = ?
@@ -387,30 +237,7 @@ def verify(
     path: Optional[Path] = None,
     connection: Optional[sqlite3.Connection] = None,
 ) -> list[AddressFinding]:
-    """Check one address against the register.
-
-    Checks three things independently, so a wrong locality does not hide a
-    wrong street. The house number is compared as **folded text**, never
-    split into a number and a letter: of the official addresses, 331'401
-    are dotted ("31.1") and 25'403 are shaped differently again, and
-    splitting would mangle them.
-
-    Args:
-        street: Street name as stored.
-        house_number: House number as stored.
-        postal_code: Postal code as stored.
-        locality: Locality as stored.
-        path: The register file. Ignored when `connection` is given.
-        connection: An open register connection from `open_register`, for a
-            caller checking many addresses in one pass. It stays open --
-            whoever opened it closes it.
-
-    Returns:
-        One `AddressFinding` per disagreement, empty when the address checks
-        out -- and also empty when no register is installed, because an
-        absent register is not evidence against an address, and empty while
-        the address is still being typed.
-    """
+    """Check one address against the register."""
     # Nothing to check before there is an address. A freshly opened dialog
     # otherwise greeted the administrator with "Nicht im amtlichen
     # Verzeichnis." under an empty field -- a complaint about something they
@@ -517,19 +344,7 @@ def verify(
 
 
 def _closest(value: str, candidates: list[str], cutoff: float = _CUTOFF_DEFAULT) -> str:
-    """Pick the candidate a human most likely meant, or nothing.
-
-    Args:
-        value: What is stored.
-        candidates: What the register offers in that postal code.
-        cutoff: Minimum similarity, see `_CUTOFF_STREET`.
-
-    Returns:
-        The closest candidate, or `""` when none is close enough. Returning
-        nothing is the honest answer for a genuinely new building: the UI
-        then states the address is unknown instead of proposing a wrong
-        correction.
-    """
+    """Pick the candidate a human most likely meant, or nothing."""
     if not value.strip() or not candidates:
         return ""
     matches = difflib.get_close_matches(value.strip(), candidates, n=1, cutoff=cutoff)

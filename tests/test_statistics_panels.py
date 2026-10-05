@@ -1,11 +1,4 @@
-"""Tests for the Statistik views: Energie, Wachstum, Debitorenverlauf,
-Verteilung.
-
-Four pages, each answering one question. Three of the four have nothing to
-draw in a fresh deployment, so what they say when empty is tested as
-carefully as what they draw when full: an unexplained blank is what made
-this part of the app feel dead in the first place.
-"""
+"""Tests for the Statistik views: Energie, Wachstum, Debitorenverlauf, Verteilung."""
 
 from datetime import date
 
@@ -29,15 +22,7 @@ from app.models.site import Site
 
 
 def _person(db, last_name: str) -> int:
-    """Create a person.
-
-    Args:
-        db: Database connection fixture.
-        last_name: Their surname.
-
-    Returns:
-        The new person's id.
-    """
+    """Create a person."""
     return person_repo.create(
         db,
         Person(
@@ -64,17 +49,7 @@ def _person(db, last_name: str) -> int:
 
 
 def _onboarding_at(db, person_id: int, completed_steps: int) -> None:
-    """Start an onboarding and date its first `completed_steps` steps.
-
-    Args:
-        db: Database connection fixture.
-        person_id: Whose onboarding.
-        completed_steps: How many steps are already done, so the tracker
-            waits on the next one.
-
-    Returns:
-        None.
-    """
+    """Start an onboarding and date its first `completed_steps` steps."""
     tracker = onboarding_repo.start_for_person(db, person_id)
     for attribute, _ in STEPS[:completed_steps]:
         setattr(tracker, attribute, date(2026, 1, 1))
@@ -82,15 +57,7 @@ def _onboarding_at(db, person_id: int, completed_steps: int) -> None:
 
 
 def _leg(db, name: str) -> int:
-    """Create a LEG.
-
-    Args:
-        db: Database connection fixture.
-        name: Its name.
-
-    Returns:
-        The new LEG's id.
-    """
+    """Create a LEG."""
     return leg_repo.create(
         db,
         Leg(
@@ -105,18 +72,7 @@ def _leg(db, name: str) -> int:
 
 
 def _meter(db, leg_id: int, direction: str, suffix: str, pv: float | None = None) -> None:
-    """Create one metering point in a LEG.
-
-    Args:
-        db: Database connection fixture.
-        leg_id: Its LEG.
-        direction: Consumption or feed-in.
-        suffix: Two digits making the designation unique.
-        pv: Installed PV power, or `None`.
-
-    Returns:
-        None.
-    """
+    """Create one metering point in a LEG."""
     site_id = site_repo.create(
         db,
         Site(
@@ -149,11 +105,7 @@ def _meter(db, leg_id: int, direction: str, suffix: str, pv: float | None = None
 
 
 def test_the_funnel_counts_people_at_the_step_they_wait_on(db):
-    """Not a cumulative funnel: the useful question is what holds people up.
-
-    Somebody with three steps dated is waiting on the fourth, and that is
-    where they are counted.
-    """
+    """Not a cumulative funnel: the useful question is what holds people up."""
     _onboarding_at(db, _person(db, "Neu"), 0)
     _onboarding_at(db, _person(db, "Eingeteilt"), 2)
     _onboarding_at(db, _person(db, "Vertrag"), 3)
@@ -267,14 +219,7 @@ _HEADINGS = {
 
 
 def _render(view: str) -> Client:
-    """Render one Statistik view.
-
-    Args:
-        view: One of `_VIEWS`' keys.
-
-    Returns:
-        The client holding the rendered page.
-    """
+    """Render one Statistik view."""
     from app.gui.pages import statistics as statistics_module
 
     client = Client(ui.page(f"/probe-{view}")(lambda: None), request=None)
@@ -284,14 +229,7 @@ def _render(view: str) -> Client:
 
 
 def _texts(client: Client) -> list[str]:
-    """Every label text on the page.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The non-empty texts.
-    """
+    """Every label text on the page."""
     return [
         element.text
         for element in client.elements.values()
@@ -301,12 +239,7 @@ def _texts(client: Client) -> list[str]:
 
 @pytest.mark.parametrize("view", sorted(_VIEWS))
 def test_each_view_shows_its_own_theme_and_nothing_else(view):
-    """One theme per page -- that is the point of having five.
-
-    Several charts on one page meant the one you wanted was never the one
-    in front of you. Parametrized over `_VIEWS` rather than a list of its
-    own, so a sixth view cannot be added without this noticing.
-    """
+    """One theme per page -- that is the point of having five."""
     texts = _texts(_render(view))
 
     assert _HEADINGS[view] in texts
@@ -323,21 +256,12 @@ def test_each_view_shows_its_own_theme_and_nothing_else(view):
     ],
 )
 def test_each_empty_view_names_its_own_reason(view, message):
-    """Three of the four are empty in a fresh deployment.
-
-    Each says which source is missing, because "import readings" and "run a
-    billing" are different actions and an unexplained blank suggests
-    neither.
-    """
+    """Three of the four are empty in a fresh deployment."""
     assert message in _texts(_render(view))
 
 
 def test_the_funnel_reads_top_down_in_process_order():
-    """ECharts puts index 0 at the bottom of a category axis.
-
-    Regression test for exactly that: the chart first came out upside
-    down, with the finished ones on top and the first step at the bottom.
-    """
+    """ECharts puts index 0 at the bottom of a category axis."""
     with connection_scope() as connection:
         _onboarding_at(connection, _person(connection, "Wartend"), 3)
 
@@ -354,14 +278,7 @@ def test_the_funnel_reads_top_down_in_process_order():
 
 
 def _resolution_select(client: Client):
-    """The one resolution select on a view.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The select element.
-    """
+    """The one resolution select on a view."""
     matches = [
         element
         for element in client.elements.values()
@@ -372,24 +289,13 @@ def _resolution_select(client: Client):
 
 
 def _offered_resolutions(client: Client) -> set[str]:
-    """Which resolutions a view's axis offers.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The option keys.
-    """
+    """Which resolutions a view's axis offers."""
     options = _resolution_select(client).options
     return set(options if isinstance(options, list) else options.keys())
 
 
 def test_the_receivables_view_offers_no_quarter_hour():
-    """Invoices do not happen at that resolution.
-
-    Offering it would produce a flat line with 96 points and invite the
-    reader to look for something that cannot be there.
-    """
+    """Invoices do not happen at that resolution."""
     offered = _offered_resolutions(_render("receivables"))
 
     assert "quarter_hour" not in offered
@@ -404,14 +310,7 @@ def test_the_energy_view_offers_every_resolution():
 
 @pytest.mark.parametrize("view", ["growth", "distribution", "balance"])
 def test_a_view_without_a_time_series_has_no_time_axis(view):
-    """Controls that would do nothing do not belong on the screen.
-
-    The funnel, the per-LEG distribution and the balance are snapshots of
-    now; arrows to page through windows would be widgets promising
-    something they cannot deliver. The balance goes further and sums its
-    energy over *every* imported reading, which is why it says so on the
-    page instead of implying a window it does not have.
-    """
+    """Controls that would do nothing do not belong on the screen."""
     client = _render(view)
     arrows = [
         element
@@ -432,11 +331,7 @@ def test_a_view_without_a_time_series_has_no_time_axis(view):
 
 
 def test_the_view_shows_one_pie_per_unit():
-    """Metering points and kWp are different units.
-
-    One pie cannot hold both, and putting them on two axes of one bar
-    chart is what made the first version unreadable.
-    """
+    """Metering points and kWp are different units."""
     with connection_scope() as connection:
         leg_id = _leg(connection, "LEG Eins")
         _meter(connection, leg_id, DIRECTION_FEED_IN, "01", pv=10.0)
@@ -452,12 +347,7 @@ def test_the_view_shows_one_pie_per_unit():
 
 
 def test_the_table_carries_what_a_pie_cannot_say():
-    """Two LEGs of equal size, and the direction split.
-
-    No pie shows that two slices are exactly equal, and none can express
-    a split within a slice at all -- which is the whole reason the table
-    stayed.
-    """
+    """Two LEGs of equal size, and the direction split."""
     with connection_scope() as connection:
         for index, name in enumerate(("LEG A", "LEG B")):
             leg_id = _leg(connection, name)
@@ -482,11 +372,7 @@ def test_the_table_carries_what_a_pie_cannot_say():
 
 
 def test_a_leg_without_pv_is_in_the_table_but_not_in_the_pv_pie():
-    """A zero slice would be invisible anyway, and the table has the fact.
-
-    Drawing it would put a legend entry on a pie for something with no
-    area, which reads as a rendering fault rather than as a zero.
-    """
+    """A zero slice would be invisible anyway, and the table has the fact."""
     with connection_scope() as connection:
         with_pv = _leg(connection, "Mit PV")
         without = _leg(connection, "Ohne PV")
@@ -507,12 +393,7 @@ def test_a_leg_without_pv_is_in_the_table_but_not_in_the_pv_pie():
 
 
 def test_the_pies_carry_no_slice_labels():
-    """LEG names are too long for a slice, and a truncated one is worse.
-
-    ECharts shortened them to "LEG-Itti…", which took the space and said
-    nothing. The hover gives the full name, value and share, and every
-    name is spelled out in the table below -- so the slices stay bare.
-    """
+    """LEG names are too long for a slice, and a truncated one is worse."""
     with connection_scope() as connection:
         leg_id = _leg(connection, "LEG mit einem sehr langen Namen")
         _meter(connection, leg_id, DIRECTION_FEED_IN, "01", pv=4.0)
@@ -539,25 +420,14 @@ def test_the_pies_carry_no_slice_labels():
 
 
 def _balance_table(client: Client):
-    """The one table on the Ausgewogenheit view.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The table element.
-    """
+    """The one table on the Ausgewogenheit view."""
     tables = [e for e in client.elements.values() if e.__class__.__name__ == "Table"]
     assert len(tables) == 1, f"eine Tabelle erwartet, {len(tables)} gefunden"
     return tables[0]
 
 
 def test_the_chart_compares_the_two_sides_of_each_leg():
-    """Two grouped series, which is the shape the question has.
-
-    Stacked bars would answer "how big is this LEG", which is the
-    Verteilung view's question, not this one.
-    """
+    """Two grouped series, which is the shape the question has."""
     with connection_scope() as connection:
         leg_id = _leg(connection, "LEG Eins")
         _meter(connection, leg_id, DIRECTION_FEED_IN, "01")
@@ -576,11 +446,7 @@ def test_the_chart_compares_the_two_sides_of_each_leg():
 
 
 def test_the_production_heavy_leg_leads_and_the_consumption_heavy_one_trails():
-    """The whole answer to the question, and it is an ordering, not a label.
-
-    Both ends of one continuum are visible at once, so nothing has to
-    decide where "good" stops.
-    """
+    """The whole answer to the question, and it is an ordering, not a label."""
     with connection_scope() as connection:
         heavy = _leg(connection, "LEG Produktionslastig")
         light = _leg(connection, "LEG Bezugslastig")
@@ -599,12 +465,7 @@ def test_the_production_heavy_leg_leads_and_the_consumption_heavy_one_trails():
 
 
 def test_the_chart_reads_top_down_in_the_same_order_as_the_table():
-    """An ECharts category axis puts index 0 at the *bottom*.
-
-    Without reversing, the chart would read bottom-up while the table
-    reads top-down, and the two would look like different orderings of the
-    same data.
-    """
+    """An ECharts category axis puts index 0 at the *bottom*."""
     with connection_scope() as connection:
         heavy = _leg(connection, "LEG Oben")
         light = _leg(connection, "LEG Unten")
@@ -622,12 +483,7 @@ def test_the_chart_reads_top_down_in_the_same_order_as_the_table():
 
 
 def test_a_one_sided_leg_says_so_instead_of_printing_a_quotient():
-    """ "nur Produzenten" is a fact; "0,0" would be a number that means it.
-
-    With one direction absent nothing can be shared in that LEG at all,
-    whatever anybody's economics look like -- which is exactly why this
-    statement survived the removal of the LEG recommendations.
-    """
+    """ "nur Produzenten" is a fact; "0,0" would be a number that means it."""
     with connection_scope() as connection:
         producers = _leg(connection, "LEG A Nur Produktion")
         consumers = _leg(connection, "LEG B Nur Bezug")
@@ -641,12 +497,7 @@ def test_a_one_sided_leg_says_so_instead_of_printing_a_quotient():
 
 
 def test_the_energy_columns_are_dashes_rather_than_zero_without_readings():
-    """A fresh deployment has no readings, and 0 % would be a claim.
-
-    "Nothing was produced" and "what was produced found no taker" are
-    different statements about a LEG's mix, and only the second is a
-    problem. Printing zero for the first asserts the second.
-    """
+    """A fresh deployment has no readings, and 0 % would be a claim."""
     with connection_scope() as connection:
         leg_id = _leg(connection, "LEG Ohne Messwerte")
         _meter(connection, leg_id, DIRECTION_FEED_IN, "51")
@@ -661,12 +512,7 @@ def test_the_energy_columns_are_dashes_rather_than_zero_without_readings():
 
 
 def test_the_view_grades_nothing():
-    """No verdict word anywhere on the page.
-
-    Pinned because it is a decision, not an omission: the administrator
-    asked for good-versus-bad and then chose facts over a threshold, and
-    the next person to read the request would reasonably add one.
-    """
+    """No verdict word anywhere on the page."""
     with connection_scope() as connection:
         leg_id = _leg(connection, "LEG Eins")
         for suffix in ("61", "62", "63", "64")[:3]:
@@ -688,11 +534,7 @@ def test_an_empty_deployment_says_why_rather_than_drawing_nothing():
 
 
 def test_a_leg_without_metering_points_is_listed_last_and_named():
-    """It is neither end of the scale, and hiding it hides a half-done job.
-
-    A LEG somebody created and never assigned anything to looks exactly
-    like one that does not exist, which is how it stays forgotten.
-    """
+    """It is neither end of the scale, and hiding it hides a half-done job."""
     with connection_scope() as connection:
         populated = _leg(connection, "LEG Mit Messpunkten")
         _leg(connection, "LEG Leer")

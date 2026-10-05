@@ -1,12 +1,4 @@
-"""Tests for the chart time axis: which window a resolution spans, and how
-the arrows move it.
-
-The window follows the resolution instead of being chosen separately, and
-the point of that is a guarantee: no combination a user can pick produces
-a chart the browser cannot draw. A year in quarter-hours would be 35'040
-points. So the bucket counts below are not decoration -- they are the
-guarantee, written down.
-"""
+"""Tests for the chart time axis: which window a resolution spans, and how the arrows move it."""
 
 from datetime import datetime, timedelta
 
@@ -44,12 +36,7 @@ def test_each_resolution_spans_its_own_window(key, anchor, expected_buckets, exp
 
 
 def test_no_resolution_can_produce_an_undrawable_chart():
-    """The guarantee the coupling exists for.
-
-    Two hundred points is already a dense chart; a year in quarter-hours
-    would be 35'040. If somebody ever widens a window, this fails before
-    a user waits on a blank canvas.
-    """
+    """The guarantee the coupling exists for."""
     anchor = datetime(2026, 7, 15, 12, 0)
     for granularity in GRANULARITIES:
         buckets = period.buckets_in(granularity.key, period.window_for(granularity.key, anchor))
@@ -57,13 +44,7 @@ def test_no_resolution_can_produce_an_undrawable_chart():
 
 
 def test_calendar_windows_are_half_open_and_meet_exactly():
-    """Consecutive windows share no moment and leave no gap.
-
-    A reading exactly at midnight must land in one day, not both and not
-    neither -- the same rule `quarter_bounds` follows. The year view is
-    excluded on purpose: it is a rolling ten years, so its windows overlap
-    by nine (see `test_the_year_view_rolls_by_a_single_year`).
-    """
+    """Consecutive windows share no moment and leave no gap."""
     for granularity in GRANULARITIES:
         if granularity.key == GRANULARITY_YEAR:
             continue
@@ -74,13 +55,7 @@ def test_calendar_windows_are_half_open_and_meet_exactly():
 
 
 def test_the_year_view_rolls_by_a_single_year():
-    """Regression test for a real design slip caught by these tests.
-
-    The year window is ten years wide, and stepping it by its own width
-    jumped a decade per click -- three clicks back from 2026 landed in
-    1954, past every year that could ever hold data. It rolls by one year
-    instead, which is what an arrow beside a ten-year chart means.
-    """
+    """Regression test for a real design slip caught by these tests."""
     anchor = datetime(2026, 6, 1)
 
     back_one = period.window_for(GRANULARITY_YEAR, period.shift_anchor(GRANULARITY_YEAR, anchor, -1))
@@ -107,9 +82,7 @@ def test_the_year_view_rolls_by_a_single_year():
     ],
 )
 def test_the_arrows_step_whole_windows(key, anchor, steps, expected):
-    """Stepping is derived from the window bounds, not from a fixed number
-    of days -- which is why a 28-day February and a 92-day quarter both
-    land where a reader expects."""
+    """Stepping is derived from the window bounds, not from a fixed number of days -- which is why a..."""
     moved = period.shift_anchor(key, anchor, steps)
 
     assert period.window_label(key, period.window_for(key, moved)) == expected
@@ -127,8 +100,7 @@ def test_stepping_there_and_back_returns_to_the_same_window():
 
 
 def test_a_moment_falls_in_the_bucket_its_key_names():
-    """`bucket_key` reads the stored ISO text; `bucket_key_of` reads a
-    bucket start. They must agree, or every reading lands in no bucket."""
+    """`bucket_key` reads the stored ISO text; `bucket_key_of` reads a bucket start."""
     anchor = datetime(2026, 7, 15, 9, 37, 42)
     for granularity in GRANULARITIES:
         window = period.window_for(granularity.key, anchor)
@@ -154,11 +126,7 @@ def test_quarter_hour_keys_snap_down_to_the_interval(timestamp, expected):
 
 
 def test_the_quarter_hour_bucket_is_the_apps_own_interval():
-    """Derived from `INTERVAL_MINUTES`, not from a hardcoded 15.
-
-    The same constant governs the kWh/kW conversion and the demo data; two
-    places would be two places to drift.
-    """
+    """Derived from `INTERVAL_MINUTES`, not from a hardcoded 15."""
     window = period.window_for(GRANULARITY_QUARTER_HOUR, datetime(2026, 7, 15))
     buckets = period.buckets_in(GRANULARITY_QUARTER_HOUR, window)
 
@@ -167,12 +135,7 @@ def test_the_quarter_hour_bucket_is_the_apps_own_interval():
 
 
 def test_buckets_come_from_the_window_not_from_the_data():
-    """An empty stretch has to stay visible as a gap.
-
-    Building the axis from whatever rows happen to exist would silently
-    shorten it, and a week with a missing day would look like a shorter
-    week rather than a missing day.
-    """
+    """An empty stretch has to stay visible as a gap."""
     window = period.window_for(GRANULARITY_DAY, datetime(2026, 5, 20))
     buckets = period.buckets_in(GRANULARITY_DAY, window)
 
@@ -197,12 +160,7 @@ def test_an_unknown_resolution_is_refused_rather_than_guessed():
 
 
 def test_the_prior_year_window_has_the_same_bucket_count():
-    """The two series have to line up point for point on one axis.
-
-    Re-deriving the window from a shifted anchor could land a different
-    number of days -- a 90-day quarter against a 92-day one -- and the
-    comparison line would then be drawn against the wrong dates.
-    """
+    """The two series have to line up point for point on one axis."""
     for granularity in GRANULARITIES:
         window = period.window_for(granularity.key, datetime(2026, 7, 15))
         prior = period.shift_window_one_year(window)
@@ -222,11 +180,7 @@ def test_the_prior_year_window_really_is_a_year_back():
 
 
 def test_a_leap_day_falls_back_to_the_28th():
-    """2025 has no 29 February, and an exception would be the worse answer.
-
-    The comparison means "roughly this time last year"; refusing to draw it
-    on one day of the leap cycle would be precision nobody asked for.
-    """
+    """2025 has no 29 February, and an exception would be the worse answer."""
     window = period.window_for(GRANULARITY_QUARTER_HOUR, datetime(2024, 2, 29, 12))
     start, _ = period.shift_window_one_year(window)
 

@@ -1,10 +1,4 @@
-"""Recipient resolution and send orchestration for broadcast/LEG emails
-and invoice emails.
-
-See `app.emailing` (module docstring) for why every send is a separate,
-individual `graph_client.send_email` call, and `app.emailing.templates`
-for the `{placeholder}` substitution used in both flows.
-"""
+"""Recipient resolution and send orchestration for broadcast/LEG emails and invoice emails."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,37 +20,12 @@ from app.models.person import Person
 
 
 def list_broadcast_recipients(connection) -> list[Person]:
-    """List the default recipients for an "an alle" broadcast.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        Active persons with a non-empty contact email, in
-        `person_repo.list_all`'s order. Purely a starting suggestion --
-        the caller (GUI) lets the administrator add/remove individual
-        recipients before actually sending, see `app.gui.pages.
-        email_dispatch`.
-    """
+    """List the default recipients for an "an alle" broadcast."""
     return [p for p in person_repo.list_all(connection) if p.active and p.contact_emails]
 
 
 def list_leg_recipients(connection, leg_id: int) -> list[Person]:
-    """List the persons currently or soon assigned to any MeteringPoint of one LEG.
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: LEG to resolve members for.
-
-    Returns:
-        Persons with a current-or-upcoming Assignment (`Assignment.
-        is_current_or_upcoming` -- an assignment entered ahead of its
-        start date, e.g. next quarter's move-ins prepared in advance,
-        counts too) to a MeteringPoint in this LEG, deduplicated (a person can
-        hold more than one MeteringPoint in the same LEG), with a non-empty
-        contact email. Purely a starting suggestion, same caveat as
-        `list_broadcast_recipients`.
-    """
+    """List the persons currently or soon assigned to any MeteringPoint of one LEG."""
     now = datetime.now()
     metering_points = [mp for mp in metering_point_repo.list_all(connection) if mp.leg_id == leg_id]
     person_ids: dict[int, None] = {}  # insertion-ordered set
@@ -74,20 +43,7 @@ def list_leg_recipients(connection, leg_id: int) -> list[Person]:
 
 
 def list_cooperative_recipients(connection) -> list[Person]:
-    """List today's Genossenschaft members with an email address.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        Active persons who hold a Genossenschaft membership **today** and
-        have at least one email address, in `person_repo.list_all`'s order.
-        Strictly today: someone whose membership starts next month is not a
-        member yet, unlike a pre-entered Assignment in
-        `list_leg_recipients` -- see `app.models.cooperative_membership`
-        for why the two differ. Purely a starting suggestion, same caveat as
-        `list_broadcast_recipients`.
-    """
+    """List today's Genossenschaft members with an email address."""
     member_ids = cooperative_membership_repo.member_person_ids(connection)
     return [
         p for p in person_repo.list_all(connection) if p.id in member_ids and p.active and p.contact_emails
@@ -96,17 +52,7 @@ def list_cooperative_recipients(connection) -> list[Person]:
 
 @dataclass
 class EmailSendResult:
-    """Outcome of one bulk-send call, for display in the GUI.
-
-    Attributes:
-        sent: Display names of recipients the email was successfully
-            handed off to Microsoft for (see `graph_client.send_email`'s
-            docstring for why that is not the same as "delivered").
-        skipped: `"<name>: <reason>"` for recipients never attempted
-            (e.g. paper-invoice preference, missing email, already sent).
-        errors: `"<name>: <error>"` for recipients where sending was
-            attempted but failed.
-    """
+    """Outcome of one bulk-send call, for display in the GUI."""
 
     sent: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
@@ -125,38 +71,7 @@ async def send_broadcast_email(
     attachments: Sequence[graph_client.Attachment] = (),
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> EmailSendResult:
-    """Send a personalized email to each of an explicit list of recipients.
-
-    Args:
-        connection: Open SQLite connection.
-        config: Graph API credentials.
-        recipients: The final, administrator-confirmed recipient list
-            (already resolved/edited by the caller -- see
-            `list_broadcast_recipients`/`list_leg_recipients`).
-        subject: Email subject, may contain `{placeholder}`s.
-        body: Email body, may contain `{placeholder}`s.
-        scope: `"all"` or `"leg"`, recorded in the sent-history log.
-        leg_id: LEG id, if `scope == "leg"`, else `None`.
-        attachments: Files attached to every recipient's copy -- the same
-            set for the whole batch (see `app.gui.pages.email_dispatch`,
-            where the administrator picks them). Empty for no attachment.
-            The size limit applies to their total, see
-            `graph_client.MAX_INLINE_ATTACHMENT_BYTES`.
-        on_progress: Called as `on_progress(done, total)` after each send
-            attempt (success, skip, or failure) -- lets the GUI show a
-            live progress bar. Optional.
-
-    Returns:
-        The `EmailSendResult`. A history entry (see `app.models.
-        email_log`) is always written for the recipients actually
-        reached, even if some individual sends failed.
-
-    Raises:
-        graph_client.GraphAuthError: If the very first send fails due to
-            invalid credentials -- every subsequent attempt would fail
-            for the same reason, so the whole run aborts immediately
-            rather than working through the rest of the list.
-    """
+    """Send a personalized email to each of an explicit list of recipients."""
     result = EmailSendResult()
     total = len(recipients)
     if total == 0:
@@ -215,30 +130,7 @@ async def send_invoice_emails(
     *,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> EmailSendResult:
-    """Send each billed person their own invoice PDF from one billing run.
-
-    Args:
-        connection: Open SQLite connection.
-        config: Graph API credentials.
-        run: The billing run to send invoices for.
-        subject: Email subject, may contain `{placeholder}`s (Person- and
-            invoice-context ones, see `_invoice_placeholder_values`).
-        body: Email body, may contain `{placeholder}`s.
-        on_progress: Called as `on_progress(done, total)` after each item
-            is processed (sent, skipped, or failed). Optional.
-
-    Returns:
-        The `EmailSendResult`. A line item is skipped (not attempted,
-        never counts as an error) if: the person has opted for paper
-        invoices (`Person.paper_invoice`), has no contact email, has no
-        generated PDF yet (`item.pdf_path` empty -- PDFs must be
-        exported first), or was already emailed (`item.email_sent_at`
-        set -- see `resend_invoice_email` to force a specific resend).
-
-    Raises:
-        graph_client.GraphAuthError: Aborts the whole run immediately,
-            same reasoning as `send_broadcast_email`.
-    """
+    """Send each billed person their own invoice PDF from one billing run."""
     result = EmailSendResult()
     items = billing_run_repo.list_items(connection, run.id)
     total = len(items)
@@ -278,29 +170,7 @@ async def send_invoice_emails(
 async def resend_invoice_email(
     connection, config: GraphConfig, run: BillingRun, item: BillingRunItem, subject: str, body: str
 ) -> None:
-    """Force-resend one already-sent invoice, regardless of `email_sent_at`.
-
-    Covers the realistic "I never got my invoice" case without weakening
-    `send_invoice_emails`'s automatic duplicate-send protection, which
-    keeps skipping already-sent items unconditionally.
-
-    Args:
-        connection: Open SQLite connection.
-        config: Graph API credentials.
-        run: The billing run `item` belongs to.
-        item: The specific line item to resend.
-        subject: Email subject, may contain `{placeholder}`s.
-        body: Email body, may contain `{placeholder}`s.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: If the person, their email, or the PDF is missing --
-            an explicit resend should never silently no-op.
-        graph_client.GraphAuthError: If credentials are invalid.
-        graph_client.GraphApiError: For any other send failure.
-    """
+    """Force-resend one already-sent invoice, regardless of `email_sent_at`."""
     person = person_repo.get(connection, item.person_id)
     if person is None:
         raise ValueError(f"Person #{item.person_id} existiert nicht mehr.")
@@ -322,18 +192,7 @@ INVOICE_EXTRA_PLACEHOLDERS = ("leg", "quartal", "jahr", "betrag")
 
 
 def invoice_skip_reason(person: Optional[Person], item: BillingRunItem) -> Optional[str]:
-    """Decide whether a billing run item should be skipped, and why.
-
-    Also used by the GUI (see `app.gui.pages.billing`) to preview what
-    a bulk send would do before actually sending anything.
-
-    Args:
-        person: The billed person, or `None` if they no longer exist.
-        item: The line item to check.
-
-    Returns:
-        A human-readable (German) skip reason, or `None` if it should be sent.
-    """
+    """Decide whether a billing run item should be skipped, and why."""
     if person is None:
         return "Person existiert nicht mehr."
     if person.paper_invoice:
@@ -348,16 +207,7 @@ def invoice_skip_reason(person: Optional[Person], item: BillingRunItem) -> Optio
 
 
 def _invoice_placeholder_values(run: BillingRun, item: BillingRunItem, leg) -> dict[str, str]:
-    """Build the invoice-specific placeholder values (not from `Person`).
-
-    Args:
-        run: The billing run `item` belongs to.
-        item: The line item being emailed.
-        leg: The `Leg` this run belongs to, or `None` if it was deleted.
-
-    Returns:
-        `{"leg": ..., "quartal": ..., "jahr": ..., "betrag": ...}`.
-    """
+    """Build the invoice-specific placeholder values (not from `Person`)."""
     return {
         "leg": leg.name if leg else "?",
         "quartal": str(run.period_quarter),
@@ -369,22 +219,7 @@ def _invoice_placeholder_values(run: BillingRun, item: BillingRunItem, leg) -> d
 async def _send_one_invoice_email(
     connection, config, access_token, run, item, person, leg, subject, body
 ) -> None:
-    """Render and send one person's invoice email, then record `email_sent_at`.
-
-    Args:
-        connection: Open SQLite connection.
-        config: Graph API credentials.
-        access_token: Bearer token from `graph_client.get_access_token`.
-        run: The billing run `item` belongs to.
-        item: The line item being emailed.
-        person: The billed person.
-        leg: The `Leg` this run belongs to, or `None`.
-        subject: Email subject template.
-        body: Email body template.
-
-    Returns:
-        None.
-    """
+    """Render and send one person's invoice email, then record `email_sent_at`."""
     values = {**person_placeholder_values(person), **_invoice_placeholder_values(run, item, leg)}
     await graph_client.send_email(
         config,

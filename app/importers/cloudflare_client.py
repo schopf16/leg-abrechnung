@@ -1,21 +1,4 @@
-"""Client for the leg-ittigen.ch registration inbox API.
-
-Fixed API contract (project brief, not to be changed here):
-
-    GET https://leg-ittigen-api.leg-ittigen.workers.dev/submissions?since=<id>
-    Authorization: Bearer <token>
-
-Returns a JSON array ascending by id, capped at 500 entries per call. The
-website's separate "Rückfragen" (question) form is emailed directly and
-never stored server-side, so `form_type` is currently always
-`"registration"` -- filtered defensively here in case that ever changes.
-
-The registration form's `payload` fields are deliberately named to mirror
-`app.models.person.Person` almost 1:1, plus a `meters` list (zero, one or
-several `{meter_number, note}` entries -- a registration can report
-several meters, e.g. separately for a PV system, the main house, and a
-switched heat pump).
-"""
+"""Client for the leg-ittigen.ch registration inbox API."""
 
 from dataclasses import dataclass, field
 
@@ -30,29 +13,7 @@ _REQUEST_TIMEOUT_SECONDS = 15.0
 
 @dataclass
 class RegistrationSubmission:
-    """One raw registration submission from the leg-ittigen.ch API.
-
-    Attributes:
-        cloudflare_id: The submission's id in the source system.
-        company: Submitted company name, or `""`.
-        salutation: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
-        first_name: Submitted first name.
-        last_name: Submitted last name.
-        street: Submitted street name (without house number).
-        house_number: Submitted house number.
-        postal_code: Submitted postal code.
-        city: Submitted city.
-        email: Submitted email address -- possibly empty, callers must
-            handle that case (see `app.importers.registration_sync`).
-        phone: Optional submitted phone number.
-        bkw_customer_number: Submitted BKW customer number, free text.
-        iban: Optional submitted IBAN, free text.
-        message: Optional free-text remark from the submitter.
-        submitted_at: Submission timestamp as reported by the API.
-        meters: Reported Zählernummern as `(meter_number, note)` tuples,
-            zero, one or several. Entries with an empty `meter_number`
-            are dropped -- they carry no usable information.
-    """
+    """One raw registration submission from the leg-ittigen.ch API."""
 
     cloudflare_id: int
     company: str
@@ -77,28 +38,11 @@ class CloudflareAuthError(Exception):
 
 
 class CloudflareApiError(Exception):
-    """Raised for any other failure talking to the registration API
-    (network error, non-200/401 status, or an unparseable response).
-    """
+    """Raised for any other failure talking to the registration API (network error, non-200/401 status..."""
 
 
 def fetch_new_registrations(since: int, token: str) -> list[RegistrationSubmission]:
-    """Fetch up to 500 registration submissions newer than `since`.
-
-    Args:
-        since: Only submissions with `id > since` are returned.
-        token: Bearer token for the API (see `app.config.get_leg_api_token`).
-
-    Returns:
-        Submissions ascending by id. `form_type != "registration"` entries
-        are filtered out defensively (the API is not currently expected
-        to ever return any).
-
-    Raises:
-        CloudflareAuthError: If the token is missing or invalid (HTTP 401).
-        CloudflareApiError: For any other network or HTTP failure, or an
-            unparseable response body.
-    """
+    """Fetch up to 500 registration submissions newer than `since`."""
     try:
         response = httpx.get(
             f"{API_BASE_URL}/submissions",
@@ -131,26 +75,7 @@ def fetch_new_registrations(since: int, token: str) -> list[RegistrationSubmissi
 
 
 def delete_submissions(ids: list[int], token: str) -> int:
-    """Delete submissions from the leg-ittigen.ch Worker database by id.
-
-    This is a genuine, irrevocable delete on the remote D1 database --
-    there is no undo. See `app.gui.pages.web_registrations.on_delete`
-    for the confirmation flow built around this.
-
-    Args:
-        ids: Cloudflare submission ids to delete (`WebRegistration.
-            cloudflare_id`, not the local `web_registration.id`).
-        token: Bearer token for the API (see `app.config.get_leg_api_token`).
-
-    Returns:
-        The number of submissions actually deleted, as reported by the
-        API (0 if `ids` is empty -- no request is made in that case).
-
-    Raises:
-        CloudflareAuthError: If the token is missing or invalid (HTTP 401).
-        CloudflareApiError: For any other network or HTTP failure, or an
-            unparseable response body.
-    """
+    """Delete submissions from the leg-ittigen.ch Worker database by id."""
     if not ids:
         return 0
 
@@ -183,17 +108,7 @@ def delete_submissions(ids: list[int], token: str) -> int:
 
 
 def _to_meters(raw_meters: object) -> list[tuple[str, str]]:
-    """Parse the `meters` list of one submission's payload.
-
-    Args:
-        raw_meters: The raw `payload["meters"]` value -- expected to be a
-            list of `{"meter_number": ..., "note": ...}` objects, but
-            handled defensively if missing or malformed.
-
-    Returns:
-        `(meter_number, note)` tuples, stripped, entries with an empty
-        `meter_number` dropped.
-    """
+    """Parse the `meters` list of one submission's payload."""
     if not isinstance(raw_meters, list):
         return []
     meters = []
@@ -209,15 +124,7 @@ def _to_meters(raw_meters: object) -> list[tuple[str, str]]:
 
 
 def _to_submission(entry: dict) -> RegistrationSubmission:
-    """Convert one raw API entry into a `RegistrationSubmission`.
-
-    Args:
-        entry: One JSON object from the API response (`payload` already
-            parsed into a nested object by the API itself).
-
-    Returns:
-        The corresponding `RegistrationSubmission`.
-    """
+    """Convert one raw API entry into a `RegistrationSubmission`."""
     # NOTE: the payload keys below are the German field names the
     # leg-ittigen.ch form posts -- an external contract we do not
     # control. They must stay German even though everything they are

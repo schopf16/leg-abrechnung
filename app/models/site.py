@@ -1,11 +1,5 @@
-"""site (connection site): the physical grid connection point a
-substation area is attached to, and that groups one or more metering points.
-
-substation area membership is deliberately a property of the site, never of
-a Person or MeteringPoint -- see the module docstring of
-`app.models.substation_area`. LEG membership, by contrast, is a property of the
-individual MeteringPoint (see `app.models.leg`), not of the site.
-"""
+"""site (connection site): the physical grid connection point a substation area is attached to, and
+that groups one or more metering points."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -15,26 +9,7 @@ from typing import Optional
 
 @dataclass
 class Site:
-    """One physical grid connection point (site).
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        street: Street name (without house number).
-        house_number: House number.
-        postal_code: Postal code.
-        municipality: Municipality.
-        address_detail: Optional detail (e.g. floor/unit) within that address.
-        substation_area_id: Foreign key to the assigned `substation area`, `None`
-            until manually assigned.
-        created_at: ISO-8601 creation timestamp.
-        address_confirmed: The street/house number/postal code the
-            administrator has waved through despite the address register
-            disagreeing, stored as the confirmed text rather than a flag so
-            the dismissal expires by itself when the address changes. Written
-            only by `confirm_address`, never by `update` -- editing an
-            unrelated field must not bring a dismissed hint back.
-        locality_confirmed: The same for the locality.
-    """
+    """One physical grid connection point (site)."""
 
     id: Optional[int]
     street: str
@@ -49,29 +24,14 @@ class Site:
 
     @property
     def full_address(self) -> str:
-        """The full postal address as a single display string.
-
-        Returns:
-            `"<address> <Hausnummer>, <PLZ> <Ort>"`, with missing parts
-            omitted gracefully. The locality, not the political
-            municipality: this string is printed on the invoice, and
-            `municipality` holds the postal locality despite its name (see
-            CLAUDE.md).
-        """
+        """The full postal address as a single display string."""
         street = " ".join(p for p in (self.street, self.house_number) if p)
         city = " ".join(p for p in (self.postal_code, self.municipality) if p)
         return ", ".join(p for p in (street, city) if p)
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Site":
-        """Build a `site` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `site` table.
-
-        Returns:
-            The corresponding `site` dataclass instance.
-        """
+        """Build a `site` from a `sqlite3.Row`."""
         return Site(
             id=row["id"],
             street=row["street"],
@@ -87,21 +47,7 @@ class Site:
 
 
 def list_all(connection: sqlite3.Connection) -> list[Site]:
-    """List all sites, ordered by street (alphabetically, case-insensitive),
-    then house number (numerically, e.g. "2" before "10"), then municipality.
-
-    Street first, not municipality: a single LEG spans one or two
-    municipalities at most, and real data showed the municipality spelled
-    five different ways ("Ittigen", "ittigen", "3063 Ittigen", ...), which
-    used to scatter the list. The administrator looks for an address, so
-    the address is what the order follows.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        All connection sites, sorted by `street`, `house_number`, `municipality`.
-    """
+    """List all sites, ordered by street (alphabetically, case-insensitive), then house number..."""
     rows = connection.execute(
         """
         SELECT * FROM site
@@ -115,24 +61,7 @@ def list_all(connection: sqlite3.Connection) -> list[Site]:
 def find_by_address(
     connection: sqlite3.Connection, street: str, house_number: str, postal_code: str
 ) -> Optional[Site]:
-    """Fetch a site by exact (case-insensitive) address/Hausnummer/PLZ match.
-
-    Used to warn about likely duplicate sites -- the same physical
-    address entered twice by mistake. `address_detail` is deliberately not part of
-    the match: it is a descriptive detail (e.g. floor/unit) within one
-    site, not a way to distinguish several sites at one address (a
-    multi-family building is one site with several metering points, see
-    `app.models.metering_point`).
-
-    Args:
-        connection: Open SQLite connection.
-        street: Street name to match.
-        house_number: House number to match.
-        postal_code: Postal code to match.
-
-    Returns:
-        The matching `site`, or `None` if no such address exists.
-    """
+    """Fetch a site by exact (case-insensitive) address/Hausnummer/PLZ match."""
     row = connection.execute(
         """
         SELECT * FROM site
@@ -144,30 +73,13 @@ def find_by_address(
 
 
 def get(connection: sqlite3.Connection, site_id: int) -> Optional[Site]:
-    """Fetch a single site by id.
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: Primary key of the site.
-
-    Returns:
-        The matching `site`, or `None` if no such id exists.
-    """
+    """Fetch a single site by id."""
     row = connection.execute("SELECT * FROM site WHERE id = ?", (site_id,)).fetchone()
     return Site.from_row(row) if row else None
 
 
 def create(connection: sqlite3.Connection, site: Site) -> int:
-    """Insert a new site.
-
-    Args:
-        connection: Open SQLite connection.
-        site: Data to insert; `id` and `created_at` are ignored and
-            generated by this function.
-
-    Returns:
-        The primary key of the newly created site.
-    """
+    """Insert a new site."""
     cursor = connection.execute(
         """
         INSERT INTO site
@@ -189,18 +101,7 @@ def create(connection: sqlite3.Connection, site: Site) -> int:
 
 
 def update(connection: sqlite3.Connection, site: Site) -> None:
-    """Update an existing site's data.
-
-    Args:
-        connection: Open SQLite connection.
-        site: Site with `id` set to an existing record.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: If `site.id` is `None`.
-    """
+    """Update an existing site's data."""
     if site.id is None:
         raise ValueError("Cannot update a Standort without an id.")
     connection.execute(
@@ -224,50 +125,18 @@ def update(connection: sqlite3.Connection, site: Site) -> None:
 
 
 def delete(connection: sqlite3.Connection, site_id: int) -> None:
-    """Delete a site along with its metering points (cascade).
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: Primary key of the site to delete.
-
-    Returns:
-        None.
-    """
+    """Delete a site along with its metering points (cascade)."""
     connection.execute("DELETE FROM site WHERE id = ?", (site_id,))
     connection.commit()
 
 
 def confirm_address(connection: sqlite3.Connection, site_id: int, value: str) -> None:
-    """Record that the street/house number/postal code was waved through.
-
-    Deliberately separate from `update`: the dismissal must survive an edit
-    to an unrelated field, and `update` rewriting it from a freshly built
-    dataclass would quietly clear it.
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: The site.
-        value: The exact text being confirmed, as
-            `app.domain.address_lookup` composes it. An empty string clears
-            the confirmation, which makes the hint reappear.
-
-    Returns:
-        None.
-    """
+    """Record that the street/house number/postal code was waved through."""
     connection.execute("UPDATE site SET address_confirmed = ? WHERE id = ?", (value, site_id))
     connection.commit()
 
 
 def confirm_locality(connection: sqlite3.Connection, site_id: int, value: str) -> None:
-    """Record that the locality was waved through.
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: The site.
-        value: The confirmed locality.
-
-    Returns:
-        None.
-    """
+    """Record that the locality was waved through."""
     connection.execute("UPDATE site SET locality_confirmed = ? WHERE id = ?", (value, site_id))
     connection.commit()

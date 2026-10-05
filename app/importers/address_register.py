@@ -1,40 +1,4 @@
-"""Builds the local copy of swisstopo's official building address register.
-
-The register (`ch.swisstopo.amtliches-gebaeudeadressverzeichnis`) is the
-binding list of Swiss building addresses. It is free to use, redistribute and
-even use commercially; the one condition is naming the source, which
-`app/gui/pages/address_register.py` does. **Swiss Post's address data was
-considered and rejected**: its licence forbids passing the data on -- the
-`swissmatch-location` project had to stop shipping it after a licence change
--- so it could never be part of a published application, however good the
-data is.
-
-Downloaded wholesale rather than queried per address, and that is a privacy
-decision, not only an offline one. geo.admin.ch offers a free fuzzy-search
-API over the same data, but using it would send fragments of a member's
-address to a federal server on every keystroke in an address field. With the
-register on disk, no address ever leaves the machine.
-
-Three details of the build are deliberate:
-
-- **Streamed, never extracted.** The ZIP member is read as a stream.
-  Extracting by the names inside the archive is how zip-slip happens, and
-  every path here is chosen by the application instead.
-- **Built beside, then swapped.** The new file is assembled under a
-  temporary name and only then moved into place, so a download that dies
-  half-way leaves a working register alone rather than a broken one.
-- **Normalised into two tables.** Street name, locality and municipality
-  repeat across 3.3 million rows; keeping them in a `street` table takes the
-  file from 358 MB to 127 MB. `PRAGMA synchronous = OFF` is used during the
-  build, which is defensible here precisely because the file is derived and
-  can be rebuilt at any time -- it must never be used on the member database.
-
-Nothing is filtered out. `ADR_OFFICIAL = true` looks like the obvious filter
-and **loses real addresses**: of 92 sites in one live deployment, 86
-validated against the full register and only 83 against the official rows.
-`official` and `status` are carried as flags and only ever influence the
-*order* suggestions are offered in.
-"""
+"""Builds the local copy of swisstopo's official building address register."""
 
 import csv
 import io
@@ -88,15 +52,7 @@ class AddressRegisterError(RuntimeError):
 
 @dataclass(frozen=True)
 class RegisterAsset:
-    """The downloadable register file, as described by the STAC catalogue.
-
-    Attributes:
-        url: Direct download URL of the ZIP.
-        data_date: The day swisstopo published this data, which is what the
-            UI shows -- the download time is a different statement and says
-            nothing about how current the addresses are.
-        size_bytes: Compressed size, or `None` if the catalogue omits it.
-    """
+    """The downloadable register file, as described by the STAC catalogue."""
 
     url: str
     data_date: Optional[date]
@@ -105,14 +61,7 @@ class RegisterAsset:
 
 @dataclass(frozen=True)
 class RegisterInfo:
-    """What the local register file currently holds.
-
-    Attributes:
-        data_date: swisstopo's publication date of the data in the file.
-        downloaded_at: When this machine built it.
-        streets: Row count of the `street` table.
-        addresses: Row count of the `address` table.
-    """
+    """What the local register file currently holds."""
 
     data_date: Optional[date]
     downloaded_at: Optional[datetime]
@@ -121,38 +70,20 @@ class RegisterInfo:
 
     @property
     def age_days(self) -> Optional[int]:
-        """How many days old the *data* is.
-
-        Returns:
-            The age in days, or `None` when no publication date is known.
-        """
+        """How many days old the *data* is."""
         if self.data_date is None:
             return None
         return (date.today() - self.data_date).days
 
     @property
     def is_stale(self) -> bool:
-        """Whether the register should be refreshed.
-
-        Returns:
-            `True` past `STALE_AFTER_DAYS`. An unknown date counts as stale:
-            not knowing how old the data is is not a reason to trust it.
-        """
+        """Whether the register should be refreshed."""
         age = self.age_days
         return True if age is None else age > STALE_AFTER_DAYS
 
 
 def _parse_stac_date(value: Optional[str]) -> Optional[date]:
-    """Read a STAC timestamp as a plain date.
-
-    Args:
-        value: An ISO-8601 timestamp, or `None`.
-
-    Returns:
-        The date, or `None` if absent or unparsable. A missing date is not
-        an error -- the register is still usable, it just cannot say how old
-        it is.
-    """
+    """Read a STAC timestamp as a plain date."""
     if not value:
         return None
     try:
@@ -162,18 +93,7 @@ def _parse_stac_date(value: Optional[str]) -> Optional[date]:
 
 
 def select_asset(payload: dict) -> RegisterAsset:
-    """Pick the Swiss CSV asset out of a STAC items response.
-
-    Args:
-        payload: The parsed JSON of `STAC_ITEMS_URL`.
-
-    Returns:
-        The asset to download.
-
-    Raises:
-        AddressRegisterError: If the catalogue holds no matching asset, or
-            names one on a host this app does not download from.
-    """
+    """Pick the Swiss CSV asset out of a STAC items response."""
     for feature in payload.get("features") or []:
         assets = feature.get("assets") or {}
         for name, asset in assets.items():
@@ -195,18 +115,7 @@ def select_asset(payload: dict) -> RegisterAsset:
 
 
 async def fetch_asset(client: Optional[httpx.AsyncClient] = None) -> RegisterAsset:
-    """Ask swisstopo which file to download and when it was published.
-
-    Args:
-        client: An open client, or `None` to use a short-lived one. Passed in
-            by tests so no test ever reaches the network.
-
-    Returns:
-        The asset to download.
-
-    Raises:
-        AddressRegisterError: On any network or protocol failure.
-    """
+    """Ask swisstopo which file to download and when it was published."""
     own_client = client is None
     client = client or httpx.AsyncClient(timeout=30.0)
     try:
@@ -226,22 +135,7 @@ async def download_asset(
     on_progress: Optional[Callable[[float], None]] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> None:
-    """Stream the register ZIP to disk, reporting progress as it goes.
-
-    Awaits network I/O, so the window stays responsive throughout -- this is
-    the half of the update that genuinely does not block.
-
-    Args:
-        asset: What to download.
-        target: Where to write it. Overwritten if present.
-        on_progress: Called with 0.0..1.0 as bytes arrive. Progress is only
-            meaningful when the server states a length; without one it is
-            never called.
-        client: An open client, or `None` to use a short-lived one.
-
-    Raises:
-        AddressRegisterError: On any network failure.
-    """
+    """Stream the register ZIP to disk, reporting progress as it goes."""
     own_client = client is None
     client = client or httpx.AsyncClient(timeout=120.0, follow_redirects=True)
     try:
@@ -264,19 +158,7 @@ async def download_asset(
 
 
 def split_zip_label(label: str) -> tuple[str, str]:
-    """Split swisstopo's combined `ZIP_LABEL` into code and locality.
-
-    `ZIP_LABEL` arrives as `"3048 Worblaufen"`: the postal code and the
-    **postal locality**, which is the name this app uses for an address --
-    never `COM_NAME`, the political municipality. Split on the *first* space
-    only, because localities have several words ("3065 Bolligen Dorf").
-
-    Args:
-        label: The raw field.
-
-    Returns:
-        `(postal_code, locality)`, both empty when the field is unusable.
-    """
+    """Split swisstopo's combined `ZIP_LABEL` into code and locality."""
     code, _, locality = label.strip().partition(" ")
     if not code.isdigit() or not locality.strip():
         return ("", "")
@@ -318,33 +200,7 @@ def build_register(
     target: Optional[Path] = None,
     data_date: Optional[date] = None,
 ) -> Iterator[float]:
-    """Build the register database from a downloaded ZIP, yielding progress.
-
-    A generator rather than a plain function so the caller can hand control
-    back to the event loop between batches: the parse is 35 seconds of local
-    work, and doing it in one call would freeze the window for all of it.
-    Everything heavy lives here and nothing here is async, which is also
-    what makes it testable without a network or an event loop.
-
-    Args:
-        zip_path: The downloaded ZIP.
-        target: Where the finished database goes. An existing file is
-            replaced only once the new one is complete.
-        data_date: swisstopo's publication date, stored for display.
-
-    Leaves the finished rows in a scratch file **without indexes**;
-    `finalise_register` adds those and swaps the file into place. The split
-    exists because `CREATE INDEX` over 3.3 million rows is one uninterruptible
-    1.8-second statement -- long enough to miss the one second NiceGUI allows
-    the browser for a state query, which showed up as TimeoutErrors in the
-    log while an update ran.
-
-    Yields:
-        Progress from 0.0 to 1.0, based on bytes read from the ZIP member.
-
-    Raises:
-        AddressRegisterError: If the archive holds no usable CSV.
-    """
+    """Build the register database from a downloaded ZIP, yielding progress."""
     target = target if target is not None else ADDRESS_REGISTER_PATH
     scratch = target.with_suffix(".building")
     scratch.unlink(missing_ok=True)
@@ -437,21 +293,7 @@ def finalise_register(
     target: Optional[Path] = None,
     data_date: Optional[date] = None,
 ) -> None:
-    """Index the freshly built register and swap it into place.
-
-    Kept out of `build_register` so a caller can run it in a thread: the
-    address index is one 1.8-second SQLite statement, and SQLite releases
-    the GIL while it works, so a thread is all it takes to keep the window
-    responsive through it. Everything here opens its own connection, because
-    a `sqlite3.Connection` belongs to the thread that created it.
-
-    Args:
-        target: Where the finished register goes.
-        data_date: swisstopo's publication date, stored for display.
-
-    Raises:
-        AddressRegisterError: If no scratch file is waiting.
-    """
+    """Index the freshly built register and swap it into place."""
     target = target if target is not None else ADDRESS_REGISTER_PATH
     scratch = target.with_suffix(".building")
     if not scratch.exists():
@@ -481,16 +323,7 @@ def finalise_register(
 
 
 def read_info(path: Optional[Path] = None) -> Optional[RegisterInfo]:
-    """Describe the local register, or report that there is none.
-
-    Args:
-        path: The register file.
-
-    Returns:
-        Its `RegisterInfo`, or `None` when no usable register exists. A
-        missing or unreadable file is a normal state, not an error: every
-        feature that uses the register simply goes quiet without it.
-    """
+    """Describe the local register, or report that there is none."""
     path = path if path is not None else ADDRESS_REGISTER_PATH
     if not path.exists():
         return None

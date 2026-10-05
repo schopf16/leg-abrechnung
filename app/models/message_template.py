@@ -1,34 +1,4 @@
-"""Textbausteine: the stored email texts, and the files that go with them.
-
-Every email this app sends has a text behind it, and until migration 52
-those texts lived in three places with three shapes: column pairs on
-`leg_settings` for the invoice and the two dunning notices, nothing at all
-for the broadcast (it was retyped every time), and no provision whatever for
-the Aufnahme and Austritt processes. One table instead, maintained on its
-own page under "Kommunikation" (`app.gui.pages.message_templates`).
-
-**`trigger_kind` is the whole vocabulary**, and it is deliberately two
-words:
-
-- `TRIGGER_STEP_DONE` -- due once the step carries a date. The mail reports
-  something that has happened: "you have been registered with BKW".
-- `TRIGGER_STEP_PENDING` -- due while the step is still empty, which is
-  where `deadline_days` belongs: a contract that has not come back after 30
-  days.
-
-Nothing here sends anything. A trigger decides when a **button** appears,
-never when a mail leaves -- see `app.domain.message_templates`.
-
-**Several templates per step is the point, not an accident.** A reminder is
-a second text about the same step, so template-to-step is many-to-one.
-
-An attachment's `role` is why the filled-in membership contract is declared
-in the data rather than recognised by its filename: that one is not attached
-but **generated** -- page 1 from the person's own record, the rest from the
-stored original (see `app.pdf.membership_contract`). The bytes live in this
-database rather than in a file beside it, so they travel with every backup
-and so it is always knowable which version of a contract was sent.
-"""
+"""Textbausteine: the stored email texts, and the files that go with them."""
 
 import sqlite3
 from dataclasses import dataclass, field
@@ -78,27 +48,7 @@ TRIGGER_LABELS = {
 
 @dataclass
 class MessageTemplate:
-    """One stored email text.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        name: What the administrator calls it ("Willkommen").
-        occasion: One of the `OCCASION_*` constants.
-        step: The `STEPS` attribute name it belongs to (e.g.
-            `"contract_signed_at"`), or `""` for an occasion without steps.
-        trigger_kind: One of the `TRIGGER_*` constants, or `""`.
-        deadline_days: Days the step may stay open before the template
-            becomes due. Only meaningful with `TRIGGER_STEP_PENDING`;
-            `None` means "due at once".
-        subject: Subject, may contain `{placeholder}`s.
-        body: Body, same.
-        auto_attachments: Keys of the documents this text attaches by
-            itself, from `app.domain.auto_attachments`. Stored newline
-            separated; a key this version does not know is kept rather than
-            dropped, so a database edited by a later version stays usable.
-        sort_order: Position in the list; ties fall back to the name.
-        created_at: ISO-8601 creation timestamp.
-    """
+    """One stored email text."""
 
     id: Optional[int]
     name: str
@@ -114,14 +64,7 @@ class MessageTemplate:
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "MessageTemplate":
-        """Build a `MessageTemplate` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `message_template` table.
-
-        Returns:
-            The corresponding dataclass instance.
-        """
+        """Build a `MessageTemplate` from a `sqlite3.Row`."""
         return MessageTemplate(
             id=row["id"],
             name=row["name"],
@@ -138,26 +81,13 @@ class MessageTemplate:
 
     @property
     def occasion_label(self) -> str:
-        """The occasion in German, as the list shows it.
-
-        Returns:
-            e.g. `"Aufnahme"`, or the raw value if it is unknown.
-        """
+        """The occasion in German, as the list shows it."""
         return OCCASION_LABELS.get(self.occasion, self.occasion)
 
 
 @dataclass
 class TemplateAttachment:
-    """One file belonging to a template.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        template_id: The template this belongs to.
-        filename: Name the recipient sees.
-        content: The file's bytes.
-        role: `""` to attach as stored, or `ROLE_MEMBERSHIP_CONTRACT`.
-        created_at: ISO-8601 creation timestamp.
-    """
+    """One file belonging to a template."""
 
     id: Optional[int]
     template_id: int
@@ -168,14 +98,7 @@ class TemplateAttachment:
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "TemplateAttachment":
-        """Build a `TemplateAttachment` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from `message_template_attachment`.
-
-        Returns:
-            The corresponding dataclass instance.
-        """
+        """Build a `TemplateAttachment` from a `sqlite3.Row`."""
         return TemplateAttachment(
             id=row["id"],
             template_id=row["template_id"],
@@ -199,48 +122,19 @@ _SELECT = """
 
 
 def list_all(connection: sqlite3.Connection) -> list[MessageTemplate]:
-    """List every template.
-
-    Ordered in SQL only by `sort_order` and name, both plain ASCII the
-    administrator controls; the browsable list sorts in Python like every
-    other list (see `app/gui/sorting.py` on why `ORDER BY` is not trusted
-    with names).
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        The templates.
-    """
+    """List every template."""
     rows = connection.execute(_SELECT + " ORDER BY sort_order, name").fetchall()
     return [MessageTemplate.from_row(row) for row in rows]
 
 
 def get(connection: sqlite3.Connection, template_id: int) -> Optional[MessageTemplate]:
-    """Load one template.
-
-    Args:
-        connection: Open SQLite connection.
-        template_id: Primary key.
-
-    Returns:
-        The template, or `None` if there is no such row.
-    """
+    """Load one template."""
     row = connection.execute(_SELECT + " WHERE id = ?", (template_id,)).fetchone()
     return MessageTemplate.from_row(row) if row else None
 
 
 def list_for_occasion(connection: sqlite3.Connection, occasion: str, step: str = "") -> list[MessageTemplate]:
-    """Templates for one occasion, optionally narrowed to one step.
-
-    Args:
-        connection: Open SQLite connection.
-        occasion: One of the `OCCASION_*` constants.
-        step: A `STEPS` attribute name, or `""` for every step.
-
-    Returns:
-        The matching templates, in list order.
-    """
+    """Templates for one occasion, optionally narrowed to one step."""
     if step:
         rows = connection.execute(
             _SELECT + " WHERE occasion = ? AND step = ? ORDER BY sort_order, name",
@@ -254,16 +148,7 @@ def list_for_occasion(connection: sqlite3.Connection, occasion: str, step: str =
 
 
 def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit: bool = True) -> int:
-    """Insert a template.
-
-    Args:
-        connection: Open SQLite connection.
-        template: Data to insert; `id` and `created_at` are ignored.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        The new row's id.
-    """
+    """Insert a template."""
     cursor = connection.execute(
         """
         INSERT INTO message_template
@@ -290,16 +175,7 @@ def create(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
 
 
 def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit: bool = True) -> None:
-    """Update a template in place.
-
-    Args:
-        connection: Open SQLite connection.
-        template: The template, with `id` set.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        None.
-    """
+    """Update a template in place."""
     connection.execute(
         """
         UPDATE message_template
@@ -326,20 +202,7 @@ def update(connection: sqlite3.Connection, template: MessageTemplate, *, commit:
 
 
 def delete(connection: sqlite3.Connection, template_id: int, *, commit: bool = True) -> None:
-    """Delete a template and its attachments.
-
-    The attachments go with it (`ON DELETE CASCADE`), and a past send keeps
-    its own copy of the text it used (`app.models.person_message_log`), so
-    deleting is always safe -- nothing reads back through here.
-
-    Args:
-        connection: Open SQLite connection.
-        template_id: Primary key.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        None.
-    """
+    """Delete a template and its attachments."""
     connection.execute("DELETE FROM message_template WHERE id = ?", (template_id,))
     if commit:
         connection.commit()
@@ -349,15 +212,7 @@ def delete(connection: sqlite3.Connection, template_id: int, *, commit: bool = T
 
 
 def list_attachments(connection: sqlite3.Connection, template_id: int) -> list[TemplateAttachment]:
-    """The files belonging to one template.
-
-    Args:
-        connection: Open SQLite connection.
-        template_id: The template.
-
-    Returns:
-        Its attachments, oldest first.
-    """
+    """The files belonging to one template."""
     rows = connection.execute(
         """
         SELECT id, template_id, filename, content, role, created_at
@@ -379,19 +234,7 @@ def add_attachment(
     role: str = "",
     commit: bool = True,
 ) -> int:
-    """Attach a file to a template.
-
-    Args:
-        connection: Open SQLite connection.
-        template_id: The template.
-        filename: Name the recipient sees.
-        content: The file's bytes.
-        role: `""` or `ROLE_MEMBERSHIP_CONTRACT`.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        The new row's id.
-    """
+    """Attach a file to a template."""
     cursor = connection.execute(
         """
         INSERT INTO message_template_attachment
@@ -406,16 +249,7 @@ def add_attachment(
 
 
 def delete_attachment(connection: sqlite3.Connection, attachment_id: int, *, commit: bool = True) -> None:
-    """Remove one attachment.
-
-    Args:
-        connection: Open SQLite connection.
-        attachment_id: Primary key.
-        commit: Pass `False` when an enclosing `connection_scope` commits.
-
-    Returns:
-        None.
-    """
+    """Remove one attachment."""
     connection.execute("DELETE FROM message_template_attachment WHERE id = ?", (attachment_id,))
     if commit:
         connection.commit()

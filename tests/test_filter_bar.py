@@ -1,10 +1,4 @@
-"""Tests for the one filter bar every browsable list is built with.
-
-Three properties are load-bearing and each one looks fine on screen while
-another is broken: a conditional filter that lands between the permanent
-ones, a caption that is not the half Quasar wires up, and a page that still
-lays its own row out.
-"""
+"""Tests for the one filter bar every browsable list is built with."""
 
 from pathlib import Path
 
@@ -15,14 +9,7 @@ from app.gui.problem_markers import FILTER_LABEL
 
 
 def _bar(probe: str):
-    """Render a bar into its own client.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-
-    Returns:
-        `(client, bar)`.
-    """
+    """Render a bar into its own client."""
     client = Client(ui.page(probe)(lambda: None), request=None)
     with client:
         bar = FilterBar()
@@ -30,13 +17,7 @@ def _bar(probe: str):
 
 
 def test_a_conditional_filter_lands_below_the_permanent_ones():
-    """Asked for first, it still renders last.
-
-    This is why the bar exists rather than a convention about the order
-    controls are written in: the problem filter comes and goes with the
-    findings, and a page that happened to create it first used to put it
-    above the filters that are always there.
-    """
+    """Asked for first, it still renders last."""
     client, bar = _bar("/probe-filterbar-order")
 
     with client:
@@ -52,11 +33,7 @@ def test_a_conditional_filter_lands_below_the_permanent_ones():
 
 
 def test_a_filter_puts_its_caption_where_quasar_makes_it_clickable():
-    """`ui.switch(text)` renders the text beside the switch and dead.
-
-    The administrator clicked the word and nothing happened, which is the
-    whole of this change -- so the caption goes in the `label` prop.
-    """
+    """`ui.switch(text)` renders the text beside the switch and dead."""
     client, bar = _bar("/probe-filterbar-label")
 
     with client:
@@ -70,13 +47,7 @@ def test_a_filter_puts_its_caption_where_quasar_makes_it_clickable():
 
 
 def test_no_filter_carries_a_count():
-    """Deliberately rejected, and the reason is the better one.
-
-    A number on one filter and not the others reads as though the others had
-    nothing to count; a number on all four makes the column unreadable. The
-    administrator said so when choosing this layout, so it is pinned here --
-    the next person to read "Zahl am Fehlerfilter" would reasonably add it.
-    """
+    """Deliberately rejected, and the reason is the better one."""
     client, bar = _bar("/probe-filterbar-count")
 
     with client:
@@ -94,12 +65,7 @@ def test_no_filter_carries_a_count():
 
 
 def test_the_search_field_keeps_its_field_list_visible():
-    """The label used to be the list of fields searched.
-
-    Quasar shrinks a label to caption size above the input as soon as
-    anything is typed, so it became unreadable exactly while it was being
-    used. The label is "Suche" and the list is the hint underneath.
-    """
+    """The label used to be the list of fields searched."""
     client, bar = _bar("/probe-filterbar-search")
 
     with client:
@@ -110,12 +76,7 @@ def test_the_search_field_keeps_its_field_list_visible():
 
 
 def test_no_list_page_lays_its_own_filter_row_out_any_more():
-    """One mechanism, every list -- the same guard the sorting has.
-
-    A page that reaches for `render_sort_select` itself is a page that will
-    grow its own layout again, which is the complaint this answers: *"bei
-    jeder neuen idee packen wir einfach nach etwas hinten an"*.
-    """
+    """One mechanism, every list -- the same guard the sorting has."""
     #: `legs.py` sorts the metering-point sub-table on the LEG *detail*
     #: page, which is not a browsable list and carries no filters -- the
     #: exemption CLAUDE.md already names for detail sub-tables.

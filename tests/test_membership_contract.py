@@ -1,15 +1,4 @@
-"""The filled-in Beitrittserklärung: what goes on page 1, and the pages behind it.
-
-Thirteen fields, twelve of them already in this database -- the thirteenth,
-the Wallbox power, is on the metering point since migration 52 for exactly
-this. Every one of them was being copied onto paper by hand.
-
-What no test can answer is whether the sheet *reads* correctly, which is why
-`app.gui.contract_preview` exists: it builds the document for a real person
-so the administrator can look. These tests cover the parts that can be
-stated -- the mapping, the two awkward shapes the live data has, and that
-nothing is invented where nothing is stored.
-"""
+"""The filled-in Beitrittserklärung: what goes on page 1, and the pages behind it."""
 
 import tempfile
 from datetime import date
@@ -38,11 +27,7 @@ _SOURCE_PAGES = 4
 
 
 def _source_pdf() -> bytes:
-    """A stand-in for the stored Gesellschaftsvertrag.
-
-    Returns:
-        A `_SOURCE_PAGES`-page PDF's bytes.
-    """
+    """A stand-in for the stored Gesellschaftsvertrag."""
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen.canvas import Canvas
 
@@ -56,15 +41,7 @@ def _source_pdf() -> bytes:
 
 
 def _person(connection, **overrides) -> Person:
-    """Create a participant.
-
-    Args:
-        connection: Open SQLite connection.
-        **overrides: Fields to set other than the defaults.
-
-    Returns:
-        The stored person.
-    """
+    """Create a participant."""
     values = {
         "salutation": "Frau",
         "company": "",
@@ -91,15 +68,7 @@ def _person(connection, **overrides) -> Person:
 
 
 def _site(connection, *, designation: str = "TRA9365") -> int:
-    """Create a site in a Trafokreis.
-
-    Args:
-        connection: Open SQLite connection.
-        designation: The BKW designation of its Trafokreis.
-
-    Returns:
-        The site's id.
-    """
+    """Create a site in a Trafokreis."""
     area = substation_area_repo.create(
         connection,
         SubstationArea(
@@ -126,20 +95,7 @@ def _site(connection, *, designation: str = "TRA9365") -> int:
 
 
 def _meter(connection, site_id: int, person_id: int, *, direction: str, designation: str, **caps) -> int:
-    """Create a metering point and assign it to a person.
-
-    Args:
-        connection: Open SQLite connection.
-        site_id: Where it sits.
-        person_id: Who holds it.
-        direction: `DIRECTION_CONSUMPTION` or `DIRECTION_FEED_IN`.
-        designation: The Messpunktbezeichnung.
-        **caps: `pv_capacity_kwp`, `battery_capacity_kwh`,
-            `wallbox_capacity_kw`.
-
-    Returns:
-        The metering point's id.
-    """
+    """Create a metering point and assign it to a person."""
     metering_point_id = metering_point_repo.create(
         connection,
         MeteringPoint(
@@ -213,11 +169,7 @@ def test_every_field_the_form_asks_for_is_filled_from_the_record():
 
 
 def test_a_couple_is_named_twice_on_one_line():
-    """One participant, one form, two signatures.
-
-    The form has a single "Vorname, Name" line and both partners are
-    contract parties -- see CLAUDE.md on the vZEV model.
-    """
+    """One participant, one form, two signatures."""
     with connection_scope() as connection:
         person = _person(
             connection,
@@ -235,11 +187,7 @@ def test_a_couple_is_named_twice_on_one_line():
 
 
 def test_two_metering_points_per_direction_both_appear():
-    """Exactly one participant in the live data holds two of each.
-
-    The form has one line per direction; a form that silently drops a meter
-    is worse than one that is crowded.
-    """
+    """Exactly one participant in the live data holds two of each."""
     with connection_scope() as connection:
         person = _person(connection)
         site = _site(connection)
@@ -295,8 +243,7 @@ def test_the_same_meter_held_across_two_assignments_is_named_once():
 
 
 def test_nothing_stored_stays_blank_rather_than_becoming_a_zero():
-    """ "No battery" and "a battery of zero kWh" are different statements,
-    and only the second would be a claim this app cannot support."""
+    """ "No battery" and "a battery of zero kWh" are different statements, and only the second would be..."""
     with connection_scope() as connection:
         person = _person(connection)
         site = _site(connection)
@@ -318,8 +265,7 @@ def test_nothing_stored_stays_blank_rather_than_becoming_a_zero():
 
 
 def test_a_participant_without_any_meter_still_yields_a_form():
-    """Five of the ninety-two have no assignment yet, and the contract is
-    exactly what is sent while that is still true."""
+    """Five of the ninety-two have no assignment yet, and the contract is exactly what is sent while..."""
     with connection_scope() as connection:
         person = _person(connection)
 
@@ -362,8 +308,7 @@ def test_without_a_stored_form_only_the_filled_page_is_written():
 
 
 def test_page_one_carries_the_forms_own_wording():
-    """Page 1 is not a pixel copy of the original, so the labels are what
-    make it recognisable as the same form -- copied verbatim."""
+    """Page 1 is not a pixel copy of the original, so the labels are what make it recognisable as the..."""
     with connection_scope() as connection:
         person = _person(connection)
         fields = gather(connection, person)
@@ -397,8 +342,7 @@ def test_page_one_carries_the_forms_own_wording():
 
 
 def test_the_values_reach_the_page():
-    """Drawing them is the point; a page of labels would pass every other
-    test here."""
+    """Drawing them is the point; a page of labels would pass every other test here."""
     with connection_scope() as connection:
         person = _person(connection, iban="CH9300762011623852957")
         site = _site(connection)
@@ -424,8 +368,7 @@ def test_the_values_reach_the_page():
 
 
 def test_ort_datum_and_the_signature_are_left_empty():
-    """They come from the participant, with a pen. Filling them in would be
-    this app asserting something it cannot know."""
+    """They come from the participant, with a pen."""
     with connection_scope() as connection:
         person = _person(connection)
         fields = gather(connection, person)
@@ -440,8 +383,7 @@ def test_ort_datum_and_the_signature_are_left_empty():
 
 
 def test_a_long_value_is_truncated_rather_than_running_off_the_page():
-    """reportlab draws past the margin and says nothing, the trap
-    `app.pdf.layout` documents for its own table labels."""
+    """reportlab draws past the margin and says nothing, the trap `app.pdf.layout` documents for its..."""
     with connection_scope() as connection:
         person = _person(
             connection,

@@ -1,9 +1,4 @@
-"""Application entry point.
-
-Initializes (and migrates) the local database, registers every GUI page and
-starts NiceGUI as a self-contained native desktop window -- no separate
-server process for the user to manage.
-"""
+"""Application entry point."""
 
 import logging
 import os
@@ -25,27 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _handle_ui_exception(exception: Exception) -> None:
-    """Surface to Michael an error NiceGUI would otherwise log invisibly.
-
-    NiceGUI already logs every exception raised inside an event handler (a
-    button click, a form submit) via its own `nicegui` logger by default
-    (`App._exception_handlers` starts as `[log.exception]`, see
-    `nicegui.app.App.handle_exception`) -- that already reaches
-    `logs/app.log` once `configure_logging()` has run, no extra logging
-    needed here. What NiceGUI does *not* do by default is show the person
-    anything: the click just silently appears to do nothing, which is the
-    "es funktioniert einfach nicht" symptom this whole feature exists to
-    fix. Registered via `app.on_exception` (NOT `ui.on_exception`, which
-    requires an active per-client context and raises `RuntimeError:
-    ui.page cannot be used in NiceGUI scripts...` when called this early,
-    at startup, before any page has been rendered).
-
-    Args:
-        exception: The exception NiceGUI caught in an event handler.
-
-    Returns:
-        None.
-    """
+    """Surface to Michael an error NiceGUI would otherwise log invisibly."""
     message = (
         f"Es ist ein Fehler aufgetreten ({type(exception).__name__}). "
         'Details siehe Log-Datei im Ordner „logs".'
@@ -72,13 +47,7 @@ def _handle_ui_exception(exception: Exception) -> None:
 
 
 def bootstrap() -> None:
-    """Create required directories and bring the database schema up to date.
-
-    Safe to call every time the application starts.
-
-    Returns:
-        None.
-    """
+    """Create required directories and bring the database schema up to date."""
     ensure_directories()
     with connection_scope() as connection:
         version = initialize_database(connection)
@@ -86,13 +55,7 @@ def bootstrap() -> None:
 
 
 def main() -> None:
-    """Start the NiceGUI native desktop window.
-
-    Registers all page routes and blocks until the window is closed.
-
-    Returns:
-        None.
-    """
+    """Start the NiceGUI native desktop window."""
     # A clear, greppable start marker -- `logs/app.log` is append-only
     # across restarts (never truncated, see app.logging_setup), so a quick
     # restart after an error does not erase the evidence. This banner is

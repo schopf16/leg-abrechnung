@@ -1,12 +1,4 @@
-"""Tests that the drawer answers "where am I" and reads like the work.
-
-The drawer is an accordion of rows: exactly one chapter is open, and the
-open entry carries a grey bar across the full width. Both halves are
-checked here, because each looks fine on screen while the other is broken --
-a chapter that opens without the bar says the area but not the page, and a
-bar inside a chapter that can be left open alongside three others says the
-page but not the area.
-"""
+"""Tests that the drawer answers "where am I" and reads like the work."""
 
 import pytest
 from nicegui import Client, ui
@@ -15,15 +7,7 @@ from app.gui.navigation import NAV_GROUPS, page_frame
 
 
 def _render(route: str, title: str) -> Client:
-    """Render a page frame for one route.
-
-    Args:
-        route: The active route.
-        title: The page title.
-
-    Returns:
-        The client holding the rendered frame.
-    """
+    """Render a page frame for one route."""
     client = Client(ui.page(f"/probe-nav{route.replace('/', '-')}")(lambda: None), request=None)
     with client:
         with page_frame(route, title):
@@ -32,14 +16,7 @@ def _render(route: str, title: str) -> Client:
 
 
 def _groups(client: Client) -> dict:
-    """The navigation chapters, by their label.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        `{label: element}`.
-    """
+    """The navigation chapters, by their label."""
     return {
         element._props.get("label"): element
         for element in client.elements.values()
@@ -67,11 +44,7 @@ def test_exactly_the_chapter_of_the_page_is_open(route, group):
 
 
 def test_the_chapters_are_one_accordion():
-    """Without Quasar's `group`, two chapters could stand open at once.
-
-    That is the whole of draft C: the open chapter *is* the location, so it
-    must not be possible to leave a second one open beside it.
-    """
+    """Without Quasar's `group`, two chapters could stand open at once."""
     groups = _groups(_render("/sites", "Standorte"))
 
     assert groups, "keine Kapitel gefunden"
@@ -106,11 +79,7 @@ def test_an_entry_is_a_row_and_not_a_hyperlink():
 
 
 def test_every_route_in_the_navigation_belongs_to_exactly_one_group():
-    """Otherwise two chapters would open, or none.
-
-    Checked against the table itself rather than a copy of it, so adding an
-    entry twice fails here instead of looking odd on screen.
-    """
+    """Otherwise two chapters would open, or none."""
     seen: dict[str, str] = {}
     for group_label, items in NAV_GROUPS:
         for route, _ in items:
@@ -121,11 +90,7 @@ def test_every_route_in_the_navigation_belongs_to_exactly_one_group():
 
 
 def test_the_settings_page_is_not_called_stammdaten_any_more():
-    """ "Stammdaten" is a chapter now, so the name cannot mean two things.
-
-    The administrator looked for the master-data lists under that entry and
-    found the LEG's sender address and the electricity price.
-    """
+    """ "Stammdaten" is a chapter now, so the name cannot mean two things."""
     labels = {route: label for _, items in NAV_GROUPS for route, label in items}
 
     assert labels["/settings"] == "Allgemein"

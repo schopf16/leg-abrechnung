@@ -1,6 +1,5 @@
-"""Page modules, one per navigation entry. Importing this package registers
-all `@ui.page` routes with NiceGUI.
-"""
+"""Page modules, one per navigation entry. Importing this package registers all `@ui.page` routes with
+NiceGUI."""
 
 from app.gui.pages import (  # noqa: F401
     address_register,

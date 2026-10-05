@@ -1,20 +1,4 @@
-"""The running app's version, for display in the GUI.
-
-Deliberately derived from git rather than a manually maintained version
-string: every deployed copy of this app *is* a git working copy (cloned
-and updated via `update.bat`, see its module docstring), so reading the
-current commit here can never drift out of sync with what was actually
-last pushed -- no separate "don't forget to bump the version" step to
-forget. Shown as `"<commit date> (<short hash>)"`, e.g.
-`"2026-09-05 (a3f9d21)"`: easy to read out over the phone (the date alone
-is usually enough to tell whether someone is on the latest push), with
-the hash as an exact tiebreaker if two commits landed the same day.
-
-Computed once at import time (the running process's code cannot change
-while it runs) and never raises -- if git cannot be found or this is not
-a git checkout at all, `APP_VERSION` falls back to `"unbekannt"` rather
-than blocking app startup over a version label.
-"""
+"""The running app's version, for display in the GUI."""
 
 import shutil
 import subprocess
@@ -32,13 +16,7 @@ _CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def _find_git_executable() -> Optional[str]:
-    """Locate a usable git executable, mirroring update.bat's own fallback.
-
-    Returns:
-        Path to a system-wide `git`, or this project's own portable copy
-        (downloaded by `update.bat` into `.mingit/` when no system git is
-        found), or `None` if neither exists.
-    """
+    """Locate a usable git executable, mirroring update.bat's own fallback."""
     system_git = shutil.which("git")
     if system_git:
         return system_git
@@ -49,13 +27,7 @@ def _find_git_executable() -> Optional[str]:
 
 
 def _read_app_version() -> str:
-    """Read the current commit's date and short hash via git.
-
-    Returns:
-        `"<YYYY-MM-DD> (<short hash>)"` of the last commit, or
-        `_UNKNOWN_VERSION` if git is unavailable, this is not a git
-        checkout, or anything else goes wrong.
-    """
+    """Read the current commit's date and short hash via git."""
     git_exe = _find_git_executable()
     if git_exe is None:
         return _UNKNOWN_VERSION

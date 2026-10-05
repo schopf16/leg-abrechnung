@@ -1,27 +1,4 @@
-"""The one problem marker and filter used by every list in the app.
-
-Same shape as `app.gui.sorting`, and for the same reason: a list that marks
-its broken entries differently from the next list is a second mechanism to
-learn. There is one marker, one filter, and one place that decides what
-counts as a problem (`app.domain.quality_checks.problems_for`).
-
-**The triangle carries no text.** It says "look at this one" and nothing
-more, exactly like the eye and the pencil beside it. The eye then shows what
-is wrong, at the section it belongs to, and the pencil shows the same thing
-and lets it be fixed. A table row has no room to explain a finding, and the
-first attempt at explaining in the list proved it: a name beside "Meinten
-Sie: Untere Zollgasse?" said neither which field was meant nor what stood in
-it.
-
-**The filter is hidden while nothing is marked.** A control that can only
-ever empty the list is clutter, and one left switched on after the last
-correction would filter the list down to nothing from off-screen -- so it
-also switches itself off when the last finding goes.
-
-This closes a gap the overview's summarising opened: it says "7 Messpunkte
-ohne LEG" and links to the list, where before it named every one of them.
-Without a marker in that list the reader arrives and cannot tell which.
-"""
+"""The one problem marker and filter used by every list in the app."""
 
 from typing import Callable, Optional
 
@@ -37,14 +14,7 @@ FILTER_LABEL = "Nur fehlerhafte Einträge"
 
 
 def load_problems(subject_kind: str) -> dict[int, list[QualityWarning]]:
-    """Collect the findings for one list, opening its own connection.
-
-    Args:
-        subject_kind: One of `app.domain.quality_checks`'s `SUBJECT_*`.
-
-    Returns:
-        `{record id: findings}`, holding only the records that have one.
-    """
+    """Collect the findings for one list, opening its own connection."""
     with connection_scope() as connection:
         return problems_for(connection, subject_kind)
 
@@ -61,21 +31,10 @@ TABLE_MARKER_HTML = (
 
 
 class ProblemFilter:
-    """The "Nur fehlerhafte Einträge" switch for one list.
-
-    Attributes:
-        switch: The rendered switch, so a test can drive it.
-    """
+    """The "Nur fehlerhafte Einträge" switch for one list."""
 
     def __init__(self, on_change: Callable[[], None]) -> None:
-        """Render the switch, hidden until something is marked.
-
-        Args:
-            on_change: The page's filter refresh, called when toggled.
-
-        Returns:
-            None.
-        """
+        """Render the switch, hidden until something is marked."""
         # Quasar wires up the `label` *prop*; text in the default slot
         # renders beside the switch and does nothing when clicked.
         self.switch = ui.switch().props(f'label="{FILTER_LABEL}" dense')
@@ -84,22 +43,11 @@ class ProblemFilter:
 
     @property
     def active(self) -> bool:
-        """Whether the list should currently show only marked entries.
-
-        Returns:
-            `True` while the switch is on.
-        """
+        """Whether the list should currently show only marked entries."""
         return bool(self.switch.value)
 
     def update(self, marked: set[int]) -> None:
-        """Show or hide the switch for the current set of findings.
-
-        Args:
-            marked: Ids that carry a finding right now.
-
-        Returns:
-            None.
-        """
+        """Show or hide the switch for the current set of findings."""
         self.switch.visible = bool(marked)
         if not marked:
             # Correcting the last entry must not leave the list filtered down
@@ -118,19 +66,7 @@ def render_problem_notes(
     *,
     exclude: frozenset = frozenset(),
 ) -> None:
-    """Spell the findings out, for a detail page or an edit dialog.
-
-    This is where the text belongs: the eye shows it, the pencil shows it
-    and lets it be fixed. Nothing is drawn when there is nothing to say.
-
-    Args:
-        warnings: The findings for this record, or `None`.
-        exclude: Categories to leave out -- a dialog passes `AT_THE_FIELD`
-            because it renders those beside the input they are about.
-
-    Returns:
-        None.
-    """
+    """Spell the findings out, for a detail page or an edit dialog."""
     warnings = [w for w in (warnings or []) if w.category not in exclude]
     if not warnings:
         return

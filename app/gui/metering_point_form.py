@@ -1,9 +1,4 @@
-"""Shared MeteringPoint create/edit dialog.
-
-Used both by the metering points page itself and by the Web-Registrierungen
-page (to prefill a new MeteringPoint from a reported Zählernummer without
-having to re-type it) -- see `open_metering_point_form`'s `prefill` argument.
-"""
+"""Shared MeteringPoint create/edit dialog."""
 
 from typing import Callable, Optional
 
@@ -41,25 +36,7 @@ def open_metering_point_form(
     prefill: Optional[dict] = None,
     on_saved: Optional[Callable[[MeteringPoint], None]] = None,
 ) -> None:
-    """Open the create/edit dialog for a MeteringPoint.
-
-    Args:
-        existing: MeteringPoint to edit, or `None` to create a new one.
-        prefill: Initial field values for a new MeteringPoint, ignored if
-            `existing` is set. Keys: any of `_PREFILL_KEYS` (`land`,
-            `identifier` default from `LegSettings` if omitted;
-            `metering_point_number` defaults to ""; `site_id` defaults to
-            no selection if omitted -- deliberately never guesses an
-            unrelated site; `direction` defaults to
-            `DIRECTION_CONSUMPTION`).
-        on_saved: Called with the created/updated `MeteringPoint` right after
-            a successful save (dialog already closed) -- e.g. so a caller
-            elsewhere on the page can refresh its own list or react to
-            the new MeteringPoint's id.
-
-    Returns:
-        None.
-    """
+    """Open the create/edit dialog for a MeteringPoint."""
     prefill = prefill or {}
 
     with connection_scope() as connection:
@@ -111,11 +88,7 @@ def open_metering_point_form(
         designation_preview = ui.label("").classes("font-mono text-caption text-grey-8")
 
         def update_preview() -> None:
-            """Refresh the assembled 33-character preview (for copy-paste).
-
-            Returns:
-                None.
-            """
+            """Refresh the assembled 33-character preview (for copy-paste)."""
             full = assemble_metering_point_designation(
                 country_input.value, identifier_input.value, metering_point_number_input.value
             )
@@ -146,11 +119,7 @@ def open_metering_point_form(
         capacity_hint = ui.label("").classes("text-caption")
 
         def _show_capacity() -> None:
-            """Show the selected LEG's production-capacity headroom.
-
-            Returns:
-                None.
-            """
+            """Show the selected LEG's production-capacity headroom."""
             leg = legs_by_id.get(leg_select.value)
             if leg is None:
                 capacity_hint.text = ""
@@ -194,11 +163,7 @@ def open_metering_point_form(
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
-            """Validate the form and persist the MeteringPoint.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the MeteringPoint."""
             full_designation = assemble_metering_point_designation(
                 country_input.value, identifier_input.value, metering_point_number_input.value
             )

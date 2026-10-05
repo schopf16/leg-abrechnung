@@ -1,13 +1,4 @@
-"""Tests for the demo data generator.
-
-
-The generator itself is what these tests are about, so this module opts out
-of the session template `tests/conftest.py` serves everywhere else: there,
-`create_demo_data` is replaced by a file restore, which is exactly what
-must not happen here. A restore would make every assertion below a
-statement about the cache rather than about the code that fills it -- and
-it could not raise `DemoDataAlreadyExists` at all.
-"""
+"""Tests for the demo data generator."""
 
 import pytest
 
@@ -30,12 +21,7 @@ pytestmark = pytest.mark.real_demo_data
 
 
 def test_create_demo_data_creates_six_persons_and_thirteen_metering_points(db):
-    """4 showcase persons + 1 move fixture + 1 Verwaltung, and 13 metering points.
-
-    The Verwaltung holds six of those metering points across two
-    properties -- the case that proves a participant with several sites
-    still receives exactly one bill.
-    """
+    """4 showcase persons + 1 move fixture + 1 Verwaltung, and 13 metering points."""
     summary = create_demo_data(db)
     assert len(summary.person_ids) == 6
     assert len(summary.metering_point_ids) == 13
@@ -43,11 +29,7 @@ def test_create_demo_data_creates_six_persons_and_thirteen_metering_points(db):
 
 
 def test_the_demo_verwaltung_holds_two_properties_but_gets_one_bill(db):
-    """The Verwaltung fixture exists and is shaped as the showcase needs.
-
-    Six metering points across two sites, both directions present, and
-    exactly one billing item -- one customer, one netted amount.
-    """
+    """The Verwaltung fixture exists and is shaped as the showcase needs."""
     from app.domain.billing import create_or_replace_billing_run
     from app.models import assignment as assignment_repo
 
@@ -71,8 +53,7 @@ def test_the_demo_verwaltung_holds_two_properties_but_gets_one_bill(db):
 
 
 def test_create_demo_data_configures_valid_demo_qr_iban(db):
-    """The generator fills in settings, a substation area and a LEG so demo
-    QR-invoices can be generated right away."""
+    """The generator fills in settings, a substation area and a LEG so demo QR-invoices can be..."""
     create_demo_data(db)
     settings = settings_repo.get_settings(db)
     assert settings.qr_iban

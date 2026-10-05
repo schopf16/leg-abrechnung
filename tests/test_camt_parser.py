@@ -1,8 +1,4 @@
-"""Tests for app.importers.camt_parser (camt.053 and camt.054 XML parsing).
-
-Uses the hand-built fixtures in tests/fixtures/ -- no real bank data
-involved, all counterparty names are fantasy ("Muster ..."), matching the
-project's test-isolation discipline."""
+"""Tests for app.importers.camt_parser (camt.053 and camt.054 XML parsing)."""
 
 from pathlib import Path
 
@@ -67,9 +63,7 @@ def test_camt053_skips_foreign_currency_with_warning():
 
 
 def test_camt053_marks_reversal_entry_and_still_extracts_its_reference():
-    """A reversal must still be parsed (so it can be shown for manual
-    review), but flagged -- it is app.domain.bank_reconciliation's job to
-    refuse auto-matching it, not the parser's job to drop it."""
+    """A reversal must still be parsed (so it can be shown for manual review), but flagged -- it is..."""
     result = parse_camt_file(_FIXTURES / "sample_camt053.xml")
     tx = _by_reference(result.transactions, "ACCTSVCR-0005")
 
@@ -87,10 +81,7 @@ def test_camt053_synthesizes_fallback_reference_when_none_present():
 
 
 def test_camt054_expands_batched_ntry_into_individually_referenced_transactions():
-    """The whole point of supporting camt.054: a bank's collective
-    QR-payment booking (one Ntry, several TxDtls) must become one
-    ParsedBankTransaction per TxDtls, each with its own reference and its
-    own (not the batch total) amount."""
+    """The whole point of supporting camt.054: a bank's collective QR-payment booking (one Ntry..."""
     result = parse_camt_file(_FIXTURES / "sample_camt054.xml")
 
     assert result.source_format == "camt054"

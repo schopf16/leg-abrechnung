@@ -1,22 +1,4 @@
-"""Tests for `app.domain.statistics.leg_balance`.
-
-Two things are being checked here, and only one of them is arithmetic.
-
-The first is that the shared figure keeps the rule the invoices are built
-on: `min(P(t), C(t))` per 15-minute interval **and per LEG**, summed only
-afterwards. Both halves of that have their own test, because both produce a
-plausible-looking wrong number -- summing first invents sharing between
-morning sun and evening demand, pooling the LEGs first invents sharing
-between neighbours who are not in the same LEG at all.
-
-The second is that this module states facts and grades nothing. The app
-once recommended moving people between LEGs and it was removed on purpose;
-a "good/bad" verdict would be the same thing wearing a percentage sign. The
-ordering is therefore a single continuum with both extremes at the ends,
-which is a fact about the data rather than an opinion about it -- and that
-is pinned as a test, because it is a design decision somebody could
-reasonably undo without noticing what it was for.
-"""
+"""Tests for `app.domain.statistics.leg_balance`."""
 
 from datetime import datetime, timedelta
 
@@ -35,28 +17,12 @@ _START = datetime(2026, 4, 15, 0, 0)
 
 
 def _leg(db, name: str) -> int:
-    """Create a LEG.
-
-    Args:
-        db: Open SQLite connection.
-        name: Its name.
-
-    Returns:
-        The new LEG's id.
-    """
+    """Create a LEG."""
     return leg_repo.create(db, Leg(id=None, name=name, note="", created_at=""))
 
 
 def _site(db, street: str) -> int:
-    """Create a site in its own Trafokreis.
-
-    Args:
-        db: Open SQLite connection.
-        street: The street, which also names the Trafokreis.
-
-    Returns:
-        The new site's id.
-    """
+    """Create a site in its own Trafokreis."""
     area_id = substation_area_repo.create(
         db, SubstationArea(id=None, name=street, bkw_designation="", note="", created_at="")
     )
@@ -76,18 +42,7 @@ def _site(db, street: str) -> int:
 
 
 def _meter(db, leg_id: int, site_id: int, direction: str, designation: str) -> int:
-    """Create a metering point in one LEG.
-
-    Args:
-        db: Open SQLite connection.
-        leg_id: The LEG it belongs to.
-        site_id: The site it sits at.
-        direction: `DIRECTION_CONSUMPTION` or `DIRECTION_FEED_IN`.
-        designation: Its unique designation.
-
-    Returns:
-        The new metering point's id.
-    """
+    """Create a metering point in one LEG."""
     return metering_point_repo.create(
         db,
         MeteringPoint(
@@ -104,17 +59,7 @@ def _meter(db, leg_id: int, site_id: int, direction: str, designation: str) -> i
 
 
 def _readings(db, metering_point_id: int, direction: str, values: list[float]) -> None:
-    """Store consecutive 15-minute readings starting at `_START`.
-
-    Args:
-        db: Open SQLite connection.
-        metering_point_id: The meter they belong to.
-        direction: The meter's direction, stored on the reading too.
-        values: kWh per interval, in order.
-
-    Returns:
-        None.
-    """
+    """Store consecutive 15-minute readings starting at `_START`."""
     db.executemany(
         "INSERT INTO readings (metering_point_id, timestamp, direction, kwh, source) VALUES (?, ?, ?, ?, ?)",
         [
@@ -132,13 +77,7 @@ def _readings(db, metering_point_id: int, direction: str, values: list[float]) -
 
 
 def test_shared_energy_is_formed_per_interval_not_from_the_totals(db):
-    """The expensive mistake, kept out by a test rather than by care.
-
-    Production in the first two intervals, consumption in the last two, with
-    identical totals. `min(total, total)` would report 20 kWh shared; the
-    truth is that nobody was drawing when the sun shone, so nothing was
-    shared at all.
-    """
+    """The expensive mistake, kept out by a test rather than by care."""
     leg_id = _leg(db, "LEG-Eins")
     site_id = _site(db, "Erstweg")
     producer = _meter(db, leg_id, site_id, DIRECTION_FEED_IN, "CH-E-1")
@@ -153,12 +92,7 @@ def test_shared_energy_is_formed_per_interval_not_from_the_totals(db):
 
 
 def test_two_legs_never_share_with_each_other(db):
-    """The other half of the rule, and just as easy to get wrong.
-
-    One LEG produces, the other draws, at the very same instants. Pooling
-    the readings before taking the minimum would report 40 kWh shared
-    between two sets of people who are not in the same LEG.
-    """
+    """The other half of the rule, and just as easy to get wrong."""
     producing = _leg(db, "LEG-Produktion")
     drawing = _leg(db, "LEG-Bezug")
     site_id = _site(db, "Zweitweg")
@@ -190,11 +124,7 @@ def test_the_shared_share_is_what_found_a_taker(db):
 
 
 def test_a_leg_without_readings_reports_no_percentage_rather_than_zero(db):
-    """ "Nothing produced" and "produced, nobody took it" are not the same.
-
-    Printing 0 % for the first would assert the second, which is a
-    statement about the LEG's mix that no data supports.
-    """
+    """ "Nothing produced" and "produced, nobody took it" are not the same."""
     leg_id = _leg(db, "LEG-Ohne-Daten")
     site_id = _site(db, "Viertweg")
     _meter(db, leg_id, site_id, DIRECTION_FEED_IN, "CH-E-4")
@@ -209,12 +139,7 @@ def test_a_leg_without_readings_reports_no_percentage_rather_than_zero(db):
 
 
 def test_the_legs_are_ordered_from_production_heavy_to_consumption_heavy(db):
-    """One continuum, both extremes at the ends.
-
-    This is the whole answer to "which are well and which badly
-    distributed": no verdict, no threshold, just the order the facts
-    themselves produce.
-    """
+    """One continuum, both extremes at the ends."""
     site_id = _site(db, "Fuenftweg")
     only_producers = _leg(db, "LEG-A-nur-Produktion")
     heavy = _leg(db, "LEG-B-produktionslastig")
@@ -235,11 +160,7 @@ def test_the_legs_are_ordered_from_production_heavy_to_consumption_heavy(db):
 
 
 def test_an_empty_leg_comes_last_and_says_so(db):
-    """It is neither end of the scale, so it does not belong on it.
-
-    Sorting it to one extreme would put a LEG nobody has assigned anything
-    to beside one that genuinely cannot share.
-    """
+    """It is neither end of the scale, so it does not belong on it."""
     populated = _leg(db, "LEG-Mit-Messpunkten")
     empty = _leg(db, "LEG-Leer")
     site_id = _site(db, "Sechstweg")
@@ -254,12 +175,7 @@ def test_an_empty_leg_comes_last_and_says_so(db):
 
 
 def test_a_one_sided_leg_states_the_missing_side(db):
-    """A fact, and the one statement that survived the removed advice.
-
-    With one direction absent nothing can be shared in that LEG at all --
-    true whatever the economics, which is exactly why it is allowed to be
-    stated while a ratio verdict is not.
-    """
+    """A fact, and the one statement that survived the removed advice."""
     producers_only = _leg(db, "LEG-Nur-Produktion")
     consumers_only = _leg(db, "LEG-Nur-Bezug")
     site_id = _site(db, "Siebtweg")
@@ -273,11 +189,7 @@ def test_a_one_sided_leg_states_the_missing_side(db):
 
 
 def test_the_meter_counts_come_from_the_same_source_as_the_verteilung_view(db):
-    """Two views of the same LEG must not disagree about its size.
-
-    `leg_balance` reads `distribution_by_leg` rather than counting again,
-    so this pins the wiring rather than the arithmetic.
-    """
+    """Two views of the same LEG must not disagree about its size."""
     from app.domain.statistics import distribution_by_leg
 
     leg_id = _leg(db, "LEG-Quelle")

@@ -1,7 +1,6 @@
-"""Tests for `app.gui.safe_notify`, the notify() wrapper introduced after a
-production crash ("The parent element this slot belongs to has been
-deleted.") was reported when confirming a delete on a card-based list page.
-"""
+"""Tests for `app.gui.safe_notify`, the notify() wrapper introduced after a production crash ("The
+parent element this slot belongs to has been deleted.") was reported when confirming a delete on a
+card-based list page."""
 
 import logging
 

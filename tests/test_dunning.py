@@ -172,9 +172,7 @@ def test_item_already_at_level_2_never_escalates_further_automatically(db):
 
 
 def test_payment_covering_the_balance_stops_escalation_even_if_item_itself_looks_unpaid(db):
-    """The person-level balance gate: a payment recorded elsewhere on the
-    account (not necessarily linked to this exact item) must still stop
-    the dunning notice, since overall nothing more is owed."""
+    """The person-level balance gate: a payment recorded elsewhere on the account (not necessarily..."""
     person = _person(db)
     _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     account_entry_repo.create(
@@ -261,12 +259,7 @@ def test_send_dunning_skips_email_for_paper_invoice_person_but_still_generates_p
 def test_send_dunning_qr_bill_amount_excludes_item_linked_payments_already_received(
     db, tmp_path, monkeypatch
 ):
-    """Finding #1: a dunning notice's QR-bill must charge only what remains open
-    on that specific item, not the full original invoiced amount, when a
-    partial payment was already linked to it (e.g. one of several open
-    items on the same person was paid in the meantime, but the person's
-    overall balance -- which gates whether a dunning notice is sent at all -- is
-    still positive because of another, still-fully-open item)."""
+    """Finding #1: a dunning notice's QR-bill must charge only what remains open on that specific item..."""
     monkeypatch.setattr(dunning, "OUTPUT_DIR", tmp_path)
     person = _person(db)
     settings = settings_repo.get_settings(db)
@@ -296,10 +289,7 @@ def test_send_dunning_qr_bill_amount_excludes_item_linked_payments_already_recei
 
 
 def test_send_dunning_skips_qr_bill_for_an_item_already_fully_covered(db, tmp_path, monkeypatch):
-    """An item whose full amount was already paid specifically against it
-    must not get a page/QR-bill at all in the dunning notice -- there is nothing
-    left to charge for it (it only still appears here because another,
-    still-open item on the same person keeps the overall balance positive)."""
+    """An item whose full amount was already paid specifically against it must not get a page/QR-bill..."""
     monkeypatch.setattr(dunning, "OUTPUT_DIR", tmp_path)
     person = _person(db)
     settings = settings_repo.get_settings(db)
@@ -332,16 +322,7 @@ def test_send_dunning_skips_qr_bill_for_an_item_already_fully_covered(db, tmp_pa
 
 
 def test_send_dunning_reaches_a_person_who_only_has_a_partner_address(db, tmp_path, monkeypatch):
-    """The gate in front of the send has to ask what the send asks.
-
-    Regression test for a real defect found in review: `send_dunning`
-    decided whether to email at all from `contact_email` alone, while the
-    send below it already used both addresses. Somebody reachable only at
-    their partner's address therefore got **no** dunning email -- silently,
-    with no error anywhere -- and was escalated to the next level all the
-    same. A member could have been put through the Ausschluss-Prüfung
-    without ever being written to.
-    """
+    """The gate in front of the send has to ask what the send asks."""
     monkeypatch.setattr(dunning, "OUTPUT_DIR", tmp_path)
     person = _person(db)
     person.contact_email = ""

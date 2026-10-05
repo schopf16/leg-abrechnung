@@ -30,14 +30,7 @@ CATEGORY_LABELS = {
 
 
 def _quarter_stock_row(total) -> dict:
-    """Build one row of the per-quarter data overview.
-
-    Args:
-        total: The `app.domain.statistics.QuarterEnergy` to describe.
-
-    Returns:
-        A row dict matching the overview table's columns.
-    """
+    """Build one row of the per-quarter data overview."""
     imported = total.last_import_at
     if imported:
         imported = imported.replace("T", " ")[:16]
@@ -61,19 +54,7 @@ def _quarter_stock_row(total) -> dict:
 
 
 def _persons_with_energy(distribution) -> int:
-    """Count participants who actually shared energy this quarter.
-
-    The distribution covers everyone with an assignment, including those
-    whose meters moved nothing (see
-    `app.domain.distribution._seed_participants`), so the plain length of
-    `person_results` is a participant count, not an activity one.
-
-    Args:
-        distribution: A `app.domain.distribution.DistributionResult`.
-
-    Returns:
-        How many of its persons have non-zero consumption or production.
-    """
+    """Count participants who actually shared energy this quarter."""
     return sum(
         1
         for result in distribution.person_results.values()
@@ -82,15 +63,7 @@ def _persons_with_energy(distribution) -> int:
 
 
 def _type_label(item) -> str:
-    """German label for a billing item's net direction.
-
-    Args:
-        item: A `BillingRunItem`.
-
-    Returns:
-        "Rechnung" if the person owes the LEG, "credit note" if the
-        LEG owes the person, "Ausgeglichen" if the net is zero.
-    """
+    """German label for a billing item's net direction."""
     if item.is_owed_to_leg:
         return "Rechnung"
     if item.is_owed_by_leg:
@@ -100,11 +73,7 @@ def _type_label(item) -> str:
 
 @ui.page("/reports")
 def reports_page() -> None:
-    """Render the reports and plausibility-check page.
-
-    Returns:
-        None.
-    """
+    """Render the reports and plausibility-check page."""
     with page_frame("/reports", "Auswertungen"):
         ui.label(
             "Übersicht je Person für ein Quartal innerhalb einer LEG (auf "
@@ -147,11 +116,7 @@ def reports_page() -> None:
         stock_column = ui.column().classes("w-full mt-2")
 
         def refresh_stock() -> None:
-            """Rebuild the per-quarter data overview for the chosen scope.
-
-            Returns:
-                None.
-            """
+            """Rebuild the per-quarter data overview for the chosen scope."""
             with connection_scope() as connection:
                 totals = quarter_energy_totals(connection, stock_leg_select.value)
 
@@ -188,11 +153,7 @@ def reports_page() -> None:
         warnings_column = ui.column().classes("w-full mt-6")
 
         def run_checks() -> None:
-            """Compute the quarterly overview and run all plausibility checks.
-
-            Returns:
-                None.
-            """
+            """Compute the quarterly overview and run all plausibility checks."""
             if leg_select.value is None:
                 ui.notify("Bitte eine LEG wählen.", type="warning")
                 return

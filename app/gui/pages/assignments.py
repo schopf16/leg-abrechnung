@@ -1,11 +1,4 @@
-"""MeteringPoint-to-Person assignment history page (assignments).
-
-Rendered as one card per MeteringPoint (grouping its assignments together)
-rather than a flat table: edit/delete buttons are bound directly to Python
-callbacks (not via a JS-emit round trip through a Quasar table slot),
-which is both more robust to click on and groups related entries more
-usefully than one row per Assignment in isolation.
-"""
+"""MeteringPoint-to-Person assignment history page (assignments)."""
 
 from datetime import date, datetime
 from typing import Optional
@@ -61,14 +54,7 @@ PRINT_COLUMNS = [
 
 
 def _descending(iso_date: str) -> tuple[int, ...]:
-    """Key an ISO date so that the newest sorts first in an ascending sort.
-
-    Args:
-        iso_date: Date in ISO format ("YYYY-MM-DD").
-
-    Returns:
-        The date's parts, each negated.
-    """
+    """Key an ISO date so that the newest sorts first in an ascending sort."""
     return tuple(-int(part) for part in iso_date.split("-"))
 
 
@@ -94,14 +80,7 @@ SORT_OPTIONS = [
 
 
 def _parse_date(value: str) -> Optional[date]:
-    """Parse a date string from a NiceGUI date input into a `date`.
-
-    Args:
-        value: Date string in ISO format ("YYYY-MM-DD"), or empty/`None`.
-
-    Returns:
-        The parsed `date`, or `None` if `value` is empty.
-    """
+    """Parse a date string from a NiceGUI date input into a `date`."""
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%d").date()
@@ -109,11 +88,7 @@ def _parse_date(value: str) -> Optional[date]:
 
 @ui.page("/assignments")
 def assignments_page() -> None:
-    """Render the assignments CRUD page, including consistency warnings.
-
-    Returns:
-        None.
-    """
+    """Render the assignments CRUD page, including consistency warnings."""
     with page_frame("/assignments", "Zuordnungen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -159,11 +134,7 @@ def assignments_page() -> None:
         print_rows: list[dict] = []
 
         def _filter_description() -> str | None:
-            """Build a short description of the currently active filter.
-
-            Returns:
-                A human-readable summary, or `None` if no filter is active.
-            """
+            """Build a short description of the currently active filter."""
             parts = []
             if search_input.value:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
@@ -172,12 +143,7 @@ def assignments_page() -> None:
             return ", ".join(parts) if parts else None
 
         def refresh() -> None:
-            """Reload the assignments list (grouped by MeteringPoint) and
-            recompute consistency warnings.
-
-            Returns:
-                None.
-            """
+            """Reload the assignments list (grouped by MeteringPoint) and recompute consistency..."""
             nonlocal print_rows
             # One moment for the whole pass, so two cards cannot disagree
             # about what "laufend" means mid-render.
@@ -288,14 +254,7 @@ def assignments_page() -> None:
                     ui.label(f"⚠ {warning.message}").classes("text-negative text-body2")
 
         def open_form(existing: Optional[Assignment]) -> None:
-            """Open the create/edit dialog for a Assignment.
-
-            Args:
-                existing: Assignment to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a Assignment."""
             with connection_scope() as connection:
                 metering_points = metering_point_repo.list_all(connection)
                 sites = site_repo.list_all(connection)
@@ -304,15 +263,7 @@ def assignments_page() -> None:
             site_options = {s.id: s.full_address for s in sites}
 
             def metering_point_options_for(site_id: Optional[int]) -> dict:
-                """Build the MeteringPoint dropdown options, optionally filtered by site.
-
-                Args:
-                    site_id: If set, only metering points at that site
-                        are included; `None` includes all of them.
-
-                Returns:
-                    A `{metering_point_id: label}` dict for `ui.select`.
-                """
+                """Build the MeteringPoint dropdown options, optionally filtered by site."""
                 return {
                     mp.id: f"{mp.designation} ({'Bezug' if mp.is_consumption else 'Einspeisung'})"
                     for mp in metering_points
@@ -352,11 +303,7 @@ def assignments_page() -> None:
                 leg_warning = ui.label("").classes("text-warning text-body2")
 
                 def on_site_change() -> None:
-                    """Re-filter the MeteringPoint options to the selected site.
-
-                    Returns:
-                        None.
-                    """
+                    """Re-filter the MeteringPoint options to the selected site."""
                     options = metering_point_options_for(site_select.value)
                     metering_point_select.options = options
                     if metering_point_select.value not in options:
@@ -370,15 +317,7 @@ def assignments_page() -> None:
                 site_select.on_value_change(lambda _: on_site_change())
 
                 def update_leg_warning() -> None:
-                    """Show a warning if the selected MeteringPoint's LEG mixes substation areas.
-
-                    Lets the administrator immediately see, while assigning
-                    a Person, whether the resulting LEG membership implies
-                    a reduced BKW discount -- see `app.domain.leg_composition`.
-
-                    Returns:
-                        None.
-                    """
+                    """Show a warning if the selected MeteringPoint's LEG mixes substation areas."""
                     mp = metering_points_by_id.get(metering_point_select.value)
                     if mp is None or mp.leg_id is None:
                         leg_warning.text = ""
@@ -423,11 +362,7 @@ def assignments_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
-                    """Validate the form and persist the Assignment.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and persist the Assignment."""
                     if metering_point_select.value is None or person_select.value is None:
                         error_label.text = "Messpunkt und Person sind erforderlich."
                         return
@@ -480,25 +415,11 @@ def assignments_page() -> None:
             dialog.open()
 
         def on_edit(assignment: Assignment) -> None:
-            """Card edit-button handler: open the edit dialog for this Assignment.
-
-            Args:
-                assignment: Assignment to edit.
-
-            Returns:
-                None.
-            """
+            """Card edit-button handler: open the edit dialog for this Assignment."""
             open_form(assignment)
 
         def on_remove(assignment: Assignment) -> None:
-            """Card delete-button handler: delete the Assignment after confirmation.
-
-            Args:
-                assignment: Assignment to delete.
-
-            Returns:
-                None.
-            """
+            """Card delete-button handler: delete the Assignment after confirmation."""
             with ui.dialog() as confirm, ui.card():
                 ui.label("Diese Zuordnung wirklich löschen?")
                 with ui.row().classes("w-full justify-end gap-2"):
@@ -516,27 +437,10 @@ def assignments_page() -> None:
             confirm.open()
 
         def _with_assignment(action):
-            """Wrap a handler so it receives the Zuordnung, not the row.
-
-            The slot emits the row, which is data sent to the browser and
-            back, so the record is re-read rather than trusted from it.
-
-            Args:
-                action: `on_edit` or `on_remove`.
-
-            Returns:
-                A callable for `table.on(...)`.
-            """
+            """Wrap a handler so it receives the Zuordnung, not the row."""
 
             def handle(event) -> None:
-                """Resolve the clicked row and run the action.
-
-                Args:
-                    event: NiceGUI generic event carrying the row.
-
-                Returns:
-                    None.
-                """
+                """Resolve the clicked row and run the action."""
                 with connection_scope() as connection:
                     existing = assignment_repo.get(connection, event.args["id"])
                 if existing is None:

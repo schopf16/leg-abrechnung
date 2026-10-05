@@ -1,9 +1,4 @@
-"""Shared site create/edit dialog.
-
-Used both by the sites page itself and by the Web-Registrierungen page
-(to prefill a new site from a registration's reported address without
-having to re-type it) -- see `open_site_form`'s `prefill` argument.
-"""
+"""Shared site create/edit dialog."""
 
 from typing import Callable, Optional
 
@@ -26,17 +21,7 @@ _PREFILL_KEYS = ("street", "house_number", "postal_code", "municipality")
 
 
 def _initial(existing: Optional[Site], attr: str, prefill: dict, key: str) -> str:
-    """Resolve one field's initial form value.
-
-    Args:
-        existing: site being edited, or `None` when creating.
-        attr: Attribute name on `existing` to read when editing.
-        prefill: Prefill dict passed to `open_site_form`.
-        key: Key to look up in `prefill` when creating.
-
-    Returns:
-        The value the corresponding input should start with.
-    """
+    """Resolve one field's initial form value."""
     if existing is not None:
         return getattr(existing, attr)
     return prefill.get(key, "")
@@ -48,21 +33,7 @@ def open_site_form(
     prefill: Optional[dict] = None,
     on_saved: Optional[Callable[[Site], None]] = None,
 ) -> None:
-    """Open the create/edit dialog for a site.
-
-    Args:
-        existing: site to edit, or `None` to create a new one.
-        prefill: Initial field values for a new site, ignored if
-            `existing` is set. Keys: any of `_PREFILL_KEYS` (`street`,
-            `house_number`, `postal_code`, `municipality`); missing keys default to "".
-        on_saved: Called with the created/updated `site` right after a
-            successful save (dialog already closed) -- e.g. so a caller
-            elsewhere on the page can refresh its own list or react to
-            the new site's id.
-
-    Returns:
-        None.
-    """
+    """Open the create/edit dialog for a site."""
     prefill = prefill or {}
 
     with connection_scope() as connection:
@@ -127,13 +98,7 @@ def open_site_form(
         error_label = ui.label("").classes("text-negative")
 
         def check_duplicate() -> bool:
-            """Check whether address/Hausnummer/PLZ already match another site.
-
-            Updates `duplicate_warning` as a side effect.
-
-            Returns:
-                `True` if a different site already has this exact address.
-            """
+            """Check whether address/Hausnummer/PLZ already match another site."""
             if not (street.value.strip() and house_number.value.strip() and postal_code.value.strip()):
                 duplicate_warning.text = ""
                 return False
@@ -153,11 +118,7 @@ def open_site_form(
         check_duplicate()
 
         def save() -> None:
-            """Validate the form and persist the site.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the site."""
             if not street.value.strip():
                 error_label.text = "Adresse darf nicht leer sein."
                 return

@@ -1,9 +1,4 @@
-"""Tests for the quarterly billing cycle tracker and its guided page.
-
-The tracker mirrors `person_onboarding`; what is genuinely new is the
-gate, so most of the weight here is on that: a red control point must
-actually stop the computation, and stepping past it must leave a record.
-"""
+"""Tests for the quarterly billing cycle tracker and its guided page."""
 
 from datetime import date, timedelta
 
@@ -19,16 +14,7 @@ DEFAULT_QUARTER = WINTER_QUARTER
 
 
 def _cycle(db, year=2025, quarter=3):
-    """Start a cycle for a quarter.
-
-    Args:
-        db: Database connection fixture.
-        year: Calendar year.
-        quarter: Quarter number.
-
-    Returns:
-        The `BillingCycle`.
-    """
+    """Start a cycle for a quarter."""
     return billing_cycle_repo.start_for_period(db, year, quarter)
 
 
@@ -162,11 +148,7 @@ def test_a_finished_cycle_does_not_nag(db):
 
 
 def _render_billing_page():
-    """Render the billing page and hand back its client.
-
-    Returns:
-        The NiceGUI `Client` holding the rendered elements.
-    """
+    """Render the billing page and hand back its client."""
     from nicegui import Client, ui
 
     from app.gui.pages import billing as billing_page_module
@@ -178,16 +160,7 @@ def _render_billing_page():
 
 
 def _buttons(client, label_ends_with=None, label=None):
-    """Find buttons by their label.
-
-    Args:
-        client: The rendered client.
-        label_ends_with: Match labels ending in this.
-        label: Match this exact label.
-
-    Returns:
-        The matching button elements.
-    """
+    """Find buttons by their label."""
     found = []
     for element in client.elements.values():
         if element.__class__.__name__ != "Button":
@@ -201,14 +174,7 @@ def _buttons(client, label_ends_with=None, label=None):
 
 
 def _press(button) -> None:
-    """Invoke a button's click handler.
-
-    Args:
-        button: The button to press.
-
-    Returns:
-        None.
-    """
+    """Invoke a button's click handler."""
     for listener in button._event_listeners.values():
         if listener.type == "click":
             listener.handler(None)
@@ -217,14 +183,7 @@ def _press(button) -> None:
 
 
 def test_a_run_can_be_started_for_a_quarter_that_has_no_readings_yet(monkeypatch, tmp_path):
-    """The assistant decides the quarter; the readings come afterwards.
-
-    Regression test for a circular design: the period was offered only
-    for quarters that already had readings, while the run's first step
-    was importing them -- so a run could not be started until its first
-    step was long done. The quarter chosen here deliberately has no data
-    at all.
-    """
+    """The assistant decides the quarter; the readings come afterwards."""
     from app.db.connection import connection_scope
 
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)
@@ -260,11 +219,7 @@ def test_a_run_can_be_started_for_a_quarter_that_has_no_readings_yet(monkeypatch
 
 
 def test_a_quarter_with_readings_ticks_its_import_step_by_itself(monkeypatch, tmp_path):
-    """Whether data is there is a question the app answers, not the user.
-
-    Asking for a manual confirmation of something observable only invites
-    a tick that is not true.
-    """
+    """Whether data is there is a question the app answers, not the user."""
     from app.db.connection import connection_scope
 
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)
@@ -282,15 +237,7 @@ def test_a_quarter_with_readings_ticks_its_import_step_by_itself(monkeypatch, tm
 
 
 def test_without_readings_nothing_beyond_the_import_can_be_done(monkeypatch, tmp_path):
-    """A run for an empty quarter may exist, but must not compute anything.
-
-    Uses a quarter *before* anyone was assigned, so the control points
-    have nothing to object to and all come out green -- the readings
-    guard is then the only thing standing between an empty quarter and a
-    pointless run over it. A quarter that merely lacks an import would
-    have been stopped by the control points anyway, and would have tested
-    nothing.
-    """
+    """A run for an empty quarter may exist, but must not compute anything."""
     from app.db.connection import connection_scope
     from app.domain.billing_checks import control_points_passed, run_control_points
 
@@ -315,14 +262,7 @@ def test_without_readings_nothing_beyond_the_import_can_be_done(monkeypatch, tmp
 
 
 def test_a_failing_control_point_disables_the_compute_button(monkeypatch, tmp_path):
-    """The gate has to be wired, not merely displayed.
-
-    Deletes one metering point's readings, then checks that the button
-    which would compute the quarter is actually disabled -- and that it
-    becomes usable once the override is on record. Uses the quarter the
-    page opens on (the newest with readings), so no selector has to be
-    driven for the claim to hold.
-    """
+    """The gate has to be wired, not merely displayed."""
     from app.db.connection import connection_scope
 
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)
@@ -350,14 +290,7 @@ def test_a_failing_control_point_disables_the_compute_button(monkeypatch, tmp_pa
 
 
 def _is_disabled(button) -> bool:
-    """Whether a NiceGUI button is currently disabled.
-
-    Args:
-        button: The button element.
-
-    Returns:
-        `True` if it cannot be pressed.
-    """
+    """Whether a NiceGUI button is currently disabled."""
     return bool(button._props.get("disable") or button._props.get("disabled"))
 
 
@@ -398,13 +331,7 @@ def test_the_cycle_survives_a_round_trip_through_the_database(db):
 
 
 def test_the_check_step_cannot_be_ticked_while_a_control_point_is_red(monkeypatch, tmp_path):
-    """ "Messdaten geprüft" means the data was found sound, so it needs sound data.
-
-    Found by walking the flow: the button was pressable on red data, which
-    recorded a date that read as "checked and fine" -- and the page then
-    told the user the readings must have changed since, which was untrue.
-    The red case has its own route, the recorded override.
-    """
+    """ "Messdaten geprüft" means the data was found sound, so it needs sound data."""
     from app.db.connection import connection_scope
 
     monkeypatch.setattr("app.pdf.export_service.OUTPUT_DIR", tmp_path)

@@ -1,23 +1,4 @@
-"""Tracks a quarter's billing process through its real-world steps.
-
-Deliberately the same shape as `app.models.person_onboarding` and
-`person_offboarding`: a fixed `STEPS` list, one optional date per step,
-filled in as each step actually happens. The billing page used to be a
-set of buttons with no stated order and nothing saying what was still
-outstanding, which is exactly the kind of process those two trackers
-exist for.
-
-One row per quarter, covering **every** LEG -- doing them one at a time
-is how a LEG gets forgotten, and the individual `billing_runs` are
-created as part of a step here rather than being the unit of progress
-themselves.
-
-Nothing enforces that the steps are completed in order; the administrator
-records whatever applies, whenever it happens. The one gate lives above
-this module: the billing page refuses to compute while the control points
-fail (see `app.domain.billing_checks`), and `override_reason` records the
-decision if that gate is ever stepped past.
-"""
+"""Tracks a quarter's billing process through its real-world steps."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -45,27 +26,7 @@ SELF_EVIDENT_STEPS = frozenset(
 
 @dataclass
 class BillingCycle:
-    """One quarter's progress through the six billing steps.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        period_year: Calendar year of the billing quarter.
-        period_quarter: Quarter number, 1 to 4.
-        readings_imported_at: Date of step 1, or `None`.
-        readings_checked_at: Date of step 2 -- the day the control points
-            last passed. Never a promise about now: they are recomputed
-            on every page load, so data imported afterwards can turn them
-            red again while this date still stands.
-        computed_at: Date of step 3, or `None`.
-        emails_sent_at: Date of step 4, or `None`.
-        paper_invoices_sent_at: Date of step 5, or `None`.
-        payouts_done_at: Date of step 6, or `None`.
-        override_reason: Why the control points were bypassed, or `""` if
-            they never were. Shown permanently once set.
-        override_at: ISO timestamp of that decision, or `None`.
-        created_at: ISO-8601 timestamp the cycle was started -- also the
-            reference point for how long step 1 has been open.
-    """
+    """One quarter's progress through the six billing steps."""
 
     id: Optional[int]
     period_year: int
@@ -87,11 +48,7 @@ class BillingCycle:
 
     @property
     def is_complete(self) -> bool:
-        """Whether every step has a date, i.e. the quarter is settled.
-
-        Returns:
-            `True` if all six step dates are set.
-        """
+        """Whether every step has a date, i.e. the quarter is settled."""
         return all(getattr(self, attr) is not None for attr, _ in STEPS)
 
     @property
@@ -101,12 +58,7 @@ class BillingCycle:
 
     @property
     def current_step(self) -> Optional[tuple[str, str]]:
-        """The first step that has no date yet.
-
-        Returns:
-            The `(attribute_name, label)` pair for the first incomplete
-            step in `STEPS` order, or `None` if `is_complete`.
-        """
+        """The first step that has no date yet."""
         for attr, label in STEPS:
             if getattr(self, attr) is None:
                 return attr, label
@@ -114,14 +66,7 @@ class BillingCycle:
 
     @property
     def current_step_since(self) -> date:
-        """The date the current step became active.
-
-        This is the previous step's date, or -- if the current step is
-        the first one -- the day the cycle was started (`created_at`).
-
-        Returns:
-            The reference date `days_open`/`is_overdue` measure from.
-        """
+        """The date the current step became active."""
         previous_date: Optional[date] = None
         for attr, _ in STEPS:
             value = getattr(self, attr)
@@ -133,43 +78,19 @@ class BillingCycle:
         return datetime.fromisoformat(self.created_at).date()
 
     def days_open(self, reference: Optional[date] = None) -> Optional[int]:
-        """How many days the current step has been open.
-
-        Args:
-            reference: Day to measure against, defaults to today.
-
-        Returns:
-            The number of days since `current_step_since`, or `None` if
-            `is_complete` (nothing is "open" anymore).
-        """
+        """How many days the current step has been open."""
         if self.is_complete:
             return None
         return ((reference or date.today()) - self.current_step_since).days
 
     def is_overdue(self, threshold_days: int, reference: Optional[date] = None) -> bool:
-        """Whether the current step has been open for too long.
-
-        Args:
-            threshold_days: Number of days after which an open step
-                counts as overdue.
-            reference: Day to measure against, defaults to today.
-
-        Returns:
-            `True` if not yet complete and `days_open >= threshold_days`.
-        """
+        """Whether the current step has been open for too long."""
         days = self.days_open(reference)
         return days is not None and days >= threshold_days
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "BillingCycle":
-        """Build a `BillingCycle` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `billing_cycle` table.
-
-        Returns:
-            The corresponding `BillingCycle` dataclass instance.
-        """
+        """Build a `BillingCycle` from a `sqlite3.Row`."""
 
         def _date(value: Optional[str]) -> Optional[date]:
             return date.fromisoformat(value) if value else None
@@ -191,30 +112,13 @@ class BillingCycle:
 
 
 def get(connection: sqlite3.Connection, cycle_id: int) -> Optional[BillingCycle]:
-    """Fetch a single billing cycle by id.
-
-    Args:
-        connection: Open SQLite connection.
-        cycle_id: Primary key of the cycle.
-
-    Returns:
-        The matching `BillingCycle`, or `None`.
-    """
+    """Fetch a single billing cycle by id."""
     row = connection.execute("SELECT * FROM billing_cycle WHERE id = ?", (cycle_id,)).fetchone()
     return BillingCycle.from_row(row) if row else None
 
 
 def get_by_period(connection: sqlite3.Connection, year: int, quarter: int) -> Optional[BillingCycle]:
-    """Fetch the cycle for one quarter, if one was started.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        The matching `BillingCycle`, or `None` if this quarter has none.
-    """
+    """Fetch the cycle for one quarter, if one was started."""
     row = connection.execute(
         "SELECT * FROM billing_cycle WHERE period_year = ? AND period_quarter = ?",
         (year, quarter),
@@ -223,14 +127,7 @@ def get_by_period(connection: sqlite3.Connection, year: int, quarter: int) -> Op
 
 
 def list_all(connection: sqlite3.Connection) -> list[BillingCycle]:
-    """List every billing cycle, newest quarter first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        All cycles, ordered by period descending.
-    """
+    """List every billing cycle, newest quarter first."""
     rows = connection.execute(
         "SELECT * FROM billing_cycle ORDER BY period_year DESC, period_quarter DESC"
     ).fetchall()
@@ -238,35 +135,12 @@ def list_all(connection: sqlite3.Connection) -> list[BillingCycle]:
 
 
 def list_in_progress(connection: sqlite3.Connection) -> list[BillingCycle]:
-    """List cycles that are not yet complete, newest quarter first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        Cycles with at least one step date still missing. Filtered in
-        Python, like `person_onboarding.list_in_progress` and for the
-        same reason: "complete" reads across six nullable columns, and
-        there is one row per quarter, so the table stays tiny.
-    """
+    """List cycles that are not yet complete, newest quarter first."""
     return [c for c in list_all(connection) if not c.is_complete]
 
 
 def start_for_period(connection: sqlite3.Connection, year: int, quarter: int) -> BillingCycle:
-    """Start a billing cycle for a quarter, or return its existing one.
-
-    Idempotent, so pressing "Rechnungslauf starten" twice -- or starting
-    one from the dashboard while another page already did -- never
-    creates a second row for the same quarter.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        The (possibly pre-existing) `BillingCycle` for this quarter.
-    """
+    """Start a billing cycle for a quarter, or return its existing one."""
     existing = get_by_period(connection, year, quarter)
     if existing is not None:
         return existing
@@ -280,18 +154,7 @@ def start_for_period(connection: sqlite3.Connection, year: int, quarter: int) ->
 
 
 def update(connection: sqlite3.Connection, cycle: BillingCycle) -> None:
-    """Update a cycle's step dates and override note.
-
-    Args:
-        connection: Open SQLite connection.
-        cycle: Cycle with `id` set to an existing record.
-
-    Returns:
-        None.
-
-    Raises:
-        ValueError: If `cycle.id` is `None`.
-    """
+    """Update a cycle's step dates and override note."""
     if cycle.id is None:
         raise ValueError("Cannot update a BillingCycle without an id.")
     connection.execute(
@@ -320,20 +183,7 @@ def update(connection: sqlite3.Connection, cycle: BillingCycle) -> None:
 def mark_step(
     connection: sqlite3.Connection, cycle: BillingCycle, attribute: str, when: Optional[date] = None
 ) -> BillingCycle:
-    """Record that one step happened, without disturbing the others.
-
-    Args:
-        connection: Open SQLite connection.
-        cycle: The cycle to update.
-        attribute: One of the attribute names in `STEPS`.
-        when: The date to record, defaulting to today.
-
-    Returns:
-        The updated `BillingCycle`.
-
-    Raises:
-        ValueError: If `attribute` is not a known step.
-    """
+    """Record that one step happened, without disturbing the others."""
     if attribute not in {attr for attr, _ in STEPS}:
         raise ValueError(f"Unknown billing cycle step: {attribute!r}")
     setattr(cycle, attribute, when or date.today())
@@ -342,20 +192,7 @@ def mark_step(
 
 
 def record_override(connection: sqlite3.Connection, cycle: BillingCycle, reason: str) -> BillingCycle:
-    """Record why the control points were bypassed for this quarter.
-
-    Args:
-        connection: Open SQLite connection.
-        cycle: The cycle to annotate.
-        reason: The administrator's own words, kept verbatim.
-
-    Returns:
-        The updated `BillingCycle`.
-
-    Raises:
-        ValueError: If `reason` is blank -- an override without a stated
-            reason is exactly the oversight this is meant to prevent.
-    """
+    """Record why the control points were bypassed for this quarter."""
     if not reason.strip():
         raise ValueError("Eine Umgehung der Kontrollpunkte braucht eine Begründung.")
     cycle.override_reason = reason.strip()
@@ -365,14 +202,6 @@ def record_override(connection: sqlite3.Connection, cycle: BillingCycle, reason:
 
 
 def delete(connection: sqlite3.Connection, cycle_id: int) -> None:
-    """Discard a billing cycle -- never touches its billing runs.
-
-    Args:
-        connection: Open SQLite connection.
-        cycle_id: Primary key of the cycle to delete.
-
-    Returns:
-        None.
-    """
+    """Discard a billing cycle -- never touches its billing runs."""
     connection.execute("DELETE FROM billing_cycle WHERE id = ?", (cycle_id,))
     connection.commit()

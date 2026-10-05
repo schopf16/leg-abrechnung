@@ -1,15 +1,4 @@
-"""Textbausteine page: the stored email texts and the files that go with them.
-
-Every email this app sends has a text behind it, and until migration 52 those
-texts lived in three places with three shapes -- column pairs on the
-Einstellungen page for the invoice and the two dunning notices, and nothing at
-all for anything else. This is the one place they are maintained now, under
-"Kommunikation" beside "E-Mail versenden" and "Signaturen".
-
-**Nothing on this page sends anything.** A template's trigger decides when a
-button appears on the Aufnahmen or Austritte worklist, never when a mail goes
-out; see `app.models.message_template` on `trigger_kind`.
-"""
+"""Textbausteine page: the stored email texts and the files that go with them."""
 
 from nicegui import ui
 
@@ -89,14 +78,7 @@ STEPS_BY_OCCASION = {
 
 
 def _describe_trigger(template: MessageTemplate) -> str:
-    """Say in one line when this template becomes due.
-
-    Args:
-        template: The template to describe.
-
-    Returns:
-        German text for the "Fällig" column.
-    """
+    """Say in one line when this template becomes due."""
     if template.occasion not in STEP_OCCASIONS:
         return "beim Versand"
     step_label = STEPS_BY_OCCASION.get(template.occasion, {}).get(template.step, template.step or "?")
@@ -110,15 +92,7 @@ def _describe_trigger(template: MessageTemplate) -> str:
 
 
 def _to_row(template: MessageTemplate, attachment_names: list[str]) -> dict:
-    """Convert a template into a table row.
-
-    Args:
-        template: The template.
-        attachment_names: Its uploaded attachments' filenames.
-
-    Returns:
-        A dict with the fields `COLUMNS` needs, plus `_search`.
-    """
+    """Convert a template into a table row."""
     # The ticked documents first, because those are the ones that make the
     # mail what it is -- an uploaded leaflet is the afterthought.
     named = [
@@ -139,11 +113,7 @@ def _to_row(template: MessageTemplate, attachment_names: list[str]) -> dict:
 
 @ui.page("/message-templates")
 def message_templates_page() -> None:
-    """Render the Textbausteine list with its create/edit dialog.
-
-    Returns:
-        None.
-    """
+    """Render the Textbausteine list with its create/edit dialog."""
     with page_frame("/message-templates", "Textbausteine"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -184,22 +154,14 @@ def message_templates_page() -> None:
         all_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Narrow the loaded rows by the search text and sort them.
-
-            Returns:
-                None.
-            """
+            """Narrow the loaded rows by the search text and sort them."""
             needle = (search_input.value or "").strip().lower()
             rows = [row for row in all_rows if needle in row["_search"]] if needle else list(all_rows)
             table.rows = apply_sort(rows, SORT_OPTIONS, sort_select)
             table.update()
 
         def refresh() -> None:
-            """Reload every template and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload every template and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 templates = template_repo.list_all(connection)
@@ -216,14 +178,7 @@ def message_templates_page() -> None:
         search_input.on_value_change(lambda _=None: apply_filter())
 
         def open_form(existing: MessageTemplate | None) -> None:
-            """Open the create/edit dialog for a template.
-
-            Args:
-                existing: Template to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a template."""
             # Files picked in this dialog, kept until the template is saved:
             # a new one has no id to attach them to yet, the same reason
             # `app.gui.address_input`'s dismissals are stored after saving.
@@ -285,18 +240,7 @@ def message_templates_page() -> None:
                 when_occasion_changes: list = []
 
                 def follow_occasion() -> None:
-                    """Offer the steps of the chosen process, and hide what does
-                    not apply.
-
-                    An occasion without steps (Rechnung, Mahnung) has no step
-                    and no trigger to choose: those texts are used when that
-                    document is sent, which is not something this page decides.
-                    The occasion also decides which documents can be attached,
-                    which is what the hooks are for.
-
-                    Returns:
-                        None.
-                    """
+                    """Offer the steps of the chosen process, and hide what does not apply."""
                     has_steps = occasion.value in STEP_OCCASIONS
                     step.set_options(STEPS_BY_OCCASION.get(occasion.value, {}))
                     step.visible = has_steps
@@ -317,11 +261,7 @@ def message_templates_page() -> None:
                 placeholder_hint = ui.label("").classes("text-caption text-grey-6")
 
                 def show_placeholders() -> None:
-                    """List the placeholders this occasion actually offers.
-
-                    Returns:
-                        None.
-                    """
+                    """List the placeholders this occasion actually offers."""
                     names = (
                         *PERSON_PLACEHOLDERS,
                         *EXTRA_PLACEHOLDERS.get(occasion.value, ()),
@@ -344,11 +284,7 @@ def message_templates_page() -> None:
                 missing_note = ui.label("").classes("text-warning text-body2")
 
                 def render_auto_attachments() -> None:
-                    """Draw the checkboxes that apply to the chosen occasion.
-
-                    Returns:
-                        None.
-                    """
+                    """Draw the checkboxes that apply to the chosen occasion."""
                     ticked = {key for key, switch in auto_switches.items() if switch.value} or set(
                         existing.auto_attachments if existing else []
                     )
@@ -398,15 +334,7 @@ def message_templates_page() -> None:
                     note_missing_sources()
 
                 def note_missing_sources() -> None:
-                    """Say which ticked document has no form stored yet.
-
-                    A statement, not a refusal: the box may be ticked before
-                    the file is to hand, and the administrator asked for the
-                    hint rather than a block.
-
-                    Returns:
-                        None.
-                    """
+                    """Say which ticked document has no form stored yet."""
                     ticked = [key for key, switch in auto_switches.items() if switch.value]
                     with connection_scope() as connection:
                         stored = leg_document_repo.stored_keys(connection)
@@ -428,11 +356,7 @@ def message_templates_page() -> None:
                 attachment_list = ui.column().classes("w-full gap-1")
 
                 def render_attachments() -> None:
-                    """Redraw the attachment list, stored ones and new ones.
-
-                    Returns:
-                        None.
-                    """
+                    """Redraw the attachment list, stored ones and new ones."""
                     attachment_list.clear()
                     with attachment_list:
                         stored = []
@@ -458,32 +382,14 @@ def message_templates_page() -> None:
                             ui.label("Keine Anhänge.").classes("text-caption text-grey-6")
 
                 def remove_attachment(attachment_id: int) -> None:
-                    """Delete one stored attachment at once.
-
-                    Args:
-                        attachment_id: The attachment to remove.
-
-                    Returns:
-                        None.
-                    """
+                    """Delete one stored attachment at once."""
                     with connection_scope() as connection:
                         template_repo.delete_attachment(connection, attachment_id)
                     render_attachments()
                     refresh()
 
                 async def handle_upload(event) -> None:
-                    """Read the picked files into `pending`.
-
-                    Reads through `app.gui.upload.read_uploaded_file`, the one
-                    function that knows the framework's event shape -- it is
-                    also the one that broke silently on the nicegui 3.16 bump.
-
-                    Args:
-                        event: NiceGUI upload event carrying every file.
-
-                    Returns:
-                        None.
-                    """
+                    """Read the picked files into `pending`."""
                     for file in event.files:
                         filename, content = await read_uploaded_file(file)
                         pending.append((filename, content))
@@ -497,11 +403,7 @@ def message_templates_page() -> None:
                 error_label = ui.label("").classes("text-negative")
 
                 def save() -> None:
-                    """Validate the form and persist the template.
-
-                    Returns:
-                        None.
-                    """
+                    """Validate the form and persist the template."""
                     if not name.value.strip():
                         error_label.text = "Name darf nicht leer sein."
                         return
@@ -568,14 +470,7 @@ def message_templates_page() -> None:
             dialog.open()
 
         def on_edit(event) -> None:
-            """Table row-edit handler: open the dialog for the clicked row.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row.
-
-            Returns:
-                None.
-            """
+            """Table row-edit handler: open the dialog for the clicked row."""
             with connection_scope() as connection:
                 existing = template_repo.get(connection, event.args["id"])
             if existing is None:
@@ -585,14 +480,7 @@ def message_templates_page() -> None:
             open_form(existing)
 
         def on_remove(event) -> None:
-            """Table row-delete handler: delete after confirmation.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row.
-
-            Returns:
-                None.
-            """
+            """Table row-delete handler: delete after confirmation."""
             row = event.args
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'Textbaustein "{row["name"]}" wirklich löschen?')

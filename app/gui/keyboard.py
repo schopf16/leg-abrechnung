@@ -1,36 +1,4 @@
-"""One keyboard for the whole window, and a stack of who owns it.
-
-Keys were bound per element until the administrator tried to use them:
-Escape reached one dialog and not the next, the discard question could only
-be answered with the mouse, and the arrows did nothing anywhere except in
-the address list. Binding `keydown.…` on an element only works while that
-element has the focus and the event bubbles out of it -- and a Quasar dialog
-renders its card in a portal, so neither is reliable.
-
-So there is one `ui.keyboard` per page (created in `app.gui.navigation`), and
-whoever is on top of the stack owns the keys:
-
-| Key | Meaning |
-|---|---|
-| Enter | take the marked thing |
-| ↑ ↓ ← → | move the mark |
-| Escape | go back one step |
-| Tab | next field (the browser's own, never intercepted) |
-
-A layer declares only what it can answer; anything it leaves at `None`
-happens as the browser would do it. That is what keeps the arrows working as
-caret movement inside a form while the same keys walk the entries of an
-address list or the buttons of a question -- the layer on top decides, and a
-form dialog deliberately does not claim them.
-
-`ignore=[]` is deliberate: NiceGUI ignores key events from inputs, selects
-and buttons by default, which would mean Escape stops working the moment the
-administrator is typing -- the one moment it is needed.
-
-The stack lives on the client rather than in a module-level list, because
-tests render many clients in one process and a leaked layer from one would
-answer another's keys.
-"""
+"""One keyboard for the whole window, and a stack of who owns it."""
 
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -47,17 +15,7 @@ _STACK_ATTRIBUTE = "leg_keyboard_layers"
 # them equal and let `remove` take the wrong one off the stack.
 @dataclass(eq=False)
 class KeyboardLayer:
-    """What one dialog, list or question does with the keys.
-
-    Attributes:
-        on_escape: Go back one step -- dismiss, cancel, close.
-        on_enter: Take whatever is marked.
-        on_move: Move the mark by `-1` or `+1`. Left `None` by anything that
-            holds text fields, so the arrows stay caret movement there.
-        on_typing: Called for any key that changes text. Used to notice that
-            something was typed at all, which is more reliable than comparing
-            values: a debounced input has not told the server yet.
-    """
+    """What one dialog, list or question does with the keys."""
 
     on_escape: Optional[Callable[[], None]] = None
     on_enter: Optional[Callable[[], None]] = None
@@ -73,11 +31,7 @@ _FALLBACK: list[KeyboardLayer] = []
 
 
 def layers() -> list[KeyboardLayer]:
-    """The current client's stack, innermost last.
-
-    Returns:
-        The stack, created on first use.
-    """
+    """The current client's stack, innermost last."""
     try:
         client = context.client
     except RuntimeError:
@@ -88,48 +42,21 @@ def layers() -> list[KeyboardLayer]:
 
 
 def push(layer: KeyboardLayer) -> None:
-    """Give one layer the keys, above everything already open.
-
-    Idempotent: a suggestion list redraws on every keystroke and must not
-    stack a layer per character.
-
-    Args:
-        layer: The layer to put on top.
-
-    Returns:
-        None.
-    """
+    """Give one layer the keys, above everything already open."""
     stack = layers()
     if layer not in stack:
         stack.append(layer)
 
 
 def remove(layer: KeyboardLayer) -> None:
-    """Take the keys back from one layer, wherever it sits.
-
-    Removed by identity rather than popped, because a question opened on top
-    of a form can be closed while the form stays open underneath.
-
-    Args:
-        layer: The layer to remove.
-
-    Returns:
-        None.
-    """
+    """Take the keys back from one layer, wherever it sits."""
     stack = layers()
     if layer in stack:
         stack.remove(layer)
 
 
 def handle_key(event: KeyEventArguments) -> None:
-    """Route one key press to whoever is on top.
-
-    Args:
-        event: NiceGUI's key event.
-
-    Returns:
-        None.
-    """
+    """Route one key press to whoever is on top."""
     if not event.action.keydown:
         return
     stack = layers()
@@ -161,14 +88,7 @@ def handle_key(event: KeyEventArguments) -> None:
 
 
 def _changes_text(event: KeyEventArguments) -> bool:
-    """Whether this key would alter what stands in a field.
-
-    Args:
-        event: NiceGUI's key event.
-
-    Returns:
-        `True` for a character, a space or a deletion.
-    """
+    """Whether this key would alter what stands in a field."""
     if event.modifiers.ctrl or event.modifiers.meta or event.modifiers.alt:
         return False
     name = event.key.name
@@ -176,9 +96,5 @@ def _changes_text(event: KeyEventArguments) -> bool:
 
 
 def install() -> ui.keyboard:
-    """Create the page's one keyboard.
-
-    Returns:
-        The keyboard element.
-    """
+    """Create the page's one keyboard."""
     return ui.keyboard(handle_key, ignore=[])

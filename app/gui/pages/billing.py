@@ -36,14 +36,7 @@ _INVOICE_PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in _INVOICE_PLACEHO
 
 
 def _all_legs_row(outcome) -> dict:
-    """Build one table row describing how a single LEG's run went.
-
-    Args:
-        outcome: The `app.domain.billing.LegRunOutcome` to describe.
-
-    Returns:
-        A row dict matching the all-LEGs result table's columns.
-    """
+    """Build one table row describing how a single LEG's run went."""
     if not outcome.succeeded:
         return {
             "leg": outcome.leg.name,
@@ -76,15 +69,7 @@ def _all_legs_row(outcome) -> dict:
 
 
 def _type_label(item) -> str:
-    """German label for a billing item's net direction.
-
-    Args:
-        item: A `BillingRunItem`.
-
-    Returns:
-        "Rechnung" if the person owes the LEG, "credit note" if the
-        LEG owes the person, "Ausgeglichen" if the net is zero.
-    """
+    """German label for a billing item's net direction."""
     if item.is_owed_to_leg:
         return "Rechnung"
     if item.is_owed_by_leg:
@@ -94,11 +79,7 @@ def _type_label(item) -> str:
 
 @ui.page("/billing")
 def billing_page() -> None:
-    """Render the billing run page.
-
-    Returns:
-        None.
-    """
+    """Render the billing run page."""
     with page_frame("/billing", "Rechnungslauf"):
         ui.label(
             "Berechnet die lokale Verteilung und erzeugt Rechnungen/"
@@ -126,25 +107,11 @@ def billing_page() -> None:
         cycle_select = ui.select({}, label="Rechnungslauf").classes("w-64")
 
         def current_period() -> "tuple[int, int] | None":
-            """The quarter the page is currently working on.
-
-            Returns:
-                The selected cycle's `(year, quarter)`, or `None` if no
-                cycle is selected.
-            """
+            """The quarter the page is currently working on."""
             return cycle_select.value
 
         def refresh_cycle_options(select_period=None) -> None:
-            """Reload the list of billing runs into the chooser.
-
-            Args:
-                select_period: `(year, quarter)` to select afterwards;
-                    defaults to keeping the current selection, else the
-                    newest run.
-
-            Returns:
-                None.
-            """
+            """Reload the list of billing runs into the chooser."""
             with connection_scope() as connection:
                 cycles = billing_cycle_repo.list_all(connection)
             options = {
@@ -159,14 +126,7 @@ def billing_page() -> None:
             cycle_select.set_options(options, value=wanted)
 
         def open_new_cycle_dialog() -> None:
-            """Ask for a year and quarter and start a run for it.
-
-            Free input on purpose: the quarter to bill is decided by the
-            calendar, not by what happens to be imported already.
-
-            Returns:
-                None.
-            """
+            """Ask for a year and quarter and start a run for it."""
             default_year, default_quarter = last_completed_quarter()
             with ui.dialog() as dialog, ui.card().classes("w-full max-w-sm"):
                 ui.label("Neuer Rechnungslauf").classes("text-lg font-bold")
@@ -215,11 +175,7 @@ def billing_page() -> None:
         quarter_info = ui.column().classes("w-full gap-0 mt-2")
 
         def refresh_quarter_info() -> None:
-            """Show the selected quarter's data situation, with any warning.
-
-            Returns:
-                None.
-            """
+            """Show the selected quarter's data situation, with any warning."""
             quarter_info.clear()
             period = current_period()
             if period is None:
@@ -257,11 +213,7 @@ def billing_page() -> None:
         cycle_column = ui.column().classes("w-full gap-2 mt-4")
 
         def refresh_cycle() -> None:
-            """Rebuild the guided billing run for the selected quarter.
-
-            Returns:
-                None.
-            """
+            """Rebuild the guided billing run for the selected quarter."""
             cycle_column.clear()
             period = current_period()
             if period is None:
@@ -281,11 +233,7 @@ def billing_page() -> None:
                 )
 
         def refresh_after_quarter_change() -> None:
-            """Refresh both the quarter summary and the guided run.
-
-            Returns:
-                None.
-            """
+            """Refresh both the quarter summary and the guided run."""
             refresh_quarter_info()
             refresh_cycle()
 
@@ -317,11 +265,7 @@ def billing_page() -> None:
         ).classes("w-full mt-6")
 
         def refresh_runs_table() -> None:
-            """Reload the list of past billing runs, across all LEGs.
-
-            Returns:
-                None.
-            """
+            """Reload the list of past billing runs, across all LEGs."""
             with connection_scope() as connection:
                 runs = billing_run_repo.list_runs(connection)
                 leg_names = {leg.id: leg.name for leg in leg_repo.list_all(connection)}
@@ -348,17 +292,7 @@ def billing_page() -> None:
         current_result_state: dict = {}
 
         def render_result(run, items, control_check, distribution) -> None:
-            """Render one billing run's results in the result panel.
-
-            Args:
-                run: Persisted `BillingRun`.
-                items: Persisted `BillingRunItem` list.
-                control_check: `ControlCheckResult` from the balance check.
-                distribution: `DistributionResult` for the quarter.
-
-            Returns:
-                None.
-            """
+            """Render one billing run's results in the result panel."""
             current_result_state.update(run=run, control_check=control_check, distribution=distribution)
             with connection_scope() as connection:
                 person_names = {p.id: p.display_name for p in person_repo.list_all(connection)}
@@ -462,14 +396,7 @@ def billing_page() -> None:
                         ).props("outline")
 
         def export_documents(run_id: int) -> None:
-            """Generate all PDFs for a billing run and report the outcome.
-
-            Args:
-                run_id: Database id of the billing run to export.
-
-            Returns:
-                None.
-            """
+            """Generate all PDFs for a billing run and report the outcome."""
             with connection_scope() as connection:
                 run = billing_run_repo.get_run(connection, run_id)
                 export_result = export_billing_run_documents(connection, run)
@@ -495,16 +422,7 @@ def billing_page() -> None:
                 ui.notify("PDFs erfolgreich erzeugt.", type="positive")
 
         def refresh_current_result() -> None:
-            """Re-render the currently shown result with freshly loaded items.
-
-            Used after sending/resending invoice emails: re-fetches
-            `BillingRunItem`s (to pick up the new `email_sent_at`) without
-            recomputing the billing run itself -- see `current_result_state`'s
-            comment for why that distinction matters.
-
-            Returns:
-                None.
-            """
+            """Re-render the currently shown result with freshly loaded items."""
             if not current_result_state:
                 return
             run = current_result_state["run"]
@@ -518,15 +436,7 @@ def billing_page() -> None:
             )
 
         def on_resend_click(run, item_id: int) -> None:
-            """Table row action: force-resend one already-emailed invoice.
-
-            Args:
-                run: The billing run the item belongs to.
-                item_id: Primary key of the `BillingRunItem` to resend.
-
-            Returns:
-                None.
-            """
+            """Table row action: force-resend one already-emailed invoice."""
             with connection_scope() as connection:
                 item = next(
                     (i for i in billing_run_repo.list_items(connection, run.id) if i.id == item_id),
@@ -546,11 +456,7 @@ def billing_page() -> None:
                     ui.button("Abbrechen", on_click=confirm.close).props("flat")
 
                     async def do_resend() -> None:
-                        """Force-resend this one invoice regardless of `email_sent_at`.
-
-                        Returns:
-                            None.
-                        """
+                        """Force-resend this one invoice regardless of `email_sent_at`."""
                         try:
                             config = get_graph_config()
                         except ConfigError as exc:
@@ -579,16 +485,7 @@ def billing_page() -> None:
             confirm.open()
 
         def open_send_dialog_for_selected_quarter() -> None:
-            """Open the invoice dispatch for the quarter the page is on.
-
-            The dispatch dialog works per LEG (each LEG has its own run,
-            its own letterhead and its own template placeholders), so
-            with more than one LEG this offers the choice rather than
-            silently picking the first.
-
-            Returns:
-                None.
-            """
+            """Open the invoice dispatch for the quarter the page is on."""
             period = current_period()
             if period is None:
                 safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
@@ -621,14 +518,7 @@ def billing_page() -> None:
             chooser.open()
 
         def open_invoice_email_dialog(run) -> None:
-            """Open the "Rechnungen per E-Mail versenden" dialog for one run.
-
-            Args:
-                run: The billing run to send invoices for.
-
-            Returns:
-                None.
-            """
+            """Open the "Rechnungen per E-Mail versenden" dialog for one run."""
             with connection_scope() as connection:
                 items = billing_run_repo.list_items(connection, run.id)
                 persons = {p.id: p for p in person_repo.list_all(connection)}
@@ -652,11 +542,7 @@ def billing_page() -> None:
                 info_container = ui.column().classes("w-full mt-2")
 
                 def refresh_info() -> None:
-                    """(Re-)compute and show who will/won't get this send.
-
-                    Returns:
-                        None.
-                    """
+                    """(Re-)compute and show who will/won't get this send."""
                     info_container.clear()
                     eligible_persons = []
                     skip_lines = []
@@ -700,11 +586,7 @@ def billing_page() -> None:
                 progress_warning.bind_visibility_from(progress_bar, "visible")
 
                 async def do_send() -> None:
-                    """Send invoice emails for this run and report the outcome.
-
-                    Returns:
-                        None.
-                    """
+                    """Send invoice emails for this run and report the outcome."""
                     send_button.disable()
                     try:
                         config = get_graph_config()
@@ -753,16 +635,7 @@ def billing_page() -> None:
             dialog.open()
 
         def run_billing() -> None:
-            """Compute (or recompute) the billing run for the selected LEG and quarter.
-
-            Only ever called from `confirm_rates_then_run_billing`, right
-            after that dialog's own `dialog.close()` -- every notification
-            below therefore needs `safe_notify`, not a plain `ui.notify`,
-            see `app.gui.safe_notify`'s module docstring.
-
-            Returns:
-                None.
-            """
+            """Compute (or recompute) the billing run for the selected LEG and quarter."""
             if leg_select.value is None:
                 safe_notify("Bitte eine LEG wählen.", type="warning")
                 return
@@ -790,15 +663,7 @@ def billing_page() -> None:
             refresh_runs_table()
 
         def run_billing_for_all_legs() -> None:
-            """Bill and export every LEG for the selected quarter, in one pass.
-
-            Only ever called from the rate-confirmation dialog, so every
-            notification below needs `safe_notify` (see
-            `app.gui.safe_notify`).
-
-            Returns:
-                None.
-            """
+            """Bill and export every LEG for the selected quarter, in one pass."""
             period = current_period()
             if period is None:
                 safe_notify("Bitte Jahr und Quartal wählen.", type="warning")
@@ -864,23 +729,7 @@ def billing_page() -> None:
             refresh_cycle()
 
         def confirm_rates_then_run_billing(*, all_legs: bool = False) -> None:
-            """Show the currently configured billing rates for confirmation,
-            then run (or re-run) billing for the selected period.
-
-            The actual amounts get frozen onto each `BillingRunItem` the
-            moment the run is created (see `app.domain.billing`) -- this
-            step exists purely so a wrong rate is caught *before* that
-            freeze happens, since a later correction in Einstellungen can
-            no longer change what has already been billed. It is therefore
-            the same gate for one LEG and for all of them.
-
-            Args:
-                all_legs: Whether to bill and export every LEG rather than
-                    just the selected one.
-
-            Returns:
-                None.
-            """
+            """Show the currently configured billing rates for confirmation, then run (or re-run)..."""
             if leg_select.value is None and not all_legs:
                 ui.notify("Bitte eine LEG wählen.", type="warning")
                 return

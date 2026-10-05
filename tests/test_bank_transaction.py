@@ -1,5 +1,4 @@
-"""Tests for app.models.bank_transaction (imported camt.053/camt.054
-entries and their import batches)."""
+"""Tests for app.models.bank_transaction (imported camt.053/camt.054 entries and their import batches)."""
 
 from app.models import account_entry as account_entry_repo
 from app.models import bank_transaction as bank_transaction_repo
@@ -79,9 +78,7 @@ def test_create_batch_and_insert_transaction_round_trip(db):
 
 
 def test_reimporting_the_same_reference_amount_and_direction_is_a_no_op(db):
-    """The idempotency key is (bank_reference, currency, amount_rappen,
-    credit_debit_indicator) -- an exact duplicate must not create a
-    second row, and insert_transaction must report it as skipped (`None`)."""
+    """The idempotency key is (bank_reference, currency, amount_rappen, credit_debit_indicator) -- an..."""
     batch_1 = _batch(db, "auszug1.xml")
     first_id = _insert(db, batch_1)
 
@@ -97,10 +94,7 @@ def test_reimporting_the_same_reference_amount_and_direction_is_a_no_op(db):
 
 
 def test_two_real_double_payments_with_different_references_both_stored(db):
-    """Two genuinely different bank transactions (different bank
-    references) for the same amount/direction must both be stored --
-    this is the "person pays the same invoice twice" scenario, which must
-    never be blocked by the dedup constraint."""
+    """Two genuinely different bank transactions (different bank references) for the same..."""
     batch_id = _batch(db)
     first_id = _insert(db, batch_id, bank_reference="REF-001")
     second_id = _insert(db, batch_id, bank_reference="REF-002")

@@ -1,12 +1,4 @@
-"""Orchestrates importing a reading file: parse, match metering points, store.
-
-This is the only module the GUI talks to for imports. It dispatches to the
-EBIX or CSV parser based on file extension, resolves each parsed reading's
-`designation` against the local MeteringPoint registry (reporting
-unknown designations clearly instead of silently dropping them), and
-stores everything through the idempotent `upsert_readings` repository
-function.
-"""
+"""Orchestrates importing a reading file: parse, match metering points, store."""
 
 import sqlite3
 from dataclasses import dataclass, field
@@ -25,18 +17,7 @@ _CSV_EXTENSIONS = {".csv"}
 
 @dataclass
 class ImportOutcome:
-    """Result of importing one file, for display in the import UI.
-
-    Attributes:
-        filename: Name of the imported file.
-        format: "ebix" or "csv".
-        rows_stored: Number of readings inserted or updated.
-        unknown_metering_point_designations: Metering point designations
-            present in the file but not configured as a MeteringPoint in the app.
-        warnings: Parser-level warnings (skipped rows, etc.).
-        period_from: Earliest interval timestamp seen (ISO string), if any.
-        period_to: Latest interval timestamp seen (ISO string), if any.
-    """
+    """Result of importing one file, for display in the import UI."""
 
     filename: str
     format: str
@@ -48,23 +29,7 @@ class ImportOutcome:
 
 
 def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
-    """Import one EBIX (`.xml`) or CSV (`.csv`) reading file.
-
-    Idempotent: re-importing a file covering an already-imported period
-    updates existing rows in place rather than duplicating them, relying
-    on the `UNIQUE (metering_point_id, timestamp, direction)` database constraint.
-
-    Args:
-        connection: Open SQLite connection.
-        path: Filesystem path of the file to import.
-
-    Returns:
-        An `ImportOutcome` summarizing what happened.
-
-    Raises:
-        ImportValidationError: If the file extension is unsupported, or
-            the chosen parser rejects the file as structurally invalid.
-    """
+    """Import one EBIX (`.xml`) or CSV (`.csv`) reading file."""
     suffix = path.suffix.lower()
     if suffix in _EBIX_EXTENSIONS:
         file_format = "ebix"
@@ -120,28 +85,12 @@ def import_file(connection: sqlite3.Connection, path: Path) -> ImportOutcome:
 
 
 def _load_metering_point_lookup(connection: sqlite3.Connection) -> dict[str, int]:
-    """Build a designation-to-metering_point-id lookup for the whole registry.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A dict mapping `designation` to the MeteringPoint's database id.
-    """
+    """Build a designation-to-metering_point-id lookup for the whole registry."""
     return {mp.designation: mp.id for mp in metering_point_repo.list_all(connection)}
 
 
 def _to_reading(parsed: ParsedReading, metering_point_id: int, file_format: str) -> Reading:
-    """Convert a `ParsedReading` into a persistence-layer `Reading`.
-
-    Args:
-        parsed: Reading parsed from the source file.
-        metering_point_id: Resolved local MeteringPoint id.
-        file_format: "ebix" or "csv", stored as the reading's `source`.
-
-    Returns:
-        A `Reading` ready to be passed to `upsert_readings`.
-    """
+    """Convert a `ParsedReading` into a persistence-layer `Reading`."""
     return Reading(
         metering_point_id=metering_point_id,
         timestamp=parsed.timestamp.isoformat(),

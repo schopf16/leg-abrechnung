@@ -1,20 +1,5 @@
-"""Calendar-quarter helpers shared by the billing engine, demo data and GUI,
-plus the time-axis vocabulary the Statistik charts are drawn on.
-
-The axis part lives here, and not in `app/gui/`, for the same reason
-`app/sort_keys.py` does: it must be usable without NiceGUI. A chart and a
-later CSV export of the same figures have to cut the time into identical
-buckets, or the export will quietly disagree with the picture it came
-from. `app/gui/time_axis.py` only adds the controls on top.
-
-**Timestamps in this app are naive local time**, as BKW delivers them, and
-nothing converts or tags them. A "day" is therefore 00:00 to 00:00, always
-96 intervals -- which is exactly right except on the two days a year that
-really have 92 or 100 because the clocks moved. Those days will plot one
-hour short or long. Handling it properly would mean carrying a timezone
-through the readings table, which is a much larger change than the
-distortion justifies.
-"""
+"""Calendar-quarter helpers shared by the billing engine, demo data and GUI, plus the time-axis
+vocabulary the Statistik charts are drawn on."""
 
 import calendar
 import sqlite3
@@ -47,20 +32,7 @@ MONTH_NAMES_DE = [
 
 
 def quarter_bounds(year: int, quarter: int) -> tuple[datetime, datetime]:
-    """Compute the half-open datetime range covering a calendar quarter.
-
-    Args:
-        year: Calendar year, e.g. 2025.
-        quarter: Quarter number, 1 (Jan-Mar) to 4 (Oct-Dec).
-
-    Returns:
-        A `(start, end_exclusive)` tuple of naive local datetimes, where
-        `start` is the first interval's start (00:00 on the first day) and
-        `end_exclusive` is midnight of the day after the quarter ends.
-
-    Raises:
-        ValueError: If `quarter` is not between 1 and 4.
-    """
+    """Compute the half-open datetime range covering a calendar quarter."""
     if quarter not in _QUARTER_START_MONTH:
         raise ValueError(f"Quarter must be 1-4, got {quarter}")
     start_month = _QUARTER_START_MONTH[quarter]
@@ -73,64 +45,24 @@ def quarter_bounds(year: int, quarter: int) -> tuple[datetime, datetime]:
 
 
 def quarter_label(year: int, quarter: int) -> str:
-    """Format a calendar quarter as a short German label.
-
-    Args:
-        year: Calendar year.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        A label such as "Q3 2025".
-    """
+    """Format a calendar quarter as a short German label."""
     return f"Q{quarter} {year}"
 
 
 def quarter_of(moment: datetime) -> tuple[int, int]:
-    """Determine the calendar year and quarter a given moment falls into.
-
-    Args:
-        moment: The datetime to classify.
-
-    Returns:
-        A `(year, quarter)` tuple.
-    """
+    """Determine the calendar year and quarter a given moment falls into."""
     return moment.year, (moment.month - 1) // 3 + 1
 
 
 def last_completed_quarter(today: Optional[date] = None) -> tuple[int, int]:
-    """The most recent quarter that has already ended.
-
-    The sensible default when starting a billing run: a quarter still
-    running cannot be billed, and the one before it is almost always what
-    is meant. Independent of what is in the database -- a billing run is
-    started *before* its readings arrive, not after.
-
-    Args:
-        today: Day to measure from, defaulting to today.
-
-    Returns:
-        A `(year, quarter)` tuple.
-    """
+    """The most recent quarter that has already ended."""
     reference = today or date.today()
     year, quarter = reference.year, (reference.month - 1) // 3 + 1
     return (year - 1, 4) if quarter == 1 else (year, quarter - 1)
 
 
 def list_available_periods(connection: sqlite3.Connection) -> dict[int, set[int]]:
-    """Determine which (year, quarter) combinations actually have readings.
-
-    Used by the GUI to only ever offer year/quarter combinations that have
-    data, instead of letting the user pick a period that can never produce
-    a result.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A dict mapping calendar year to the set of quarter numbers (1-4)
-        for which at least one reading exists. Empty if there are no
-        readings at all.
-    """
+    """Determine which (year, quarter) combinations actually have readings."""
     rows = connection.execute(
         "SELECT DISTINCT substr(timestamp, 1, 4) AS yr, substr(timestamp, 6, 2) AS mo FROM readings"
     ).fetchall()
@@ -144,15 +76,7 @@ def list_available_periods(connection: sqlite3.Connection) -> dict[int, set[int]
 
 
 def latest_available_period(available: dict[int, set[int]]) -> Optional[tuple[int, int]]:
-    """Pick the most recent (year, quarter) that has data, as a GUI default.
-
-    Args:
-        available: Result of `list_available_periods`.
-
-    Returns:
-        The `(year, quarter)` with the highest year and, within that year,
-        the highest quarter -- or `None` if `available` is empty.
-    """
+    """Pick the most recent (year, quarter) that has data, as a GUI default."""
     if not available:
         return None
     latest_year = max(available)
@@ -161,48 +85,19 @@ def latest_available_period(available: dict[int, set[int]]) -> Optional[tuple[in
 
 
 def months_in_quarter(year: int, quarter: int) -> list[tuple[int, int]]:
-    """List the three calendar months making up a quarter.
-
-    Args:
-        year: Calendar year.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        `(year, month)` pairs in chronological order, e.g. for Q1 2025:
-        `[(2025, 1), (2025, 2), (2025, 3)]`.
-    """
+    """List the three calendar months making up a quarter."""
     start_month = _QUARTER_START_MONTH[quarter]
     return [(year, start_month + offset) for offset in range(3)]
 
 
 def month_bounds(year: int, month: int) -> tuple[date, date]:
-    """Compute the first and last calendar day of a month.
-
-    Args:
-        year: Calendar year.
-        month: Calendar month, 1 to 12.
-
-    Returns:
-        A `(first_day, last_day)` tuple, both inclusive.
-    """
+    """Compute the first and last calendar day of a month."""
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, 1), date(year, month, last_day)
 
 
 def trailing_months(end: date, count: int = 12) -> list[tuple[int, int]]:
-    """List `count` consecutive calendar months ending with `end`'s month.
-
-    Used by `app.domain.statistics` to build a fixed-width trailing window
-    (e.g. "the last 12 months") regardless of which months actually have
-    data -- months with nothing recorded still appear, with zero values.
-
-    Args:
-        end: Reference date; its `(year, month)` is the last entry.
-        count: Number of months to list.
-
-    Returns:
-        `(year, month)` pairs in chronological order (oldest first).
-    """
+    """List `count` consecutive calendar months ending with `end`'s month."""
     months = []
     year, month = end.year, end.month
     for _ in range(count):
@@ -215,15 +110,7 @@ def trailing_months(end: date, count: int = 12) -> list[tuple[int, int]]:
 
 
 def month_label_de(year: int, month: int) -> str:
-    """Format a calendar month as a German label with its date range.
-
-    Args:
-        year: Calendar year.
-        month: Calendar month, 1 to 12.
-
-    Returns:
-        A label such as "Januar (01.01-31.01)".
-    """
+    """Format a calendar month as a German label with its date range."""
     first_day, last_day = month_bounds(year, month)
     return f"{MONTH_NAMES_DE[month]} ({first_day.strftime('%d.%m')}-{last_day.strftime('%d.%m')})"
 
@@ -244,24 +131,7 @@ _YEARS_IN_WINDOW = 10
 
 @dataclass(frozen=True)
 class Granularity:
-    """One selectable x-axis resolution and the window that comes with it.
-
-    The window **follows** the resolution instead of being chosen
-    separately. The alternative -- free from/to dates next to a free
-    resolution -- lets somebody ask for a year in quarter-hours, which is
-    35'040 points: a chart the browser cannot draw and a query nobody
-    wants to wait for. Coupling them means no combination exists that
-    produces an unusable picture.
-
-    Attributes:
-        key: Stable identifier, stored by the select.
-        label: German name of the resolution ("Viertelstunde").
-        window_label: German name of the window it spans ("Tag"), shown
-            beside the navigation arrows.
-        buckets_per_window: Roughly how many points a full window holds --
-            documentation and a sanity bound for the tests, not something
-            the code divides by. Months and quarters vary in length.
-    """
+    """One selectable x-axis resolution and the window that comes with it."""
 
     key: str
     label: str
@@ -284,33 +154,12 @@ GRANULARITIES_BY_KEY: dict[str, Granularity] = {g.key: g for g in GRANULARITIES}
 
 
 def granularity(key: str) -> Granularity:
-    """Look up one resolution by its key.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-
-    Returns:
-        The matching `Granularity`.
-
-    Raises:
-        KeyError: If no resolution has this key.
-    """
+    """Look up one resolution by its key."""
     return GRANULARITIES_BY_KEY[key]
 
 
 def window_for(key: str, anchor: datetime) -> tuple[datetime, datetime]:
-    """The half-open window one resolution covers around a moment.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        anchor: Any moment inside the wanted window.
-
-    Returns:
-        `(start, end_exclusive)`, snapped to the natural boundary --
-        midnight for a day, Monday for a week, the first of the quarter,
-        1 January for a year. Half-open, like `quarter_bounds`, so
-        consecutive windows never share a moment.
-    """
+    """The half-open window one resolution covers around a moment."""
     if key == GRANULARITY_QUARTER_HOUR:
         start = datetime(anchor.year, anchor.month, anchor.day)
         return start, start + timedelta(days=1)
@@ -329,26 +178,7 @@ def window_for(key: str, anchor: datetime) -> tuple[datetime, datetime]:
 
 
 def shift_anchor(key: str, anchor: datetime, steps: int) -> datetime:
-    """Move the anchor one window onward or back, for the navigation arrows.
-
-    Four of the five resolutions show a **calendar** window -- this day,
-    this week, this quarter, this year -- so one step is one whole window
-    and consecutive windows meet exactly. The year view is the exception:
-    it is a **rolling** ten years, and stepping it by its own width would
-    jump a decade at a time, past every year that has data. It therefore
-    rolls by a single year, and its windows overlap by nine.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        anchor: The current anchor.
-        steps: How many steps to move; negative goes back.
-
-    Returns:
-        A moment inside the neighbouring window. Derived from the window's
-        own bounds rather than by adding a fixed number of days, so
-        stepping past a 28-day February or a 92-day quarter lands where a
-        reader expects.
-    """
+    """Move the anchor one window onward or back, for the navigation arrows."""
     if key == GRANULARITY_YEAR:
         return datetime(anchor.year + steps, 1, 1)
 
@@ -364,19 +194,7 @@ def shift_anchor(key: str, anchor: datetime, steps: int) -> datetime:
 
 
 def buckets_in(key: str, window: tuple[datetime, datetime]) -> list[datetime]:
-    """Every bucket start in a window, in order.
-
-    Generated from the window rather than from the data, so a period with
-    no readings still appears -- as a gap at the right place, not by
-    silently shortening the axis.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        window: `(start, end_exclusive)` as returned by `window_for`.
-
-    Returns:
-        The bucket start moments, oldest first.
-    """
+    """Every bucket start in a window, in order."""
     start, end = window
     starts: list[datetime] = []
     current = start
@@ -402,20 +220,7 @@ def buckets_in(key: str, window: tuple[datetime, datetime]) -> list[datetime]:
 
 
 def bucket_key(key: str, timestamp: str) -> str:
-    """The bucket one stored reading timestamp belongs to.
-
-    Works on the ISO text as stored (`"2026-07-01T00:15:00"`) rather than
-    parsing every row: a quarter of a million readings per quarter makes
-    the difference between a chart that appears and one you wait for.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        timestamp: The reading's ISO-8601 timestamp.
-
-    Returns:
-        A string that is equal for two timestamps in the same bucket, and
-        matches `bucket_key_of(key, bucket_start)`.
-    """
+    """The bucket one stored reading timestamp belongs to."""
     if key == GRANULARITY_YEAR:
         return timestamp[:4]
     if key == GRANULARITY_MONTH:
@@ -431,30 +236,12 @@ def bucket_key(key: str, timestamp: str) -> str:
 
 
 def bucket_key_of(key: str, start: datetime) -> str:
-    """The same bucket key, for a bucket start rather than a reading.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        start: A bucket start from `buckets_in`.
-
-    Returns:
-        The key `bucket_key` would produce for a reading in that bucket.
-    """
+    """The same bucket key, for a bucket start rather than a reading."""
     return bucket_key(key, start.isoformat())
 
 
 def bucket_label(key: str, start: datetime) -> str:
-    """The German axis label for one bucket.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        start: The bucket's start moment.
-
-    Returns:
-        A label short enough to sit under an axis tick -- "08:15" inside a
-        day, "Mo 14.09." inside a week, "14.09." inside a quarter, "Sep"
-        inside a year, "2026" across years.
-    """
+    """The German axis label for one bucket."""
     if key == GRANULARITY_QUARTER_HOUR:
         return start.strftime("%H:%M")
     if key == GRANULARITY_HOUR:
@@ -469,16 +256,7 @@ def bucket_label(key: str, start: datetime) -> str:
 
 
 def window_label(key: str, window: tuple[datetime, datetime]) -> str:
-    """Name the window on screen, so the arrows have something to move.
-
-    Args:
-        key: One of the `GRANULARITY_*` constants.
-        window: `(start, end_exclusive)` as returned by `window_for`.
-
-    Returns:
-        E.g. `"Dienstag, 29.09.2026"`, `"Woche vom 28.09.2026"`,
-        `"Q3 2026"`, `"2026"` or `"2017-2026"`.
-    """
+    """Name the window on screen, so the arrows have something to move."""
     start, end = window
     last_day = end - timedelta(days=1)
     if key == GRANULARITY_QUARTER_HOUR:
@@ -510,24 +288,7 @@ _WEEKDAYS_LONG_DE = [
 
 
 def shift_window_one_year(window: tuple[datetime, datetime]) -> tuple[datetime, datetime]:
-    """The same window, one year earlier.
-
-    Used for the previous-year comparison line. Shifting the window rather
-    than re-deriving it from a shifted anchor keeps the bucket count
-    identical, so the two series line up point for point on one axis --
-    which is the only way the comparison means anything.
-
-    A 29 February lands on the 28th, and the week windows will not start on
-    the same weekday a year apart. Both are accepted: the comparison is
-    "roughly this time last year", and pretending otherwise would need a
-    52-week calendar the readings do not have.
-
-    Args:
-        window: `(start, end_exclusive)` from `window_for`.
-
-    Returns:
-        The window moved back one year.
-    """
+    """The same window, one year earlier."""
 
     def back(moment: datetime) -> datetime:
         try:

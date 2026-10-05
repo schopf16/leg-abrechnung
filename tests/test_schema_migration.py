@@ -8,11 +8,7 @@ from app.db.migrations import Migration
 
 
 def _fresh_connection() -> sqlite3.Connection:
-    """Open a fresh in-memory SQLite connection with row access by name.
-
-    Returns:
-        A new `sqlite3.Connection`.
-    """
+    """Open a fresh in-memory SQLite connection with row access by name."""
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     return connection
@@ -50,11 +46,7 @@ def test_migrate_to_latest_only_applies_missing_migrations(monkeypatch):
 
 
 def test_migrate_to_latest_upgrades_an_old_partial_database(monkeypatch):
-    """A database stopped at an earlier version only gets the newer migrations applied.
-
-    Simulates opening an old backup (created back when only migration 1
-    existed) with a newer app build that also knows migration 2.
-    """
+    """A database stopped at an earlier version only gets the newer migrations applied."""
     migration_1 = Migration(1, "create table", "CREATE TABLE t (id INTEGER PRIMARY KEY);")
     migration_2 = Migration(2, "create second table", "CREATE TABLE t2 (id INTEGER PRIMARY KEY);")
 

@@ -1,15 +1,4 @@
-"""The LEG create/edit dialog, in a module of its own.
-
-Same shape and the same reason as `app.gui.site_form`,
-`app.gui.person_form` and `app.gui.metering_point_form`: a dialog nested
-inside a list page can only be opened from that page, so the LEG detail page
-had no Bearbeiten button -- the eye led somewhere the pencil could not
-follow.
-
-Nothing about the dialog itself changed in the move. The one difference is
-that it reports a successful save through `on_saved` instead of closing over
-the list page's `refresh`.
-"""
+"""The LEG create/edit dialog, in a module of its own."""
 
 from datetime import date
 from typing import Callable, Optional
@@ -28,18 +17,7 @@ def open_leg_form(
     existing: Optional[Leg] = None,
     on_saved: Optional[Callable[[Optional[Leg]], None]] = None,
 ) -> None:
-    """Open the create/edit dialog for a LEG.
-
-    Args:
-        existing: LEG to edit, or `None` to create a new one.
-        on_saved: Called after a successful save, with the saved LEG for an
-            edit and `None` for a new one -- the same shape
-            `app.gui.site_form` uses, so a caller can refresh whatever it
-            needs to.
-
-    Returns:
-        None.
-    """
+    """Open the create/edit dialog for a LEG."""
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-md"):
         ui.label("LEG bearbeiten" if existing else "Neue LEG").classes("text-lg font-bold")
         name = (
@@ -72,16 +50,7 @@ def open_leg_form(
         )
 
         def _stamp_today() -> None:
-            """Move the Stand to today whenever the percentage changes.
-
-            A fresh figure carried an old date otherwise, and the
-            date is the only staleness safeguard the feature has.
-            Still editable afterwards, for entering an older
-            reading on purpose.
-
-            Returns:
-                None.
-            """
+            """Move the Stand to today whenever the percentage changes."""
             previous = existing.production_capacity_percent if existing else None
             if capacity_percent.value != previous:
                 capacity_date.value = date.today().isoformat()
@@ -106,13 +75,7 @@ def open_leg_form(
         error_label = ui.label("").classes("text-negative")
 
         def check_duplicate() -> bool:
-            """Check whether the current name input is already used by another LEG.
-
-            Updates `duplicate_warning` as a side effect.
-
-            Returns:
-                `True` if the name is a duplicate of a different LEG.
-            """
+            """Check whether the current name input is already used by another LEG."""
             typed = name.value.strip()
             if not typed:
                 duplicate_warning.text = ""
@@ -126,11 +89,7 @@ def open_leg_form(
         name.on_value_change(lambda _: check_duplicate())
 
         def save() -> None:
-            """Validate the form and persist the LEG.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the LEG."""
             if not name.value.strip():
                 error_label.text = "Name darf nicht leer sein."
                 return

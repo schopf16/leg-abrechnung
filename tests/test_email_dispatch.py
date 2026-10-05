@@ -1,6 +1,5 @@
-"""Tests for the small pure helpers in app.gui.pages.email_dispatch (not
-the page rendering itself, which is only smoke-tested live -- see the
-rest of this app's GUI test conventions)."""
+"""Tests for the small pure helpers in app.gui.pages.email_dispatch (not the page rendering itself,
+which is only smoke-tested live -- see the rest of this app's GUI test conventions)."""
 
 from app.gui.pages.email_dispatch import _compose_body
 
@@ -16,9 +15,7 @@ def test_compose_body_appends_signature_with_delimiter():
 
 
 def test_compose_body_does_not_mutate_original_message():
-    """The signature must never be baked into the composed message text
-    itself -- only into the value passed on to preview/send, so switching
-    the signature selection never requires retyping the message."""
+    """The signature must never be baked into the composed message text itself -- only into the value..."""
     body = "Guten Tag"
     _compose_body(body, "Irgendeine Signatur")
     assert body == "Guten Tag"

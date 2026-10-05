@@ -1,6 +1,5 @@
-"""Tests for the combined per-person net billing computation, final-step
-rounding, the admin fees (admin fee/paper invoice), and the
-sum-balance check."""
+"""Tests for the combined per-person net billing computation, final-step rounding, the admin fees
+(admin fee/paper invoice), and the sum-balance check."""
 
 from app.domain.billing import (
     compute_billing_items,
@@ -17,15 +16,7 @@ from app.models.billing_run import BillingRunItem
 
 
 def _item(person_id: int, net_amount_rappen: int) -> BillingRunItem:
-    """Build a minimal unpersisted `BillingRunItem` for balance-check tests.
-
-    Args:
-        person_id: Person the item belongs to.
-        net_amount_rappen: Net amount to test with.
-
-    Returns:
-        A `BillingRunItem` with placeholder kWh/price fields and no admin fees.
-    """
+    """Build a minimal unpersisted `BillingRunItem` for balance-check tests."""
     return BillingRunItem(
         id=None,
         billing_run_id=0,
@@ -47,8 +38,7 @@ def _demo_leg_id(db) -> int:
 
 
 def test_prosumer_gets_a_single_netted_item_not_two():
-    """A prosumer (consumption and production both nonzero) gets exactly one
-    item -- consumption and production are netted, never billed separately."""
+    """A prosumer (consumption and production both nonzero) gets exactly one item -- consumption and..."""
     distribution = DistributionResult(
         leg_id=1,
         year=2025,
@@ -107,8 +97,7 @@ def test_person_with_no_local_sharing_gets_no_item():
 
 
 def test_rounding_uses_half_up_and_happens_only_once():
-    """0.5 Rappen rounds up; only the final net amount is rounded, per
-    app.domain.billing's "round only once, at the end" design."""
+    """0.5 Rappen rounds up; only the final net amount is rounded, per app.domain.billing's "round only..."""
     distribution = DistributionResult(
         leg_id=1,
         year=2025,
@@ -123,8 +112,7 @@ def test_rounding_uses_half_up_and_happens_only_once():
 
 
 def test_admin_fee_consumption_is_charged_on_consumption_only():
-    """The consumption admin surcharge applies to consumed_local_kwh only, even
-    when an feed-in rate of zero means production is untouched."""
+    """The consumption admin surcharge applies to consumed_local_kwh only, even when an feed-in rate of..."""
     distribution = DistributionResult(
         leg_id=1,
         year=2025,
@@ -143,9 +131,7 @@ def test_admin_fee_consumption_is_charged_on_consumption_only():
 
 
 def test_admin_fee_feed_in_is_independent_of_consumption():
-    """The feed-in admin surcharge applies to produced_local_kwh only,
-    with its own independent rate -- charging one direction must not
-    imply anything about the other."""
+    """The feed-in admin surcharge applies to produced_local_kwh only, with its own independent rate --..."""
     distribution = DistributionResult(
         leg_id=1,
         year=2025,
@@ -164,10 +150,7 @@ def test_admin_fee_feed_in_is_independent_of_consumption():
 
 
 def test_admin_fee_rates_are_frozen_onto_the_item():
-    """Both actual rates used must be stored on the item itself, not just
-    the resulting fee amount -- this is what lets a later rate change in
-    Einstellungen leave already-billed items' displayed rate untouched
-    (see app.domain.billing's module docstring)."""
+    """Both actual rates used must be stored on the item itself, not just the resulting fee amount --..."""
     distribution = DistributionResult(
         leg_id=1,
         year=2025,
@@ -260,9 +243,7 @@ def test_verify_sum_balance_ignores_admin_fees():
 
 
 def test_verify_sum_balance_ignores_admin_fee_feed_in_too():
-    """The feed-in admin fee must be excluded from the energy balance
-    check exactly like the consumption one -- both are pure LEG revenue with no
-    producer-side counterpart."""
+    """The feed-in admin fee must be excluded from the energy balance check exactly like the..."""
     item = BillingRunItem(
         id=None,
         billing_run_id=0,
@@ -283,13 +264,7 @@ def test_verify_sum_balance_ignores_admin_fee_feed_in_too():
 
 
 def test_full_billing_run_winter_quarter_has_zero_amounts(db):
-    """With demo data, the winter run (P=0 throughout) charges nothing.
-
-    It still produces one item per participant, reading 0.00 -- a
-    quarter in which nothing could be shared is a result the recipient
-    is entitled to see, not a silence. The flat paper-invoice fee is
-    deliberately withheld from such a document.
-    """
+    """With demo data, the winter run (P=0 throughout) charges nothing."""
     create_demo_data(db)
     leg_id = _demo_leg_id(db)
     run, items, control_check, distribution = create_or_replace_billing_run(db, leg_id, *WINTER_QUARTER)
@@ -306,8 +281,7 @@ def test_full_billing_run_winter_quarter_has_zero_amounts(db):
 
 
 def test_full_billing_run_summer_quarter_balances_one_item_per_person(db):
-    """With demo data, the summer run produces balanced nets, one item per
-    person even for prosumers."""
+    """With demo data, the summer run produces balanced nets, one item per person even for prosumers."""
     create_demo_data(db)
     leg_id = _demo_leg_id(db)
     run, items, control_check, distribution = create_or_replace_billing_run(db, leg_id, *SUMMER_QUARTER)
@@ -346,10 +320,7 @@ def test_rerunning_billing_replaces_previous_run(db):
 
 
 def test_admin_fee_rates_survive_persistence_round_trip(db):
-    """The frozen rate fields must actually be stored/reloaded via the
-    database, not just present on the in-memory dataclass before
-    `add_items` ever runs -- this exercises the real INSERT/SELECT
-    columns, not just Python construction."""
+    """The frozen rate fields must actually be stored/reloaded via the database, not just present on..."""
     create_demo_data(db)
     leg_id = _demo_leg_id(db)
     settings = settings_repo.get_settings(db)

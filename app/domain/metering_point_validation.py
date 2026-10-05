@@ -1,21 +1,4 @@
-"""Swiss metering point designation (metering point designation) validation.
-
-Per the VSE guideline, the 33-character code has a fixed structure:
-
-    Stellen  1–2   Land (immer "CH" für die Schweiz)
-    Stellen  3–13  identifier des Netzbetreibers (11-stellig)
-    Stellen 14–33  metering point number (20-stellig, alphanumerisch, mit
-                   führenden Nullen aufgefüllt)
-
-Unlike an IBAN, this designation has **no built-in check digit** -- the
-guideline defines the structure but no checksum, so there is nothing to
-compute a MOD-97-style validation against. The practical mitigation used
-here: since a single LEG deployment always sits in one grid operator's
-territory, Land and identifier are entered once (see
-`LegSettings.metering_point_country`/`metering_point_identifier`) and only the
-20-character metering point number varies per MeteringPoint -- structural validation
-(length, allowed characters) is the strongest plausibility check available.
-"""
+"""Swiss metering point designation (metering point designation) validation."""
 
 import re
 from typing import Optional
@@ -34,21 +17,7 @@ METERING_POINT_NUMBER_LENGTH = 20
 
 
 def assemble_metering_point_designation(country: str, identifier: str, metering_point_number: str) -> str:
-    """Combine the three entry fields into the full 33-character designation.
-
-    The metering point number is left-padded with zeros to fill all 20
-    characters, per the guideline ("Leere Stellen müssen mit einer Null
-    belegt werden").
-
-    Args:
-        land: 2-letter country code.
-        identifier: 11-character grid-operator identifier.
-        metering_point_number: The meter-specific tail, any length up to 20.
-
-    Returns:
-        The assembled, uppercased designation (not necessarily valid --
-        call `validate_metering_point_designation` to check it).
-    """
+    """Combine the three entry fields into the full 33-character designation."""
     return (
         country.strip().upper()
         + identifier.strip().upper()
@@ -57,15 +26,7 @@ def assemble_metering_point_designation(country: str, identifier: str, metering_
 
 
 def validate_metering_point_designation(value: str) -> Optional[str]:
-    """Check a metering point designation's structural plausibility.
-
-    Args:
-        value: The (assembled) 33-character designation.
-
-    Returns:
-        `None` if `value` is structurally plausible, otherwise a
-        human-readable German error message.
-    """
+    """Check a metering point designation's structural plausibility."""
     candidate = value.strip().upper()
     if not candidate:
         return "Messpunkt-Bezeichnung darf nicht leer sein."
@@ -84,14 +45,7 @@ def validate_metering_point_designation(value: str) -> Optional[str]:
 
 
 def validate_country(value: str) -> Optional[str]:
-    """Check that a Land value is exactly 2 uppercase letters, if given.
-
-    Args:
-        value: Raw user input.
-
-    Returns:
-        `None` if `value` is empty or valid, otherwise a German error message.
-    """
+    """Check that a Land value is exactly 2 uppercase letters, if given."""
     candidate = value.strip().upper()
     if not candidate:
         return None
@@ -101,14 +55,7 @@ def validate_country(value: str) -> Optional[str]:
 
 
 def validate_identifier(value: str) -> Optional[str]:
-    """Check that an identifier value is exactly 11 alphanumeric characters, if given.
-
-    Args:
-        value: Raw user input.
-
-    Returns:
-        `None` if `value` is empty or valid, otherwise a German error message.
-    """
+    """Check that an identifier value is exactly 11 alphanumeric characters, if given."""
     candidate = value.strip().upper()
     if not candidate:
         return None

@@ -1,23 +1,4 @@
-"""The one running address-register update, and its progress.
-
-State lives in a **module-level object**, not on a client, on purpose. The
-update takes about a minute, and the administrator is meant to keep working
-during it -- so they will navigate away, and a progress bar that belonged to
-the page they left would vanish and leave them unable to tell whether the
-update had finished. `app.gui.navigation.page_frame` reads this state and
-shows a line in the header of every page instead.
-
-Why not `nicegui.run.cpu_bound`: the parse would then sit in another process
-and reporting progress out of it needs a queue, pickled arguments and a
-second failure mode. Here the parse is a generator that hands control back
-every few thousand rows (see `app.importers.address_register.build_register`),
-which keeps the window responsive with no concurrency machinery at all --
-the download half genuinely awaits network I/O and blocks nothing.
-
-The pattern in `app.gui.pages.import_page` yields *between* files and lets
-each file's work block; that is fine for many small files and useless for
-one long operation, which is why this module exists.
-"""
+"""The one running address-register update, and its progress."""
 
 import asyncio
 import logging
@@ -42,17 +23,7 @@ PHASE_FINISH = "Abschliessen"
 
 @dataclass
 class UpdateState:
-    """How the running update is doing, or how the last one ended.
-
-    Attributes:
-        phase: `PHASE_DOWNLOAD`, `PHASE_PARSE`, or `""` when idle.
-        progress: 0.0..1.0 within the current phase.
-        error: German message of the last failure, `""` otherwise. Kept
-            after the run so the administrator can still read it on the
-            register page, rather than losing it with a toast they missed.
-        finished: Set once a run has completed successfully, so the page can
-            say so without having to guess from `phase`.
-    """
+    """How the running update is doing, or how the last one ended."""
 
     phase: str = ""
     progress: float = 0.0
@@ -61,20 +32,12 @@ class UpdateState:
 
     @property
     def running(self) -> bool:
-        """Whether an update is in progress.
-
-        Returns:
-            `True` while a phase is set.
-        """
+        """Whether an update is in progress."""
         return bool(self.phase)
 
     @property
     def label(self) -> str:
-        """The one-line status for the page header.
-
-        Returns:
-            E.g. `"Adressregister: Verarbeiten 68 %"`, or `""` when idle.
-        """
+        """The one-line status for the page header."""
         if not self.running:
             return ""
         return f"Adressregister: {self.phase} {self.progress * 100:.0f} %"
@@ -89,17 +52,7 @@ async def run_update(
     target: Optional[Path] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> bool:
-    """Fetch and rebuild the address register, reporting progress as it goes.
-
-    Args:
-        target: Where the finished register goes.
-        client: An open HTTP client, or `None` for a short-lived one. Tests
-            pass one in so nothing reaches the network.
-
-    Returns:
-        `True` on success, `False` if it failed or was already running. The
-        German reason for a failure is left in `STATE.error`.
-    """
+    """Fetch and rebuild the address register, reporting progress as it goes."""
     # Claimed by setting the phase, with no await in between: asyncio is
     # cooperative, so nothing can interleave here and a lock would only add
     # a second thing to get wrong. A second click finds the phase set and
@@ -117,14 +70,7 @@ async def run_update(
         asset = await address_register.fetch_asset(client=client)
 
         def report(fraction: float) -> None:
-            """Record download progress for the header line.
-
-            Args:
-                fraction: How much of the file has arrived, 0.0..1.0.
-
-            Returns:
-                None.
-            """
+            """Record download progress for the header line."""
             STATE.progress = fraction
 
         await address_register.download_asset(asset, scratch, on_progress=report, client=client)

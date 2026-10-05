@@ -251,9 +251,7 @@ def test_sync_registrations_changed_field_updates_row_in_place(db):
 
 
 def test_sync_registrations_changed_meter_set_replaces_rows_but_keeps_metering_point_created(db):
-    """Replacing a registration's meter set on a repeat submission must not
-    silently discard metering_point_taken_over for a meter that persists by
-    meter_number -- see `upsert_from_submission`'s docstring."""
+    """Replacing a registration's meter set on a repeat submission must not silently discard..."""
     with patch(
         _SYNC_TARGET,
         side_effect=[
@@ -331,9 +329,7 @@ def test_sync_registrations_skips_entry_without_email(db):
 
 
 def test_sync_registrations_paginates_while_page_is_full(db, monkeypatch):
-    """Even without hitting the real 500-row cap, the loop must keep
-    calling fetch_new_registrations with an increasing `since` until an
-    empty batch is returned."""
+    """Even without hitting the real 500-row cap, the loop must keep calling fetch_new_registrations..."""
     calls = []
 
     def fake_fetch(since, token):
@@ -353,8 +349,7 @@ def test_sync_registrations_paginates_while_page_is_full(db, monkeypatch):
 
 
 def test_unmark_reopens_a_taken_over_item(db):
-    """A flag can now be set by one confirmed click on a small icon, so
-    closing an item by mistake has to be undoable."""
+    """A flag can now be set by one confirmed click on a small icon, so closing an item by mistake has..."""
     with patch(_SYNC_TARGET, side_effect=[[_submission(1, meters=[("CH-A", "")])], []]):
         sync_registrations(db, "token")
     reg = web_registration_repo.list_all(db)[0]

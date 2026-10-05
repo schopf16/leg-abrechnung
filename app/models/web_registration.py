@@ -1,17 +1,5 @@
-"""WebRegistration: an inbox row for one registration submitted through
-the public form on leg-ittigen.ch (see `app.importers.registration_sync`).
-
-One row per Cloudflare submission (not per reported meter): the form
-fields were deliberately chosen to mirror `Person` almost 1:1 (`company`,
-`salutation`, `first_name`, `last_name`, address, contact, `bkw_customer_number`,
-`iban`), but a registration can report zero, one or several meters
-(`WebRegistrationMeter`). Person, site and each meter's MeteringPoint are
-each taken over as their own explicit step (see `app.gui.pages.
-web_registrations`) -- matching a reported meter (and its site)
-against a *new* record is a judgment call for the administrator, not a
-mechanical one. Assignment (linking a taken-over Person to a taken-over
-MeteringPoint) stays a manual step in `/assignments`.
-"""
+"""WebRegistration: an inbox row for one registration submitted through the public form on leg-
+ittigen.ch (see `app.importers.registration_sync`)."""
 
 import sqlite3
 from dataclasses import dataclass, field
@@ -21,27 +9,7 @@ from typing import Optional
 
 @dataclass
 class WebRegistrationMeter:
-    """One reported Zählernummer within a `WebRegistration`.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        web_registration_id: Foreign key to the owning `WebRegistration`,
-            `None` until persisted.
-        meter_number: The reported Zählernummer, free text as submitted
-            (not validated against `app.domain.metering_point_validation` here
-            -- the submitter may not know the full formal designation).
-        note: Optional free-text purpose label from the submitter (e.g.
-            "PV", "Wohnhaus", "Wärmepumpe") -- not a `MeteringPoint` field,
-            purely a hint for the administrator.
-        metering_point_taken_over: Whether this reported meter still needs
-            action -- `False` until a `MeteringPoint` was created for it,
-            an existing one was linked, or it was marked by hand (see
-            `app.gui.pages.web_registrations`). Only
-            `mark_metering_point_taken_over` sets it; `upsert_from_submission`
-            carries it forward by `meter_number` across a repeat
-            submission, since that call otherwise replaces all of a
-            registration's meter rows wholesale.
-    """
+    """One reported Zählernummer within a `WebRegistration`."""
 
     id: Optional[int]
     web_registration_id: Optional[int]
@@ -51,14 +19,7 @@ class WebRegistrationMeter:
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "WebRegistrationMeter":
-        """Build a `WebRegistrationMeter` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `web_registration_meter` table.
-
-        Returns:
-            The corresponding `WebRegistrationMeter` dataclass instance.
-        """
+        """Build a `WebRegistrationMeter` from a `sqlite3.Row`."""
         return WebRegistrationMeter(
             id=row["id"],
             web_registration_id=row["web_registration_id"],
@@ -70,53 +31,7 @@ class WebRegistrationMeter:
 
 @dataclass
 class WebRegistration:
-    """One registration submitted through the leg-ittigen.ch public form.
-
-    Matched across repeat submissions by `email` (the only identity field
-    every registration is guaranteed to carry -- `meters` can be empty).
-    See `app.importers.registration_sync` for the accepted limitation this
-    implies if two different people share an email address.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        cloudflare_id: The id of the raw submission this row currently
-            reflects, in the leg-ittigen.ch API -- unique, since at any
-            time each row is a snapshot of exactly one submission.
-        company: Submitted company name, or `""`.
-        salutation: Submitted salutation (`""`/`"Herr"`/`"Frau"`/`"Familie"`).
-        first_name: Submitted first name.
-        last_name: Submitted last name.
-        street: Submitted street name (without house number).
-        house_number: Submitted house number.
-        postal_code: Submitted postal code.
-        city: Submitted city.
-        email: Submitted email address -- the matching key across repeat
-            submissions (see class docstring).
-        phone: Optional submitted phone number.
-        bkw_customer_number: Submitted BKW customer number, free text (unlike
-            `Person.bkw_customer_number`, which is a validated integer --
-            the website does not validate this field).
-        iban: Optional submitted IBAN, free text (not validated here).
-        message: Optional free-text remark from the submitter.
-        submitted_at: Submission timestamp as reported by the API.
-        imported_at: ISO-8601 timestamp this row was last written here
-            (insert or update).
-        person_taken_over: Whether this registration's Person still needs
-            action -- `False` until one was created, an existing one was
-            linked, or it was marked by hand (see `app.gui.pages.
-            web_registrations`). Set by `mark_person_taken_over`, cleared
-            by `unmark_person_taken_over`. Deliberately NOT what the
-            delete dialog keys its data-loss warning on: this flag says
-            the item needs no more attention, not that the submitted data
-            was copied anywhere.
-        site_taken_over: Whether this registration's site still needs
-            action -- `False` until one was created, the existing site at
-            that address was linked (the usual case in an apartment
-            block), or it was marked by hand. Only
-            `mark_site_taken_over` sets it.
-        meters: Zählernummern reported with this registration, zero, one
-            or several -- each with its own `metering_point_taken_over` flag.
-    """
+    """One registration submitted through the leg-ittigen.ch public form."""
 
     id: Optional[int]
     cloudflare_id: int
@@ -141,13 +56,7 @@ class WebRegistration:
 
     @property
     def display_name(self) -> str:
-        """Single-line display name, mirroring `Person.display_name`.
-
-        Returns:
-            `"Firma (Vorname Nachname)"` if both are set, just the
-            company name or just the personal name if only one is, or
-            `""` if neither is set.
-        """
+        """Single-line display name, mirroring `Person.display_name`."""
         full_name = " ".join(p for p in (self.first_name, self.last_name) if p)
         if self.company and full_name:
             return f"{self.company} ({full_name})"
@@ -155,16 +64,7 @@ class WebRegistration:
 
     @property
     def is_fully_processed(self) -> bool:
-        """Whether there is nothing left to take over from this registration.
-
-        `True` once Person, site and every reported MeteringPoint have
-        each been dealt with -- created from this registration, linked to
-        an existing record, or marked by hand. The only remaining action
-        at that point is deleting the entry.
-
-        Returns:
-            `True` if fully processed, `False` if anything is still open.
-        """
+        """Whether there is nothing left to take over from this registration."""
         return (
             self.person_taken_over
             and self.site_taken_over
@@ -173,16 +73,7 @@ class WebRegistration:
 
     @staticmethod
     def from_row(row: sqlite3.Row, meters: list[WebRegistrationMeter]) -> "WebRegistration":
-        """Build a `WebRegistration` from a `sqlite3.Row` and its meters.
-
-        Args:
-            row: Row selected from the `web_registration` table.
-            meters: This registration's `WebRegistrationMeter` rows,
-                already loaded separately (see `_load_meters`).
-
-        Returns:
-            The corresponding `WebRegistration` dataclass instance.
-        """
+        """Build a `WebRegistration` from a `sqlite3.Row` and its meters."""
         return WebRegistration(
             id=row["id"],
             cloudflare_id=row["cloudflare_id"],
@@ -208,15 +99,7 @@ class WebRegistration:
 
 
 def _load_meters(connection: sqlite3.Connection, web_registration_id: int) -> list[WebRegistrationMeter]:
-    """Load all meters reported with one registration.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the owning registration.
-
-    Returns:
-        That registration's `WebRegistrationMeter` rows, in insertion order.
-    """
+    """Load all meters reported with one registration."""
     rows = connection.execute(
         "SELECT * FROM web_registration_meter WHERE web_registration_id = ? ORDER BY id",
         (web_registration_id,),
@@ -225,75 +108,25 @@ def _load_meters(connection: sqlite3.Connection, web_registration_id: int) -> li
 
 
 def list_all(connection: sqlite3.Connection) -> list[WebRegistration]:
-    """List all registrations, most recently submitted first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        All inbox entries (with their meters loaded), sorted by
-        `submitted_at` descending.
-    """
+    """List all registrations, most recently submitted first."""
     rows = connection.execute("SELECT * FROM web_registration ORDER BY submitted_at DESC").fetchall()
     return [WebRegistration.from_row(row, _load_meters(connection, row["id"])) for row in rows]
 
 
 def get(connection: sqlite3.Connection, web_registration_id: int) -> Optional[WebRegistration]:
-    """Fetch a single registration by id.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        The matching `WebRegistration` (with meters loaded), or `None` if
-        no such id exists.
-    """
+    """Fetch a single registration by id."""
     row = connection.execute("SELECT * FROM web_registration WHERE id = ?", (web_registration_id,)).fetchone()
     return WebRegistration.from_row(row, _load_meters(connection, row["id"])) if row else None
 
 
 def get_by_email(connection: sqlite3.Connection, email: str) -> Optional[WebRegistration]:
-    """Fetch a single registration by its email address.
-
-    The email is the matching key used across repeat submissions -- see
-    the `WebRegistration` class docstring for the accepted limitation
-    this implies.
-
-    Args:
-        connection: Open SQLite connection.
-        email: Email address as submitted through the web form.
-
-    Returns:
-        The matching `WebRegistration` (with meters loaded), or `None` if
-        unknown.
-    """
+    """Fetch a single registration by its email address."""
     row = connection.execute("SELECT * FROM web_registration WHERE email = ?", (email,)).fetchone()
     return WebRegistration.from_row(row, _load_meters(connection, row["id"])) if row else None
 
 
 def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegistration) -> int:
-    """Insert a new registration, or update the existing one for the same
-    email in place, replacing its meters wholesale.
-
-    Always replaces the full set of `web_registration_meter` rows (delete
-    then reinsert) rather than diffing them individually -- the number of
-    meters per registration is small, and this avoids having to decide
-    which meter row "is the same" across a content change -- except for
-    `metering_point_taken_over`, which is explicitly carried forward by
-    `meter_number` (see the loop below): unlike a brand new meter row,
-    that flag records real administrator work that a same-content resync
-    must not silently discard.
-
-    Args:
-        connection: Open SQLite connection.
-        registration: Data to write, including its `meters`. Matched
-            against any existing row via `registration.email`, regardless
-            of `registration.id`.
-
-    Returns:
-        The primary key of the inserted or updated row.
-    """
+    """Insert a new registration, or update the existing one for the same email in place, replacing its..."""
     existing = get_by_email(connection, registration.email)
     previously_taken_over_by_meter = (
         {m.meter_number: m.metering_point_taken_over for m in existing.meters} if existing else {}
@@ -382,21 +215,7 @@ def upsert_from_submission(connection: sqlite3.Connection, registration: WebRegi
 
 
 def mark_person_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Record that this registration's Person needs no further action.
-
-    Set whether the Person was created from the registration, linked to an
-    already-existing one, or marked by hand -- see the module docstring of
-    `app.gui.pages.web_registrations` for why all three close the item.
-
-    Idempotent. The only way `person_taken_over` is set.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
+    """Record that this registration's Person needs no further action."""
     connection.execute(
         "UPDATE web_registration SET person_taken_over = 1 WHERE id = ?",
         (web_registration_id,),
@@ -405,21 +224,7 @@ def mark_person_taken_over(connection: sqlite3.Connection, web_registration_id: 
 
 
 def mark_site_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Record that this registration's site needs no further action.
-
-    Set whether the site was created from the registration, linked to an
-    already-existing one -- the common case, since everybody living in one
-    apartment block shares a single site -- or marked by hand.
-
-    Idempotent. The only way `site_taken_over` is set.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
+    """Record that this registration's site needs no further action."""
     connection.execute(
         "UPDATE web_registration SET site_taken_over = 1 WHERE id = ?",
         (web_registration_id,),
@@ -428,20 +233,7 @@ def mark_site_taken_over(connection: sqlite3.Connection, web_registration_id: in
 
 
 def mark_metering_point_taken_over(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
-    """Record that one reported meter needs no further action.
-
-    Set whether the MeteringPoint was created from the reported meter,
-    linked to an already-existing one, or marked by hand.
-
-    Idempotent. The only way a meter's `metering_point_taken_over` is set.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_meter_id: Primary key of the `web_registration_meter` row.
-
-    Returns:
-        None.
-    """
+    """Record that one reported meter needs no further action."""
     connection.execute(
         "UPDATE web_registration_meter SET metering_point_taken_over = 1 WHERE id = ?",
         (web_registration_meter_id,),
@@ -450,22 +242,7 @@ def mark_metering_point_taken_over(connection: sqlite3.Connection, web_registrat
 
 
 def unmark_person_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Reopen this registration's Person item.
-
-    The counterpart to `mark_person_taken_over`. A flag can now be set by
-    one confirmed click on a small icon, so closing an item by mistake has
-    to be undoable -- without this the only way back was editing the
-    database by hand.
-
-    Idempotent.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
+    """Reopen this registration's Person item."""
     connection.execute(
         "UPDATE web_registration SET person_taken_over = 0 WHERE id = ?",
         (web_registration_id,),
@@ -474,18 +251,7 @@ def unmark_person_taken_over(connection: sqlite3.Connection, web_registration_id
 
 
 def unmark_site_taken_over(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Reopen this registration's site item.
-
-    The counterpart to `mark_site_taken_over`; see
-    `unmark_person_taken_over` for why the inverse exists. Idempotent.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry.
-
-    Returns:
-        None.
-    """
+    """Reopen this registration's site item."""
     connection.execute(
         "UPDATE web_registration SET site_taken_over = 0 WHERE id = ?",
         (web_registration_id,),
@@ -494,18 +260,7 @@ def unmark_site_taken_over(connection: sqlite3.Connection, web_registration_id: 
 
 
 def unmark_metering_point_taken_over(connection: sqlite3.Connection, web_registration_meter_id: int) -> None:
-    """Reopen one reported meter.
-
-    The counterpart to `mark_metering_point_taken_over`; see
-    `unmark_person_taken_over` for why the inverse exists. Idempotent.
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_meter_id: Primary key of the `web_registration_meter` row.
-
-    Returns:
-        None.
-    """
+    """Reopen one reported meter."""
     connection.execute(
         "UPDATE web_registration_meter SET metering_point_taken_over = 0 WHERE id = ?",
         (web_registration_meter_id,),
@@ -514,19 +269,6 @@ def unmark_metering_point_taken_over(connection: sqlite3.Connection, web_registr
 
 
 def delete(connection: sqlite3.Connection, web_registration_id: int) -> None:
-    """Delete a registration and its reported meters (cascade).
-
-    Purely local -- callers that also want the corresponding submission
-    removed from the remote leg-ittigen.ch Worker database must call
-    `app.importers.cloudflare_client.delete_submissions` themselves (see
-    `app.gui.pages.web_registrations.on_delete`, which does both).
-
-    Args:
-        connection: Open SQLite connection.
-        web_registration_id: Primary key of the inbox entry to delete.
-
-    Returns:
-        None.
-    """
+    """Delete a registration and its reported meters (cascade)."""
     connection.execute("DELETE FROM web_registration WHERE id = ?", (web_registration_id,))
     connection.commit()

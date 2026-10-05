@@ -1,13 +1,4 @@
-"""Plausibility and consistency checks (project brief, section 7).
-
-Covers gaps in the Assignment history, missing reading periods, the
-invoice/credit-note sum balance (lives in `app.domain.billing.
-verify_sum_balance`, re-exposed here for a single import point),
-metering points that have no LEG assigned yet, interested persons whose
-onboarding (`app.models.person_onboarding`) has been stuck on its current
-step for too long, and the one-sided-substation area / LEG-upgrade signals from
-`app.domain.participant_mix`.
-"""
+"""Plausibility and consistency checks (project brief, section 7)."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -55,25 +46,7 @@ SUBJECT_SUBSTATION_AREA = "substation_area"
 
 @dataclass
 class QualityWarning:
-    """One plausibility issue found in the data, for display in the UI.
-
-    Attributes:
-        category: One of "assignment_overlap", "assignment_gap",
-            "reading_gap", "leg_not_assigned", "onboarding_overdue",
-            "bank_transaction_unresolved", "billing_cycle_open",
-            "substation_area_upgrade_potential" or
-            "substation_area_one_sided".
-        message: Human-readable (German) description.
-        link: Route path to the specific object this warning is about
-            (e.g. `/metering-points/12`), so the UI can jump straight there
-            instead of just naming it in text -- `None` if no detail page
-            exists for that kind of object, or the specific record could
-            not be resolved.
-        subject_kind: Which list the finding belongs in (`SUBJECT_*`), so
-            that list can mark the entry. Empty when the finding is about
-            no single record -- an open billing quarter belongs to no row.
-        subject_id: Primary key of that record.
-    """
+    """One plausibility issue found in the data, for display in the UI."""
 
     category: str
     message: str
@@ -85,34 +58,7 @@ class QualityWarning:
 
 
 def summarise_warnings(warnings: list[QualityWarning]) -> list[QualityWarning]:
-    """Collapse repeated findings so the overview stays readable.
-
-    Thirteen address lines pushed everything else off the screen, and a list
-    that long stops being read at all -- "vor lauter Fehler sehe ich gar
-    nichts mehr". Several findings of the same kind become one line with a
-    count and the link to the page that fixes them.
-
-    A **single** finding keeps its own message: naming the one metering
-    point without a LEG is more useful than "1 Messpunkt ohne LEG", and
-    costs the same line either way.
-
-    Grouped by category *and* summary, never by link: most per-record
-    warnings link to their own record, so grouping by link would collapse
-    nothing. The collapsed line therefore carries `summary_link`, which
-    points at the **list** the whole group is worked off -- the one place a
-    reader can act on all of them.
-
-    The same `summary` text used twice with different links is how one check
-    speaks twice on purpose: addresses on Standorte and addresses on
-    Personen are two jobs, so they carry two different summaries.
-
-    Args:
-        warnings: Everything the checks produced, in display order.
-
-    Returns:
-        The same warnings with each repeated group replaced by one summary
-        line, keeping the order in which each group first appeared.
-    """
+    """Collapse repeated findings so the overview stays readable."""
     order: list[tuple[str, str]] = []
     grouped: dict[tuple[str, str], list[QualityWarning]] = {}
     for warning in warnings:
@@ -140,15 +86,7 @@ def summarise_warnings(warnings: list[QualityWarning]) -> list[QualityWarning]:
 
 
 def check_assignment_consistency(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Check every MeteringPoint's Assignment history for overlaps and gaps.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` for each overlap or gap found, across all
-        metering points.
-    """
+    """Check every MeteringPoint's Assignment history for overlaps and gaps."""
     warnings = []
     for metering_point in metering_point_repo.list_all(connection):
         for assignment_warning in assignment_repo.find_warnings(connection, metering_point.id):
@@ -167,21 +105,7 @@ def check_assignment_consistency(connection: sqlite3.Connection) -> list[Quality
 
 @dataclass(frozen=True)
 class ReadingGap:
-    """One day on which a metering point reported the wrong number of readings.
-
-    The structured form of what `check_reading_completeness` phrases as a
-    German sentence. It exists because the billing control points need to
-    aggregate these -- "how many metering points are affected, and which
-    of them reported nothing at all" -- and parsing that back out of a
-    message string would be a poor way to learn it.
-
-    Attributes:
-        metering_point_id: The metering point concerned.
-        designation: Its grid-operator id, for naming it to the user.
-        day: The calendar day with the wrong count.
-        count: How many readings that day actually has.
-        expected: How many it should have (96 quarter-hours).
-    """
+    """One day on which a metering point reported the wrong number of readings."""
 
     metering_point_id: int
     designation: str
@@ -191,22 +115,7 @@ class ReadingGap:
 
 
 def find_reading_gaps(connection: sqlite3.Connection, year: int, quarter: int) -> list[ReadingGap]:
-    """Find every metering-point/day in a quarter with an unexpected reading count.
-
-    Only days on which the metering point was actually assigned to a
-    person count: an unassigned metering point with no readings is not a
-    data gap, it is simply out of service. A day reporting 0 readings is
-    reported like any other wrong count -- zero kWh is a statement, no
-    data is not.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter to check.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        One `ReadingGap` per affected metering point and day.
-    """
+    """Find every metering-point/day in a quarter with an unexpected reading count."""
     start, end = quarter_bounds(year, quarter)
     gaps: list[ReadingGap] = []
 
@@ -248,20 +157,7 @@ def find_reading_gaps(connection: sqlite3.Connection, year: int, quarter: int) -
 def check_reading_completeness(
     connection: sqlite3.Connection, year: int, quarter: int
 ) -> list[QualityWarning]:
-    """Find days within a quarter where a MeteringPoint has fewer than 96 readings.
-
-    A thin German-language wrapper over `find_reading_gaps`, which does
-    the actual work and is what `app.domain.billing_checks` builds on.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter to check.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        A `QualityWarning` per MeteringPoint/day combination with an
-        unexpected reading count.
-    """
+    """Find days within a quarter where a MeteringPoint has fewer than 96 readings."""
     return [
         QualityWarning(
             category="reading_gap",
@@ -280,22 +176,7 @@ def check_reading_completeness(
 
 
 def check_open_billing_cycle(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Surface a billing quarter that was started but never finished.
-
-    A billing run spans weeks and half a dozen steps, so the one that
-    stalls is the one nobody is looking at. It belongs on the dashboard
-    next to the overdue Aufnahmen, and shares their threshold
-    (`LegSettings.onboarding_overdue_days`) rather than introducing a
-    second knob for the same idea.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per unfinished cycle, naming the step it is
-        sitting on. Cycles younger than the threshold are left alone --
-        a quarter in progress is not a problem.
-    """
+    """Surface a billing quarter that was started but never finished."""
     threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
     warnings: list[QualityWarning] = []
     for cycle in billing_cycle_repo.list_in_progress(connection):
@@ -316,24 +197,7 @@ def check_open_billing_cycle(connection: sqlite3.Connection) -> list[QualityWarn
 
 
 def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag metering points that have no LEG assigned yet.
-
-    Multiple LEGs coexisting in one deployment is normal (see
-    `app.models.leg`), so there is no "everyone should share one LEG"
-    check anymore -- only a plain data-hygiene check that every MeteringPoint
-    actually has a LEG, since `compute_quarter_distribution` will
-    otherwise refuse to bill it (see
-    `app.domain.distribution.LegNotAssignedError`). Surfacing it here lets
-    the administrator catch it during data review, before attempting to
-    run a billing.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per MeteringPoint with no LEG assigned. Empty if
-        every MeteringPoint has one.
-    """
+    """Flag metering points that have no LEG assigned yet."""
     warnings: list[QualityWarning] = []
     for metering_point in metering_point_repo.list_all(connection):
         if metering_point.leg_id is not None:
@@ -354,27 +218,7 @@ def check_leg_assignment(connection: sqlite3.Connection) -> list[QualityWarning]
 
 
 def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag people whose offboarding is finished while they are still active.
-
-    Completing the last step offers to remove the person (see
-    `app.gui.offboarding_form.open_remove_person_dialog`), but that offer
-    comes once. Declined, dismissed, or -- for anyone offboarded before the
-    offer existed -- never shown, the person stays active forever: counted
-    on this dashboard, offered for new assignments, and still on the
-    broadcast list. Meanwhile the finished tracker drops out of the
-    Austritte worklist, so nothing mentions them again.
-
-    That is how a real administrator found a fully offboarded member still
-    listed under Personen weeks later, by eye rather than by warning. This
-    is the warning.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `QualityWarning` per person with a completed offboarding who is
-        still active. Empty once each has been removed or deactivated.
-    """
+    """Flag people whose offboarding is finished while they are still active."""
     warnings: list[QualityWarning] = []
     for offboarding in person_offboarding_repo.list_all(connection):
         if not offboarding.is_complete:
@@ -401,32 +245,7 @@ def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> li
 
 
 def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag people who feed into the LEG but draw nothing from it.
-
-    Deliberately one-directional. Drawing without feeding in is the normal
-    case -- most participants have no PV at all -- and is never flagged.
-    The reverse is the odd one: somebody who puts power into the community
-    but takes none out of it. The likely cause is a consumption assignment
-    that was never entered, at the same address as the feed-in meter.
-
-    Reported per **connection**, not per person, and the message names the
-    location: a property management can hold several, and "which one is
-    missing its meter" is the only part of this that is actual work.
-
-    What this does **not** claim is that BKW forbids the arrangement. The
-    administrator suspects they do not support it, and that may well be
-    right, but it is not something this database can establish -- same
-    reasoning as the discount tier, which is deliberately not stored (see
-    CLAUDE.md). So the message states the finding and asks, rather than
-    asserting a rule.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `QualityWarning` per person with a feed-in assignment and no
-        consumption assignment.
-    """
+    """Flag people who feed into the LEG but draw nothing from it."""
     warnings: list[QualityWarning] = []
     roles = participant_mix.compute_participant_roles(connection)
     for person_id, site_id in roles.feed_in_only:
@@ -456,23 +275,7 @@ def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[Qu
 
 
 def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag today's Genossenschaft members holding zero shares.
-
-    Zero shares is deliberately allowed at the model level: the membership
-    is a fact from the day it is resolved, even while the share
-    subscription is still on paper (see
-    `app.models.cooperative_membership`). Allowed, but not forgettable --
-    without this, a member whose shares were never entered stays at zero
-    indefinitely, and the members' list prints as if that were their
-    holding.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `QualityWarning` per member with zero shares today. Empty if
-        every member's shares are recorded.
-    """
+    """Flag today's Genossenschaft members holding zero shares."""
     today = date.today()
     warnings: list[QualityWarning] = []
     for membership in cooperative_membership_repo.list_all(connection):
@@ -498,21 +301,7 @@ def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> 
 
 
 def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag interested persons stuck too long on their current onboarding step.
-
-    "Too long" is `LegSettings.onboarding_overdue_days` days (default
-    30) since the current step (see `PersonOnboarding.current_step`)
-    became active -- see `app.models.person_onboarding` for how that
-    reference date is derived. Completed onboardings, and persons never
-    routed through this pipeline at all (no tracker exists), never
-    produce a warning.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per overdue onboarding. Empty if none are overdue.
-    """
+    """Flag interested persons stuck too long on their current onboarding step."""
     threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
     warnings: list[QualityWarning] = []
     for onboarding in person_onboarding_repo.list_in_progress(connection):
@@ -541,19 +330,7 @@ def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWar
 
 
 def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag imported bank statement entries still awaiting a decision.
-
-    A single aggregated warning (not one per entry) -- see
-    `app.models.bank_transaction.list_open` for the underlying query --
-    to avoid flooding Handlungsbedarf if many entries are open at once.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A single-item list with the aggregated warning, or `[]` if
-        nothing is open.
-    """
+    """Flag imported bank statement entries still awaiting a decision."""
     open_count = len(bank_transaction_repo.list_open(connection))
     if open_count == 0:
         return []
@@ -567,17 +344,7 @@ def check_unresolved_bank_transactions(connection: sqlite3.Connection) -> list[Q
 
 
 def _recorded_on(recorded_at: Optional[str]) -> str:
-    """Render the date a production percentage was read, for a warning.
-
-    Args:
-        recorded_at: ISO date from `Leg.production_capacity_recorded_at`,
-            or `None`.
-
-    Returns:
-        `"Stand 18.09.2026"`, or `"Stand unbekannt"`. Always stated: the
-        dashboard is where the figure gets acted on, and a months-old
-        snapshot presented bare reads as current fact.
-    """
+    """Render the date a production percentage was read, for a warning."""
     if not recorded_at:
         return "Stand unbekannt"
     try:
@@ -587,25 +354,7 @@ def _recorded_on(recorded_at: Optional[str]) -> str:
 
 
 def _metering_points_added_since(metering_points: list, leg) -> int:
-    """Count this LEG's metering points created after its figure was read.
-
-    A LEG that has grown since the percentage was read off the portal no
-    longer matches that percentage. Strictly *after*, by date: BKW shows
-    the figure while a metering point is being registered, so one created
-    the same day is already reflected in the reading and must not trigger
-    a nag. `created_at` is the closest signal the schema offers -- there is no history of when a metering point was
-    assigned to a LEG, so a long-existing metering point moved into this
-    LEG later is not caught. It under-reports rather than over-reports,
-    which is the right direction for a nag.
-
-    Args:
-        metering_points: All metering points, loaded once by the caller.
-        leg: The LEG to count for.
-
-    Returns:
-        How many were created after the recording date; `0` when no date
-        was recorded.
-    """
+    """Count this LEG's metering points created after its figure was read."""
     if not leg.production_capacity_recorded_at:
         return 0
     return sum(
@@ -616,32 +365,7 @@ def _metering_points_added_since(metering_points: list, leg) -> int:
 
 
 def check_leg_production_capacity(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag a LEG whose recorded production capacity is below, or close to,
-    the legal floor.
-
-    Art. 19e Abs. 1 StromVV requires at least 5% -- that part is law and
-    is reported as an outright problem. The "getting tight" band above it
-    is the administrator's own early warning
-    (`LegSettings.production_capacity_warn_percent`), so that the next
-    consumer can be parked in another LEG before the floor is actually
-    hit.
-
-    A LEG that has grown since its figure was read is reported too, and
-    first: acting on a percentage that predates the LEG's current shape is
-    worse than acting on a tight one. Every message states the recording
-    date, because this is the surface the figure actually gets acted on.
-
-    A LEG whose figure has never been recorded is deliberately silent:
-    the value can only come from BKW's portal, so not having looked yet
-    is not a fault the app should nag about.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per LEG below the floor or inside the warning
-        band.
-    """
+    """Flag a LEG whose recorded production capacity is below, or close to, the legal floor."""
     warn_percent = settings_repo.get_settings(connection).production_capacity_warn_percent
     metering_points = metering_point_repo.list_all(connection)
     warnings: list[QualityWarning] = []
@@ -702,21 +426,7 @@ def check_leg_production_capacity(connection: sqlite3.Connection) -> list[Qualit
 
 
 def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Flag substation areas with participants on only one side (nothing to
-    actually share locally), unless already resolved via a mixed LEG.
-
-    See `app.domain.participant_mix.compute_participant_mix_for_substation_area`.
-    A substation area whose metering points are *all* already in a mixed (multi-
-    substation area) LEG is not flagged -- the recommended fix is already acted
-    on. A substation area with no participants at all yet is not flagged either
-    (nothing to warn about).
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        A `QualityWarning` per still-one-sided substation area.
-    """
+    """Flag substation areas with participants on only one side (nothing to actually share locally)..."""
     warnings: list[QualityWarning] = []
     sites = site_repo.list_all(connection)
     metering_points = metering_point_repo.list_all(connection)
@@ -752,22 +462,7 @@ def check_substation_area_one_sided(connection: sqlite3.Connection) -> list[Qual
 
 
 def check_addresses(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Report addresses the official register disagrees with.
-
-    States the fact and links to the list; the "Meinten Sie: X?" question
-    with its yes and no sits on the Standorte and Personen lists, where the
-    work is actually done. The dashboard is a statement of what needs
-    attention, not a place to change data.
-
-    Silent without a register: it has to be downloaded once, and an absent
-    register is not evidence against anybody's address.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One warning per affected address.
-    """
+    """Report addresses the official register disagrees with."""
     warnings: list[QualityWarning] = []
     for issue in find_address_issues(connection):
         where = "/sites" if issue.kind == KIND_SITE else "/persons"
@@ -841,26 +536,12 @@ CHECK_SUBJECTS: dict = {
 
 
 def checks_for(subject_kind: str) -> tuple:
-    """The checks that can mark an entry of one list.
-
-    Args:
-        subject_kind: One of the `SUBJECT_*` constants.
-
-    Returns:
-        The checks to run, in `ALL_CHECKS` order.
-    """
+    """The checks that can mark an entry of one list."""
     return tuple(check for check in ALL_CHECKS if subject_kind in CHECK_SUBJECTS[check])
 
 
 def all_warnings(connection: sqlite3.Connection) -> list[QualityWarning]:
-    """Run every check, in the order the overview shows them.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        Every finding, uncollapsed.
-    """
+    """Run every check, in the order the overview shows them."""
     warnings: list[QualityWarning] = []
     for check in ALL_CHECKS:
         warnings.extend(check(connection))
@@ -868,22 +549,7 @@ def all_warnings(connection: sqlite3.Connection) -> list[QualityWarning]:
 
 
 def problems_for(connection: sqlite3.Connection, subject_kind: str) -> dict[int, list[QualityWarning]]:
-    """Which entries of one list have something wrong with them.
-
-    What a list does with this is deliberately minimal: a warning triangle
-    beside the other icons, carrying **no text**. It says "look at this one"
-    and nothing more, exactly like the eye and the pencil beside it -- the
-    eye then shows what is wrong, and the pencil lets it be fixed. A row has
-    no room to explain a finding, and a tooltip nobody hovers is not an
-    explanation either.
-
-    Args:
-        connection: Open SQLite connection.
-        subject_kind: One of the `SUBJECT_*` constants.
-
-    Returns:
-        `{record id: findings}`, holding only the records that have one.
-    """
+    """Which entries of one list have something wrong with them."""
     found: dict[int, list[QualityWarning]] = {}
     for check in checks_for(subject_kind):
         for warning in check(connection):

@@ -1,39 +1,5 @@
-"""Web-Registrierungen page: inbox for registrations submitted through the
-public form on leg-ittigen.ch (see `app.importers.registration_sync`).
-
-Person, site and every reported MeteringPoint can each be taken over
-separately -- "... übernehmen" opens the matching create dialog (see
-`app.gui.person_form`/`site_form`/`metering_point_form`) prefilled from the
-registration, so nothing has to be retyped, and records that this item
-was taken over once actually saved. Deliberately three independent
-actions rather than one "accept everything" button: matching a reported
-meter (and its site) against a *new* record still needs a human
-judgment call (which LEG, which direction, is this really the same
-site as an existing site), so each piece is confirmed on its own.
-Assignment (linking a taken-over Person to a taken-over MeteringPoint) stays a
-manual step in `/assignments`, as it always was.
-
-Each of the three can be closed three ways, and that is the point: the
-record is created from the registration, an already-existing record is
-*linked*, or the administrator marks the item by hand. Linking matters
-more than it sounds -- everyone living in one apartment block shares a
-single site, so from the second registration at that address onwards
-there is nothing to create, and before this existed such an entry could
-never reach `is_fully_processed` and sat in the inbox for good. Where a
-match is found (`app.domain.registration_matching`), the card offers
-"Vorhandenen ... verknüpfen", never a second create button that would
-duplicate the site.
-
-Matching is exact on email / address / Messpunktbezeichnung, apart from
-case and padding. No fuzzy matching: linking a registration to the wrong
-address is worse than not finding it, and the case it would serve -- a
-typo in the submitted address -- is covered by hand-marking instead,
-which is offered precisely when nothing matched.
-
-There is no separate "reviewed" flag: an entry with nothing left to take
-over (`WebRegistration.is_fully_processed`) simply has nothing more to do
-here, and can be deleted once truly obsolete.
-"""
+"""Web-Registrierungen page: inbox for registrations submitted through the public form on leg-
+ittigen.ch (see `app.importers.registration_sync`)."""
 
 from datetime import date, datetime
 from typing import Callable, Optional
@@ -83,14 +49,7 @@ PRINT_COLUMNS = [
 
 
 def _print_row(reg: WebRegistration) -> dict:
-    """Convert a `WebRegistration` into a row dict for the printed table.
-
-    Args:
-        reg: Registration to convert.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS`.
-    """
+    """Convert a `WebRegistration` into a row dict for the printed table."""
     return {
         "name": reg.display_name,
         "submitted": reg.submitted_at,
@@ -104,42 +63,13 @@ def _print_row(reg: WebRegistration) -> dict:
 
 
 def _parse_bkw_customer_number(value: str) -> Optional[int]:
-    """Try to interpret a registration's free-text BKW-customer number as an
-    integer, for prefilling `Person.bkw_customer_number` (which is validated).
-
-    Args:
-        value: Free-text value as submitted through the web form.
-
-    Returns:
-        The parsed integer, or `None` if `value` is empty or not purely numeric.
-    """
+    """Try to interpret a registration's free-text BKW-customer number as an integer, for prefilling..."""
     stripped = value.strip()
     return int(stripped) if stripped.isdigit() else None
 
 
 def _parse_submitted_date(value: str) -> date:
-    """Parse a registration's `submitted_at` timestamp into a calendar date.
-
-    The leg-ittigen.ch API's timestamp format is not guaranteed to be
-    strict ISO-8601 (real data observed as `"2026-08-09 19:11:04"`) --
-    parsed defensively, falling back to today if it cannot be interpreted,
-    since this only seeds the onboarding tracker's step-1 date, which
-    remains editable afterwards regardless.
-
-    It is also the key behind this page's default order ("Eingang, neuste
-    zuerst", see `SORT_OPTIONS`), where the fallback is less harmless: a
-    registration whose timestamp the API delivered in an unexpected shape
-    is dated today and therefore jumps to the very top of the inbox. That
-    is the deliberate trade-off -- a malformed entry being too visible
-    beats it sinking to the bottom unnoticed -- but it is the reason a
-    registration can appear "newer" than it is.
-
-    Args:
-        value: Raw `submitted_at` value from the registration.
-
-    Returns:
-        The parsed date, or today's date if `value` could not be parsed.
-    """
+    """Parse a registration's `submitted_at` timestamp into a calendar date."""
     try:
         return datetime.fromisoformat(value.replace(" ", "T")).date()
     except ValueError:
@@ -177,11 +107,7 @@ SORT_OPTIONS = [
 
 @ui.page("/web-registrations")
 def web_registrations_page() -> None:
-    """Render the Web-Registrierungen inbox page.
-
-    Returns:
-        None.
-    """
+    """Render the Web-Registrierungen inbox page."""
     with page_frame("/web-registrations", "Web-Registrierungen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -216,21 +142,7 @@ def web_registrations_page() -> None:
         visible_regs: list[WebRegistration] = []
 
         def _confirm(title: str, body: str, confirm_label: str, on_confirm: Callable[[], None]) -> None:
-            """Ask before writing a take-over flag that creates nothing.
-
-            Linking or hand-marking silently closes an inbox item, so it
-            is worth one look -- above all at *which* record is about to
-            be linked.
-
-            Args:
-                title: Dialog heading.
-                body: Explanation of what the flag does and does not do.
-                confirm_label: Label of the confirming button.
-                on_confirm: Called once confirmed, dialog already closed.
-
-            Returns:
-                None.
-            """
+            """Ask before writing a take-over flag that creates nothing."""
             with ui.dialog() as confirm, ui.card().classes("w-full max-w-md"):
                 ui.label(title).classes("font-bold")
                 ui.label(body).classes("text-caption text-grey-7")
@@ -254,27 +166,7 @@ def web_registrations_page() -> None:
             on_take_over: Callable[[], None],
             on_reopen: Callable[[], None],
         ) -> None:
-            """Render one item's take-over control.
-
-            Which actions to offer is decided by
-            `app.domain.registration_matching.decide_take_over`, not here --
-            it governs what gets written, so it is a rule rather than a
-            rendering detail. This function only draws the result.
-
-            Args:
-                what: The item's German name, e.g. "Standort".
-                done: Whether this item needs no further action.
-                existing: Display text of the matched record, or `None`.
-                match_is_identity: Whether a match identifies the record
-                    (address, Messpunktbezeichnung) or merely suggests it
-                    (email) -- see the domain module.
-                on_create: Opens the prefilled create dialog.
-                on_take_over: Marks the item taken over, creating nothing.
-                on_reopen: Undoes that, putting the item back on the list.
-
-            Returns:
-                None.
-            """
+            """Render one item's take-over control."""
             choice = decide_take_over(done=done, existing=existing, match_is_identity=match_is_identity)
             with ui.row().classes("items-center gap-2"):
                 if choice.done:
@@ -335,16 +227,7 @@ def web_registrations_page() -> None:
                     )
 
         def render_card(reg: WebRegistration, match: RegistrationMatch) -> None:
-            """Render one registration as a card with wrapping field groups.
-
-            Args:
-                reg: Registration to render.
-                match: The existing records this registration matches, from
-                    `app.domain.registration_matching.load_matches`.
-
-            Returns:
-                None.
-            """
+            """Render one registration as a card with wrapping field groups."""
             with ui.card().classes("w-full" + ("" if not reg.is_fully_processed else " opacity-60")):
                 with ui.row().classes("w-full items-start gap-6 flex-wrap"):
                     with ui.column().classes("gap-0 min-w-[200px]"):
@@ -425,11 +308,7 @@ def web_registrations_page() -> None:
                         ui.label("Keine Zähler gemeldet.").classes("text-caption text-grey-6")
 
         def refresh() -> None:
-            """Reload the registrations list according to the current filter.
-
-            Returns:
-                None.
-            """
+            """Reload the registrations list according to the current filter."""
             nonlocal visible_regs
             with connection_scope() as connection:
                 all_regs = web_registration_repo.list_all(connection)
@@ -455,17 +334,7 @@ def web_registrations_page() -> None:
         show_complete_switch.on_value_change(lambda _: refresh())
 
         def on_take_over_person(reg: WebRegistration) -> None:
-            """Card button handler: open a prefilled Person-creation dialog.
-
-            Also starts the person's onboarding tracker (see
-            `app.models.person_onboarding`), dated from the registration.
-
-            Args:
-                reg: Registration to take over.
-
-            Returns:
-                None.
-            """
+            """Card button handler: open a prefilled Person-creation dialog."""
             prefill = {
                 "company": reg.company,
                 "salutation": reg.salutation,
@@ -496,98 +365,49 @@ def web_registrations_page() -> None:
             open_person_form(prefill=prefill, on_saved=on_person_saved)
 
         def mark_person_done(reg: WebRegistration) -> None:
-            """Close this registration's Person item without creating one.
-
-            Args:
-                reg: Registration whose Person is already covered.
-
-            Returns:
-                None.
-            """
+            """Close this registration's Person item without creating one."""
             with connection_scope() as connection:
                 web_registration_repo.mark_person_taken_over(connection, reg.id)
             safe_notify("Person als übernommen markiert.", type="positive")
             refresh()
 
         def mark_site_done(reg: WebRegistration) -> None:
-            """Close this registration's site item without creating one.
-
-            Args:
-                reg: Registration whose site is already covered.
-
-            Returns:
-                None.
-            """
+            """Close this registration's site item without creating one."""
             with connection_scope() as connection:
                 web_registration_repo.mark_site_taken_over(connection, reg.id)
             safe_notify("Standort als übernommen markiert.", type="positive")
             refresh()
 
         def mark_metering_point_done(meter: WebRegistrationMeter) -> None:
-            """Close one reported meter without creating a MeteringPoint.
-
-            Args:
-                meter: The reported meter that is already covered.
-
-            Returns:
-                None.
-            """
+            """Close one reported meter without creating a MeteringPoint."""
             with connection_scope() as connection:
                 web_registration_repo.mark_metering_point_taken_over(connection, meter.id)
             safe_notify("Messpunkt als übernommen markiert.", type="positive")
             refresh()
 
         def reopen_person(reg: WebRegistration) -> None:
-            """Put this registration's Person item back on the open list.
-
-            Args:
-                reg: Registration to reopen the Person item for.
-
-            Returns:
-                None.
-            """
+            """Put this registration's Person item back on the open list."""
             with connection_scope() as connection:
                 web_registration_repo.unmark_person_taken_over(connection, reg.id)
             safe_notify("Person wieder geöffnet.", type="info")
             refresh()
 
         def reopen_site(reg: WebRegistration) -> None:
-            """Put this registration's site item back on the open list.
-
-            Args:
-                reg: Registration to reopen the site item for.
-
-            Returns:
-                None.
-            """
+            """Put this registration's site item back on the open list."""
             with connection_scope() as connection:
                 web_registration_repo.unmark_site_taken_over(connection, reg.id)
             safe_notify("Standort wieder geöffnet.", type="info")
             refresh()
 
         def reopen_metering_point(meter: WebRegistrationMeter) -> None:
-            """Put one reported meter back on the open list.
-
-            Args:
-                meter: The reported meter to reopen.
-
-            Returns:
-                None.
-            """
+            """Put one reported meter back on the open list."""
             with connection_scope() as connection:
                 web_registration_repo.unmark_metering_point_taken_over(connection, meter.id)
             safe_notify("Messpunkt wieder geöffnet.", type="info")
             refresh()
 
         def on_take_over_site(reg: WebRegistration) -> None:
-            """Card button handler: open a prefilled site-creation dialog.
-
-            Args:
-                reg: Registration to take over.
-
-            Returns:
-                None.
-            """
+            """Card button handler: open a prefilled site-creation dialog."""
             prefill = {
                 "street": reg.street,
                 "house_number": reg.house_number,
@@ -603,19 +423,7 @@ def web_registrations_page() -> None:
             open_site_form(prefill=prefill, on_saved=on_site_saved)
 
         def on_take_over_metering_point(reg: WebRegistration, meter: WebRegistrationMeter) -> None:
-            """Card button handler: open a prefilled MeteringPoint-creation dialog.
-
-            Pre-selects the site matching this registration's address
-            if one already exists (typically because it was just taken
-            over above) -- otherwise leaves it for the administrator to pick.
-
-            Args:
-                reg: Registration the meter was reported with.
-                meter: The specific reported meter to take over.
-
-            Returns:
-                None.
-            """
+            """Card button handler: open a prefilled MeteringPoint-creation dialog."""
             with connection_scope() as connection:
                 matching_site = site_repo.find_by_address(
                     connection, reg.street, reg.house_number, reg.postal_code
@@ -632,15 +440,7 @@ def web_registrations_page() -> None:
             open_metering_point_form(prefill=prefill, on_saved=on_metering_point_saved)
 
         def on_delete(reg: WebRegistration) -> None:
-            """Card button handler: delete a registration after confirmation,
-            both locally and from the remote leg-ittigen.ch Worker database.
-
-            Args:
-                reg: Registration to delete.
-
-            Returns:
-                None.
-            """
+            """Card button handler: delete a registration after confirmation, both locally and from the..."""
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'"{reg.display_name or reg.email}" wirklich löschen?').classes("font-bold")
                 # Always warned about, never only when something is still
@@ -693,11 +493,7 @@ def web_registrations_page() -> None:
             confirm.open()
 
         def do_sync() -> None:
-            """Top button handler: fetch and apply new registrations.
-
-            Returns:
-                None.
-            """
+            """Top button handler: fetch and apply new registrations."""
             try:
                 token = get_leg_api_token()
             except ConfigError as exc:

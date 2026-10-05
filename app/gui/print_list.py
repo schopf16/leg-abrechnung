@@ -1,24 +1,4 @@
-"""Shared "print this list" building block for the list pages under
-`app.gui.pages`.
-
-Deliberately renders a separate, plain HTML table for printing rather than
-printing the on-screen cards/table 1:1 -- the on-screen layout (wrapping
-card columns, icon buttons) makes a poor printout, whereas a compact table
-is easy to scan on paper. Always shows which list ("heading") was printed
-and the print date/time; the active filter is optional and supplied by the
-calling page (`get_filter_description`), since not every page has one
-worth mentioning.
-
-The sort order is a separate line (`get_sort_description`), never folded
-into the filter line: a sort order is not a filter, and printing
-"Filter: sortiert nach Nachname" on an unfiltered list said the opposite
-of the truth.
-
-Uses the browser's own print dialog (`window.print()`) rather than
-generating a PDF file ourselves: that dialog already offers "Als PDF
-speichern" if that's what someone wants, so there is no separate PDF
-pipeline to build or keep in sync with this table's layout.
-"""
+"""Shared "print this list" building block for the list pages under `app.gui.pages`."""
 
 import html
 from datetime import datetime
@@ -98,18 +78,7 @@ PRINT_STYLE = """
 
 
 def table_columns(table: ui.table) -> list[tuple[str, str]]:
-    """Extract `(label, field)` pairs from a `ui.table`'s column definitions.
-
-    Skips the (labelless) "actions" column that every `ui.table`-based
-    list page uses for its row icon buttons -- nothing to print there.
-
-    Args:
-        table: The table to read column definitions from.
-
-    Returns:
-        `[(label, field), ...]` for every printable column, in the
-        table's own column order.
-    """
+    """Extract `(label, field)` pairs from a `ui.table`'s column definitions."""
     return [
         (col["label"], col["field"])
         for col in table.columns
@@ -125,39 +94,11 @@ def render_print_button(
     get_filter_description: Callable[[], Optional[str]] = lambda: None,
     get_sort_description: Callable[[], Optional[str]] = lambda: None,
 ) -> ui.button:
-    """Render a "Drucken" button that prints the currently displayed rows.
-
-    Args:
-        heading: Human-readable name of the list, printed as the page
-            heading (e.g. "persons", "Aufnahmen").
-        get_columns: Callback returning the current `[(label, field), ...]`
-            column definitions. A callback (not a plain list) so callers
-            whose columns depend on runtime state can stay accurate; most
-            pages can just return a fixed list.
-        get_rows: Callback returning the rows currently shown on screen --
-            i.e. *after* any active search/filter has been applied, not
-            the full unfiltered dataset -- as a list of dicts keyed by
-            each column's `field`.
-        get_filter_description: Callback returning a short, human-readable
-            description of the currently active filter(s), or `None` if
-            none is active / it shouldn't be shown on the printout.
-        get_sort_description: Callback returning the active sort order,
-            normally `app.gui.sorting.sort_description`'s result, or
-            `None` for a list that offers no choice of order. Printed on
-            its own line -- the order is not self-evident on paper.
-
-    Returns:
-        The rendered button, in case a caller wants to further style it.
-    """
+    """Render a "Drucken" button that prints the currently displayed rows."""
     print_area = ui.column().classes("leg-print-area")
 
     def do_print() -> None:
-        """Populate the hidden print area from the current filter state and
-        trigger the browser's print dialog.
-
-        Returns:
-            None.
-        """
+        """Populate the hidden print area from the current filter state and trigger the browser's print..."""
         columns = get_columns()
         rows = get_rows()
         description = get_filter_description()

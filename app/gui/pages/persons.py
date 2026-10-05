@@ -1,13 +1,6 @@
-"""persons management page: list, search, create, edit, delete, and a
-detail drill-down showing the Person → Assignment → MeteringPoint (→ LEG,
-→ site → substation area) join (project prompt section 7,
-"persons-Detailansicht").
-
-The list is rendered as one card per Person (not a single-row-per-person
-table): a Person has enough fields (Name/Firma, Kontakt, billing address,
-IBAN) that a flat table forces horizontal scrolling. Cards let each group
-of fields wrap onto its own line instead.
-"""
+"""persons management page: list, search, create, edit, delete, and a detail drill-down showing the
+Person → Assignment → MeteringPoint (→ LEG, → site → substation area) join (project prompt section
+7, "persons-Detailansicht")."""
 
 from datetime import date
 
@@ -63,14 +56,7 @@ DIRECTION_LABELS = {
 
 
 def _copy_customer_number(person: Person) -> None:
-    """Copy a person's formatted customer number to the clipboard and confirm.
-
-    Args:
-        person: Person whose customer number to copy.
-
-    Returns:
-        None.
-    """
+    """Copy a person's formatted customer number to the clipboard and confirm."""
     ui.clipboard.write(person.formatted_customer_number)
     safe_notify("Kundennummer kopiert.")
 
@@ -78,18 +64,7 @@ def _copy_customer_number(person: Person) -> None:
 def _customer_number_row(
     person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6"
 ) -> None:
-    """Render the Kunden-Nr. label with an inline copy-to-clipboard button.
-
-    Args:
-        person: Person whose customer number to show.
-        label: Text preceding the formatted number (e.g. "Kunden-Nr." or
-            "Kunden-Nr.:", to match the two slightly different label
-            styles used on the list and detail pages).
-        classes: CSS classes applied to the label itself.
-
-    Returns:
-        None.
-    """
+    """Render the Kunden-Nr. label with an inline copy-to-clipboard button."""
     with ui.row().classes("items-center gap-1"):
         ui.label(f"{label} {person.formatted_customer_number}").classes(classes)
         ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
@@ -180,34 +155,13 @@ SORT_OPTIONS = [
 
 
 def _missing_salutation(person: Person) -> bool:
-    """Whether a named person on this record has no salutation.
-
-    A company with no contact person legitimately has none -- flagging
-    those would bury the real gaps in noise -- so only records that
-    actually name somebody are considered. For a couple, either name
-    missing its salutation counts: the letter greets both.
-
-    Args:
-        person: Person to check.
-
-    Returns:
-        `True` if at least one named person carries no salutation.
-    """
+    """Whether a named person on this record has no salutation."""
     named = person.named_persons
     return bool(named) and any(not one.salutation for one in named)
 
 
 def _status_text(person: Person) -> str:
-    """The Aktiv/Inaktiv text, with the deactivation date when there is one.
-
-    Args:
-        person: Person to describe.
-
-    Returns:
-        `"Aktiv"`, `"Inaktiv seit 13.09.2026"`, or plain `"Inaktiv"` for
-        someone deactivated before migration 50 recorded the date. Never
-        invents one -- on a printed list a made-up date reads like a fact.
-    """
+    """The Aktiv/Inaktiv text, with the deactivation date when there is one."""
     if person.active:
         return "Aktiv"
     if person.deactivated_at is None:
@@ -216,16 +170,7 @@ def _status_text(person: Person) -> str:
 
 
 def _print_row(person: Person, membership) -> dict:
-    """Convert a `Person` into a row dict for the printed table.
-
-    Args:
-        person: Person to convert.
-        membership: The person's `CooperativeMembership` in force today, or
-            `None` if they are not a member.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS`.
-    """
+    """Convert a `Person` into a row dict for the printed table."""
     return {
         "customer_number": person.formatted_customer_number,
         # Both salutations for a couple, so a printed list shows which half
@@ -249,19 +194,7 @@ def _print_row(person: Person, membership) -> dict:
 
 
 def _search_text_for_person(connection, person: Person) -> str:
-    """Build the lowercase substring-search haystack for one Person.
-
-    Covers the person's own fields plus the designation and site
-    address of every MeteringPoint ever assigned to them (project prompt
-    section 8: persons search also reaches into their assignments).
-
-    Args:
-        connection: Open SQLite connection.
-        person: Person to index.
-
-    Returns:
-        A single lowercase string containing all searchable text.
-    """
+    """Build the lowercase substring-search haystack for one Person."""
     parts = [
         person.company,
         person.first_name,
@@ -296,11 +229,7 @@ def _search_text_for_person(connection, person: Person) -> str:
 
 @ui.page("/persons")
 def persons_page() -> None:
-    """Render the persons list page with search, CRUD, and a link to each detail view.
-
-    Returns:
-        None.
-    """
+    """Render the persons list page with search, CRUD, and a link to each detail view."""
     with page_frame("/persons", "Personen"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -369,11 +298,7 @@ def persons_page() -> None:
         memberships_by_person: dict[int, object] = {}
 
         def _filter_description() -> str | None:
-            """Build a short description of the currently active search/filter.
-
-            Returns:
-                A human-readable summary, or `None` if no filter is active.
-            """
+            """Build a short description of the currently active search/filter."""
             parts = []
             if search_input.value:
                 parts.append(f'Suche: "{search_input.value.strip()}"')
@@ -387,18 +312,7 @@ def persons_page() -> None:
             return ", ".join(parts) if parts else None
 
         def row_for(person: Person) -> dict:
-            """Describe one person as a table row.
-
-            The status is a suffix on the name rather than a column of its
-            own: it is empty for all but a handful of people, and an almost
-            always empty column is clutter in a list of three.
-
-            Args:
-                person: Person to describe.
-
-            Returns:
-                The row the table and its action slot read.
-            """
+            """Describe one person as a table row."""
             locality = f"{person.billing_postal_code} {person.billing_city}".strip()
             address = ", ".join(part for part in (person.billing_street_with_number, locality) if part)
             return {
@@ -411,14 +325,7 @@ def persons_page() -> None:
             }
 
         def apply_filter() -> None:
-            """Filter the currently loaded persons by search text and active state.
-
-            Deactivated persons are hidden by default -- "weg ist weg" --
-            and only shown if `show_inactive_switch` is toggled on.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded persons by search text and active state."""
             nonlocal visible_persons
             needle = (search_input.value or "").strip().lower()
             visible_persons = [
@@ -437,11 +344,7 @@ def persons_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all persons from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all persons from the database and re-apply the filter."""
             nonlocal all_entries, memberships_by_person
             with connection_scope() as connection:
                 persons = person_repo.list_all(connection)
@@ -464,43 +367,17 @@ def persons_page() -> None:
         only_cooperative_switch.on_value_change(lambda _: apply_filter())
 
         def on_view(person: Person) -> None:
-            """Row view handler: navigate to the person's detail page.
-
-            Args:
-                person: Person whose detail page to open.
-
-            Returns:
-                None.
-            """
+            """Row view handler: navigate to the person's detail page."""
             ui.navigate.to(f"/persons/{person.id}")
 
         def on_edit(person: Person) -> None:
-            """Row edit handler: open the edit dialog for this person.
-
-            Args:
-                person: Person to edit.
-
-            Returns:
-                None.
-            """
+            """Row edit handler: open the edit dialog for this person."""
             with connection_scope() as connection:
                 existing = person_repo.get(connection, person.id)
             open_person_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_remove(person: Person) -> None:
-            """Row delete handler: delete the person after confirmation.
-
-            If the person still has billing history, they are deactivated
-            instead of deleted (see `person_repo.delete`) -- their
-            customer number and Abrechnungshistorie stay intact, but they are
-            hidden from selection for new assignments.
-
-            Args:
-                person: Person to delete.
-
-            Returns:
-                None.
-            """
+            """Row delete handler: delete the person after confirmation."""
             with ui.dialog() as confirm, ui.card():
                 ui.label(f'"{person.display_name}" wirklich löschen?')
                 ui.label(
@@ -532,14 +409,7 @@ def persons_page() -> None:
             confirm.open()
 
         def on_reactivate(person: Person) -> None:
-            """Row reactivate handler: mark a deactivated person active again.
-
-            Args:
-                person: Person to reactivate.
-
-            Returns:
-                None.
-            """
+            """Row reactivate handler: mark a deactivated person active again."""
             with connection_scope() as connection:
                 person_repo.set_active(connection, person.id, True)
             # notify before refresh() -- see save() above for why
@@ -547,41 +417,15 @@ def persons_page() -> None:
             refresh()
 
         def _person_of(event):
-            """Load the person a clicked row stands for.
-
-            The slot emits the row, not the object: a row is data sent to
-            the browser and back, so the record is re-read here rather than
-            trusted from it.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row.
-
-            Returns:
-                The person, or `None` if it is gone -- which happens when the
-                list was open while the record was deleted elsewhere.
-            """
+            """Load the person a clicked row stands for."""
             with connection_scope() as connection:
                 return person_repo.get(connection, event.args["id"])
 
         def _with_person(action):
-            """Wrap a handler so it receives the person, not the row.
-
-            Args:
-                action: One of the handlers above.
-
-            Returns:
-                A callable for `table.on(...)`.
-            """
+            """Wrap a handler so it receives the person, not the row."""
 
             def handle(event) -> None:
-                """Resolve the row and run the action.
-
-                Args:
-                    event: NiceGUI generic event.
-
-                Returns:
-                    None.
-                """
+                """Resolve the row and run the action."""
                 person = _person_of(event)
                 if person is None:
                     safe_notify("Diese Person gibt es nicht mehr.", type="warning")
@@ -601,14 +445,7 @@ def persons_page() -> None:
 
 @ui.page("/persons/{person_id}")
 def person_detail_page(person_id: int) -> None:
-    """Render one person's detail view: Stammdaten plus their assignment history.
-
-    Args:
-        person_id: Database id of the person, from the URL path.
-
-    Returns:
-        None.
-    """
+    """Render one person's detail view: Stammdaten plus their assignment history."""
     with connection_scope() as connection:
         person = person_repo.get(connection, person_id)
 
@@ -672,12 +509,7 @@ def person_detail_page(person_id: int) -> None:
             onboarding_card = ui.column().classes("w-full max-w-lg")
 
             def render_onboarding_status() -> None:
-                """(Re-)render the onboarding status card from the current
-                (possibly just-edited) `onboarding` object.
-
-                Returns:
-                    None.
-                """
+                """(Re-)render the onboarding status card from the current (possibly just-edited)..."""
                 onboarding_card.clear()
                 with onboarding_card, ui.card().classes("w-full"):
                     if onboarding.is_complete:
@@ -705,12 +537,7 @@ def person_detail_page(person_id: int) -> None:
             offboarding_card = ui.column().classes("w-full max-w-lg")
 
             def render_offboarding_status() -> None:
-                """(Re-)render the offboarding status card from the current
-                (possibly just-edited) `offboarding` object.
-
-                Returns:
-                    None.
-                """
+                """(Re-)render the offboarding status card from the current (possibly just-edited)..."""
                 offboarding_card.clear()
                 with offboarding_card, ui.card().classes("w-full"):
                     ui.label(f"Grund: {REASON_OPTIONS.get(offboarding.reason, offboarding.reason)}").classes(
@@ -744,21 +571,7 @@ def person_detail_page(person_id: int) -> None:
         )
 
         def refresh_detail() -> None:
-            """Reload the person's Assignment → MeteringPoint (→ LEG, → site
-            → substation area) join, and warn if any involved LEG mixes
-            substation areas.
-
-            Filters to only current-or-upcoming assignments (not yet
-            ended, `valid_from` may lie in the future -- see
-            `app.models.assignment.Assignment.is_current_or_upcoming`)
-            unless `show_all_switch` is on, which also shows past,
-            already-ended ones ("Historie"). `valid_from`/`valid_to`
-            are shown as explicit columns, so a not-yet-started row is
-            still distinguishable without extra marking.
-
-            Returns:
-                None.
-            """
+            """Reload the person's Assignment → MeteringPoint (→ LEG, → site → substation area) join..."""
             today = date.today()
             with connection_scope() as inner_connection:
                 assignments = assignment_repo.list_for_person(inner_connection, person_id)

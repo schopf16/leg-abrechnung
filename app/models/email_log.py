@@ -1,12 +1,4 @@
-"""Sent-history log for broadcast/LEG emails (see `app.emailing.bulk_send.
-send_broadcast_email`).
-
-Unlike invoice emails (tracked per `billing_run_items.email_sent_at`,
-see `app.models.billing_run`), a broadcast has no natural row to attach a
-"sent" flag to -- this table is that record instead, so an interrupted
-batch send stays traceable ("did everyone already get this?") and
-Michael has a history of what was announced when.
-"""
+"""Sent-history log for broadcast/LEG emails (see `app.emailing.bulk_send. send_broadcast_email`)."""
 
 import json
 import sqlite3
@@ -17,26 +9,7 @@ from typing import Optional
 
 @dataclass
 class EmailBroadcastLog:
-    """One completed broadcast/LEG email send.
-
-    Attributes:
-        id: Primary key, `None` for a not-yet-persisted instance.
-        sent_at: ISO-8601 timestamp the send completed.
-        scope: `"all"`, `"leg"` or `"cooperative"`.
-        leg_id: The LEG this was sent to, if `scope == "leg"`, else `None`.
-        subject: The (unrendered, with placeholders) subject template used.
-        body: The (unrendered, with placeholders) body template used.
-        recipient_emails: Email addresses of everyone the send actually
-            succeeded for (not everyone it was attempted for) -- the
-            honest record of who really got this message.
-        attachment_filenames: Names of the files attached to this send,
-            one per line, or `None` if it was sent without any. A newline
-            rather than a comma because a filename may legally contain a
-            comma, and cannot contain a newline on Windows (characters
-            1-31 are forbidden), which is the only platform this app runs
-            on. POSIX is laxer -- it excludes only NUL and "/" -- so this
-            is a Windows-specific guarantee, not a universal one.
-    """
+    """One completed broadcast/LEG email send."""
 
     id: Optional[int]
     sent_at: str
@@ -49,23 +22,12 @@ class EmailBroadcastLog:
 
     @property
     def recipient_count(self) -> int:
-        """Number of recipients actually reached.
-
-        Returns:
-            `len(recipient_emails)`.
-        """
+        """Number of recipients actually reached."""
         return len(self.recipient_emails)
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "EmailBroadcastLog":
-        """Build an `EmailBroadcastLog` from a `sqlite3.Row`.
-
-        Args:
-            row: Row selected from the `email_broadcast_log` table.
-
-        Returns:
-            The corresponding `EmailBroadcastLog` dataclass instance.
-        """
+        """Build an `EmailBroadcastLog` from a `sqlite3.Row`."""
         return EmailBroadcastLog(
             id=row["id"],
             sent_at=row["sent_at"],
@@ -88,21 +50,7 @@ def create(
     recipient_emails: list[str],
     attachment_filenames: Optional[str] = None,
 ) -> int:
-    """Record one completed broadcast/LEG email send.
-
-    Args:
-        connection: Open SQLite connection.
-        scope: `"all"`, `"leg"` or `"cooperative"`.
-        leg_id: The LEG sent to, if `scope == "leg"`, else `None`.
-        subject: The subject template used (with placeholders, unrendered).
-        body: The body template used (with placeholders, unrendered).
-        recipient_emails: Email addresses actually reached.
-        attachment_filenames: Names of the files attached to this send,
-            one per line, or `None` if it was sent without any.
-
-    Returns:
-        The primary key of the new log entry.
-    """
+    """Record one completed broadcast/LEG email send."""
     cursor = connection.execute(
         """
         INSERT INTO email_broadcast_log
@@ -125,13 +73,6 @@ def create(
 
 
 def list_all(connection: sqlite3.Connection) -> list[EmailBroadcastLog]:
-    """List every recorded broadcast/LEG email send, most recent first.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        All log entries, ordered by `sent_at` descending.
-    """
+    """List every recorded broadcast/LEG email send, most recent first."""
     rows = connection.execute("SELECT * FROM email_broadcast_log ORDER BY sent_at DESC, id DESC").fetchall()
     return [EmailBroadcastLog.from_row(row) for row in rows]

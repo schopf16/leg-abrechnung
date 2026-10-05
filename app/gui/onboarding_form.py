@@ -1,10 +1,4 @@
-"""Shared onboarding-tracker edit dialog.
-
-Used both by the Aufnahmen page and the Person detail page, so a tracker
-can be edited directly from wherever the administrator happens to be
-looking at it, without a page change -- mirrors how `app.gui.person_form`
-is shared between the persons and Web-Registrierungen pages.
-"""
+"""Shared onboarding-tracker edit dialog."""
 
 from datetime import date, datetime
 from typing import Callable, Optional
@@ -21,14 +15,7 @@ from app.models.person_onboarding import STEPS, PersonOnboarding
 
 
 def _parse_date(value: str) -> Optional[date]:
-    """Parse a date string from a NiceGUI date input into a `date`.
-
-    Args:
-        value: Date string in ISO format ("YYYY-MM-DD"), or empty/`None`.
-
-    Returns:
-        The parsed `date`, or `None` if `value` is empty.
-    """
+    """Parse a date string from a NiceGUI date input into a `date`."""
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%d").date()
@@ -40,19 +27,7 @@ def open_onboarding_form(
     *,
     on_saved: Optional[Callable[[PersonOnboarding], None]] = None,
 ) -> None:
-    """Open the edit dialog for one person's onboarding tracker.
-
-    Args:
-        onboarding: Tracker to edit (must already exist -- this dialog
-            never creates one, see `app.models.person_onboarding.
-            start_for_person` for that).
-        person: The tracked person, for display and the dialog title.
-        on_saved: Called with the updated `PersonOnboarding` after a
-            successful save (dialog already closed).
-
-    Returns:
-        None.
-    """
+    """Open the edit dialog for one person's onboarding tracker."""
     with connection_scope() as connection:
         legs = leg_repo.list_all(connection)
     leg_options = {leg.id: leg.name for leg in legs}
@@ -81,11 +56,7 @@ def open_onboarding_form(
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
-            """Validate the form and persist the onboarding tracker.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the onboarding tracker."""
             try:
                 parsed = {attr: _parse_date(date_inputs[attr].value) for attr, _ in STEPS}
             except ValueError:

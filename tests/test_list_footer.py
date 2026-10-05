@@ -1,9 +1,4 @@
-"""How many entries a list shows, and what it offers when it shows none.
-
-A table says the count by itself -- Quasar prints "1-50 von 92" -- so these
-are about the card lists, which said nothing at all. The Debitoren page could
-be filtered down to nine of ninety-two with no sign that it had been.
-"""
+"""How many entries a list shows, and what it offers when it shows none."""
 
 from nicegui import Client, ui
 
@@ -13,14 +8,7 @@ from app.gui.list_footer import render_count, render_empty
 
 
 def _texts(client: Client) -> list[str]:
-    """Every non-empty label on a rendered page.
-
-    Args:
-        client: The rendered client.
-
-    Returns:
-        The texts.
-    """
+    """Every non-empty label on a rendered page."""
     return [
         element.text
         for element in client.elements.values()
@@ -29,15 +17,7 @@ def _texts(client: Client) -> list[str]:
 
 
 def _render(probe: str, build) -> Client:
-    """Render one snippet.
-
-    Args:
-        probe: A unique probe route -- every `ui.page` registers itself.
-        build: Zero-argument callable drawing into the client.
-
-    Returns:
-        The client.
-    """
+    """Render one snippet."""
     client = Client(ui.page(probe)(lambda: None), request=None)
     with client:
         build()
@@ -68,8 +48,7 @@ def test_an_empty_list_can_be_empty_without_a_suggestion():
 
 
 def test_an_empty_list_offers_the_way_out_when_there_is_one():
-    """ "Keine passenden Austritte." is a statement; the next question is
-    what to do about it."""
+    """ "Keine passenden Austritte." is a statement; the next question is what to do about it."""
     pressed: list[bool] = []
     client = _render(
         "/probe-footer-action",
@@ -93,11 +72,7 @@ def test_an_empty_list_offers_the_way_out_when_there_is_one():
 
 
 def test_the_bar_knows_whether_anything_is_filtered():
-    """What decides whether the way out is worth offering.
-
-    With nothing filtered, "Filter zurücksetzen" would be a button that does
-    nothing and the list is simply empty.
-    """
+    """What decides whether the way out is worth offering."""
     client = Client(ui.page("/probe-footer-is-filtering")(lambda: None), request=None)
     with client:
         bar = FilterBar()
@@ -135,8 +110,7 @@ def test_resetting_puts_every_control_back_and_refreshes_once():
 
 
 def test_a_real_card_list_counts_what_it_shows():
-    """Driven through the page, because the helper being right proves
-    nothing about anybody calling it."""
+    """Driven through the page, because the helper being right proves nothing about anybody calling it."""
     from datetime import date
 
     from app.gui.pages import offboardings as offboardings_module

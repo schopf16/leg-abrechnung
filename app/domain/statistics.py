@@ -1,12 +1,5 @@
-"""Trend statistics for the Statistik page: energy flow and master-data
-growth over a trailing window of calendar months.
-
-Deliberately independent of billing (see `app.domain.billing`): these are
-plain aggregates over `readings` and the `created_at` timestamps already
-on every master-data table, meant to show "how is this deployment
-growing" and "how much energy is flowing", not to compute anything
-billable.
-"""
+"""Trend statistics for the Statistik page: energy flow and master-data growth over a trailing window
+of calendar months."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -31,14 +24,7 @@ from app.sort_keys import text_key
 
 @dataclass
 class MonthlyEnergy:
-    """One calendar month's total local consumption and feed-in.
-
-    Attributes:
-        year: Calendar year.
-        month: Calendar month, 1 to 12.
-        consumption_kwh: Total consumption recorded that month, in kWh.
-        feed_in_kwh: Total feed-in recorded that month, in kWh.
-    """
+    """One calendar month's total local consumption and feed-in."""
 
     year: int
     month: int
@@ -47,27 +33,13 @@ class MonthlyEnergy:
 
     @property
     def balance_kwh(self) -> float:
-        """Feed-in minus consumption -- positive means a net surplus.
-
-        Returns:
-            `feed_in_kwh - consumption_kwh`, in kWh.
-        """
+        """Feed-in minus consumption -- positive means a net surplus."""
         return self.feed_in_kwh - self.consumption_kwh
 
 
 @dataclass
 class MonthlyGrowth:
-    """Cumulative master-data counts as of the end of one calendar month.
-
-    Attributes:
-        year: Calendar year.
-        month: Calendar month, 1 to 12.
-        persons: Number of persons created on or before this month.
-        metering_points: Number of metering points created on or before this month.
-        sites: Number of sites created on or before this month.
-        substation areas: Number of substation areas created on or before this month.
-        legs: Number of LEGs created on or before this month.
-    """
+    """Cumulative master-data counts as of the end of one calendar month."""
 
     year: int
     month: int
@@ -84,19 +56,7 @@ def monthly_energy_totals(
     reference_date: Optional[date] = None,
     months: int = 12,
 ) -> list[MonthlyEnergy]:
-    """Aggregate consumption/feed-in totals per month over a trailing window.
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: If given, only readings from metering points currently assigned
-            to this LEG are counted; `None` aggregates across all LEGs.
-        reference_date: Last month of the window; defaults to today.
-        months: Number of trailing months to cover.
-
-    Returns:
-        One `MonthlyEnergy` per month in `trailing_months`, chronological,
-        zero-filled for months with no readings.
-    """
+    """Aggregate consumption/feed-in totals per month over a trailing window."""
     window = trailing_months(reference_date or date.today(), months)
     start = f"{window[0][0]:04d}-{window[0][1]:02d}-01"
     end_year, end_month = window[-1]
@@ -130,17 +90,7 @@ def monthly_energy_totals(
 
 
 def _creation_dates(connection: sqlite3.Connection, table: str) -> list[date]:
-    """Fetch a table's `created_at` timestamps as plain dates.
-
-    Args:
-        connection: Open SQLite connection.
-        table: Name of a table with a `created_at` column (one of the
-            fixed, internally-known master-data tables -- never
-            user-supplied).
-
-    Returns:
-        The `created_at` values, parsed to `date`.
-    """
+    """Fetch a table's `created_at` timestamps as plain dates."""
     # nosec B608 -- `table` is one of the fixed table names above, never user input
     rows = connection.execute(f"SELECT created_at FROM {table}").fetchall()  # nosec B608
     return [datetime.fromisoformat(row["created_at"]).date() for row in rows if row["created_at"]]
@@ -151,16 +101,7 @@ def monthly_growth_counts(
     reference_date: Optional[date] = None,
     months: int = 12,
 ) -> list[MonthlyGrowth]:
-    """Compute cumulative master-data counts per month over a trailing window.
-
-    Args:
-        connection: Open SQLite connection.
-        reference_date: Last month of the window; defaults to today.
-        months: Number of trailing months to cover.
-
-    Returns:
-        One `MonthlyGrowth` per month in `trailing_months`, chronological.
-    """
+    """Compute cumulative master-data counts per month over a trailing window."""
     window = trailing_months(reference_date or date.today(), months)
 
     persons = _creation_dates(connection, "person")
@@ -188,32 +129,7 @@ def monthly_growth_counts(
 
 @dataclass
 class QuarterEnergy:
-    """What a quarter's imported data actually contains, for one LEG or all.
-
-    Exists to answer two questions the app used to leave unanswered:
-    which quarter is worth billing, and did the last import land the way
-    it should have. Both are judged by eye from these figures -- a
-    consumption total an order of magnitude off, or metering points
-    missing from the import, is obvious here and invisible everywhere
-    else.
-
-    Attributes:
-        year: Calendar year.
-        quarter: Quarter number, 1 to 4.
-        consumption_kwh: Total consumption recorded in the quarter.
-        feed_in_kwh: Total feed-in recorded in the quarter.
-        reading_count: Number of 15-minute reading rows.
-        metering_points_with_readings: How many distinct metering points
-            contributed at least one reading.
-        metering_points_expected: How many metering points held an
-            assignment overlapping the quarter -- what the import should
-            have covered.
-        last_import_at: ISO timestamp of the most recent import batch
-            behind these readings, or `None` for demo/manually seeded
-            data that came from no batch.
-        import_sources: Distinct `readings.source` values present,
-            sorted -- "ebix", "csv" or "demo".
-    """
+    """What a quarter's imported data actually contains, for one LEG or all."""
 
     year: int
     quarter: int
@@ -227,21 +143,12 @@ class QuarterEnergy:
 
     @property
     def can_share(self) -> bool:
-        """Whether local sharing is possible at all in this quarter.
-
-        Sharing is `min(production, consumption)` per interval, so a
-        quarter missing either direction entirely can only ever produce
-        zero -- and a billing run over it, while perfectly legitimate,
-        yields documents reading 0.00 throughout.
-        """
+        """Whether local sharing is possible at all in this quarter."""
         return self.consumption_kwh > 0 and self.feed_in_kwh > 0
 
     @property
     def missing_metering_points(self) -> int:
-        """Metering points that were assigned but delivered no readings.
-
-        The single most useful number for spotting a partial import.
-        """
+        """Metering points that were assigned but delivered no readings."""
         return max(0, self.metering_points_expected - self.metering_points_with_readings)
 
     @property
@@ -264,17 +171,7 @@ class QuarterEnergy:
 def quarter_energy_totals(
     connection: sqlite3.Connection, leg_id: Optional[int] = None
 ) -> list[QuarterEnergy]:
-    """Summarise every quarter that has readings, newest first.
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: Restrict to metering points currently assigned to this
-            LEG; `None` aggregates across all LEGs.
-
-    Returns:
-        One `QuarterEnergy` per quarter with at least one reading,
-        ordered newest first.
-    """
+    """Summarise every quarter that has readings, newest first."""
     # `? IS NULL OR ...` rather than appending a filter clause: the query
     # stays one fixed string, so there is no SQL assembled from Python
     # values anywhere in this module.
@@ -344,22 +241,7 @@ def quarter_energy_totals(
 def _assigned_metering_point_count(
     connection: sqlite3.Connection, year: int, quarter: int, leg_id: Optional[int]
 ) -> int:
-    """Count metering points whose assignment overlaps a quarter.
-
-    This is what an import should have covered -- deliberately the same
-    overlap rule the distribution uses to decide who takes part (see
-    `app.domain.distribution._seed_participants`), so the two numbers are
-    comparable and a shortfall really does mean missing data.
-
-    Args:
-        connection: Open SQLite connection.
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-        leg_id: Restrict to this LEG, or `None` for all.
-
-    Returns:
-        The number of distinct metering points.
-    """
+    """Count metering points whose assignment overlaps a quarter."""
     start, end = quarter_bounds(year, quarter)
     last_day = (end.date() - timedelta(days=1)).isoformat()
     row = connection.execute(
@@ -384,31 +266,7 @@ CAPACITY_PLAUSIBLE_MAX = 1000.0
 
 @dataclass
 class InstalledCapacity:
-    """Installed PV power and battery capacity, summed over plausible values.
-
-    Purely informational -- nothing bills from this, and no check gates on
-    it. What it must not do is look complete when it is not: a capacity is
-    typed in by hand per metering point (see
-    `app.gui.metering_point_form`), so a bare sum invites being read as the
-    LEG's total when in truth several meters carry no figure at all. Hence
-    the counts alongside each sum.
-
-    Attributes:
-        pv_kwp: Sum of plausible `pv_capacity_kwp` values, in kWp. Note
-            this is power, not energy -- the energy actually fed in per
-            quarter is `QuarterEnergy.feed_in_kwh`.
-        pv_counted: How many metering points contributed to `pv_kwp`.
-        pv_expected: How many feed-in metering points exist in scope,
-            whether or not they carry a figure. `pv_counted` below this
-            means the sum is incomplete.
-        battery_kwh: Sum of plausible `battery_capacity_kwh` values.
-        battery_counted: How many metering points contributed to
-            `battery_kwh`. There is no "expected" counterpart: a metering
-            point without a battery is the normal case, not a gap.
-        implausible: Designations of metering points whose value was
-            discarded, so a dropped figure is never silent (same reasoning
-            as `QuarterEnergy.missing_metering_points`).
-    """
+    """Installed PV power and battery capacity, summed over plausible values."""
 
     pv_kwp: float
     pv_counted: int
@@ -419,36 +277,14 @@ class InstalledCapacity:
 
 
 def _plausible_capacity(value: Optional[float]) -> bool:
-    """Whether a hand-entered capacity can be summed.
-
-    Args:
-        value: The stored value, possibly `None`.
-
-    Returns:
-        `True` for a value that is set, greater than zero and below
-        `CAPACITY_PLAUSIBLE_MAX`. Zero is excluded deliberately: a metering
-        point with no PV is recorded by leaving the field empty, so a zero
-        adds nothing and a negative is impossible in reality.
-    """
+    """Whether a hand-entered capacity can be summed."""
     return value is not None and 0 < value < CAPACITY_PLAUSIBLE_MAX
 
 
 def installed_capacity_totals(
     connection: sqlite3.Connection, leg_id: Optional[int] = None
 ) -> InstalledCapacity:
-    """Sum the installed PV power and battery capacity on record.
-
-    Args:
-        connection: Open SQLite connection.
-        leg_id: Restrict to one LEG, or `None` for every metering point.
-
-    Returns:
-        The `InstalledCapacity`. A PV figure on a **consumption** metering
-        point is discarded: installed production belongs on the feed-in
-        side, and the field is editable on both. Battery capacity is
-        accepted on either side -- a storage unit sits behind the
-        connection, not behind one direction.
-    """
+    """Sum the installed PV power and battery capacity on record."""
     rows = connection.execute(
         """
         SELECT designation, direction, pv_capacity_kwp, battery_capacity_kwh
@@ -498,17 +334,7 @@ def installed_capacity_totals(
 
 @dataclass
 class EnergyBucket:
-    """One point on the energy chart's x-axis.
-
-    Attributes:
-        start: The bucket's first moment, as `buckets_in` produced it.
-        consumption_kwh: Everything drawn in this bucket.
-        feed_in_kwh: Everything fed in.
-        shared_kwh: How much of the feed-in actually found a taker inside
-            the LEG -- `min(P, C)` **per 15-minute interval**, then summed.
-            See `energy_series` for why that distinction is the whole
-            point of the number.
-    """
+    """One point on the energy chart's x-axis."""
 
     start: datetime
     consumption_kwh: float
@@ -517,43 +343,20 @@ class EnergyBucket:
 
     @property
     def self_consumption_share(self) -> Optional[float]:
-        """How much of the local production was used locally, 0 to 1.
-
-        Returns:
-            `shared_kwh / feed_in_kwh`, or `None` when nothing was fed in
-            -- a bucket at night has no share, which is a different
-            statement from "a share of zero" and must not be drawn as one.
-        """
+        """How much of the local production was used locally, 0 to 1."""
         if self.feed_in_kwh <= 0:
             return None
         return self.shared_kwh / self.feed_in_kwh
 
     @property
     def local_coverage_share(self) -> Optional[float]:
-        """How much of the consumption was covered locally, 0 to 1.
-
-        Returns:
-            `shared_kwh / consumption_kwh`, or `None` when nothing was
-            drawn.
-        """
+        """How much of the consumption was covered locally, 0 to 1."""
         if self.consumption_kwh <= 0:
             return None
         return self.shared_kwh / self.consumption_kwh
 
     def value_for(self, granularity_key: str) -> tuple[float, float, float]:
-        """The three figures in the unit that resolution is drawn in.
-
-        At the app's own 15-minute resolution a bucket holds exactly one
-        interval, so the natural reading is power: the load curve everyone
-        recognises. Anything coarser is an amount of energy.
-
-        Args:
-            granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
-
-        Returns:
-            `(consumption, feed_in, shared)` in kW at quarter-hour
-            resolution and in kWh otherwise.
-        """
+        """The three figures in the unit that resolution is drawn in."""
         values = (self.consumption_kwh, self.feed_in_kwh, self.shared_kwh)
         if granularity_key != GRANULARITY_QUARTER_HOUR:
             return values
@@ -562,14 +365,7 @@ class EnergyBucket:
 
 
 def energy_unit(granularity_key: str) -> str:
-    """The unit the energy chart's y-axis carries at one resolution.
-
-    Args:
-        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
-
-    Returns:
-        `"kW"` at quarter-hour resolution, `"kWh"` otherwise.
-    """
+    """The unit the energy chart's y-axis carries at one resolution."""
     return "kW" if granularity_key == GRANULARITY_QUARTER_HOUR else "kWh"
 
 
@@ -579,36 +375,7 @@ def energy_series(
     window: tuple[datetime, datetime],
     leg_id: Optional[int] = None,
 ) -> list[EnergyBucket]:
-    """Consumption, feed-in and locally shared energy over one window.
-
-    **The shared figure is formed per 15-minute interval and only then
-    summed, and getting that backwards is the expensive mistake here.**
-    `min(daily P, daily C)` would claim energy was shared when production
-    happened at noon and consumption in the evening -- a number that looks
-    entirely plausible and is simply false. The rule is the one
-    `app.domain.distribution` bills on (`S(t) = min(P(t), C(t))`, see its
-    module docstring); if that ever changes, this has to change with it,
-    or the chart and the invoices will tell different stories about the
-    same quarter.
-
-    Like the distribution, this counts **every** reading of the LEG,
-    assigned or not: whether energy could be attributed to somebody
-    decides who pays for it, not whether it was shared.
-
-    Args:
-        connection: Open SQLite connection.
-        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
-        window: `(start, end_exclusive)` from `period.window_for`.
-        leg_id: Restrict to one LEG, or `None` for all of them. With
-            `None` the shared figure is the sum over the LEGs computed
-            separately -- energy is only ever shared *within* one LEG, so
-            pooling every reading first would invent sharing between
-            neighbours who have nothing to do with each other.
-
-    Returns:
-        One `EnergyBucket` per bucket in the window, oldest first --
-        including the empty ones, so the axis keeps its shape.
-    """
+    """Consumption, feed-in and locally shared energy over one window."""
     start, end = window
     rows = connection.execute(
         """
@@ -662,23 +429,7 @@ def energy_series(
 
 @dataclass
 class ReceivablesBucket:
-    """One point on the receivables chart.
-
-    Every figure covers the **whole LEG**. Nothing here is ever broken
-    down per person, and that is a decision rather than an omission: the
-    administrator asked for it explicitly on data-protection grounds. A
-    single member's balance is a matter for that member's own detail page,
-    not for a chart anybody glancing at the screen can read.
-
-    Attributes:
-        start: The bucket's first moment.
-        invoiced_rappen: Net amount billed in this bucket, from the
-            billing runs created in it.
-        received_rappen: Money that actually arrived in this bucket.
-        open_rappen: Everything invoiced up to the end of this bucket
-            minus everything received up to then -- the running mountain
-            of receivables, which is meant to come down.
-    """
+    """One point on the receivables chart."""
 
     start: datetime
     invoiced_rappen: int
@@ -706,28 +457,7 @@ def receivables_series(
     granularity_key: str,
     window: tuple[datetime, datetime],
 ) -> list[ReceivablesBucket]:
-    """Invoiced, received and still-open amounts over one window.
-
-    `open_rappen` is **cumulative from the beginning of time**, not just
-    within the window: an outstanding amount does not stop existing
-    because the chart starts later. So the line begins at whatever was
-    already open when the window opens, and every bucket adds that
-    bucket's invoices and subtracts its payments.
-
-    Amounts are read as `app.models.account_entry` stores them and are
-    **not** negated here. That module's sign convention is that an
-    incoming payment is stored negative, because it reduces a debt; the
-    single negation in this app happens where a person's balance is
-    displayed, and adding a second one is how a sign bug gets in.
-
-    Args:
-        connection: Open SQLite connection.
-        granularity_key: One of `app.domain.period`'s `GRANULARITY_*`.
-        window: `(start, end_exclusive)` from `period.window_for`.
-
-    Returns:
-        One `ReceivablesBucket` per bucket in the window, oldest first.
-    """
+    """Invoiced, received and still-open amounts over one window."""
     start, end = window
 
     invoiced_rows = connection.execute(
@@ -793,37 +523,14 @@ def receivables_series(
 
 @dataclass
 class FunnelStep:
-    """One step of the onboarding pipeline and how many people wait at it.
-
-    Attributes:
-        label: The step's German name, from
-            `app.models.person_onboarding.STEPS`.
-        waiting: How many in-progress onboardings have this step as their
-            current one -- people whose previous steps are all dated and
-            who are waiting on this one.
-    """
+    """One step of the onboarding pipeline and how many people wait at it."""
 
     label: str
     waiting: int
 
 
 def onboarding_funnel(connection: sqlite3.Connection) -> tuple[list[FunnelStep], int]:
-    """Where the membership pipeline is stuck, step by step.
-
-    A count per step rather than a cumulative funnel: the question worth
-    answering is "what is holding people up", and that is the step they
-    are sitting on, not how many got past it. In this deployment it puts
-    61 of 88 open onboardings on "Bestätigung durch die BKW" -- a number
-    that was in the database all along and nowhere on a screen.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        `(steps, completed)`: one `FunnelStep` per step in
-        `person_onboarding.STEPS` order, and how many onboardings are
-        finished.
-    """
+    """Where the membership pipeline is stuck, step by step."""
     trackers = person_onboarding_repo.list_all(connection)
     waiting: dict[str, int] = {label: 0 for _, label in ONBOARDING_STEPS}
     completed = 0
@@ -838,15 +545,7 @@ def onboarding_funnel(connection: sqlite3.Connection) -> tuple[list[FunnelStep],
 
 @dataclass
 class LegDistribution:
-    """One LEG's share of the deployment.
-
-    Attributes:
-        leg_id: The LEG.
-        name: Its name.
-        feed_in_metering_points: Feed-in meters assigned to it.
-        consumption_metering_points: Consumption meters assigned to it.
-        pv_kwp: Installed PV power on record for it, in kWp.
-    """
+    """One LEG's share of the deployment."""
 
     leg_id: int
     name: str
@@ -856,31 +555,12 @@ class LegDistribution:
 
     @property
     def metering_points(self) -> int:
-        """Both directions together.
-
-        Returns:
-            The LEG's total metering point count.
-        """
+        """Both directions together."""
         return self.feed_in_metering_points + self.consumption_metering_points
 
 
 def distribution_by_leg(connection: sqlite3.Connection) -> list[LegDistribution]:
-    """How the metering points and the installed power sit across the LEGs.
-
-    Scoped by `metering_point.leg_id`, never by the sites those meters sit
-    at: LEG membership is a property of the metering point, and two meters
-    at one address can belong to different LEGs (see
-    `app.domain.participant_mix.compute_participant_mix_for_leg`, where
-    going via the sites once pulled a neighbour's meter into a LEG's
-    figures).
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `LegDistribution` per LEG, largest first -- the order that
-        makes an imbalance visible at a glance.
-    """
+    """How the metering points and the installed power sit across the LEGs."""
     rows = connection.execute(
         """
         SELECT l.id AS leg_id, l.name AS name,
@@ -908,35 +588,7 @@ def distribution_by_leg(connection: sqlite3.Connection) -> list[LegDistribution]
 
 @dataclass
 class LegBalance:
-    """How well one LEG's producing and consuming sides match each other.
-
-    Two different kinds of answer sit side by side here, and the difference
-    matters more than it looks. The metering point counts are available the
-    moment a LEG exists, but they are only a *proxy*: nine feed-in meters
-    beside twenty-six consumption meters says nothing about whether the sun
-    shone while anybody was drawing. The energy figures are the real answer
-    and need an import first, which is why both are shown and neither is
-    dropped.
-
-    Nothing here grades a LEG. The app used to recommend moving people
-    between LEGs and that was removed on purpose (see
-    `app.domain.participant_mix`): whether a mix is acceptable turns on
-    economics, on what the participants agree to and on what BKW confirms
-    per location, none of which is in this database. So this reports the
-    ratio and the measured share and leaves the reading of them to the
-    administrator.
-
-    Attributes:
-        leg_id: The LEG.
-        name: Its name.
-        producer_metering_points: Feed-in meters assigned to it.
-        consumer_metering_points: Consumption meters assigned to it.
-        consumption_kwh: Everything drawn in the LEG, over every imported
-            reading.
-        feed_in_kwh: Everything fed in, likewise.
-        shared_kwh: Of that, how much actually found a taker in the same
-            15-minute interval.
-    """
+    """How well one LEG's producing and consuming sides match each other."""
 
     leg_id: int
     name: str
@@ -948,43 +600,19 @@ class LegBalance:
 
     @property
     def metering_points(self) -> int:
-        """Both directions together.
-
-        Returns:
-            The LEG's total metering point count.
-        """
+        """Both directions together."""
         return self.producer_metering_points + self.consumer_metering_points
 
     @property
     def producers_per_consumer(self) -> Optional[float]:
-        """Feed-in meters per consumption meter.
-
-        The one number that orders the LEGs on a single continuum, from
-        production-heavy through balanced to consumption-heavy.
-
-        Returns:
-            The quotient, `None` when there are no consumption meters at
-            all -- a LEG with producers and no consumers has no ratio, it
-            has a missing side, which `one_sided_note` states instead.
-        """
+        """Feed-in meters per consumption meter."""
         if self.consumer_metering_points == 0:
             return None
         return self.producer_metering_points / self.consumer_metering_points
 
     @property
     def one_sided_note(self) -> Optional[str]:
-        """The German statement of a missing side, if one is missing.
-
-        A fact rather than a judgement, and the reason it survived the
-        removal of the LEG recommendations: with one direction absent,
-        nothing can be shared in this LEG at all, whatever anybody's
-        economics look like. Same wording as
-        `app.domain.quality_checks.check_substation_area_one_sided`.
-
-        Returns:
-            The note, or `None` when both sides are present or the LEG is
-            still empty.
-        """
+        """The German statement of a missing side, if one is missing."""
         if self.producer_metering_points and self.consumer_metering_points:
             return None
         if not self.metering_points:
@@ -993,67 +621,26 @@ class LegBalance:
 
     @property
     def has_readings(self) -> bool:
-        """Whether any reading was imported for this LEG.
-
-        Returns:
-            `True` if either direction delivered anything.
-        """
+        """Whether any reading was imported for this LEG."""
         return bool(self.consumption_kwh or self.feed_in_kwh)
 
     @property
     def shared_share_of_production(self) -> Optional[float]:
-        """What percentage of the fed-in energy found a local taker.
-
-        This is the measured answer to "is this LEG well matched". The
-        remainder went to BKW instead of to a neighbour.
-
-        Returns:
-            The percentage, or `None` when nothing was fed in -- not 0,
-            because "no production" and "production nobody took" are
-            different statements.
-        """
+        """What percentage of the fed-in energy found a local taker."""
         if not self.feed_in_kwh:
             return None
         return self.shared_kwh / self.feed_in_kwh * 100
 
     @property
     def local_coverage(self) -> Optional[float]:
-        """What percentage of the drawn energy came from inside the LEG.
-
-        The same measurement read from the other side: high here means the
-        participants really are supplying each other.
-
-        Returns:
-            The percentage, or `None` when nothing was drawn.
-        """
+        """What percentage of the drawn energy came from inside the LEG."""
         if not self.consumption_kwh:
             return None
         return self.shared_kwh / self.consumption_kwh * 100
 
 
 def shared_energy_by_leg(connection: sqlite3.Connection) -> dict[int, tuple[float, float, float]]:
-    """Total consumption, feed-in and shared energy per LEG, over all readings.
-
-    **The shared figure is formed per 15-minute interval and per LEG, and
-    only then summed** -- the same rule `energy_series` and
-    `app.domain.distribution` use, and for the same reason: `min(total P,
-    total C)` would claim energy was shared when production happened at noon
-    and consumption in the evening. Per LEG as well as per interval, because
-    energy is only ever shared *within* one LEG; pooling first would invent
-    sharing between neighbours who have nothing to do with each other.
-
-    Deliberately over every imported reading rather than a chosen window:
-    the Statistik views that carry no time axis are snapshots, and a window
-    control here would be a widget promising something the page does not do.
-    The page says which span the figures cover.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        `{leg_id: (consumption_kwh, feed_in_kwh, shared_kwh)}`, holding only
-        the LEGs that have readings.
-    """
+    """Total consumption, feed-in and shared energy per LEG, over all readings."""
     rows = connection.execute(
         """
         SELECT mp.leg_id AS leg_id,
@@ -1081,24 +668,7 @@ def shared_energy_by_leg(connection: sqlite3.Connection) -> dict[int, tuple[floa
 
 
 def leg_balance(connection: sqlite3.Connection) -> list[LegBalance]:
-    """How the LEGs compare, from production-heavy to consumption-heavy.
-
-    The metering point counts come from `distribution_by_leg`, not from a
-    second query of their own, so the Verteilung and the Ausgewogenheit
-    views can never disagree about how many meters a LEG holds.
-
-    Sorted on one continuum -- feed-in meters per consumption meter,
-    descending -- so both extremes are where the eye lands first and the
-    balanced LEGs sit in the middle. A LEG with no consumption meters has no
-    quotient and leads; one with no feed-in meters trails; an entirely empty
-    LEG comes last of all, since it is neither.
-
-    Args:
-        connection: Open SQLite connection.
-
-    Returns:
-        One `LegBalance` per LEG.
-    """
+    """How the LEGs compare, from production-heavy to consumption-heavy."""
     energy = shared_energy_by_leg(connection)
     balances = []
     for distribution in distribution_by_leg(connection):
@@ -1116,14 +686,7 @@ def leg_balance(connection: sqlite3.Connection) -> list[LegBalance]:
         )
 
     def order(balance: LegBalance) -> tuple:
-        """Rank one LEG on the production-heavy to consumption-heavy scale.
-
-        Args:
-            balance: The LEG.
-
-        Returns:
-            A sort key; empty LEGs are pushed past every populated one.
-        """
+        """Rank one LEG on the production-heavy to consumption-heavy scale."""
         if not balance.metering_points:
             return (1, 0.0, text_key(balance.name))
         ratio = balance.producers_per_consumer

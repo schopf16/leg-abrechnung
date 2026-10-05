@@ -1,35 +1,4 @@
-"""Generates the single combined billing PDF each person receives, per LEG.
-
-Every person gets exactly one document per LEG they participate in for a
-quarter, regardless of whether they only consume, only produce, or both
-(project brief follow-up: "jede Partei erhält nur 1 PDF"). That holds
-however many sites and metering points they hold: a participant is one
-customer of the LEG with one netted amount, the way a vZEV operator
-receives one figure from the grid operator and works out the internal
-shares themselves. The document shows, in order:
-
-1. The locally shared energy, grouped by site: each site's address, its
-   Bezug and its Einspeisung itemised per metering point, and that
-   site's own balance -- the figure a participant with several sites
-   carries into their own internal allocation.
-2. admin fee (admin surcharge on consumption) and Kosten
-   paper invoice (flat paper-invoice fee), if either applies.
-3. The net settlement: consumption value minus production value plus the
-   two fees above, rounded to the nearest Rappen exactly once for the
-   energy portion (the fees are their own already-rounded/exact lines --
-   see `app.domain.billing`'s module docstring).
-
-Every franc figure above the net settlement is an unrounded display
-value; the grouping itself is `app.pdf.bill_breakdown`, kept separate so
-it can be tested without generating a PDF.
-
-A Swiss QR-bill (Einzahlungsschein) is only printed when the person
-actually owes the LEG money (`net_amount_rappen > 0`). When the net
-settlement is a credit or zero (the LEG owes the person, or nothing is
-due), there is nothing to pay via a payment slip -- the LEG pays the
-person directly (see the payout list) -- so the whole QR-bill section,
-and the extra page it would otherwise need, is omitted entirely.
-"""
+"""Generates the single combined billing PDF each person receives, per LEG."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -63,40 +32,14 @@ PAYMENT_TERM = timedelta(days=45)
 
 
 def _quarter_period_label(year: int, quarter: int) -> str:
-    """Format a quarter's date range for display, e.g. "01.07.2026 – 30.09.2026".
-
-    Args:
-        year: Calendar year of the quarter.
-        quarter: Quarter number, 1 to 4.
-
-    Returns:
-        The quarter's first and last calendar day, German-formatted.
-    """
+    """Format a quarter's date range for display, e.g. "01.07.2026 – 30.09.2026"."""
     start, end = quarter_bounds(year, quarter)
     last_day = end.date() - timedelta(days=1)
     return f"{start.strftime('%d.%m.%Y')} – {last_day.strftime('%d.%m.%Y')}"
 
 
 def _energy_lines(breakdown: BillBreakdown, price_rp_per_kwh: float) -> list[TableLine]:
-    """Turn a grouped breakdown into the document's energy lines.
-
-    One block per site -- heading, a "Bezug" section, an "Einspeisung"
-    section, and the site's own balance. The balance is the figure a
-    participant with several sites carries into their own internal
-    allocation; the LEG itself only ever settles the single net amount
-    below.
-
-    The grand totals per direction are only appended when the document
-    covers more than one site: with a single site they would repeat the
-    block's own balance one line further down.
-
-    Args:
-        breakdown: The person's quarter, grouped by site.
-        price_rp_per_kwh: The run's frozen price, in Rappen per kWh.
-
-    Returns:
-        The lines to hand to `draw_billing_table`.
-    """
+    """Turn a grouped breakdown into the document's energy lines."""
     price_text = f"{price_rp_per_kwh:.2f}"
     lines: list[TableLine] = []
 
@@ -144,42 +87,7 @@ def generate_person_bill_pdf(
     *,
     metering_point_info: dict[int, MeteringPointInfo],
 ):
-    """Render one person's combined billing document as a PDF.
-
-    Args:
-        run: The billing run the item belongs to (scoped to one LEG).
-        item: The person's netted billing item (provides the
-            authoritative, already-rounded `net_amount_rappen`,
-            `admin_fee_consumption_rappen`/
-            `admin_fee_feed_in_rappen` and
-            `paper_invoice_rappen` used for the QR-bill and payment list).
-            `item.due_date` must already be resolved by the caller
-            (see `app.pdf.export_service.export_billing_run`) -- printed
-            verbatim here, never recomputed, so a re-export can never
-            print a due date that drifts from the one already frozen in
-            the database and used by `app.domain.dunning`.
-        person_result: The same person's distribution result for the
-            quarter, providing the quarter's consumption/Vergütung totals shown
-            in the document's tables.
-        person: The person this document is addressed to.
-        leg: The LEG this document is billed under (provides the
-            letterhead name).
-        settings: Current LEG-wide settings (address, QR-IBAN, admin fee
-            rate for display).
-        output_path: Destination path for the generated PDF.
-        metering_point_info: Resolved metering point and site data for
-            every metering point in `person_result`, keyed by metering
-            point id (built by the caller, see
-            `app.pdf.export_service.export_billing_run_documents`) --
-            this layer reads no database.
-
-    Returns:
-        `output_path`, for convenience.
-
-    Raises:
-        app.pdf.qr_bill_render.QrBillConfigurationError: If the LEG
-            settings are missing required fields for a valid QR-bill.
-    """
+    """Render one person's combined billing document as a PDF."""
     period = quarter_label(run.period_year, run.period_quarter)
     canvas = new_canvas(output_path)
 

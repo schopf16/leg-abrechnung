@@ -1,36 +1,4 @@
-"""LEGs management page: list, search, create, edit, delete.
-
-Rendered as one card per LEG (not a single-row-per-LEG table): once
-note has any real content, a flat table either forces horizontal
-scrolling (wide fixed columns) or, if wrapped, very tall rows that push
-everything else below the fold -- neither is acceptable. Cards let the
-note and the substation area(e) summary each wrap onto their own
-full-width line instead, so one entry takes the 2-3 lines it actually
-needs and no more (same rationale as `app.gui.pages.persons`).
-
-A LEG cannot be deleted while metering points still reference it (see
-`app.models.leg.LegInUseError`). Its `name` must be unique -- by default
-it matches the physical substation area its metering points are on, but a LEG can
-combine metering points from several substation areas if their owners agree to bill
-jointly. The name is also what appears on this LEG's invoices, checked
-live as the administrator types.
-
-A LEG whose metering points span more than one substation area is shown as "Nicht
-Preisoptimiert" here (see `app.domain.leg_composition`), its substation areas
-listed one per line -- the grid operator (BKW) only grants the full
-same-substation-area discount within one substation area. No separate warning
-banner repeats this above the list; it is visible enough per card.
-
-The app used to go further and recommend which people to move into a new,
-dedicated LEG. It no longer does, and `app.domain.participant_mix` says why:
-both sides being present says nothing about whether a dedicated LEG would
-actually work for them. What the detail page shows instead is the one fact
-this database holds -- per metering point, whether its substation area
-already has a LEG of its own (🟢, so the row can simply be switched over) or
-would need one founded first (🟠). Sorting that list by substation area is
-how the administrator decides, and that sort already exists
-on that LEG's own detail page (`/legs/{id}`, `leg_detail_page`).
-"""
+"""LEGs management page: list, search, create, edit, delete."""
 
 from nicegui import ui
 
@@ -133,15 +101,7 @@ SORT_OPTIONS = [
 
 
 def _mix_badge(mix) -> str:
-    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge.
-
-    Args:
-        mix: The `app.domain.participant_mix.ParticipantMix` to display.
-
-    Returns:
-        A short text badge -- 🟢 if both sides are present, 🔴 if the
-        LEG is one-sided (or empty).
-    """
+    """Format a `ParticipantMix` as a coloured "<N> Produzent : <N> Konsument" badge."""
     symbol = "🔴" if mix.is_one_sided else "🟢"
     # Metering points, not persons: these two numbers sit beside the
     # metering point count and have to add up against it.
@@ -152,18 +112,7 @@ def _mix_badge(mix) -> str:
 
 
 def _to_row(connection, leg: Leg, *, warn_percent: float) -> dict:
-    """Convert a `Leg` into a row dict backing both the card and the printout.
-
-    Args:
-        connection: Open SQLite connection.
-        leg: LEG to convert.
-        warn_percent: `LegSettings.production_capacity_warn_percent`, the
-            point below which the production capacity counts as tight.
-
-    Returns:
-        A dict with the fields required by `PRINT_COLUMNS` and `render_card`,
-        plus a hidden `_search` key used for client-side filtering.
-    """
+    """Convert a `Leg` into a row dict backing both the card and the printout."""
     composition = compute_leg_composition(connection, leg.id)
     substation_area_names_list = [t.name for t in composition.substation_areas]
     substation_area_names = ", ".join(substation_area_names_list) or "-"
@@ -216,11 +165,7 @@ def _to_row(connection, leg: Leg, *, warn_percent: float) -> dict:
 
 @ui.page("/legs")
 def legs_page() -> None:
-    """Render the LEGs CRUD page with search.
-
-    Returns:
-        None.
-    """
+    """Render the LEGs CRUD page with search."""
     with page_frame("/legs", "LEGs"):
         with ui.row().classes("w-full items-start justify-between gap-4"):
             ui.label(
@@ -273,11 +218,7 @@ def legs_page() -> None:
         visible_rows: list[dict] = []
 
         def apply_filter() -> None:
-            """Filter the currently loaded rows by the search input's value.
-
-            Returns:
-                None.
-            """
+            """Filter the currently loaded rows by the search input's value."""
             nonlocal visible_rows
             needle = (search_input.value or "").strip().lower()
             visible_rows = [r for r in all_rows if not needle or needle in r["_search"]]
@@ -291,11 +232,7 @@ def legs_page() -> None:
             table.update()
 
         def refresh() -> None:
-            """Reload all LEGs from the database and re-apply the filter.
-
-            Returns:
-                None.
-            """
+            """Reload all LEGs from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
                 settings = settings_repo.get_settings(connection)
@@ -310,38 +247,17 @@ def legs_page() -> None:
         search_input.on_value_change(lambda _: apply_filter())
 
         def open_form(existing: Leg | None) -> None:
-            """Open the create/edit dialog for a LEG.
-
-            Args:
-                existing: LEG to edit, or `None` to create a new one.
-
-            Returns:
-                None.
-            """
+            """Open the create/edit dialog for a LEG."""
             open_leg_form(existing=existing, on_saved=lambda _: refresh())
 
         def on_edit(row: dict) -> None:
-            """Card edit-button handler: open the edit dialog for this row.
-
-            Args:
-                row: Row dict of the LEG to edit.
-
-            Returns:
-                None.
-            """
+            """Card edit-button handler: open the edit dialog for this row."""
             with connection_scope() as connection:
                 existing = leg_repo.get(connection, row["id"])
             open_form(existing)
 
         def on_remove(row: dict) -> None:
-            """Card delete-button handler: delete the LEG after confirmation.
-
-            Args:
-                row: Row dict of the LEG to delete.
-
-            Returns:
-                None.
-            """
+            """Card delete-button handler: delete the LEG after confirmation."""
             leg_id = row["id"]
             name = row["name"]
 
@@ -374,24 +290,7 @@ def legs_page() -> None:
 
 
 def _dedicated_leg_names(connection, *, exclude_leg_id: int) -> dict[int, str]:
-    """Map each substation area to the LEG that covers it alone, if any.
-
-    A LEG "belongs to" a substation area when its metering points sit in
-    that one substation area and nowhere else -- which is exactly the
-    arrangement BKW grants the full discount for (see
-    `app.domain.leg_composition`).
-
-    Args:
-        connection: Open SQLite connection.
-        exclude_leg_id: The LEG being looked at. Excluded so a
-            single-substation-area LEG does not report itself as the
-            destination for its own metering points.
-
-    Returns:
-        `{substation_area_id: leg_name}`. A substation area absent from
-        this mapping has no dedicated LEG yet -- one would have to be
-        founded before its metering points could move.
-    """
+    """Map each substation area to the LEG that covers it alone, if any."""
     names: dict[int, str] = {}
     for leg in leg_repo.list_all(connection):
         if leg.id == exclude_leg_id:
@@ -403,40 +302,13 @@ def _dedicated_leg_names(connection, *, exclude_leg_id: int) -> dict[int, str]:
 
 
 def _leg_spans_several_substation_areas(leg_id: int) -> bool:
-    """Whether one LEG spans more than one substation area.
-
-    Opens its own connection because the caller (`leg_detail_page`) needs
-    the answer while building the page's layout, before its own
-    `refresh_table` connection exists.
-
-    Args:
-        leg_id: The LEG to check.
-
-    Returns:
-        `True` if this LEG covers several substation areas.
-    """
+    """Whether one LEG spans more than one substation area."""
     with connection_scope() as connection:
         return compute_leg_composition(connection, leg_id).is_mixed
 
 
 def _metering_point_row_for_leg(mp, sites: dict, substation_areas: dict, dedicated_leg_names: dict) -> dict:
-    """Convert one MeteringPoint of a LEG into a row dict for the detail table.
-
-    Args:
-        mp: MeteringPoint to convert.
-        sites: Preloaded `{site_id: site}` lookup.
-        substation areas: Preloaded `{substation_area_id: substation area}` lookup.
-        dedicated_leg_names: `{substation_area_id: leg_name}` for every
-            substation area that already has a LEG of its own (see
-            `leg_detail_page`). Decides this row's marker: 🟢 with that
-            name means the metering point can be switched straight over,
-            🟠 means such a LEG would have to be founded first. Purely a
-            statement of fact -- whether moving it is a good idea is the
-            administrator's call, see the module docstring.
-
-    Returns:
-        A dict with the fields required by `leg_detail_page`'s table.
-    """
+    """Convert one MeteringPoint of a LEG into a row dict for the detail table."""
     site = sites.get(mp.site_id)
     substation_area = (
         substation_areas.get(site.substation_area_id) if site and site.substation_area_id else None
@@ -497,25 +369,7 @@ DETAIL_SORT_OPTIONS = [
 
 
 def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) -> None:
-    """Open a minimal dialog to reassign one MeteringPoint's LEG.
-
-    Deliberately just the LEG field -- not the full `app.gui.
-    metering_point_form`, which also edits designation/site/PV data not
-    relevant here. This is the fast path for splitting a few people out
-    of a LEG that spans several substation areas, right from that LEG's own
-    detail view, instead of looking each MeteringPoint up individually on the
-    metering points page.
-
-    Args:
-        row: Row dict from `_metering_point_row_for_leg` (needs `id`,
-            `designation`, `leg_id`).
-        leg_options: `{leg_id: name}` for every LEG, for the select.
-        on_saved: Called (no arguments) after a successful save, dialog
-            already closed -- typically the caller's own table refresh.
-
-    Returns:
-        None.
-    """
+    """Open a minimal dialog to reassign one MeteringPoint's LEG."""
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-sm"):
         ui.label(f"LEG ändern für „{row['designation']}“").classes("text-lg font-bold")
         leg_select = ui.select(leg_options, label="LEG", value=row["leg_id"], with_input=True).classes(
@@ -524,11 +378,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
         error_label = ui.label("").classes("text-negative")
 
         def save() -> None:
-            """Persist the new LEG assignment for this one MeteringPoint.
-
-            Returns:
-                None.
-            """
+            """Persist the new LEG assignment for this one MeteringPoint."""
             try:
                 with connection_scope() as connection:
                     mp = metering_point_repo.get(connection, row["id"])
@@ -553,17 +403,7 @@ def _open_change_leg_dialog(row: dict, leg_options: dict[int, str], on_saved) ->
 
 @ui.page("/legs/{leg_id}")
 def leg_detail_page(leg_id: int) -> None:
-    """Render one LEG's detail view: its metering points, each with the
-    substation area assigned via its site (see `app.models.site`), sorted
-    through the same "Sortierung" select as every other list (see
-    `app.gui.sorting`), plus a quick "LEG ändern" action per row.
-
-    Args:
-        leg_id: Database id of the LEG, from the URL path.
-
-    Returns:
-        None.
-    """
+    """Render one LEG's detail view: its metering points, each with the substation area assigned via..."""
     with connection_scope() as connection:
         leg = leg_repo.get(connection, leg_id)
 
@@ -668,12 +508,7 @@ def leg_detail_page(leg_id: int) -> None:
         )
 
         def refresh_table() -> None:
-            """Reload this LEG's metering points (a row disappears once its LEG
-            is changed away from this one).
-
-            Returns:
-                None.
-            """
+            """Reload this LEG's metering points (a row disappears once its LEG is changed away from..."""
             with connection_scope() as inner_connection:
                 sites = {s.id: s for s in site_repo.list_all(inner_connection)}
                 substation_areas = {t.id: t for t in substation_area_repo.list_all(inner_connection)}
@@ -693,14 +528,7 @@ def leg_detail_page(leg_id: int) -> None:
             count_label.text = f"{len(table.rows)} Messpunkt(e)"
 
         def on_change_leg(event) -> None:
-            """Table row action handler: open the "LEG ändern" dialog.
-
-            Args:
-                event: NiceGUI generic event carrying the clicked row's args.
-
-            Returns:
-                None.
-            """
+            """Table row action handler: open the "LEG ändern" dialog."""
             with connection_scope() as inner_connection:
                 leg_options = {leg.id: leg.name for leg in leg_repo.list_all(inner_connection)}
             _open_change_leg_dialog(event.args, leg_options, refresh_table)

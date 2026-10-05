@@ -1,16 +1,4 @@
-"""Generates the QRR payment reference number printed on QR-invoices.
-
-A QRR reference is up to 26 digits plus one Modulo-10-recursive check digit
-(computed here via `stdnum.ch.esr`, the same algorithm library `qrbill`
-itself uses to validate references; both left-pad the payload with zeros
-to the full 26 digits when formatting, so a shorter payload is not a
-problem). It encodes the person's customer number (rather than the internal
-database person id) as its first digits -- deliberately, so that reading
-the reference straight off a bank statement already tells you which
-customer it belongs to, without a lookup -- plus the billing run and line
-item ids, so a bank statement can be matched back to the exact invoice
-without manual lookup.
-"""
+"""Generates the QRR payment reference number printed on QR-invoices."""
 
 import re
 from dataclasses import dataclass
@@ -41,23 +29,7 @@ _VALIDATED_LENGTH = _CUSTOMER_NUMBER_DIGITS + _BILLING_RUN_DIGITS + _ITEM_DIGITS
 
 
 def generate_qrr_reference(customer_number: int, billing_run_id: int, item_id: int) -> str:
-    """Build a unique, valid QRR reference for one invoice.
-
-    Args:
-        customer_number: The billed person's 6-digit customer number (see
-            `app.models.person.Person.customer_number`) -- embedded first so
-            the customer is identifiable directly from the reference.
-        billing_run_id: Database id of the billing run.
-        item_id: Database id of the billing run line item (the invoice).
-
-    Returns:
-        A numeric string (payload digits + 1 check digit, zero-padded to
-        27 digits total once passed through `qrbill`) suitable for
-        `qrbill.QRBill(reference_number=...)`.
-
-    Raises:
-        ValueError: If any id is too large to fit its allotted digit width.
-    """
+    """Build a unique, valid QRR reference for one invoice."""
     payload = (
         f"{customer_number:0{_CUSTOMER_NUMBER_DIGITS}d}"
         f"{billing_run_id:0{_BILLING_RUN_DIGITS}d}"
@@ -73,13 +45,7 @@ def generate_qrr_reference(customer_number: int, billing_run_id: int, item_id: i
 
 @dataclass
 class DecodedQrrReference:
-    """The three ids embedded in a QRR reference by `generate_qrr_reference`.
-
-    Attributes:
-        customer_number: The billed person's customer number, as embedded.
-        billing_run_id: Database id of the billing run.
-        item_id: Database id of the billing run line item (the invoice).
-    """
+    """The three ids embedded in a QRR reference by `generate_qrr_reference`."""
 
     customer_number: int
     billing_run_id: int
@@ -87,29 +53,7 @@ class DecodedQrrReference:
 
 
 def parse_qrr_reference(raw_reference: str) -> Optional[DecodedQrrReference]:
-    """Decode a QRR reference (e.g. read off a bank statement) back into
-    the ids `generate_qrr_reference` originally encoded into it.
-
-    This is the reconciliation counterpart to `generate_qrr_reference`: a
-    bank statement's structured reference field can be decoded directly,
-    without any lookup table, because the reference already contains
-    everything needed to find the exact invoice it belongs to.
-
-    Args:
-        raw_reference: The reference as it appears on a bank statement --
-            any spacing/grouping is tolerated, and it does not matter
-            whether it is zero-padded to the full 27-digit QRR form or
-            given as the shorter 25-character value `generate_qrr_reference`
-            itself returns; both decode identically.
-
-    Returns:
-        The decoded `DecodedQrrReference`, or `None` if `raw_reference` is
-        not a checksum-valid ESR/QRR reference, or is checksum-valid but
-        not shaped like one this function generated (e.g. a genuine but
-        differently-structured reference) -- both are normal, expected
-        outcomes for a payment that was not made by scanning one of this
-        app's QR-bills, not exceptional errors.
-    """
+    """Decode a QRR reference (e.g."""
     digits = re.sub(r"\D", "", raw_reference or "")
     if not digits:
         return None

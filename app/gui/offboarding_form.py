@@ -1,28 +1,5 @@
-"""Shared offboarding-tracker edit dialog -- mirrors
-`app.gui.onboarding_form` for the reverse process (see
-`app.models.person_offboarding`).
-
-Two things this dialog does that onboarding's never needs, both as
-explicit, separately-confirmed actions -- never as a side effect of
-saving a date:
-
-1. Setting the "Austrittsdatum MeteringPoint festgelegt" step offers to
-   end the person's currently open-ended `Assignment`(en) with that date,
-   reusing the exact mechanism used for an ordinary mid-quarter tenant
-   change (`app.models.assignment`).
-2. Completing the last step offers to remove the person (see
-   `open_remove_person_dialog`). Without it a fully offboarded person
-   stays active everywhere -- counted on the dashboard, selectable for
-   new assignments, and still a recipient of broadcast emails -- which is
-   exactly what a real administrator ran into after walking a withdrawn
-   registration through the whole process.
-
-What deliberately stays either way: the `Site` and its metering points.
-They are physical infrastructure that outlives any one member (several
-persons can share one site), so they are never removed along with a
-person -- the dialog says so, and a site that really has become obsolete
-is deleted on its own page.
-"""
+"""Shared offboarding-tracker edit dialog -- mirrors `app.gui.onboarding_form` for the reverse process
+(see `app.models.person_offboarding`)."""
 
 from datetime import date, datetime
 from typing import Callable, Optional
@@ -42,14 +19,7 @@ from app.models.person_offboarding import REASON_OPTIONS, STEPS, PersonOffboardi
 
 
 def _parse_date(value: str) -> Optional[date]:
-    """Parse a date string from a NiceGUI date input into a `date`.
-
-    Args:
-        value: Date string in ISO format ("YYYY-MM-DD"), or empty/`None`.
-
-    Returns:
-        The parsed `date`, or `None` if `value` is empty.
-    """
+    """Parse a date string from a NiceGUI date input into a `date`."""
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%d").date()
@@ -61,18 +31,7 @@ def open_offboarding_form(
     *,
     on_saved: Optional[Callable[[PersonOffboarding], None]] = None,
 ) -> None:
-    """Open the edit dialog for one person's offboarding tracker.
-
-    Args:
-        offboarding: Tracker to edit (must already exist -- this dialog
-            never creates one, see `person_offboarding.start_for_person`).
-        person: The tracked person, for display and the dialog title.
-        on_saved: Called with the updated `PersonOffboarding` after a
-            successful save (dialog already closed).
-
-    Returns:
-        None.
-    """
+    """Open the edit dialog for one person's offboarding tracker."""
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
         ui.label(f"Austritt/Ausschluss: {person.display_name}").classes("text-lg font-bold")
         ui.label(f"Grund: {REASON_OPTIONS.get(offboarding.reason, offboarding.reason)}").classes(
@@ -108,20 +67,12 @@ def open_offboarding_form(
         error_label = ui.label("").classes("text-negative")
 
         def on_saved_refresh() -> None:
-            """Let the calling page refresh after the person was removed.
-
-            Returns:
-                None.
-            """
+            """Let the calling page refresh after the person was removed."""
             if on_saved:
                 on_saved(offboarding)
 
         def save() -> None:
-            """Validate the form and persist the offboarding tracker.
-
-            Returns:
-                None.
-            """
+            """Validate the form and persist the offboarding tracker."""
             try:
                 parsed = {attr: _parse_date(date_inputs[attr].value) for attr, _ in STEPS}
             except ValueError:
@@ -152,20 +103,7 @@ def open_offboarding_form(
 
 
 def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
-    """Offer to end a person's currently open-ended Assignment(en).
-
-    A separate, explicitly-confirmed action -- never triggered just by
-    saving the offboarding tracker's date fields.
-
-    Args:
-        person: The person whose assignments to consider.
-        date_input: The "Austrittsdatum MeteringPoint festgelegt" field --
-            read at confirm time, so a date typed but not yet saved on
-            the tracker can still be used here.
-
-    Returns:
-        None.
-    """
+    """Offer to end a person's currently open-ended Assignment(en)."""
     try:
         exit_date = _parse_date(date_input.value)
     except ValueError:
@@ -214,26 +152,7 @@ def open_end_assignment_dialog(person: Person, date_input: ui.input) -> None:
 
 
 def open_remove_person_dialog(person: Person, *, on_done: Optional[Callable[[], None]] = None) -> None:
-    """Offer to remove a person once their offboarding is finished.
-
-    Uses `person_repo.delete`, which deletes a person outright when nothing
-    references them and otherwise only deactivates them, keeping customer
-    number and billing history intact for the accounting trail. Either way
-    they stop being counted on the dashboard, stop appearing as a choice
-    for new assignments, and stop receiving broadcast emails.
-
-    Deliberately leaves the `Site` and its metering points alone: they are
-    physical infrastructure, often shared by several persons, and normally
-    outlive the member who happened to live there.
-
-    Args:
-        person: The person whose offboarding has been completed.
-        on_done: Called after a successful removal, so the calling page can
-            refresh its list.
-
-    Returns:
-        None.
-    """
+    """Offer to remove a person once their offboarding is finished."""
     with ui.dialog() as confirm, ui.card().classes("w-full max-w-md"):
         ui.label(f"Austritt abgeschlossen -- „{person.display_name}“ entfernen?").classes("font-bold")
         ui.label(
@@ -253,11 +172,7 @@ def open_remove_person_dialog(person: Person, *, on_done: Optional[Callable[[], 
             ui.button("Behalten", on_click=confirm.close).props("flat")
 
             def do_remove() -> None:
-                """Delete or deactivate the person, then report what happened.
-
-                Returns:
-                    None.
-                """
+                """Delete or deactivate the person, then report what happened."""
                 with connection_scope() as connection:
                     deleted = person_repo.delete(connection, person.id)
                 confirm.close()
