@@ -562,6 +562,47 @@ def test_the_card_offers_the_send_button():
     assert any("Willkommen senden" in (text or "") for text in buttons), buttons
 
 
+def test_a_mail_sits_on_the_row_of_its_own_step():
+    """Which event a mail belongs to has to be visible, not inferred.
+
+    The controls used to be a column of their own, which began at the top of
+    the card while the steps did too -- so "Bei der BKW angemeldet" (step
+    four) came out level with "Einteilung in LEG" (step two) and the card
+    read as two unrelated tables. The test walks up from the button and
+    insists on finding **one** step's label around it, never two.
+    """
+    _seed_person_with_due_welcome()
+
+    from app.gui.pages import onboardings as onboardings_page
+
+    client = Client(ui.page("/probe-message-step-row")(lambda: None), request=None)
+    with client:
+        onboardings_page.onboardings_page()
+        button = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and (element.text or "").startswith("Willkommen senden")
+        )
+        nearby: list[str] = []
+        node = button
+        for _ in range(4):
+            node = node.parent_slot.parent if node.parent_slot is not None else None
+            if node is None:
+                break
+            nearby = [
+                element.text
+                for element in node.descendants()
+                if element.__class__.__name__ == "Label" and element.text
+            ]
+            if any("Einteilung in LEG" in (text or "") for text in nearby):
+                break
+
+    assert any("Einteilung in LEG" in (text or "") for text in nearby), nearby
+    # The welcome mail hangs off "Einteilung in LEG", so its own row must not
+    # also hold another step -- that would be the old column again.
+    assert not any("Anmeldung bei uns" in (text or "") for text in nearby), nearby
+
+
 def test_the_seeded_drafts_are_there_after_the_migration(db):
     """Migration 55 brings the texts that had nothing to carry over."""
     names = {template.name for template in template_repo.list_all(db)}

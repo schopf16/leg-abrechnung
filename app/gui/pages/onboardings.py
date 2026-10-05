@@ -6,12 +6,13 @@ from datetime import date, datetime
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.formatting import format_date
 from app.domain.global_search import person_matches
 from app.domain.message_templates import DueMessage, due_by_person
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.list_footer import render_count, render_empty
-from app.gui.message_buttons import render_due_messages
+from app.gui.message_buttons import group_by_step, render_step_messages
 from app.gui.navigation import page_frame
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.print_list import render_print_button
@@ -188,19 +189,31 @@ def onboardings_page() -> None:
                         if not onboarding.is_complete:
                             _, step_label = onboarding.current_step
                             ui.label(f"Aktueller Schritt: {step_label}").classes("text-caption text-grey-6")
-                    with ui.column().classes("gap-0 min-w-[280px]"):
+                    # One row per step, and that step's mails on the same
+                    # row: in a column of their own they started at the top
+                    # of the card while the steps did too, so a mail about
+                    # step four sat level with step two.
+                    by_step = group_by_step(due_messages.get(onboarding.person_id, []))
+                    with ui.column().classes("gap-0 grow min-w-[280px]"):
                         for attr, label in STEPS:
                             value = getattr(onboarding, attr)
                             text = f"{'✓' if value else '—'} {label}"
                             if value:
-                                text += f" ({value.isoformat()})"
-                            ui.label(text).classes("text-caption" + ("" if value else " text-grey-6"))
-                    render_due_messages(
-                        person,
-                        due_messages.get(onboarding.person_id, []),
-                        OCCASION_ONBOARDING,
-                        on_changed=refresh,
-                    )
+                                text += f" ({format_date(value)})"
+                            with ui.row().classes("w-full items-center gap-3"):
+                                # A fixed width, so the controls line up in a
+                                # column of their own however long the labels
+                                # are -- which is what makes the pairing
+                                # readable at a glance.
+                                ui.label(text).classes(
+                                    "text-caption w-[260px] shrink-0" + ("" if value else " text-grey-6")
+                                )
+                                render_step_messages(
+                                    person,
+                                    by_step.get(attr, []),
+                                    OCCASION_ONBOARDING,
+                                    on_changed=refresh,
+                                )
                     with ui.row().classes("gap-1 ml-auto"):
                         ui.button("Bearbeiten", on_click=lambda o=onboarding, p=person: on_edit(o, p)).props(
                             "dense flat"

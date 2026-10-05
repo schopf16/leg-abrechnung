@@ -35,19 +35,30 @@ from app.models.person import Person
 _QUIET = "dense flat size=sm color=grey-7"
 
 
-def render_due_messages(
+def group_by_step(due: list[DueMessage]) -> dict[str, list[DueMessage]]:
+    """Sort the due bausteine under the step each one hangs off.
+
+    The card renders them **on the row of their own step**. They used to sit
+    in a column of their own, which started at the top of the card while the
+    steps did too -- so "Bei der BKW angemeldet" came out level with
+    "Einteilung in LEG" and the two columns read as two unrelated tables.
+    """
+    grouped: dict[str, list[DueMessage]] = {}
+    for message in due:
+        grouped.setdefault(message.template.step, []).append(message)
+    return grouped
+
+
+def render_step_messages(
     person: Person,
     due: list[DueMessage],
     occasion: str,
     *,
     on_changed: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Render one control per due baustein for this person."""
-    if not due:
-        return
-    with ui.column().classes("gap-0 min-w-[260px]"):
-        for message in due:
-            _render_one(person, message, occasion, on_changed)
+    """Render the controls for one step's bausteine, inline on that step's row."""
+    for message in due:
+        _render_one(person, message, occasion, on_changed)
 
 
 def _render_one(
@@ -59,7 +70,7 @@ def _render_one(
     """One baustein, in whichever of the three states it is in."""
     name = message.template.name
     if not message.was_sent:
-        with ui.row().classes("items-center gap-1"):
+        with ui.row().classes("items-center gap-1 no-wrap"):
             ui.button(
                 f"{name} senden",
                 on_click=lambda: open_message_send_dialog(person, message, occasion, on_sent=on_changed),
@@ -75,7 +86,7 @@ def _render_one(
         return
 
     suffix = " (von Hand)" if message.by_hand else ""
-    with ui.row().classes("items-center gap-2"):
+    with ui.row().classes("items-center gap-2 no-wrap"):
         ui.label(f"{name}: {format_date(message.sent_on)}{suffix}").classes("text-caption text-grey-7")
         ui.button(
             "senden" if message.by_hand else "nochmals senden",
