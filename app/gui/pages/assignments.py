@@ -20,7 +20,6 @@ from app.gui.sorting import (
     sort_description,
     text_key,
 )
-from app.models import leg as leg_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import site as site_repo

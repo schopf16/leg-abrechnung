@@ -501,6 +501,17 @@ in; those without a consumption assignment are a gap, named by
 `check_feed_in_without_consumption`. Deliberately one-directional — drawing
 without feeding in is the normal case.
 
+**No recommendations, only facts.** `find_upgrade_candidates`,
+`leg_should_split` and `check_leg_upgrade_potential` were removed, and so was
+every "tieferer BKW-Rabatt möglich" hint on the dashboard, the Zuordnung
+dialog and the Person detail page: the decision turns on economics, on what
+participants agree to and on what BKW confirms — none of it in this database.
+What is left is the fact and nothing beside it: the LEG list's one-word
+`substation_areas_status`, the 🟢/🟠 per metering point on the LEG detail page,
+and `check_substation_area_one_sided`. A figure is stated, not graded — the
+LEG list prints the bare Produktionsleistung and leaves the verdict, its
+colour and the date it was read to the detail page.
+
 `app.domain.statistics.leg_balance` behind `/statistics/balance` reports and
 **grades nothing** — no threshold, no colour, no verdict word
 (`test_the_view_grades_nothing`). The **ordering** stands in for the verdict:

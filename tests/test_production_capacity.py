@@ -173,49 +173,48 @@ def test_a_name_only_edit_keeps_the_recorded_figure(db):
 # -- the GUI row builder -----------------------------------------------------
 #
 # `_to_row` takes a plain connection and returns a dict, so it is testable
-# the same way `app.gui.pages.dashboard._load_overview` already is. It
-# carries the staleness suffix and the colour, neither of which any other
-# test touched.
+# the same way `app.gui.pages.dashboard._load_overview` already is. The list
+# cell is the bare figure; the verdict, its colour and the date it was read
+# are the detail page's (`compute_headroom`, tested above).
 
 
 def _row_for(db, **overrides):
     from app.gui.pages.legs import _to_row
 
     leg_id = leg_repo.create(db, _leg(**overrides))
-    return _to_row(db, leg_repo.get(db, leg_id), warn_percent=10.0)
+    return _to_row(db, leg_repo.get(db, leg_id))
 
 
-def test_the_row_appends_the_recording_date(db):
+def test_the_row_states_the_figure_and_nothing_else(db):
     row = _row_for(db, production_capacity_percent=37.6, production_capacity_recorded_at="2026-09-18")
 
-    assert "(Stand 2026-09-18)" in row["production_capacity"]
-    assert row["production_capacity_status"] == STATUS_COMFORTABLE
-
-
-def test_the_row_omits_the_date_when_nothing_was_recorded(db):
-    row = _row_for(db)
-
+    assert row["production_capacity"] == "37,6 %"
     assert "Stand" not in row["production_capacity"]
-    assert row["production_capacity_status"] == STATUS_UNKNOWN
+
+
+def test_the_row_says_nothing_when_nothing_was_recorded(db):
+    assert _row_for(db)["production_capacity"] == "-"
 
 
 def test_a_date_without_a_percentage_does_not_produce_a_contradiction(db):
-    """Otherwise the card reads "nicht erfasst (Stand 2026-01-02)"."""
+    """Otherwise the row read "nicht erfasst (Stand 2026-01-02)"."""
     row = _row_for(db, production_capacity_recorded_at="2026-01-02")
 
+    assert row["production_capacity"] == "-"
     assert "Stand" not in row["production_capacity"]
 
 
-def test_the_row_status_drives_the_colour(db):
+def test_the_status_drives_the_colour(db):
+    """The detail page colours the verdict; below the legal floor it is red."""
     from app.domain.production_capacity import status_classes
 
-    below = _row_for(db, name="A", production_capacity_percent=3.0)
-    tight = _row_for(db, name="B", production_capacity_percent=8.0)
+    below = compute_headroom(3.0, warn_percent=10.0)
+    tight = compute_headroom(8.0, warn_percent=10.0)
 
-    assert below["production_capacity_status"] == STATUS_BELOW
-    assert "text-negative" in status_classes(below["production_capacity_status"])
-    assert tight["production_capacity_status"] == STATUS_TIGHT
-    assert "text-warning" in status_classes(tight["production_capacity_status"])
+    assert below.status == STATUS_BELOW
+    assert "text-negative" in status_classes(below.status)
+    assert tight.status == STATUS_TIGHT
+    assert "text-warning" in status_classes(tight.status)
 
 
 def test_a_percentage_above_one_hundred_is_allowed(db):

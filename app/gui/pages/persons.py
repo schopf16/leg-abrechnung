@@ -472,8 +472,10 @@ def person_detail_page(person_id: int) -> None:
                     ui.label("Firma").classes("text-caption text-grey-6")
                     ui.label(person.company).classes("font-medium")
 
-        with ui.element("div").classes("grid w-full max-w-5xl gap-2").style(
-            "grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));"
+        with (
+            ui.element("div")
+            .classes("grid w-full max-w-5xl gap-2")
+            .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));")
         ):
             with ui.card().classes("w-full h-full p-3"):
                 with ui.row().classes("items-center gap-2"):
@@ -513,8 +515,10 @@ def person_detail_page(person_id: int) -> None:
 
         with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
             ui.label("Rechnungsdaten").classes("text-base font-bold")
-            with ui.element("div").classes("grid gap-x-6 gap-y-2 mt-2").style(
-                "grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));"
+            with (
+                ui.element("div")
+                .classes("grid gap-x-6 gap-y-2 mt-2")
+                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));")
             ):
                 with ui.column().classes("gap-0"):
                     ui.label("Rechnungsadresse").classes("text-caption text-grey-6")
@@ -530,8 +534,10 @@ def person_detail_page(person_id: int) -> None:
                     ui.label("Briefanrede").classes("text-caption text-grey-6")
                     ui.label(letter_salutation(person)).classes("leading-tight")
             ui.separator().classes("my-2")
-            with ui.element("div").classes("grid gap-x-6 gap-y-2").style(
-                "grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));"
+            with (
+                ui.element("div")
+                .classes("grid gap-x-6 gap-y-2")
+                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
             ):
                 with ui.column().classes("gap-0"):
                     ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")

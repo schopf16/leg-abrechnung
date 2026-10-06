@@ -75,7 +75,12 @@ COLUMNS = [
         "field": "production_capacity",
         "align": "left",
     },
-    {"name": "substation_areas_status", "label": "Rabatt", "field": "substation_areas_status", "align": "left"},
+    {
+        "name": "substation_areas_status",
+        "label": "Rabatt",
+        "field": "substation_areas_status",
+        "align": "left",
+    },
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
