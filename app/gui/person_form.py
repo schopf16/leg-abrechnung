@@ -77,7 +77,7 @@ def open_person_form(
         with ui.element("div").classes("grid w-full gap-3 mt-2").style(
             "grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));"
         ):
-            with ui.card().classes("w-full"):
+            with ui.card().classes("w-full h-full"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label("1").classes(
                         "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
@@ -106,7 +106,7 @@ def open_person_form(
                     value=_initial(existing, "contact_phone", prefill, "phone"),
                 ).classes("w-full max-w-xs")
 
-            with ui.card().classes("w-full"):
+            with ui.card().classes("w-full h-full"):
                 with ui.row().classes("items-center gap-2"):
                     ui.label("2").classes(
                         "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
@@ -134,6 +134,7 @@ def open_person_form(
                 ).classes("w-full")
                 second_email.props('hint="Erhält Nachrichten zusätzlich zur E-Mail von Person 1"')
                 second_email_error = ui.label("").classes("text-negative text-caption")
+                ui.label("Telefonnummer bei Person 1 erfassen.").classes("text-caption text-grey-6 mt-2")
 
         ui.separator().classes("my-2")
         ui.label("Rechnungsadresse").classes("text-base font-bold")
