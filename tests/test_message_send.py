@@ -661,3 +661,201 @@ def test_no_seeded_draft_carries_an_address_or_a_place(db):
         assert "@" not in text, f"{template.name}: keine Adresse in einem Entwurf"
         assert "Ittigen" not in text, f"{template.name}: keine Ortsangabe in einem Entwurf"
         assert "{briefanrede}" in template.body, f"{template.name}: grüsst niemanden"
+
+
+# --- Own documents: what goes along is decided in the dialog ----------------
+
+
+def test_a_picked_name_cannot_reach_out_of_the_send_folder():
+    """The name comes from the browser and ends up in a path."""
+    from app.domain.message_attachments import safe_attachment_filename
+
+    assert safe_attachment_filename("../../etc/passwd.pdf") == "passwd.pdf"
+    assert safe_attachment_filename(r"C:\Windows\system.ini") == "system.ini"
+    assert safe_attachment_filename("..") == "__", "kein Pfadsprung, auch ohne Endung"
+    assert safe_attachment_filename(".pdf") == "Dokument.pdf"
+    assert safe_attachment_filename("Vertrag 2026 (final).pdf") == "Vertrag 2026 _final_.pdf"
+    assert safe_attachment_filename("archiv.tar.gz") == "archiv_tar.gz", "die Endung bleibt lesbar"
+
+
+def test_two_files_of_one_name_do_not_overwrite_each_other(tmp_path):
+    """Both have to reach the recipient, so the second gets a name of its own."""
+    first = message_attachments.store_upload(b"eins", "Vertrag.pdf", directory=tmp_path)
+    second = message_attachments.store_upload(
+        b"zwei", "Vertrag.pdf", directory=tmp_path, taken=[first.filename]
+    )
+
+    assert second.filename == "Vertrag (2).pdf"
+    assert first.path.read_bytes() == b"eins"
+    assert second.path.read_bytes() == b"zwei"
+
+
+def test_a_file_stored_on_the_baustein_is_written_out_for_the_send(db, tmp_path):
+    """Uploaded on the Textbaustein, it used to be listed and never sent."""
+    template_id = _template(db, "Willkommen")
+    template_repo.add_attachment(db, template_id, "Eigener Vertrag.pdf", b"%PDF-1.4 eigen")
+
+    written = message_attachments.stored_attachments(db, template_id, directory=tmp_path)
+
+    assert [entry.filename for entry in written] == ["Eigener Vertrag.pdf"]
+    assert written[0].path.read_bytes() == b"%PDF-1.4 eigen"
+
+
+def test_a_stored_file_does_not_overwrite_a_produced_file(db, tmp_path):
+    """A stored attachment with the same name must keep both mail files intact."""
+    template_id = _template(db, "Willkommen")
+    template_repo.add_attachment(db, template_id, "Vertrag.pdf", b"eigener Vertrag")
+    produced = message_attachments.PreparedAttachment(
+        key="membership_contract",
+        label="Beitrittserklärung",
+        path=tmp_path / "Vertrag.pdf",
+        filename="Vertrag.pdf",
+    )
+    produced.path.write_bytes(b"persoenlicher Vertrag")
+
+    written = message_attachments.stored_attachments(
+        db, template_id, directory=tmp_path, taken=[produced.filename]
+    )
+
+    assert written[0].filename == "Vertrag (2).pdf"
+    assert produced.path.read_bytes() == b"persoenlicher Vertrag"
+    assert written[0].path.read_bytes() == b"eigener Vertrag"
+
+
+def _picker(prepared, directory, route: str):
+    """Build the dialog's attachment picker, with its real upload widget."""
+    from app.gui.message_send_dialog import AttachmentPicker
+
+    client = Client(ui.page(route)(lambda: None), request=None)
+    with client:
+        picker = AttachmentPicker(prepared, directory=directory)
+    return picker, client
+
+
+def _pick(picker, client, *files) -> None:
+    """Deliver files through the widget the picker actually registered."""
+    from nicegui.elements.upload_files import SmallFileUpload
+    from nicegui.events import MultiUploadEventArguments
+
+    upload = picker._upload
+    handlers = upload._multi_upload_handlers
+    assert handlers, "das Upload-Feld hat keinen Handler"
+    event = MultiUploadEventArguments(
+        sender=upload,
+        client=client,
+        files=[SmallFileUpload(name, "application/pdf", content) for name, content in files],
+    )
+    with client:
+        for handler in handlers:
+            asyncio.run(handler(event))
+
+
+def _press(client: Client, label: str):
+    """Press the first button carrying this caption."""
+    buttons = [
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Button" and element._props.get("label") == label
+    ]
+    assert buttons, f"Knopf {label!r} nicht gefunden"
+    for listener in buttons[0]._event_listeners.values():
+        if listener.type == "click":
+            with client:
+                listener.handler(None)
+            return
+    raise AssertionError(f"{label} hat keinen Click-Handler")
+
+
+def test_an_own_document_can_be_picked_for_this_one_mail(tmp_path):
+    """Driven through the real upload widget, not through its handler alone."""
+    picker, client = _picker([], tmp_path, "/probe-pick-own")
+
+    _pick(picker, client, ("Beilage.pdf", b"%PDF-1.4"))
+
+    assert [path.name for path in picker.paths] == ["Beilage.pdf"]
+    assert (tmp_path / "Beilage.pdf").read_bytes() == b"%PDF-1.4"
+    labels = [element.text for element in client.elements.values() if getattr(element, "text", None)]
+    assert any("Beilage.pdf" in text for text in labels), "der Anhang wird nicht gezeigt"
+
+
+def test_several_picked_documents_all_go_along(tmp_path):
+    """One mail, more than one own document -- the point of `multiple`."""
+    picker, client = _picker([], tmp_path, "/probe-pick-several")
+
+    _pick(picker, client, ("Eins.pdf", b"a"), ("Zwei.pdf", b"bb"))
+
+    assert [path.name for path in picker.paths] == ["Eins.pdf", "Zwei.pdf"]
+
+
+def test_the_prepared_document_can_be_dropped_for_an_own_one(tmp_path):
+    """What the administrator asked for: their own contract instead of ours."""
+    ours = tmp_path / "Beitrittserklaerung_Muster.pdf"
+    ours.write_bytes(b"%PDF unser")
+    prepared = [
+        message_attachments.PreparedAttachment(
+            key="membership_contract",
+            label="Beitrittserklärung",
+            path=ours,
+            filename=ours.name,
+        )
+    ]
+    picker, client = _picker(prepared, tmp_path, "/probe-drop-ours")
+    _pick(picker, client, ("Eigener Vertrag.pdf", b"%PDF eigen"))
+
+    _press(client, "Entfernen")  # the produced Beitrittserklärung comes first
+
+    assert [path.name for path in picker.paths] == ["Eigener Vertrag.pdf"]
+
+
+def test_a_document_that_could_not_be_produced_can_also_be_dropped(tmp_path):
+    """A warning line is a row like any other -- it must not be a dead end."""
+    prepared = [
+        message_attachments.PreparedAttachment(
+            key="membership_contract",
+            label="Beitrittserklärung",
+            path=None,
+            filename="",
+            problem="Kein Formular hinterlegt.",
+        )
+    ]
+    picker, client = _picker(prepared, tmp_path, "/probe-drop-missing")
+
+    _press(client, "Entfernen")
+
+    assert picker.entries == []
+    assert picker.paths == []
+
+
+def test_too_much_together_is_refused_before_the_send(tmp_path):
+    """Microsoft's limit is on the message, so the dialog counts the total."""
+    from app.emailing.graph_client import MAX_INLINE_ATTACHMENT_BYTES
+
+    half = b"x" * (MAX_INLINE_ATTACHMENT_BYTES // 2 + 1)
+    picker, client = _picker([], tmp_path, "/probe-too-large")
+
+    _pick(picker, client, ("Eins.pdf", half), ("Zwei.pdf", half))
+
+    assert picker.is_too_large
+    labels = [element.text for element in client.elements.values() if getattr(element, "text", None)]
+    assert any("zu gross" in text for text in labels), "der Dialog sagt es nicht"
+
+
+def test_the_dialog_offers_the_picker_and_the_stored_files(db):
+    """The whole way through the dialog: stored on the baustein, shown, sendable."""
+    from nicegui.elements.upload import Upload
+
+    with connection_scope() as connection:
+        person = _person(connection)
+        template_id = _template(connection, "Willkommen")
+        template_repo.add_attachment(connection, template_id, "Eigener Vertrag.pdf", b"%PDF eigen")
+        template = template_repo.get(connection, template_id)
+
+    due = DueMessage(template=template, step_label="Einteilung in LEG", days_waiting=None)
+    client = Client(ui.page("/probe-send-stored")(lambda: None), request=None)
+    with client:
+        open_message_send_dialog(person, due, OCCASION_ONBOARDING)
+
+    labels = [element.text for element in client.elements.values() if getattr(element, "text", None)]
+    assert any("Eigener Vertrag.pdf" in text for text in labels), "die Datei des Bausteins fehlt"
+    uploads = [element for element in client.elements.values() if isinstance(element, Upload)]
+    assert len(uploads) == 1, "genau ein Upload-Feld im Versanddialog"

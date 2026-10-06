@@ -139,13 +139,14 @@ def get_run_by_period(
     return BillingRun.from_row(row) if row else None
 
 
-def delete_run(connection: sqlite3.Connection, run_id: int) -> None:
+def delete_run(connection: sqlite3.Connection, run_id: int, *, commit: bool = True) -> None:
     """Delete a billing run and all its line items (cascade)."""
     connection.execute("DELETE FROM billing_runs WHERE id = ?", (run_id,))
-    connection.commit()
+    if commit:
+        connection.commit()
 
 
-def create_run(connection: sqlite3.Connection, run: BillingRun) -> int:
+def create_run(connection: sqlite3.Connection, run: BillingRun, *, commit: bool = True) -> int:
     """Insert a new billing run."""
     cursor = connection.execute(
         """
@@ -163,11 +164,14 @@ def create_run(connection: sqlite3.Connection, run: BillingRun) -> int:
             run.notes,
         ),
     )
-    connection.commit()
+    if commit:
+        connection.commit()
     return cursor.lastrowid
 
 
-def add_items(connection: sqlite3.Connection, items: list[BillingRunItem]) -> list[int]:
+def add_items(
+    connection: sqlite3.Connection, items: list[BillingRunItem], *, commit: bool = True
+) -> list[int]:
     """Insert billing run line items."""
     ids = []
     for item in items:
@@ -198,7 +202,8 @@ def add_items(connection: sqlite3.Connection, items: list[BillingRunItem]) -> li
             ),
         )
         ids.append(cursor.lastrowid)
-    connection.commit()
+    if commit:
+        connection.commit()
     return ids
 
 

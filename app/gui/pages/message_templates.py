@@ -5,13 +5,13 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain import auto_attachments
 from app.emailing import graph_client
-from app.emailing.templates import PERSON_PLACEHOLDERS
 from app.format_size import format_size
 from app.formatting import format_date
 from app.gui.contract_preview import open_contract_preview
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
+from app.gui.placeholder_help import render_placeholder_help
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
@@ -22,9 +22,6 @@ from app.models import message_template as template_repo
 from app.models import person_offboarding, person_onboarding
 from app.models import signature as signature_repo
 from app.models.message_template import (
-    OCCASION_DUNNING1,
-    OCCASION_DUNNING2,
-    OCCASION_INVOICE,
     OCCASION_LABELS,
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
@@ -34,20 +31,6 @@ from app.models.message_template import (
     TRIGGER_STEP_PENDING,
     MessageTemplate,
 )
-
-#: Which placeholders are valid for which occasion. The Person ones are
-#: available everywhere (`app.emailing.templates.PERSON_PLACEHOLDERS`); the
-#: rest exist only in one context -- an invoice knows its quarter and its
-#: amount, a dunning notice knows the new deadline, and a welcome mail knows
-#: neither. The hint used to sit on the Einstellungen page beside the fields
-#: it described; the fields moved here, so it did too, and it is now by
-#: occasion rather than one list for all of them.
-EXTRA_PLACEHOLDERS = {
-    OCCASION_INVOICE: ("leg", "quartal", "jahr", "betrag"),
-    OCCASION_DUNNING1: ("betrag", "neue_frist"),
-    OCCASION_DUNNING2: ("betrag", "neue_frist"),
-}
-
 
 COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
@@ -259,7 +242,9 @@ def message_templates_page() -> None:
                     .classes("w-full")
                     .props("rows=10")
                 )
-                placeholder_hint = ui.label("").classes("text-caption text-grey-6")
+                # The occasion is read on the click, so the list follows the
+                # select without this dialog having to re-render anything.
+                render_placeholder_help(lambda: occasion.value)
 
                 # The same named signatures the Rundmail offers, so a
                 # Textbaustein can sign off exactly like one. Appended when
@@ -278,17 +263,6 @@ def message_templates_page() -> None:
                     ui.label("Noch keine Signatur hinterlegt -- Kommunikation → Signaturen.").classes(
                         "text-caption text-grey-6"
                     )
-
-                def show_placeholders() -> None:
-                    """List the placeholders this occasion actually offers."""
-                    names = (
-                        *PERSON_PLACEHOLDERS,
-                        *EXTRA_PLACEHOLDERS.get(occasion.value, ()),
-                    )
-                    placeholder_hint.text = "Platzhalter: " + ", ".join(f"{{{name}}}" for name in names)
-
-                show_placeholders()
-                when_occasion_changes.append(show_placeholders)
 
                 ui.separator().classes("my-2")
                 ui.label("Automatisch anfügen").classes("text-body1 font-bold")
@@ -372,6 +346,10 @@ def message_templates_page() -> None:
 
                 ui.separator().classes("my-2")
                 ui.label("Weitere Anhänge").classes("text-body1 font-bold")
+                ui.label(
+                    "Eigene Dokumente, die bei jedem Versand dieses Bausteins "
+                    "mitgehen -- im Versanddialog einzeln abwählbar."
+                ).classes("text-caption text-grey-6")
                 attachment_list = ui.column().classes("w-full gap-1")
 
                 def render_attachments() -> None:
@@ -415,7 +393,13 @@ def message_templates_page() -> None:
                     render_attachments()
                     upload.reset()
 
-                upload = ui.upload(on_multi_upload=handle_upload, multiple=True, auto_upload=True)
+                upload = ui.upload(
+                    on_multi_upload=handle_upload,
+                    multiple=True,
+                    auto_upload=True,
+                    max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                    max_total_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                )
                 upload.props('label="Datei wählen" accept=".pdf,.docx,.txt" flat bordered')
                 render_attachments()
 

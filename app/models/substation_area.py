@@ -3,7 +3,7 @@ a property of the site -- never of a Person or MeteringPoint directly."""
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 
@@ -32,6 +32,24 @@ class SubstationArea:
 def list_all(connection: sqlite3.Connection) -> list[SubstationArea]:
     """List all substation areas, ordered by name."""
     rows = connection.execute("SELECT * FROM substation_area ORDER BY name").fetchall()
+    return [SubstationArea.from_row(row) for row in rows]
+
+
+def list_for_person(
+    connection: sqlite3.Connection, person_id: int, reference_date: date
+) -> list[SubstationArea]:
+    """List the areas a Person's assignments reach on and after `reference_date`."""
+    rows = connection.execute(
+        """
+        SELECT DISTINCT substation_area.* FROM substation_area
+        JOIN site ON site.substation_area_id = substation_area.id
+        JOIN metering_point ON metering_point.site_id = site.id
+        JOIN assignment ON assignment.metering_point_id = metering_point.id
+        WHERE assignment.person_id = ?
+          AND (assignment.valid_to IS NULL OR assignment.valid_to >= ?)
+        """,
+        (person_id, reference_date.isoformat()),
+    ).fetchall()
     return [SubstationArea.from_row(row) for row in rows]
 
 

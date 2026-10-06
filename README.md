@@ -74,11 +74,9 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   Abrechnungsgruppe eines Messpunkts. Per Default entspricht eine LEG
   genau einem physischen Trafokreis der BKW — sie kann aber auch gezielt
   Messpunkte aus mehreren Trafokreisen zusammenfassen, wenn sich deren
-  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Die App
-  warnt auf der LEG-Seite, der Personen-Detailseite und beim Zuweisen
-  einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst, damit Sie
-  die betroffenen Personen informieren können. Der LEG-Name erscheint als
-  Absender auf den Rechnungen dieser LEG. Erfasst werden: Name (muss
+  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Der
+  LEG-Name erscheint als Absender auf den Rechnungen dieser LEG. Erfasst
+  werden: Name (muss
   eindeutig sein), optionale Bemerkung sowie die **Produktionsleistung in
   Prozent** mit dem Datum, an dem sie abgelesen wurde („Stand vom“).
 
@@ -285,10 +283,19 @@ grösstenteils abgeschaltet hat).
 - **„E-Mail versenden"** (eigene Seite): geführter Ablauf in 5 Schritten —
   Empfänger-Art wählen (alle/eine LEG), die vorgeschlagene Liste einsehen
   und bei Bedarf Personen entfernen/hinzufügen, Text verfassen (mit
-  Platzhaltern wie `{vorname}`, `{anrede}` usw.), Validierung (Vorschau +
+  Platzhaltern wie `{briefanrede}`, `{vorname}` oder `{trafokreis}` — der
+  Knopf „Platzhalter ansehen" zeigt überall dieselbe Liste samt
+  aufgelöstem Beispiel, wahlweise für eine erfundene oder für eine
+  bestimmte Person), Validierung (Vorschau +
   Warnungen bei fehlenden Angaben, mit direktem „Bearbeiten"-Knopf zur
   betroffenen Person), Versenden mit Fortschrittsanzeige. Vergangene
   Versände sind unten auf derselben Seite einsehbar.
+- **Textbaustein-Versand** (von der Person aus): das Mail wird fertig
+  gezeigt und bleibt editierbar. Unter „Anhänge" steht, was mitgeht — die
+  erzeugte Beitrittserklärung, die am Baustein hinterlegten Dateien und
+  Dokumente, die hier für dieses eine Mail hinzugefügt werden. **Jede Zeile
+  lässt sich entfernen**, auch die erzeugte: so geht ein eigener Vertrag
+  statt des generierten mit.
 - **Rechnungsversand** (Seite „Rechnungslauf"): nach dem PDF-Export der
   Knopf **„Rechnungen per E-Mail versenden"** — die hinterlegte Vorlage
   (einstellbar unter „Einstellungen") wird vorausgefüllt, bleibt aber für

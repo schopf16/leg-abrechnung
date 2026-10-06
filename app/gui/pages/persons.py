@@ -8,7 +8,6 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
-from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.filter_bar import FilterBar
@@ -465,39 +464,101 @@ def person_detail_page(person_id: int) -> None:
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.
         render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
-        ui.label(person.display_name).classes("text-xl font-bold mt-2")
-        with ui.card().classes("w-full max-w-lg"):
-            if not person.active:
-                ui.label(f"Status: {_status_text(person)}").classes("text-negative")
-            _customer_number_row(person, label="Kunden-Nr.:", classes="")
-            if person.bkw_customer_number is not None:
-                ui.label(f"BKW-Kundennummer: {person.bkw_customer_number}")
-            if person.company:
-                ui.label(f"Firma: {person.company}")
-            ui.label(f"Anrede: {person.salutation or '-'}")
-            ui.label(f"Vorname/Nachname: {person.full_name or '-'}")
-            if person.has_second_person:
-                ui.label(f"Zweite Person: {person.second_salutation} {person.second_full_name}".strip())
-            ui.label(f"E-Mail: {person.contact_email or '-'}")
-            if person.second_contact_email:
-                ui.label(f"E-Mail zweite Person: {person.second_contact_email}")
-            ui.label(f"Telefon: {person.contact_phone or '-'}")
-            ui.label(f"Briefanrede: {letter_salutation(person)}").classes("text-caption text-grey-6")
-            ui.label(
-                "Rechnungsadresse: "
-                f"{person.billing_street_with_number}, "
-                f"{person.billing_postal_code} {person.billing_city} "
-                f"({person.billing_country})"
-            )
-            ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
-            ui.label(f"Papierrechnung: {'ja' if person.paper_invoice else 'nein'}")
-            if person.note:
-                ui.separator()
-                ui.label("Bemerkung (intern)").classes("text-caption text-grey-6")
+        if not person.active:
+            ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
+        if person.company:
+            with ui.card().classes("w-full max-w-5xl p-3 mb-2"):
+                with ui.row().classes("items-baseline gap-2"):
+                    ui.label("Firma").classes("text-caption text-grey-6")
+                    ui.label(person.company).classes("font-medium")
+
+        with (
+            ui.element("div")
+            .classes("grid w-full max-w-5xl gap-2")
+            .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));")
+        ):
+            with ui.card().classes("w-full h-full p-3"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.label("1").classes(
+                        "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
+                    )
+                    ui.label("Person 1").classes("text-base font-bold")
+                    ui.label("Hauptkontakt").classes("text-caption text-grey-6")
+                first_person = " ".join(part for part in (person.salutation, person.full_name) if part)
+                ui.label(first_person or "-").classes("text-body1 font-medium mt-2")
+                with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
+                    with ui.column().classes("gap-0"):
+                        ui.label("E-Mail").classes("text-caption text-grey-6")
+                        ui.label(person.contact_email or "-").classes("leading-tight break-all")
+                    with ui.column().classes("gap-0"):
+                        ui.label("Telefon").classes("text-caption text-grey-6")
+                        ui.label(person.contact_phone or "-").classes("leading-tight")
+
+            if person.has_second_person or person.second_contact_email:
+                with ui.card().classes("w-full h-full p-3"):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.label("2").classes(
+                            "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
+                        )
+                        ui.label("Person 2").classes("text-base font-bold")
+                    second_person = " ".join(
+                        part for part in (person.second_salutation, person.second_full_name) if part
+                    )
+                    ui.label(second_person or "-").classes("text-body1 font-medium mt-2")
+                    with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
+                        with ui.column().classes("gap-0"):
+                            ui.label("E-Mail").classes("text-caption text-grey-6")
+                            ui.label(person.second_contact_email or "-").classes("leading-tight break-all")
+                        with ui.column().classes("gap-0"):
+                            ui.label("Telefon").classes("text-caption text-grey-6")
+                            ui.label("bei Person 1").classes("leading-tight text-grey-7")
+
+        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+            ui.label("Rechnungsdaten").classes("text-base font-bold")
+            with (
+                ui.element("div")
+                .classes("grid gap-x-6 gap-y-2 mt-2")
+                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));")
+            ):
+                with ui.column().classes("gap-0"):
+                    ui.label("Rechnungsadresse").classes("text-caption text-grey-6")
+                    ui.label(person.billing_street_with_number or "-").classes("leading-tight")
+                    locality = " ".join(
+                        part for part in (person.billing_postal_code, person.billing_city) if part
+                    )
+                    address_tail = " · ".join(
+                        part for part in (locality, person.billing_country or "CH") if part
+                    )
+                    ui.label(address_tail or "-").classes("leading-tight")
+                with ui.column().classes("gap-0"):
+                    ui.label("Briefanrede").classes("text-caption text-grey-6")
+                    ui.label(letter_salutation(person)).classes("leading-tight")
+            ui.separator().classes("my-2")
+            with (
+                ui.element("div")
+                .classes("grid gap-x-6 gap-y-2")
+                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
+            ):
+                with ui.column().classes("gap-0"):
+                    ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
+                    ui.label(format_iban(person.iban) if person.iban else "-").classes("leading-tight")
+                with ui.column().classes("gap-0"):
+                    ui.label("Papierrechnung").classes("text-caption text-grey-6")
+                    ui.label("Ja" if person.paper_invoice else "Nein").classes("leading-tight")
+                with ui.column().classes("gap-0"):
+                    _customer_number_row(person, label="Kunden-Nr.:", classes="text-caption text-grey-6")
+                if person.bkw_customer_number is not None:
+                    with ui.column().classes("gap-0"):
+                        ui.label("BKW-Kundennummer").classes("text-caption text-grey-6")
+                        ui.label(str(person.bkw_customer_number)).classes("leading-tight")
+
+        if person.note:
+            with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+                ui.label("Interne Bemerkung").classes("text-base font-bold")
                 ui.label(person.note).classes("whitespace-pre-wrap")
 
-        ui.label("Genossenschaft").classes("text-lg font-bold mt-6")
-        with ui.card().classes("w-full max-w-2xl"):
+        ui.label("Genossenschaft").classes("text-lg font-bold mt-4")
+        with ui.card().classes("w-full max-w-5xl p-3"):
             render_cooperative_history(person.id)
 
         with connection_scope() as connection:
@@ -557,9 +618,8 @@ def person_detail_page(person_id: int) -> None:
 
             render_offboarding_status()
 
-        ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")
+        ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-4")
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")
-        leg_warnings_column = ui.column().classes("w-full")
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         detail_table.add_slot(
             "body-cell-valid_from",
@@ -576,7 +636,6 @@ def person_detail_page(person_id: int) -> None:
             with connection_scope() as inner_connection:
                 assignments = assignment_repo.list_for_person(inner_connection, person_id)
                 rows = []
-                leg_ids_involved: set[int] = set()
                 for z in assignments:
                     is_relevant = z.valid_to is None or z.valid_to >= today
                     if not show_all_switch.value and not is_relevant:
@@ -589,8 +648,6 @@ def person_detail_page(person_id: int) -> None:
                         else None
                     )
                     leg = leg_repo.get(inner_connection, mp.leg_id) if mp and mp.leg_id else None
-                    if leg is not None:
-                        leg_ids_involved.add(leg.id)
                     rows.append(
                         {
                             "id": z.id,
@@ -604,25 +661,8 @@ def person_detail_page(person_id: int) -> None:
                             "is_future": z.valid_from > today,
                         }
                     )
-                mixed_warnings = []
-                for leg_id in sorted(leg_ids_involved):
-                    composition = compute_leg_composition(inner_connection, leg_id)
-                    if not composition.is_mixed:
-                        continue
-                    leg = leg_repo.get(inner_connection, leg_id)
-                    substation_area_names = ", ".join(t.name for t in composition.substation_areas)
-                    mixed_warnings.append(
-                        f"⚠ Die LEG „{leg.name}“ dieser Person umfasst mehrere "
-                        f"Trafokreise ({substation_area_names}) -- die BKW gewährt "
-                        "dafür vermutlich einen tieferen Rabatt. Informieren "
-                        "Sie die Person ggf. darüber."
-                    )
             detail_table.rows = rows
             detail_table.update()
-            leg_warnings_column.clear()
-            with leg_warnings_column:
-                for message in mixed_warnings:
-                    ui.label(message).classes("text-warning text-body2")
 
         show_all_switch.on_value_change(lambda _: refresh_detail())
         refresh_detail()

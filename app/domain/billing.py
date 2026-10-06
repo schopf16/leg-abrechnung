@@ -113,12 +113,12 @@ def verify_sum_balance(items: list[BillingRunItem]) -> ControlCheckResult:
 
 
 def create_or_replace_billing_run(
-    connection: sqlite3.Connection, leg_id: int, year: int, quarter: int
+    connection: sqlite3.Connection, leg_id: int, year: int, quarter: int, *, commit: bool = True
 ) -> tuple[BillingRun, list[BillingRunItem], ControlCheckResult, DistributionResult]:
     """Compute and persist a full billing run for one LEG and quarter."""
     existing = billing_run_repo.get_run_by_period(connection, leg_id, year, quarter)
     if existing is not None:
-        billing_run_repo.delete_run(connection, existing.id)
+        billing_run_repo.delete_run(connection, existing.id, commit=commit)
 
     settings = settings_repo.get_settings(connection)
     distribution = compute_quarter_distribution(connection, leg_id, year, quarter)
@@ -145,10 +145,11 @@ def create_or_replace_billing_run(
             status="created",
             notes="",
         ),
+        commit=commit,
     )
     for item in items:
         item.billing_run_id = run_id
-    item_ids = billing_run_repo.add_items(connection, items)
+    item_ids = billing_run_repo.add_items(connection, items, commit=commit)
     for item, item_id in zip(items, item_ids):
         item.id = item_id
 
@@ -191,13 +192,27 @@ def create_billing_runs_for_all_legs(
 
     outcomes: list[LegRunOutcome] = []
     for leg in leg_repo.list_all(connection):
+        # A failed replacement must not leave the old run deleted (or a new
+        # run half-written). The savepoint only holds while nothing commits
+        # inside it, so the whole replacement runs with `commit=False` and
+        # the enclosing `connection_scope()` commits it.
+        savepoint = f"billing_leg_{leg.id}"
+        connection.execute(f"SAVEPOINT {savepoint}")
         try:
-            run, items, control_check, _ = create_or_replace_billing_run(connection, leg.id, year, quarter)
+            run, items, control_check, _ = create_or_replace_billing_run(
+                connection, leg.id, year, quarter, commit=False
+            )
         except LegNotAssignedError:
+            connection.execute(f"ROLLBACK TO {savepoint}")
+            connection.execute(f"RELEASE {savepoint}")
             raise
         except Exception as exc:  # noqa: BLE001 -- one LEG must not stop the rest
+            connection.execute(f"ROLLBACK TO {savepoint}")
+            connection.execute(f"RELEASE {savepoint}")
             outcomes.append(LegRunOutcome(leg=leg, error=str(exc)))
             continue
+        else:
+            connection.execute(f"RELEASE {savepoint}")
 
         outcome = LegRunOutcome(leg=leg, run=run, items=items, control_check=control_check)
         if export:

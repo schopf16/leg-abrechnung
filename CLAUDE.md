@@ -491,6 +491,11 @@ stored and **not derivable**: BKW's criterion is the number of Netzebenen the
 shared electricity crosses, confirmed per location. A `leg.discount_level`
 column existed in migrations 45/46 and was removed.
 
+So the LEG list's "Rabatt" cell (`substation_areas_status`) names the
+**composition in one word and never a percentage**: one Trafokreis per LEG is
+"Preisoptimiert", several are "Basis-Rabatt". Which percentage goes with
+either is BKW's to define, so the app does not repeat it.
+
 In `app.domain.participant_mix`, **Producer** is the feed-in side and
 **Consumer** the consumption side — per MeteringPoint direction, not per
 person; somebody with both counts on both sides. `compute_participant_roles`
@@ -502,14 +507,15 @@ in; those without a consumption assignment are a gap, named by
 without feeding in is the normal case.
 
 **No recommendations, only facts.** `find_upgrade_candidates`,
-`leg_should_split` and `check_leg_upgrade_potential` were removed: presence is
-not viability, and a ratio threshold was deliberately not built because the
-decision turns on economics, on what participants agree to, and on what BKW
-confirms — none of it in this database. The LEG detail page shows only the
-fact: per metering point, whether its Trafokreis already has a LEG of its own
-(🟢 with the name) or would need one founded (🟠), and only on a LEG spanning
-several Trafokreise. Kept because it is a fact:
-`check_substation_area_one_sided`.
+`leg_should_split` and `check_leg_upgrade_potential` were removed, and so was
+every "tieferer BKW-Rabatt möglich" hint on the dashboard, the Zuordnung
+dialog and the Person detail page: the decision turns on economics, on what
+participants agree to and on what BKW confirms — none of it in this database.
+What is left is the fact and nothing beside it: the LEG list's one-word
+`substation_areas_status`, the 🟢/🟠 per metering point on the LEG detail page,
+and `check_substation_area_one_sided`. A figure is stated, not graded — the
+LEG list prints the bare Produktionsleistung and leaves the verdict, its
+colour and the date it was read to the detail page.
 
 `app.domain.statistics.leg_balance` behind `/statistics/balance` reports and
 **grades nothing** — no threshold, no colour, no verdict word
@@ -656,12 +662,58 @@ of the two can be taken back.
 the card while the steps did too, so a mail about step four came out level
 with step two.
 
+**Three kinds of attachment, one list in the send dialog.** A ticked document
+is *produced* per person (`auto_attachments` → `message_attachments.prepare`);
+a file uploaded on the baustein is *stored* and goes along with every send of
+it (`message_template_attachment` → `stored_attachments`, which used to be
+listed on the page and never sent); a document picked in the send dialog
+belongs to that one mail (`store_upload`). `AttachmentPicker` in
+`app/gui/message_send_dialog.py` holds all three, and **every row can be
+dropped, ours included** — the administrator may send their own contract
+instead of the generated Beitrittserklärung. It is a class and not closures so
+a test can drive it: pick a file, drop one, read `paths`.
+
+A picked name comes from the browser and reaches a path, so it goes through
+`safe_attachment_filename` (`safe_filename` plus a plainly alphanumeric
+extension, which has to survive: it decides what the recipient's mail client
+makes of the file) and then `free_filename`, so attachments in the same mail
+cannot overwrite each other. When adding template-stored files, include names
+already used by produced attachments in `taken`. The total is checked against
+`MAX_INLINE_ATTACHMENT_BYTES` in the dialog, not only in `graph_client`.
+
 **A signature is referenced, not copied** (`message_template.signature_id`,
 migration 57), so changing one changes every template. The send dialog
 **composes then renders** -- `compose_with_signature` first,
 `render_template` after -- which is `bulk_send`'s order for the Rundmail;
 the other way round a placeholder inside a signature goes out literally
 here while working there.
+
+### Placeholders: one list, with a resolved example
+
+`PERSON_PLACEHOLDERS` in `app/emailing/templates.py` is what `Person` alone
+answers; `CONTEXT_PLACEHOLDERS` is what needs the database (`{trafokreis}` →
+`app/domain/substation_area_lookup.py`, BKW's own designation, falling back to
+the Trafokreis name). `ALL_PLACEHOLDERS` is both, and **every send path renders
+through `placeholder_values(connection, person)`** — `person_placeholder_values`
+alone leaves a `{trafokreis}` standing in the sent mail.
+
+The administrator's list is built **once**, in `app/gui/placeholder_help.py`:
+`placeholders_for(occasion)` adds the occasion's own placeholders (invoice,
+Mahnung) and `render_placeholder_help(...)` is the "Platzhalter ansehen" link
+on **every** form where a mail is written — Rundmail, Textbaustein,
+Rechnungsmail, Signatur, Versanddialog. No page spells the names out in a hint
+of its own any more, and no page validates against a set it assembles itself.
+The examples are resolved through the real extractors against one invented
+`EXAMPLE_PERSON`, so an example cannot drift from what the placeholder
+produces. `occasion` may be a callable, because the Textbaustein dialog changes
+it while open.
+
+The list also **resolves against a chosen real person** (`example_rows`), which
+is how a gap is found: a participant without a running Zuordnung shows
+`MISSING` at `{trafokreis}`. Deactivated persons are not offered — nothing is
+mailed to them. `{betrag}`, `{quartal}`, `{jahr}` and `{neue_frist}` keep their
+invented value even then, and the note says so: they exist at the moment of the
+send, not before.
 
 ## Tooling and CI
 

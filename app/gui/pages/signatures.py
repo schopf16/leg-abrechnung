@@ -5,6 +5,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
+from app.gui.placeholder_help import render_placeholder_help
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import text_key
@@ -105,6 +106,9 @@ def signatures_page() -> None:
                     .classes("w-full")
                     .props("rows=8")
                 )
+                # A signature takes part in the substitution too (the send
+                # composes, then renders), so the same list belongs here.
+                render_placeholder_help()
                 error_label = ui.label("").classes("text-negative")
 
                 def check_duplicate() -> bool:

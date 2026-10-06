@@ -347,7 +347,10 @@ def test_the_detail_page_shows_the_membership_history_and_the_salutation():
     assert any("Mitglied mit 12 Anteil(en)" in text for text in labels)
     assert any("5 Anteil(e)" in text for text in labels), "der frühere Zeitraum bleibt sichtbar"
     assert any("12 Anteil(e)" in text for text in labels)
-    assert any("Zweite Person: Herr Beat Beispiel" in text for text in labels)
+    # Both partners are contract parties, so the second one has a card of
+    # their own rather than a line appended to the first.
+    assert any("Person 2" in text for text in labels)
+    assert any("Herr Beat Beispiel" in text for text in labels)
 
 
 def _persons_page() -> None:

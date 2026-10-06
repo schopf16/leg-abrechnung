@@ -107,7 +107,7 @@ def _table(module: str, function: str, probe: str):
                 "Messpunkte",
                 "Produzenten / Konsumenten",
                 "Produktionsleistung",
-                "Trafokreise",
+                "Rabatt",
                 "",
             ],
         ),
@@ -156,13 +156,13 @@ def test_the_messpunkt_row_holds_the_site_in_one_cell():
     assert row["leg"] == "LEG Beispiel"
 
 
-def test_the_leg_row_holds_the_trafokreise_in_one_cell():
-    """The card drew a status line with the names indented underneath."""
+def test_the_leg_row_states_the_discount_in_one_word():
+    """The card drew a status line with the Trafokreis names underneath."""
     _deployment()
 
     _, table = _table("legs", "legs_page", "/probe-st-legs-row")
 
-    assert "TRA9365" in table.rows[0]["substation_areas"]
+    assert table.rows[0]["substation_areas_status"] == "Preisoptimiert"
 
 
 @pytest.mark.parametrize(

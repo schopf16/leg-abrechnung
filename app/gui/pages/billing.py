@@ -13,13 +13,13 @@ from app.domain.period import last_completed_quarter
 from app.domain.statistics import quarter_energy_totals
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
-    PERSON_PLACEHOLDERS,
     find_invalid_email_addresses,
     find_unknown_placeholders,
 )
 from app.gui.billing_cycle_view import render_billing_cycle
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
+from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.period_selector import QUARTER_LABELS
 from app.gui.safe_notify import safe_notify
 from app.models import billing_cycle as billing_cycle_repo
@@ -29,10 +29,9 @@ from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.pdf.export_service import export_billing_run_documents
 
-#: Every placeholder valid in an invoice email -- Person fields plus the
-#: billing-context ones (see `app.emailing.bulk_send.INVOICE_EXTRA_PLACEHOLDERS`).
-_INVOICE_PLACEHOLDER_KEYS = {*PERSON_PLACEHOLDERS, *bulk_send.INVOICE_EXTRA_PLACEHOLDERS}
-_INVOICE_PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in _INVOICE_PLACEHOLDER_KEYS)
+#: Every placeholder valid in an invoice email -- the ones available
+#: everywhere plus this occasion's own (`app.gui.placeholder_help`).
+_INVOICE_PLACEHOLDER_KEYS = placeholders_for(OCCASION_INVOICE)
 
 
 def _all_legs_row(outcome) -> dict:
@@ -535,9 +534,7 @@ def billing_page() -> None:
                     stored_subject, stored_body = message_templates.text_for(connection, OCCASION_INVOICE)
                 subject_input = ui.input("Betreff", value=stored_subject).classes("w-full")
                 body_textarea = ui.textarea("Nachricht", value=stored_body).classes("w-full").props("rows=8")
-                ui.label(f"Verfügbare Platzhalter: {_INVOICE_PLACEHOLDER_HINT}").classes(
-                    "text-caption text-grey-6"
-                )
+                render_placeholder_help(OCCASION_INVOICE)
 
                 info_container = ui.column().classes("w-full mt-2")
 
