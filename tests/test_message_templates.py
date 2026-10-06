@@ -7,6 +7,7 @@ from nicegui import Client, ui
 
 from app.db.connection import connection_scope
 from app.db.schema import initialize_database
+from app.emailing import graph_client
 from app.models import message_template as template_repo
 from app.domain import auto_attachments
 from app.domain.auto_attachments import KEY_INVOICE, KEY_MEMBERSHIP_CONTRACT
@@ -371,6 +372,15 @@ def test_the_pencil_opens_the_dialog_with_the_stored_text():
         if element.__class__.__name__ == "Input" and element.label == "Betreff"
     ]
     assert "Willkommen in der LEG" in subjects
+
+    uploads = [
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Upload" and element._props.get("label") == "Datei wählen"
+    ]
+    assert len(uploads) == 1
+    assert uploads[0]._props["max-file-size"] == graph_client.MAX_INLINE_ATTACHMENT_BYTES
+    assert uploads[0]._props["max-total-size"] == graph_client.MAX_INLINE_ATTACHMENT_BYTES
 
 
 @pytest.mark.parametrize(

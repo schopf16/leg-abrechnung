@@ -701,6 +701,27 @@ def test_a_file_stored_on_the_baustein_is_written_out_for_the_send(db, tmp_path)
     assert written[0].path.read_bytes() == b"%PDF-1.4 eigen"
 
 
+def test_a_stored_file_does_not_overwrite_a_produced_file(db, tmp_path):
+    """A stored attachment with the same name must keep both mail files intact."""
+    template_id = _template(db, "Willkommen")
+    template_repo.add_attachment(db, template_id, "Vertrag.pdf", b"eigener Vertrag")
+    produced = message_attachments.PreparedAttachment(
+        key="membership_contract",
+        label="Beitrittserklärung",
+        path=tmp_path / "Vertrag.pdf",
+        filename="Vertrag.pdf",
+    )
+    produced.path.write_bytes(b"persoenlicher Vertrag")
+
+    written = message_attachments.stored_attachments(
+        db, template_id, directory=tmp_path, taken=[produced.filename]
+    )
+
+    assert written[0].filename == "Vertrag (2).pdf"
+    assert produced.path.read_bytes() == b"persoenlicher Vertrag"
+    assert written[0].path.read_bytes() == b"eigener Vertrag"
+
+
 def _picker(prepared, directory, route: str):
     """Build the dialog's attachment picker, with its real upload widget."""
     from app.gui.message_send_dialog import AttachmentPicker

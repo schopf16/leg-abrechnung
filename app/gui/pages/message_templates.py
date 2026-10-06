@@ -393,7 +393,13 @@ def message_templates_page() -> None:
                     render_attachments()
                     upload.reset()
 
-                upload = ui.upload(on_multi_upload=handle_upload, multiple=True, auto_upload=True)
+                upload = ui.upload(
+                    on_multi_upload=handle_upload,
+                    multiple=True,
+                    auto_upload=True,
+                    max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                    max_total_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                )
                 upload.props('label="Datei wählen" accept=".pdf,.docx,.txt" flat bordered')
                 render_attachments()
 

@@ -501,16 +501,6 @@ in; those without a consumption assignment are a gap, named by
 `check_feed_in_without_consumption`. Deliberately one-directional — drawing
 without feeding in is the normal case.
 
-**No recommendations, only facts.** `find_upgrade_candidates`,
-`leg_should_split` and `check_leg_upgrade_potential` were removed: presence is
-not viability, and a ratio threshold was deliberately not built because the
-decision turns on economics, on what participants agree to, and on what BKW
-confirms — none of it in this database. The LEG detail page shows only the
-fact: per metering point, whether its Trafokreis already has a LEG of its own
-(🟢 with the name) or would need one founded (🟠), and only on a LEG spanning
-several Trafokreise. Kept because it is a fact:
-`check_substation_area_one_sided`.
-
 `app.domain.statistics.leg_balance` behind `/statistics/balance` reports and
 **grades nothing** — no threshold, no colour, no verdict word
 (`test_the_view_grades_nothing`). The **ordering** stands in for the verdict:
@@ -670,8 +660,9 @@ a test can drive it: pick a file, drop one, read `paths`.
 A picked name comes from the browser and reaches a path, so it goes through
 `safe_attachment_filename` (`safe_filename` plus a plainly alphanumeric
 extension, which has to survive: it decides what the recipient's mail client
-makes of the file) and then `free_filename`, so two files of one name cannot
-overwrite each other. The total is checked against
+makes of the file) and then `free_filename`, so attachments in the same mail
+cannot overwrite each other. When adding template-stored files, include names
+already used by produced attachments in `taken`. The total is checked against
 `MAX_INLINE_ATTACHMENT_BYTES` in the dialog, not only in `graph_client`.
 
 **A signature is referenced, not copied** (`message_template.signature_id`,

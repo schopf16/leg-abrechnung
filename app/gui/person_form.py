@@ -74,8 +74,10 @@ def open_person_form(
         ui.label("Name und Kontaktdaten sind jeweils bei der Person zusammengefasst.").classes(
             "text-caption text-grey-6"
         )
-        with ui.element("div").classes("grid w-full gap-3 mt-2").style(
-            "grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));"
+        with (
+            ui.element("div")
+            .classes("grid w-full gap-3 mt-2")
+            .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));")
         ):
             with ui.card().classes("w-full h-full"):
                 with ui.row().classes("items-center gap-2"):
@@ -97,7 +99,7 @@ def open_person_form(
                     "Nachname", value=_initial(existing, "last_name", prefill, "last_name")
                 ).classes("w-full max-w-sm")
                 email = ui.input(
-                    "E-Mail Person 1", value=_initial(existing, "contact_email", prefill, "email")
+                    "E-Mail", value=_initial(existing, "contact_email", prefill, "email")
                 ).classes("w-full")
                 first_email_error = ui.label("").classes("text-negative text-caption")
                 phone = ui.input(
@@ -150,9 +152,9 @@ def open_person_form(
             postal_code = ui.input(
                 "PLZ", value=_initial(existing, "billing_postal_code", prefill, "postal_code")
             ).classes("w-28")
-            city = ui.input(
-                "Ort", value=_initial(existing, "billing_city", prefill, "city")
-            ).classes("w-full max-w-sm")
+            city = ui.input("Ort", value=_initial(existing, "billing_city", prefill, "city")).classes(
+                "w-full max-w-sm"
+            )
             country = ui.input(
                 "Land", value=_initial(existing, "billing_country", prefill, "country", "CH")
             ).classes("w-28")

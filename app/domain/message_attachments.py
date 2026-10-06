@@ -93,7 +93,11 @@ def store_upload(
 
 
 def stored_attachments(
-    connection: sqlite3.Connection, template_id: Optional[int], *, directory: Path
+    connection: sqlite3.Connection,
+    template_id: Optional[int],
+    *,
+    directory: Path,
+    taken: Sequence[str] = (),
 ) -> list[PreparedAttachment]:
     """Write out the files stored on one baustein, so they can go along.
 
@@ -104,14 +108,14 @@ def stored_attachments(
     if template_id is None:
         return []
     written: list[PreparedAttachment] = []
+    used_names = list(taken)
     for attachment in message_template_repo.list_attachments(connection, template_id):
-        filename = free_filename(
-            safe_attachment_filename(attachment.filename), [entry.filename for entry in written]
-        )
+        filename = free_filename(safe_attachment_filename(attachment.filename), used_names)
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / filename
         target.write_bytes(attachment.content)
         written.append(PreparedAttachment(key=KEY_STORED, label=filename, path=target, filename=filename))
+        used_names.append(filename)
     return written
 
 

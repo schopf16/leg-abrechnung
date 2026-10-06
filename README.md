@@ -74,11 +74,9 @@ Die App ist in folgende Bereiche gegliedert (linke Navigation):
   Abrechnungsgruppe eines Messpunkts. Per Default entspricht eine LEG
   genau einem physischen Trafokreis der BKW — sie kann aber auch gezielt
   Messpunkte aus mehreren Trafokreisen zusammenfassen, wenn sich deren
-  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Die App
-  warnt auf der LEG-Seite, der Personen-Detailseite und beim Zuweisen
-  einer Zuordnung, wenn eine LEG mehrere Trafokreise umfasst, damit Sie
-  die betroffenen Personen informieren können. Der LEG-Name erscheint als
-  Absender auf den Rechnungen dieser LEG. Erfasst werden: Name (muss
+  Eigentümer zu einer gemeinsamen Abrechnung zusammenschliessen. Der
+  LEG-Name erscheint als Absender auf den Rechnungen dieser LEG. Erfasst
+  werden: Name (muss
   eindeutig sein), optionale Bemerkung sowie die **Produktionsleistung in
   Prozent** mit dem Datum, an dem sie abgelesen wurde („Stand vom“).
 

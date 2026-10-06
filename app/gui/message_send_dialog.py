@@ -57,7 +57,12 @@ def open_message_send_dialog(
         prepared = message_attachments.prepare(
             connection, person, template.auto_attachments, directory=SEND_DIR
         )
-        prepared += message_attachments.stored_attachments(connection, template.id, directory=SEND_DIR)
+        prepared += message_attachments.stored_attachments(
+            connection,
+            template.id,
+            directory=SEND_DIR,
+            taken=[entry.filename for entry in prepared],
+        )
         chosen = signature_repo.get(connection, template.signature_id) if template.signature_id else None
 
     # Composed before it is shown, not on the way out: the promise of this
