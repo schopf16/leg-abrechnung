@@ -464,35 +464,68 @@ def person_detail_page(person_id: int) -> None:
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.
         render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
-        ui.label(person.display_name).classes("text-xl font-bold mt-2")
-        with ui.card().classes("w-full max-w-lg"):
-            if not person.active:
-                ui.label(f"Status: {_status_text(person)}").classes("text-negative")
-            _customer_number_row(person, label="Kunden-Nr.:", classes="")
-            if person.bkw_customer_number is not None:
-                ui.label(f"BKW-Kundennummer: {person.bkw_customer_number}")
-            if person.company:
-                ui.label(f"Firma: {person.company}")
-            ui.label(f"Anrede: {person.salutation or '-'}")
-            ui.label(f"Vorname/Nachname: {person.full_name or '-'}")
-            if person.has_second_person:
-                ui.label(f"Zweite Person: {person.second_salutation} {person.second_full_name}".strip())
-            ui.label(f"E-Mail: {person.contact_email or '-'}")
-            if person.second_contact_email:
-                ui.label(f"E-Mail zweite Person: {person.second_contact_email}")
-            ui.label(f"Telefon: {person.contact_phone or '-'}")
-            ui.label(f"Briefanrede: {letter_salutation(person)}").classes("text-caption text-grey-6")
-            ui.label(
-                "Rechnungsadresse: "
-                f"{person.billing_street_with_number}, "
-                f"{person.billing_postal_code} {person.billing_city} "
-                f"({person.billing_country})"
+        if not person.active:
+            ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
+        if person.company:
+            with ui.card().classes("w-full max-w-5xl mb-3"):
+                ui.label("Firma").classes("text-caption text-grey-6")
+                ui.label(person.company).classes("text-body1")
+
+        with ui.element("div").classes("grid w-full max-w-5xl gap-3").style(
+            "grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));"
+        ):
+            with ui.card().classes("w-full"):
+                with ui.row().classes("items-center gap-2"):
+                    ui.label("1").classes(
+                        "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
+                    )
+                    ui.label("Person 1").classes("text-base font-bold")
+                    ui.label("Hauptkontakt").classes("text-caption text-grey-6")
+                first_person = " ".join(part for part in (person.salutation, person.full_name) if part)
+                ui.label(first_person or "-").classes("text-body1 mt-3")
+                ui.label("E-Mail").classes("text-caption text-grey-6 mt-3")
+                ui.label(person.contact_email or "-")
+                ui.label("Telefon").classes("text-caption text-grey-6 mt-3")
+                ui.label(person.contact_phone or "-")
+
+            if person.has_second_person or person.second_contact_email:
+                with ui.card().classes("w-full"):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.label("2").classes(
+                            "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
+                        )
+                        ui.label("Person 2").classes("text-base font-bold")
+                    second_person = " ".join(
+                        part for part in (person.second_salutation, person.second_full_name) if part
+                    )
+                    ui.label(second_person or "-").classes("text-body1 mt-3")
+                    ui.label("E-Mail").classes("text-caption text-grey-6 mt-3")
+                    ui.label(person.second_contact_email or "-")
+
+        with ui.card().classes("w-full max-w-5xl mt-3"):
+            ui.label("Rechnungsdaten").classes("text-base font-bold")
+            ui.label("Rechnungsadresse").classes("text-caption text-grey-6 mt-2")
+            ui.label(person.billing_street_with_number or "-")
+            locality = " ".join(
+                part for part in (person.billing_postal_code, person.billing_city) if part
             )
-            ui.label(f"IBAN: {format_iban(person.iban) if person.iban else '-'}")
-            ui.label(f"Papierrechnung: {'ja' if person.paper_invoice else 'nein'}")
-            if person.note:
-                ui.separator()
-                ui.label("Bemerkung (intern)").classes("text-caption text-grey-6")
+            ui.label(locality or "-")
+            ui.label(person.billing_country or "CH")
+            ui.label("Briefanrede").classes("text-caption text-grey-6 mt-3")
+            ui.label(letter_salutation(person))
+            ui.separator().classes("my-2")
+            ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
+            ui.label(format_iban(person.iban) if person.iban else "-")
+            ui.label("Papierrechnung").classes("text-caption text-grey-6 mt-2")
+            ui.label("Ja" if person.paper_invoice else "Nein")
+            _customer_number_row(person, label="Kunden-Nr.:", classes="text-body2 mt-2")
+            if person.bkw_customer_number is not None:
+                ui.label("BKW-Kundennummer").classes("text-caption text-grey-6 mt-2")
+                ui.label(str(person.bkw_customer_number))
+
+        if person.note:
+            with ui.card().classes("w-full max-w-5xl mt-3"):
+                ui.label("Interne Bemerkung").classes("text-base font-bold")
                 ui.label(person.note).classes("whitespace-pre-wrap")
 
         ui.label("Genossenschaft").classes("text-lg font-bold mt-6")
