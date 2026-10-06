@@ -93,7 +93,6 @@ def open_person_form(
                     first_name = ui.input(
                         "Vorname", value=_initial(existing, "first_name", prefill, "first_name")
                     ).classes("w-full max-w-56")
-                first_name.props('hint="Ansprechperson der Firma oder Privatperson"')
                 last_name = ui.input(
                     "Nachname", value=_initial(existing, "last_name", prefill, "last_name")
                 ).classes("w-full max-w-sm")
@@ -113,9 +112,6 @@ def open_person_form(
                     )
                     ui.label("Person 2").classes("text-base font-bold")
                     ui.label("optional").classes("text-caption text-grey-6")
-                ui.label("Erscheint gemeinsam mit Person 1 auf Anschrift und Rechnung.").classes(
-                    "text-caption text-grey-6 mt-1"
-                )
                 with ui.row().classes("w-full items-start gap-2 mt-2"):
                     second_salutation = ui.select(
                         ["", *SALUTATION_OPTIONS],
@@ -132,9 +128,11 @@ def open_person_form(
                     "E-Mail Person 2 (optional)",
                     value=existing.second_contact_email if existing else "",
                 ).classes("w-full")
-                second_email.props('hint="Erhält Nachrichten zusätzlich zur E-Mail von Person 1"')
                 second_email_error = ui.label("").classes("text-negative text-caption")
-                ui.label("Telefonnummer bei Person 1 erfassen.").classes("text-caption text-grey-6 mt-2")
+                ui.label(
+                    "Gemeinsame Anschrift und Rechnung. Telefonkontakt über Person 1; "
+                    "Nachrichten gehen an beide E-Mail-Adressen."
+                ).classes("text-caption text-grey-6 mt-2")
 
         ui.separator().classes("my-2")
         ui.label("Rechnungsadresse").classes("text-base font-bold")
