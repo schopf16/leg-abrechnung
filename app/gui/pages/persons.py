@@ -8,7 +8,6 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
-from app.domain.leg_composition import compute_leg_composition
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.filter_bar import FilterBar
@@ -559,7 +558,6 @@ def person_detail_page(person_id: int) -> None:
 
         ui.label("Zugeordnete Messpunkte").classes("text-lg font-bold mt-6")
         show_all_switch = ui.switch("alle anzeigen (inkl. Historie)")
-        leg_warnings_column = ui.column().classes("w-full")
         detail_table = ui.table(columns=DETAIL_COLUMNS, rows=[], row_key="id").classes("w-full mt-2")
         detail_table.add_slot(
             "body-cell-valid_from",
@@ -576,7 +574,6 @@ def person_detail_page(person_id: int) -> None:
             with connection_scope() as inner_connection:
                 assignments = assignment_repo.list_for_person(inner_connection, person_id)
                 rows = []
-                leg_ids_involved: set[int] = set()
                 for z in assignments:
                     is_relevant = z.valid_to is None or z.valid_to >= today
                     if not show_all_switch.value and not is_relevant:
@@ -589,8 +586,6 @@ def person_detail_page(person_id: int) -> None:
                         else None
                     )
                     leg = leg_repo.get(inner_connection, mp.leg_id) if mp and mp.leg_id else None
-                    if leg is not None:
-                        leg_ids_involved.add(leg.id)
                     rows.append(
                         {
                             "id": z.id,
@@ -604,25 +599,8 @@ def person_detail_page(person_id: int) -> None:
                             "is_future": z.valid_from > today,
                         }
                     )
-                mixed_warnings = []
-                for leg_id in sorted(leg_ids_involved):
-                    composition = compute_leg_composition(inner_connection, leg_id)
-                    if not composition.is_mixed:
-                        continue
-                    leg = leg_repo.get(inner_connection, leg_id)
-                    substation_area_names = ", ".join(t.name for t in composition.substation_areas)
-                    mixed_warnings.append(
-                        f"⚠ Die LEG „{leg.name}“ dieser Person umfasst mehrere "
-                        f"Trafokreise ({substation_area_names}) -- die BKW gewährt "
-                        "dafür vermutlich einen tieferen Rabatt. Informieren "
-                        "Sie die Person ggf. darüber."
-                    )
             detail_table.rows = rows
             detail_table.update()
-            leg_warnings_column.clear()
-            with leg_warnings_column:
-                for message in mixed_warnings:
-                    ui.label(message).classes("text-warning text-body2")
 
         show_all_switch.on_value_change(lambda _: refresh_detail())
         refresh_detail()

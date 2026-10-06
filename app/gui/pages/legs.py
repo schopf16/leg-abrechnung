@@ -34,7 +34,7 @@ from app.models import metering_point as metering_point_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.domain.production_capacity import compute_headroom, status_classes
+from app.domain.production_capacity import compute_headroom, format_percent, status_classes
 from app.models.leg import Leg, LegInUseError
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 
@@ -48,16 +48,13 @@ DIRECTION_LABELS = {
 PRINT_COLUMNS = [
     ("Name", "name"),
     ("Messpunkte", "metering_points_count"),
-    ("Trafokreis(e)", "substation_areas"),
+    ("Rabatt", "substation_areas_status"),
     ("Produzent : Konsument", "producer_consumer"),
     ("Produktionsleistung", "production_capacity"),
     ("Bemerkung", "note"),
 ]
 
 
-#: What the list shows. The Trafokreise a LEG spans are one cell rather than
-#: a list of labels: on a dedicated LEG it is one name, and the pooled one is
-#: exactly the case the detail page explains per metering point.
 COLUMNS = [
     {"name": "name", "label": "Name", "field": "name", "align": "left"},
     {
@@ -78,7 +75,7 @@ COLUMNS = [
         "field": "production_capacity",
         "align": "left",
     },
-    {"name": "substation_areas", "label": "Trafokreise", "field": "substation_areas", "align": "left"},
+    {"name": "substation_areas_status", "label": "Rabatt", "field": "substation_areas_status", "align": "left"},
     {"name": "actions", "label": "", "field": "actions", "align": "right"},
 ]
 
@@ -111,52 +108,36 @@ def _mix_badge(mix) -> str:
     return text
 
 
-def _to_row(connection, leg: Leg, *, warn_percent: float) -> dict:
+def _to_row(connection, leg: Leg) -> dict:
     """Convert a `Leg` into a row dict backing both the card and the printout."""
     composition = compute_leg_composition(connection, leg.id)
-    substation_area_names_list = [t.name for t in composition.substation_areas]
-    substation_area_names = ", ".join(substation_area_names_list) or "-"
-    # Rank and status text come out of one branch chain on purpose: the
-    # "Preisoptimierung (Handlungsbedarf zuerst)" order must never claim
-    # something the text next to it contradicts. All three are statements
-    # about how this LEG is composed -- no recommendation, see the module
-    # docstring.
+    # Rank and status text come out of one branch chain so the sort order and
+    # displayed discount label describe the same composition.
     if not composition.substation_areas:
         substation_areas_status = "-"
         # A LEG with no metering points yet has nothing to optimise. Last,
-        # not with the optimised ones -- "✓ Preisoptimiert" would be a
+        # not with the optimised ones -- "Preisoptimiert" would be a
         # claim about a LEG that has not been configured at all.
         optimisation_rank = 2
     elif composition.is_mixed:
-        substation_areas_status = f"Nicht Preisoptimiert ({len(substation_area_names_list)} Trafokreise)"
+        substation_areas_status = "Basis-Rabatt"
         optimisation_rank = 0
     else:
-        substation_areas_status = "✓ Preisoptimiert"
+        substation_areas_status = "Preisoptimiert"
         optimisation_rank = 1
-    headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
     mix = compute_participant_mix_for_leg(connection, leg.id)
-    search_text = " ".join([leg.name, leg.note or "", substation_area_names]).lower()
+    search_text = " ".join([leg.name, leg.note or ""]).lower()
     return {
         "id": leg.id,
         "name": leg.name,
         "metering_points_count": leg_repo.count_metering_points(connection, leg.id),
-        # One cell of text, for the printout and -- since the list became a
-        # table -- for the screen as well. The card drew a status line with
-        # the names indented underneath it, which a row has no room for.
-        "substation_areas": (
-            f"{substation_areas_status}: {substation_area_names}"
-            if composition.substation_areas
-            else substation_areas_status
-        ),
         "substation_areas_status": substation_areas_status,
         "producer_consumer": _mix_badge(mix),
-        "production_capacity": headroom.label
-        + (
-            f" (Stand {leg.production_capacity_recorded_at})"
-            if leg.production_capacity_percent is not None and leg.production_capacity_recorded_at
-            else ""
+        "production_capacity": (
+            format_percent(leg.production_capacity_percent)
+            if leg.production_capacity_percent is not None
+            else "-"
         ),
-        "production_capacity_status": headroom.status,
         "note": leg.note,
         "optimisation_rank": optimisation_rank,
         "_search": search_text,
@@ -235,10 +216,8 @@ def legs_page() -> None:
             """Reload all LEGs from the database and re-apply the filter."""
             nonlocal all_rows
             with connection_scope() as connection:
-                settings = settings_repo.get_settings(connection)
-                warn_percent = settings.production_capacity_warn_percent
                 legs = leg_repo.list_all(connection)
-                all_rows = [_to_row(connection, leg, warn_percent=warn_percent) for leg in legs]
+                all_rows = [_to_row(connection, leg) for leg in legs]
             problems.clear()
             problems.update(load_problems(SUBJECT_LEG))
             problem_filter.update(set(problems))
@@ -431,6 +410,12 @@ def leg_detail_page(leg_id: int) -> None:
         with connection_scope() as settings_connection:
             warn_percent = settings_repo.get_settings(settings_connection).production_capacity_warn_percent
         headroom = compute_headroom(leg.production_capacity_percent, warn_percent=warn_percent)
+        ui.label(
+            "Die Produktionsleistung ist die installierte Produktionsleistung im Verhältnis zur "
+            "gesamten Anschlussleistung der LEG-Teilnehmenden. Der Wert wird aus dem BKW-Portal "
+            "übernommen und kann aus den hier erfassten Daten nicht selbst berechnet werden. "
+            "Gesetzlich erforderlich sind mindestens 5 %."
+        ).classes("text-body2 text-grey-7")
         ui.label(
             headroom.label
             + (

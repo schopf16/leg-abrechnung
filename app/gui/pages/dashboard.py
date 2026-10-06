@@ -5,7 +5,6 @@ from typing import Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.leg_composition import compute_leg_composition
 from app.domain.participant_mix import compute_participant_roles
 from app.domain.statistics import installed_capacity_totals
 from app.domain.quality_checks import (
@@ -110,16 +109,6 @@ def _load_overview(connection) -> dict:
     for leg in legs:
         leg_runs = [r for r in runs if r.leg_id == leg.id]
         latest_run = max(leg_runs, key=lambda r: (r.period_year, r.period_quarter), default=None)
-        composition = compute_leg_composition(connection, leg.id)
-        if composition.is_mixed:
-            substation_area_names = ", ".join(t.name for t in composition.substation_areas)
-            action_items.append(
-                (
-                    f"LEG „{leg.name}“ umfasst mehrere Trafokreise ({substation_area_names}) "
-                    "-- tieferer BKW-Rabatt möglich.",
-                    "/legs",
-                )
-            )
         leg_rows.append(
             {
                 "name": leg.name,

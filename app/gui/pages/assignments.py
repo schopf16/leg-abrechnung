@@ -6,7 +6,6 @@ from typing import Optional
 from nicegui import ui
 
 from app.db.connection import connection_scope
-from app.domain.leg_composition import compute_leg_composition
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
@@ -300,7 +299,6 @@ def assignments_page() -> None:
                     value=existing.metering_point_id if existing else None,
                     with_input=True,
                 ).classes("w-full")
-                leg_warning = ui.label("").classes("text-warning text-body2")
 
                 def on_site_change() -> None:
                     """Re-filter the MeteringPoint options to the selected site."""
@@ -312,32 +310,9 @@ def assignments_page() -> None:
                         # administrator pick explicitly.
                         metering_point_select.value = None
                     metering_point_select.update()
-                    update_leg_warning()
 
                 site_select.on_value_change(lambda _: on_site_change())
 
-                def update_leg_warning() -> None:
-                    """Show a warning if the selected MeteringPoint's LEG mixes substation areas."""
-                    mp = metering_points_by_id.get(metering_point_select.value)
-                    if mp is None or mp.leg_id is None:
-                        leg_warning.text = ""
-                        return
-                    with connection_scope() as connection:
-                        composition = compute_leg_composition(connection, mp.leg_id)
-                        leg = leg_repo.get(connection, mp.leg_id)
-                    if composition.is_mixed and leg is not None:
-                        substation_area_names = ", ".join(t.name for t in composition.substation_areas)
-                        leg_warning.text = (
-                            f"⚠ Die LEG „{leg.name}“ dieses Messpunkts umfasst "
-                            f"mehrere Trafokreise ({substation_area_names}) -- "
-                            "informieren Sie die Person ggf. über den "
-                            "dadurch tieferen BKW-Rabatt."
-                        )
-                    else:
-                        leg_warning.text = ""
-
-                metering_point_select.on_value_change(lambda _: update_leg_warning())
-                update_leg_warning()
                 person_select = ui.select(
                     person_options,
                     label="Person",
