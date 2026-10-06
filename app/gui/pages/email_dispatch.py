@@ -12,14 +12,14 @@ from app.db.connection import connection_scope
 from app.format_size import format_size
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
-    PERSON_PLACEHOLDERS,
     compose_with_signature,
     find_invalid_email_addresses,
     find_unknown_placeholders,
-    person_placeholder_values,
+    placeholder_values,
     render_template,
     validate_person_placeholders,
 )
+from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.navigation import page_frame
 from app.gui.upload import read_uploaded_file
 from app.gui.person_form import open_person_form
@@ -30,8 +30,9 @@ from app.models import person as person_repo
 from app.models import signature as signature_repo
 from app.models.person import Person
 
-#: Shown as a hint above the subject/body fields.
-PLACEHOLDER_HINT = ", ".join(f"{{{name}}}" for name in PERSON_PLACEHOLDERS)
+#: Every placeholder a broadcast may use -- there is no occasion here, so it is
+#: the set available everywhere (`app.gui.placeholder_help`).
+BROADCAST_PLACEHOLDERS = placeholders_for()
 
 
 def attachments_too_large(attachments: list[tuple[str, bytes]]) -> bool:
@@ -51,16 +52,16 @@ def describe_attachments(attachments: list[tuple[str, bytes]]) -> str:
 
 
 def _validation_warnings(
-    subject: str, body: str, recipients: list[Person]
+    connection, subject: str, body: str, recipients: list[Person]
 ) -> tuple[set[str], list[Person], list[tuple[Person, list[str]]]]:
     """Compute every warning the "Validierung" step should show."""
-    unknown = find_unknown_placeholders(subject, PERSON_PLACEHOLDERS) | find_unknown_placeholders(
-        body, PERSON_PLACEHOLDERS
+    unknown = find_unknown_placeholders(subject, BROADCAST_PLACEHOLDERS) | find_unknown_placeholders(
+        body, BROADCAST_PLACEHOLDERS
     )
     invalid_emails = find_invalid_email_addresses(recipients)
     merged: dict[int, tuple[Person, set[str]]] = {}
     for template in (subject, body):
-        for person, fields in validate_person_placeholders(template, recipients):
+        for person, fields in validate_person_placeholders(template, recipients, connection):
             existing = merged.setdefault(person.id, (person, set()))
             existing[1].update(fields)
     missing = [(person, sorted(fields)) for person, fields in merged.values()]
@@ -199,7 +200,7 @@ def email_dispatch_page() -> None:
                     ui.button("Weiter", on_click=go_to_compose)
 
             with ui.step("compose", title="E-Mail verfassen"):
-                ui.label(f"Verfügbare Platzhalter: {PLACEHOLDER_HINT}").classes("text-caption text-grey-6")
+                render_placeholder_help()
                 subject_input = ui.input("Betreff").classes("w-full")
                 body_textarea = ui.textarea("Nachricht").classes("w-full").props("rows=8")
                 signature_select = ui.select(signature_options, label="Signatur", value=None).classes(
@@ -317,7 +318,15 @@ def email_dispatch_page() -> None:
                     subject = subject_input.value
                     signature = signatures_by_id.get(signature_select.value)
                     body = compose_with_signature(body_textarea.value, signature.content if signature else "")
-                    unknown, invalid_emails, missing = _validation_warnings(subject, body, recipients)
+                    # One connection for the whole step: `{trafokreis}` is
+                    # looked up per recipient, for the warnings and the preview.
+                    with connection_scope() as validation_connection:
+                        unknown, invalid_emails, missing = _validation_warnings(
+                            validation_connection, subject, body, recipients
+                        )
+                        preview_values = (
+                            placeholder_values(validation_connection, recipients[0]) if recipients else {}
+                        )
                     with validation_container:
                         ui.label(f"Empfänger: {len(recipients)}").classes("font-bold")
                         ui.label(describe_attachments(attachments)).classes(
@@ -329,7 +338,7 @@ def email_dispatch_page() -> None:
                                 "gesendet werden. Unter „E-Mail verfassen“ einen entfernen."
                             ).classes("text-negative text-body2 font-bold")
                         if recipients:
-                            values = person_placeholder_values(recipients[0])
+                            values = preview_values
                             ui.label("Vorschau (für die erste Person in der Liste):").classes(
                                 "text-caption text-grey-6 mt-2"
                             )

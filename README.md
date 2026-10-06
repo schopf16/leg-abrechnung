@@ -285,7 +285,10 @@ grösstenteils abgeschaltet hat).
 - **„E-Mail versenden"** (eigene Seite): geführter Ablauf in 5 Schritten —
   Empfänger-Art wählen (alle/eine LEG), die vorgeschlagene Liste einsehen
   und bei Bedarf Personen entfernen/hinzufügen, Text verfassen (mit
-  Platzhaltern wie `{vorname}`, `{anrede}` usw.), Validierung (Vorschau +
+  Platzhaltern wie `{briefanrede}`, `{vorname}` oder `{trafokreis}` — der
+  Knopf „Platzhalter ansehen" zeigt überall dieselbe Liste samt
+  aufgelöstem Beispiel, wahlweise für eine erfundene oder für eine
+  bestimmte Person), Validierung (Vorschau +
   Warnungen bei fehlenden Angaben, mit direktem „Bearbeiten"-Knopf zur
   betroffenen Person), Versenden mit Fortschrittsanzeige. Vergangene
   Versände sind unten auf derselben Seite einsehbar.

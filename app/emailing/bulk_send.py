@@ -7,7 +7,7 @@ from typing import Callable, Optional, Sequence
 
 from app.config import GraphConfig
 from app.emailing import graph_client
-from app.emailing.templates import person_placeholder_values, render_template
+from app.emailing.templates import placeholder_values, render_template
 from app.models import billing_run as billing_run_repo
 from app.models import cooperative_membership as cooperative_membership_repo
 from app.models import email_log as email_log_repo
@@ -82,8 +82,9 @@ async def send_broadcast_email(
 
     for index, person in enumerate(recipients):
         try:
-            rendered_subject = render_template(subject, person_placeholder_values(person))
-            rendered_body = render_template(body, person_placeholder_values(person))
+            values = placeholder_values(connection, person)
+            rendered_subject = render_template(subject, values)
+            rendered_body = render_template(body, values)
             await graph_client.send_email(
                 config,
                 access_token,
@@ -220,7 +221,7 @@ async def _send_one_invoice_email(
     connection, config, access_token, run, item, person, leg, subject, body
 ) -> None:
     """Render and send one person's invoice email, then record `email_sent_at`."""
-    values = {**person_placeholder_values(person), **_invoice_placeholder_values(run, item, leg)}
+    values = {**placeholder_values(connection, person), **_invoice_placeholder_values(run, item, leg)}
     await graph_client.send_email(
         config,
         access_token,

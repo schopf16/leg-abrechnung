@@ -9,7 +9,7 @@ from typing import Optional
 from app.config import GraphConfig
 from app.emailing import graph_client
 from app.domain import message_templates
-from app.emailing.templates import person_placeholder_values, render_template
+from app.emailing.templates import placeholder_values, render_template
 from app.models.message_template import OCCASION_DUNNING1, OCCASION_DUNNING2
 from app.models import account_entry as account_entry_repo
 from app.models import billing_run as billing_run_repo
@@ -110,7 +110,7 @@ def render_dunning_text(connection, settings, candidate: DunningCandidate) -> tu
 
     new_deadline = (date.today() + timedelta(days=settings.dunning_new_deadline_days)).strftime("%d.%m.%Y")
     values = {
-        **person_placeholder_values(candidate.person),
+        **placeholder_values(connection, candidate.person),
         "betrag": f"{candidate.total_open_rappen / 100:.2f}",
         "neue_frist": new_deadline,
     }

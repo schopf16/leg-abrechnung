@@ -663,6 +663,33 @@ migration 57), so changing one changes every template. The send dialog
 the other way round a placeholder inside a signature goes out literally
 here while working there.
 
+### Placeholders: one list, with a resolved example
+
+`PERSON_PLACEHOLDERS` in `app/emailing/templates.py` is what `Person` alone
+answers; `CONTEXT_PLACEHOLDERS` is what needs the database (`{trafokreis}` →
+`app/domain/substation_area_lookup.py`, BKW's own designation, falling back to
+the Trafokreis name). `ALL_PLACEHOLDERS` is both, and **every send path renders
+through `placeholder_values(connection, person)`** — `person_placeholder_values`
+alone leaves a `{trafokreis}` standing in the sent mail.
+
+The administrator's list is built **once**, in `app/gui/placeholder_help.py`:
+`placeholders_for(occasion)` adds the occasion's own placeholders (invoice,
+Mahnung) and `render_placeholder_help(...)` is the "Platzhalter ansehen" link
+on **every** form where a mail is written — Rundmail, Textbaustein,
+Rechnungsmail, Signatur, Versanddialog. No page spells the names out in a hint
+of its own any more, and no page validates against a set it assembles itself.
+The examples are resolved through the real extractors against one invented
+`EXAMPLE_PERSON`, so an example cannot drift from what the placeholder
+produces. `occasion` may be a callable, because the Textbaustein dialog changes
+it while open.
+
+The list also **resolves against a chosen real person** (`example_rows`), which
+is how a gap is found: a participant without a running Zuordnung shows
+`MISSING` at `{trafokreis}`. Deactivated persons are not offered — nothing is
+mailed to them. `{betrag}`, `{quartal}`, `{jahr}` and `{neue_frist}` keep their
+invented value even then, and the note says so: they exist at the moment of the
+send, not before.
+
 ## Tooling and CI
 
 `.github/workflows/ci.yml` runs on every push/PR: `ruff check`, pytest,

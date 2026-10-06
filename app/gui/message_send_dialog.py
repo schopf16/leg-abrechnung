@@ -23,14 +23,14 @@ from app.domain.message_templates import DueMessage
 from app.emailing.graph_client import GraphApiError, GraphAuthError
 from app.emailing.person_send import send_person_message
 from app.emailing.templates import (
-    PERSON_PLACEHOLDERS,
     compose_with_signature,
     find_unknown_placeholders,
-    person_placeholder_values,
+    placeholder_values,
     render_template,
 )
 from app.format_size import format_size
 from app.gui.form_dialog import form_guard
+from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.safe_notify import safe_notify
 from app.models import signature as signature_repo
 from app.models.person import Person
@@ -50,9 +50,9 @@ def open_message_send_dialog(
 ) -> None:
     """Show one baustein's mail for this person, and send it on a click."""
     template = due.template
-    values = person_placeholder_values(person)
 
     with connection_scope() as connection:
+        values = placeholder_values(connection, person)
         prepared = message_attachments.prepare(
             connection, person, template.auto_attachments, directory=SEND_DIR
         )
@@ -80,7 +80,8 @@ def open_message_send_dialog(
 
         # Over the composed text, since the signature takes part in the
         # substitution too.
-        _render_placeholder_note(template.subject + "\n" + raw_body)
+        _render_placeholder_note(template.subject + "\n" + raw_body, occasion)
+        render_placeholder_help(occasion)
         _render_attachments(prepared)
 
         error_label = ui.label("").classes("text-negative text-body2")
@@ -129,9 +130,9 @@ def open_message_send_dialog(
     dialog.open()
 
 
-def _render_placeholder_note(raw_text: str) -> None:
+def _render_placeholder_note(raw_text: str, occasion: str) -> None:
     """Name any placeholder the template uses that nothing can fill."""
-    unknown = find_unknown_placeholders(raw_text, PERSON_PLACEHOLDERS.keys())
+    unknown = find_unknown_placeholders(raw_text, placeholders_for(occasion))
     if not unknown:
         return
     names = ", ".join("{" + name + "}" for name in sorted(unknown))
