@@ -491,6 +491,11 @@ stored and **not derivable**: BKW's criterion is the number of Netzebenen the
 shared electricity crosses, confirmed per location. A `leg.discount_level`
 column existed in migrations 45/46 and was removed.
 
+So the LEG list's "Rabatt" cell (`substation_areas_status`) names the
+**composition in one word and never a percentage**: one Trafokreis per LEG is
+"Preisoptimiert", several are "Basis-Rabatt". Which percentage goes with
+either is BKW's to define, so the app does not repeat it.
+
 In `app.domain.participant_mix`, **Producer** is the feed-in side and
 **Consumer** the consumption side — per MeteringPoint direction, not per
 person; somebody with both counts on both sides. `compute_participant_roles`
