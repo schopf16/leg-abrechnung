@@ -9,11 +9,12 @@ failing the send -- the administrator may send the mail without it.
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from app.domain.auto_attachments import BY_KEY, KEY_INVOICE, KEY_MEMBERSHIP_CONTRACT
 from app.domain.membership_contract import gather
 from app.models import leg_document as leg_document_repo
+from app.models import message_template as message_template_repo
 from app.models.person import Person
 from app.pdf.membership_contract import build_contract
 
@@ -34,6 +35,13 @@ class PreparedAttachment:
         return self.path is not None
 
 
+#: A file stored on the baustein itself, the same for every recipient.
+KEY_STORED = "stored"
+
+#: A document the administrator picks for this one mail, in the send dialog.
+KEY_UPLOAD = "upload"
+
+
 def safe_filename(text: str) -> str:
     """Reduce a name to something Windows accepts in a filename.
 
@@ -43,6 +51,68 @@ def safe_filename(text: str) -> str:
     """
     keep = [character if character.isalnum() or character in " -_" else "_" for character in text]
     return "".join(keep).strip() or "Person"
+
+
+def safe_attachment_filename(name: str) -> str:
+    """Reduce a picked file's own name to a safe filename, keeping its extension.
+
+    The extension decides what the recipient's mail client makes of the file,
+    so unlike `safe_filename` it survives -- but only a plainly alphanumeric
+    one, and the name is taken apart on both separators first: it comes from
+    the browser, and it ends up in a path.
+    """
+    bare = name.replace("\\", "/").rsplit("/", 1)[-1]
+    stem, dot, extension = bare.rpartition(".")
+    if not dot or not extension.isalnum() or len(extension) > 10:
+        return safe_filename(bare)
+    return f"{safe_filename(stem) if stem.strip(' .') else 'Dokument'}.{extension.lower()}"
+
+
+def free_filename(filename: str, taken: Sequence[str]) -> str:
+    """Find a name no other attachment of this one mail carries yet."""
+    if filename not in taken:
+        return filename
+    stem, dot, extension = filename.rpartition(".")
+    base, suffix = (stem, f".{extension}") if dot else (filename, "")
+    for number in range(2, 1000):
+        candidate = f"{base} ({number}){suffix}"
+        if candidate not in taken:
+            return candidate
+    return filename
+
+
+def store_upload(
+    content: bytes, name: str, *, directory: Path, taken: Sequence[str] = ()
+) -> PreparedAttachment:
+    """Write one picked document next to the produced ones, under a free name."""
+    filename = free_filename(safe_attachment_filename(name), taken)
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / filename
+    target.write_bytes(content)
+    return PreparedAttachment(key=KEY_UPLOAD, label=filename, path=target, filename=filename)
+
+
+def stored_attachments(
+    connection: sqlite3.Connection, template_id: Optional[int], *, directory: Path
+) -> list[PreparedAttachment]:
+    """Write out the files stored on one baustein, so they can go along.
+
+    They are the administrator's own documents -- an own contract, a leaflet --
+    and they travel with every send of that baustein, where a ticked document
+    is produced per person.
+    """
+    if template_id is None:
+        return []
+    written: list[PreparedAttachment] = []
+    for attachment in message_template_repo.list_attachments(connection, template_id):
+        filename = free_filename(
+            safe_attachment_filename(attachment.filename), [entry.filename for entry in written]
+        )
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / filename
+        target.write_bytes(attachment.content)
+        written.append(PreparedAttachment(key=KEY_STORED, label=filename, path=target, filename=filename))
+    return written
 
 
 def prepare(

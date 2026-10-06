@@ -157,7 +157,11 @@ def dashboard_page() -> None:
         counts = overview["counts"]
 
         # -- Handlungsbedarf: whatever needs attention, front and centre. --
-        has_issues = bool(overview["action_items"]) or overview["open_registrations"] > 0
+        has_issues = (
+            bool(overview["action_items"])
+            or overview["open_registrations"] > 0
+            or overview["open_onboardings"] > 0
+        )
         with ui.card().classes("w-full " + ("bg-red-1" if has_issues else "bg-green-1")):
             ui.label("Handlungsbedarf").classes("font-bold")
             if overview["action_items"]:

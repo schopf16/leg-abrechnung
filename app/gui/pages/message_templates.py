@@ -346,6 +346,10 @@ def message_templates_page() -> None:
 
                 ui.separator().classes("my-2")
                 ui.label("Weitere Anhänge").classes("text-body1 font-bold")
+                ui.label(
+                    "Eigene Dokumente, die bei jedem Versand dieses Bausteins "
+                    "mitgehen -- im Versanddialog einzeln abwählbar."
+                ).classes("text-caption text-grey-6")
                 attachment_list = ui.column().classes("w-full gap-1")
 
                 def render_attachments() -> None:

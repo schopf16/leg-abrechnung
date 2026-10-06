@@ -191,13 +191,24 @@ def create_billing_runs_for_all_legs(
 
     outcomes: list[LegRunOutcome] = []
     for leg in leg_repo.list_all(connection):
+        # A failed replacement must not leave the old run deleted (or a new
+        # run half-written). Per-LEG savepoints let the rest of the batch
+        # continue while keeping each individual replacement atomic.
+        savepoint = f"billing_leg_{leg.id}"
+        connection.execute(f"SAVEPOINT {savepoint}")
         try:
             run, items, control_check, _ = create_or_replace_billing_run(connection, leg.id, year, quarter)
         except LegNotAssignedError:
+            connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             raise
         except Exception as exc:  # noqa: BLE001 -- one LEG must not stop the rest
+            connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             outcomes.append(LegRunOutcome(leg=leg, error=str(exc)))
             continue
+        else:
+            connection.execute(f"RELEASE SAVEPOINT {savepoint}")
 
         outcome = LegRunOutcome(leg=leg, run=run, items=items, control_check=control_check)
         if export:

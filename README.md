@@ -292,6 +292,12 @@ grösstenteils abgeschaltet hat).
   Warnungen bei fehlenden Angaben, mit direktem „Bearbeiten"-Knopf zur
   betroffenen Person), Versenden mit Fortschrittsanzeige. Vergangene
   Versände sind unten auf derselben Seite einsehbar.
+- **Textbaustein-Versand** (von der Person aus): das Mail wird fertig
+  gezeigt und bleibt editierbar. Unter „Anhänge" steht, was mitgeht — die
+  erzeugte Beitrittserklärung, die am Baustein hinterlegten Dateien und
+  Dokumente, die hier für dieses eine Mail hinzugefügt werden. **Jede Zeile
+  lässt sich entfernen**, auch die erzeugte: so geht ein eigener Vertrag
+  statt des generierten mit.
 - **Rechnungsversand** (Seite „Rechnungslauf"): nach dem PDF-Export der
   Knopf **„Rechnungen per E-Mail versenden"** — die hinterlegte Vorlage
   (einstellbar unter „Einstellungen") wird vorausgefüllt, bleibt aber für

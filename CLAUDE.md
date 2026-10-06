@@ -656,6 +656,24 @@ of the two can be taken back.
 the card while the steps did too, so a mail about step four came out level
 with step two.
 
+**Three kinds of attachment, one list in the send dialog.** A ticked document
+is *produced* per person (`auto_attachments` → `message_attachments.prepare`);
+a file uploaded on the baustein is *stored* and goes along with every send of
+it (`message_template_attachment` → `stored_attachments`, which used to be
+listed on the page and never sent); a document picked in the send dialog
+belongs to that one mail (`store_upload`). `AttachmentPicker` in
+`app/gui/message_send_dialog.py` holds all three, and **every row can be
+dropped, ours included** — the administrator may send their own contract
+instead of the generated Beitrittserklärung. It is a class and not closures so
+a test can drive it: pick a file, drop one, read `paths`.
+
+A picked name comes from the browser and reaches a path, so it goes through
+`safe_attachment_filename` (`safe_filename` plus a plainly alphanumeric
+extension, which has to survive: it decides what the recipient's mail client
+makes of the file) and then `free_filename`, so two files of one name cannot
+overwrite each other. The total is checked against
+`MAX_INLINE_ATTACHMENT_BYTES` in the dialog, not only in `graph_client`.
+
 **A signature is referenced, not copied** (`message_template.signature_id`,
 migration 57), so changing one changes every template. The send dialog
 **composes then renders** -- `compose_with_signature` first,
