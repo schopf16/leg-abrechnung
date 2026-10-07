@@ -32,7 +32,7 @@ def _api_entry(entry_id: int, form_type: str = "registration", **payload_overrid
         "bkw_kundennummer": "",
         "iban": "",
         "message": "",
-        "meters": [{"meter_number": "CH1022201234500000000000000032841", "note": "PV"}],
+        "meters": [{"meter_number": "CH1099900000000000000000000012345", "note": "PV"}],
     }
     payload.update(payload_overrides)
     return {
@@ -54,7 +54,7 @@ def test_fetch_new_registrations_parses_successful_response():
     assert submissions[0].cloudflare_id == 1
     assert submissions[0].first_name == "Anna"
     assert submissions[0].last_name == "Muster"
-    assert submissions[0].meters == [("CH1022201234500000000000000032841", "PV")]
+    assert submissions[0].meters == [("CH1099900000000000000000000012345", "PV")]
     mock_get.assert_called_once()
     _, kwargs = mock_get.call_args
     assert kwargs["headers"]["Authorization"] == "Bearer token"

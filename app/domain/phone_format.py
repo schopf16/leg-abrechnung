@@ -19,6 +19,9 @@ def format_swiss_phone(value: str) -> str:
         digits = digits[1:]
     else:
         return original
+    if len(digits) == 10 and digits.startswith("0"):
+        # "+41 (0)31 ..." -- the trunk zero written after the country code.
+        digits = digits[1:]
     if len(digits) != 9:
         return original
     return f"+41 {digits[:2]} {digits[2:5]} {digits[5:7]} {digits[7:9]}"

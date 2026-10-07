@@ -80,7 +80,12 @@ def _render_choices(
     }
     with ui.column().classes("gap-1 items-start no-wrap"):
         with ui.row().classes("items-center gap-1 no-wrap"):
-            choice = ui.select(options, label="Textbaustein wählen").props("dense outlined").classes("min-w-48")
+            first_open = next((message.template.id for message in messages if not message.was_sent), None)
+            choice = (
+                ui.select(options, label="Textbaustein wählen", value=first_open)
+                .props("dense outlined")
+                .classes("min-w-48")
+            )
 
             def open_selected() -> None:
                 """Open the selected draft, asking first if it was already settled."""
@@ -99,9 +104,15 @@ def _render_choices(
         for message in messages:
             if message.was_sent:
                 suffix = " (von Hand)" if message.by_hand else ""
-                ui.label(f"{message.template.name}: {format_date(message.sent_on)}{suffix}").classes(
-                    "text-caption text-grey-7"
-                )
+                with ui.row().classes("items-center gap-2 no-wrap"):
+                    ui.label(f"{message.template.name}: {format_date(message.sent_on)}{suffix}").classes(
+                        "text-caption text-grey-7"
+                    )
+                    if message.by_hand:
+                        ui.button(
+                            "Markierung entfernen",
+                            on_click=lambda m=message: _unmark(person, m, on_changed),
+                        ).props(_QUIET)
             else:
                 with ui.row().classes("items-center gap-1 no-wrap"):
                     if message.days_waiting is not None:

@@ -22,6 +22,7 @@ from app.models.site import Site
 from app.models.substation_area import SubstationArea
 from app.pdf.membership_contract import build_contract
 
+
 def _person(connection, **overrides) -> Person:
     """Create a participant."""
     values = {
@@ -164,8 +165,23 @@ def test_a_couple_is_named_twice_on_one_line():
         fields = gather(connection, person)
 
     assert fields.names == "Anna Muster und Beat Beispiel"
+    # The form splits Vorname and Nachname; read together they still name both.
+    assert (fields.first_name, fields.last_name) == ("Anna Muster und Beat", "Beispiel")
+    assert fields.salutation == ""
     assert "anna@example.invalid" in fields.email
     assert "beat@example.invalid" in fields.email
+
+
+def test_a_couple_sharing_a_surname_is_one_familie():
+    """The form's Anrede offers "Familie", and the surname is not repeated."""
+    with connection_scope() as connection:
+        person = _person(
+            connection, second_salutation="Herr", second_first_name="Beat", second_last_name="Muster"
+        )
+
+        fields = gather(connection, person)
+
+    assert (fields.salutation, fields.first_name, fields.last_name) == ("Familie", "Anna und Beat", "Muster")
 
 
 def test_two_metering_points_per_direction_both_appear():
@@ -313,9 +329,22 @@ def test_contract_generation_requires_an_uploaded_template(tmp_path):
 def _write_synthetic_form(path: Path) -> None:
     """Create a fake form for tests without including any real contract PDF."""
     field_names = (
-        "firma", "anrede", "vorname", "nachname", "adresse", "plz", "ort", "email",
-        "telefon", "messpunkt_bezug", "messpunkt_einspeisung", "iban", "pv_leistung_kwp",
-        "batteriespeicher_kwh", "wallbox_leistung_kw", "ort_datum",
+        "firma",
+        "anrede",
+        "vorname",
+        "nachname",
+        "adresse",
+        "plz",
+        "ort",
+        "email",
+        "telefon",
+        "messpunkt_bezug",
+        "messpunkt_einspeisung",
+        "iban",
+        "pv_leistung_kwp",
+        "batteriespeicher_kwh",
+        "wallbox_leistung_kw",
+        "ort_datum",
     )
     canvas = Canvas(str(path), pagesize=A4)
     for index, name in enumerate(field_names):
@@ -324,3 +353,37 @@ def _write_synthetic_form(path: Path) -> None:
     canvas.showPage()
     canvas.showPage()
     canvas.save()
+
+
+def test_a_field_beyond_page_one_is_filled_too(tmp_path):
+    """Validation accepts a field on any page, so filling must reach it there."""
+    source = tmp_path / "split-form.pdf"
+    names = (
+        "firma",
+        "anrede",
+        "vorname",
+        "nachname",
+        "adresse",
+        "plz",
+        "ort",
+        "email",
+        "telefon",
+        "messpunkt_bezug",
+        "messpunkt_einspeisung",
+        "pv_leistung_kwp",
+        "batteriespeicher_kwh",
+        "wallbox_leistung_kw",
+        "ort_datum",
+    )
+    canvas = Canvas(str(source), pagesize=A4)
+    for index, name in enumerate(names):
+        canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
+    canvas.showPage()
+    canvas.acroForm.textfield(name="iban", x=10, y=800, width=180, height=12)
+    canvas.showPage()
+    canvas.save()
+    target = tmp_path / "vertrag.pdf"
+
+    build_contract(ContractFields(iban="CH9300762011623852957"), source.read_bytes(), target)
+
+    assert PdfReader(str(target)).get_fields()["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"

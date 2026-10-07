@@ -70,9 +70,9 @@ def build_contract(
     }
 
     writer = PdfWriter(clone_from=reader)
-    writer.update_page_form_field_values(
-        writer.pages[0], values, auto_regenerate=True
-    )
+    # Every page, not only the first: validation accepts a field anywhere in
+    # the document, so filling page one alone could leave one silently blank.
+    writer.update_page_form_field_values(None, values, auto_regenerate=True)
     with target.open("wb") as handle:
         writer.write(handle)
     return target
@@ -80,13 +80,16 @@ def build_contract(
 
 def validate_contract_template(content: bytes) -> None:
     """Reject PDF templates that lack a page or a field the app must fill."""
+    # pypdf raises more than PdfReadError on a damaged file (struct, key and
+    # value errors), and an encrypted one only fails once its fields are read.
     try:
         reader = PdfReader(BytesIO(content))
-    except PdfReadError as exc:
+        page_count = len(reader.pages)
+        actual_fields = reader.get_fields() or {}
+    except (PdfReadError, ValueError, KeyError, TypeError, AttributeError) as exc:
         raise ValueError("Die Beitrittserklärungs-Vorlage ist keine lesbare PDF-Datei.") from exc
-    if not reader.pages:
+    if not page_count:
         raise ValueError("Die Beitrittserklärungs-Vorlage enthält keine Seiten.")
-    actual_fields = reader.get_fields() or {}
     missing = sorted(set(_FIELD_NAMES.values()) - set(actual_fields))
     if missing:
         raise ValueError(

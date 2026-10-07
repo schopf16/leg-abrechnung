@@ -12,6 +12,7 @@ from app.domain.phone_format import format_swiss_phone
         ("031 123 45 67", "+41 31 123 45 67"),
         ("+41311234567", "+41 31 123 45 67"),
         ("0041 79 123 45 67", "+41 79 123 45 67"),
+        ("+41 (0)31 123 45 67", "+41 31 123 45 67"),
         ("+49 30 123456", "+49 30 123456"),
         ("031 123", "031 123"),
         ("", ""),
@@ -59,3 +60,9 @@ def test_person_form_formats_phone_and_iban_on_open_and_blur():
         for handler in iban_blurs:
             handler()
         assert iban.value == "CH93 0076 2011 6238 5295 7"
+
+        # A too-short IBAN: regrouping it on blur must not wipe the verdict.
+        iban.value = "CH930076"
+        for handler in iban_blurs:
+            handler()
+        assert iban._props.get("error") is True

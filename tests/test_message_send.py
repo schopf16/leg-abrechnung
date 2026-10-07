@@ -343,11 +343,26 @@ def test_the_contract_is_built_when_a_form_is_stored(db, tmp_path):
 
     source = tmp_path / "formular.pdf"
     canvas = Canvas(str(source), pagesize=A4)
-    for index, name in enumerate((
-        "firma", "anrede", "vorname", "nachname", "adresse", "plz", "ort", "email",
-        "telefon", "messpunkt_bezug", "messpunkt_einspeisung", "iban", "pv_leistung_kwp",
-        "batteriespeicher_kwh", "wallbox_leistung_kw", "ort_datum",
-    )):
+    for index, name in enumerate(
+        (
+            "firma",
+            "anrede",
+            "vorname",
+            "nachname",
+            "adresse",
+            "plz",
+            "ort",
+            "email",
+            "telefon",
+            "messpunkt_bezug",
+            "messpunkt_einspeisung",
+            "iban",
+            "pv_leistung_kwp",
+            "batteriespeicher_kwh",
+            "wallbox_leistung_kw",
+            "ort_datum",
+        )
+    ):
         canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
     canvas.showPage()
     canvas.save()
@@ -370,6 +385,51 @@ def test_the_contract_reports_missing_database_form(db, tmp_path):
 
     assert not prepared[0].is_ready
     assert "Keine Beitrittserklärungs-Vorlage" in prepared[0].problem
+    assert prepared[0].path is None, "nichts Halbes, das vollständig aussieht"
+
+
+def test_an_unusable_stored_template_is_reported_not_raised(db, tmp_path):
+    """A template stored before upload validation existed must not break the send."""
+    leg_document_repo.put(db, "membership_contract", "alt.pdf", b"%PDF-1.4 kaputt")
+    person = _person(db)
+
+    prepared = message_attachments.prepare(db, person, ["membership_contract"], directory=tmp_path / "out")
+
+    assert not prepared[0].is_ready
+    assert "keine lesbare PDF-Datei" in prepared[0].problem
+
+
+def test_a_variant_marked_by_hand_can_be_unmarked_from_the_choice(db, no_drafts):
+    """With several variants on one step, a manual mark must stay removable."""
+    person = _person(db)
+    first_id = _template(db, "Willkommen 20%", step="leg_assigned_at")
+    second_id = _template(db, "Willkommen 40%", step="leg_assigned_at")
+    templates = {template.id: template for template in template_repo.list_all(db)}
+    mark_done(db, person.id, templates[first_id], OCCASION_ONBOARDING)
+    log = log_repo.latest_by_template(db, person.id)[first_id]
+    due = [
+        DueMessage(templates[first_id], "Einteilung in LEG", None, log),
+        DueMessage(templates[second_id], "Einteilung in LEG", None),
+    ]
+
+    from app.gui import message_buttons
+
+    client = Client(ui.page("/probe-message-choice-unmark")(lambda: None), request=None)
+    with client:
+        message_buttons.render_step_messages(person, due, OCCASION_ONBOARDING)
+        choice = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Select" and element._props.get("label") == "Textbaustein wählen"
+        )
+        unmark = [
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Button" and element.text == "Markierung entfernen"
+        ]
+
+    assert choice.value == second_id, "the open variant is preselected"
+    assert len(unmark) == 1
 
 
 def test_an_invoice_cannot_be_attached_outside_a_billing_run(db, tmp_path):
@@ -607,9 +667,9 @@ def test_multiple_due_bausteine_require_a_choice_before_opening_a_draft(db, no_d
                 for element in client.elements.values()
             )
             choice.value = second_id
-            next(listener.handler for listener in button._event_listeners.values() if listener.type == "click")(
-                None
-            )
+            next(
+                listener.handler for listener in button._event_listeners.values() if listener.type == "click"
+            )(None)
 
     open_draft.assert_called_once()
     assert open_draft.call_args.args[1].template.name == "Willkommen 40%"

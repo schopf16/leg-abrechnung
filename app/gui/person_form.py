@@ -279,8 +279,13 @@ def open_person_form(
                 iban.props(remove="error")
 
         iban.on_value_change(lambda _: check_iban(finished=False))
-        iban.on("blur", lambda: check_iban(finished=True))
-        iban.on("blur", lambda: setattr(iban, "value", format_iban(iban.value or "")))
+
+        def format_and_check_iban() -> None:
+            """Group the IBAN, then judge it -- the regrouping fires a value change that would clear the verdict."""
+            iban.value = format_iban(iban.value or "")
+            check_iban(finished=True)
+
+        iban.on("blur", format_and_check_iban)
         phone.on("blur", lambda: setattr(phone, "value", format_swiss_phone(phone.value or "")))
 
         def check_emails() -> None:

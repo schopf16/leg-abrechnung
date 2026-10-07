@@ -244,7 +244,7 @@ def settings_page() -> None:
             documents_column.clear()
             with documents_column:
                 for entry in auto_attachments.AUTO_ATTACHMENTS:
-                    if not entry.needs_source and entry.key != KEY_MEMBERSHIP_CONTRACT:
+                    if not entry.needs_source:
                         continue
                     document = stored.get(entry.key)
                     with ui.card().classes("w-full"):

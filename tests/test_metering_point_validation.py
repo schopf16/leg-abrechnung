@@ -29,15 +29,15 @@ def test_validate_metering_point_designation_accepts_guideline_example():
 
 
 def test_split_full_registration_designation_removes_country_identifier_and_padding():
-    full = "CH1022201234500000000000000032841"
-    assert split_metering_point_designation(full) == ("CH", "10222012345", "32841")
+    full = "CH1099900000000000000000000012345"
+    assert split_metering_point_designation(full) == ("CH", "10999000000", "12345")
     parts = split_metering_point_designation(full)
     assert parts is not None
     assert assemble_metering_point_designation(*parts) == full
 
 
 def test_split_registration_number_leaves_plain_or_invalid_values_alone():
-    assert split_metering_point_designation("32841") is None
+    assert split_metering_point_designation("12345") is None
     assert split_metering_point_designation("CH123") is None
 
 

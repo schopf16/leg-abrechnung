@@ -142,13 +142,15 @@ def test_a_document_is_only_offered_where_it_can_be_delivered():
 
 
 def test_the_contract_requires_a_stored_source_file(db):
-    """The template is part of the application, independent of database uploads."""
+    """The contract is only produced from a template uploaded in the settings."""
     missing = auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], set())
     assert [entry.key for entry in missing] == [KEY_MEMBERSHIP_CONTRACT]
 
     leg_document_repo.put(db, KEY_MEMBERSHIP_CONTRACT, "Vertrag.pdf", b"%PDF")
 
-    assert auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], leg_document_repo.stored_keys(db)) == []
+    assert (
+        auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], leg_document_repo.stored_keys(db)) == []
+    )
 
 
 def test_a_generated_document_needs_no_stored_form():

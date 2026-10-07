@@ -9,8 +9,8 @@ from app.models.message_template import (
     OCCASION_ONBOARDING,
 )
 
-#: The filled-in Beitrittserklärung, using the interactive PDF bundled with
-#: uploaded in settings and stored in the application's database.
+#: The filled-in Beitrittserklärung: the fillable PDF uploaded in the
+#: settings (stored in the database, never in the repository), filled in.
 KEY_MEMBERSHIP_CONTRACT = "membership_contract"
 
 #: The person's invoice for the billing run being sent.
