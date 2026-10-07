@@ -513,8 +513,31 @@ def test_the_dialog_marks_a_missing_feed_in_iban_at_the_iban_field():
     texts = _labels(client)
     assert not any("keine IBAN für Gutschriften" in text for text in texts)
     assert "IBAN für Gutschriften fehlt" in texts
-    iban = next(element for element in client.elements.values() if element.__class__.__name__ == "Input" and "IBAN" in element.label)
+    iban = next(
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Input" and "IBAN" in element.label
+    )
     assert iban._props.get("error") is True
+
+    # A props string "error=False" would reach Vue as truthy text, so the
+    # mark has to be removed, not set to False.
+    with client:
+        iban.value = "CH93 0076 2011 6238 5295 7"
+        assert "error" not in iban._props
+        assert "IBAN für Gutschriften fehlt" not in _labels(client)
+
+        # Not yet complete: nothing while typing, the error once the field is left.
+        iban.value = "CH93 0076 2011"
+        assert "error" not in iban._props
+        blur = next(
+            listener.handler for listener in iban._event_listeners.values() if listener.type == "blur"
+        )
+        blur()
+        assert iban._props.get("error") is True
+        assert any(
+            text.startswith("IBAN ") and text != "IBAN für Gutschriften fehlt" for text in _labels(client)
+        )
 
 
 def test_the_dialog_names_a_finding_that_has_no_field(address_register):

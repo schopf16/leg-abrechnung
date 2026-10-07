@@ -645,9 +645,7 @@ def test_feed_in_without_iban_is_reported_for_the_person(db):
     site_id = _site_in(db, _substation_area(db, "TK-IBAN"))
     leg_id = _leg(db)
     person_id = _person(db, "OhneIBAN")
-    metering_point_id = _metering_point_direction(
-        db, "CH-IBAN", site_id, DIRECTION_FEED_IN, leg_id=leg_id
-    )
+    metering_point_id = _metering_point_direction(db, "CH-IBAN", site_id, DIRECTION_FEED_IN, leg_id=leg_id)
     assignment_repo.create(
         db,
         Assignment(
@@ -678,9 +676,7 @@ def test_feed_in_with_iban_and_consumers_without_iban_are_not_flagged(db):
     payer.iban = "CH9300762011623852957"
     person_repo.update(db, payer)
     feed_in_id = _metering_point_direction(db, "CH-Feed", site_id, DIRECTION_FEED_IN, leg_id=leg_id)
-    consumption_id = _metering_point_direction(
-        db, "CH-Use", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id
-    )
+    consumption_id = _metering_point_direction(db, "CH-Use", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
     consumer_id = _person(db, "Bezug")
     for person_id, metering_point_id in ((payer_id, feed_in_id), (consumer_id, consumption_id)):
         assignment_repo.create(

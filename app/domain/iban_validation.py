@@ -32,17 +32,17 @@ def format_iban(value: str) -> str:
 
 
 def iban_entry_is_complete(value: str) -> bool:
-    """Whether the entered value has reached its country-specific IBAN length."""
+    """Whether the entered value has reached its country-specific IBAN length (15, the shortest, if unknown)."""
     candidate = normalize_iban(value)
     if len(candidate) < 4:
         return False
+    # stdnum keeps the per-country structure private; a renamed internal falls back to 15.
     try:
-        info = iban_stdnum._ibandb.info(candidate[:2])
-        structure = info[0][1].get("bban", "")
-    except (IndexError, KeyError, TypeError):
-        return len(candidate) >= 15
+        structure = iban_stdnum._ibandb.info(candidate[:2])[0][1].get("bban", "")
+    except (AttributeError, IndexError, KeyError, TypeError):
+        structure = ""
     expected_length = 4 + sum(int(length) for length in re.findall(r"(\d+)!", structure))
-    return len(candidate) >= expected_length if expected_length > 4 else len(candidate) >= 15
+    return len(candidate) >= (expected_length if expected_length > 4 else 15)
 
 
 def validate_iban(value: str) -> Optional[str]:

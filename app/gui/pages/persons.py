@@ -21,7 +21,7 @@ from app.gui.problem_markers import (
 from app.gui.cooperative_form import render_cooperative_history
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
-from app.gui.person_form import open_person_form
+from app.gui.person_form import open_person_form, render_customer_number_row
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.table_list import paged_table
@@ -52,23 +52,6 @@ DIRECTION_LABELS = {
     DIRECTION_CONSUMPTION: "Bezug",
     DIRECTION_FEED_IN: "Einspeisung",
 }
-
-
-def _copy_customer_number(person: Person) -> None:
-    """Copy a person's formatted customer number to the clipboard and confirm."""
-    ui.clipboard.write(person.formatted_customer_number)
-    safe_notify("Kundennummer kopiert.")
-
-
-def _customer_number_row(
-    person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6"
-) -> None:
-    """Render the Kunden-Nr. label with an inline copy-to-clipboard button."""
-    with ui.row().classes("items-center gap-1"):
-        ui.label(f"{label} {person.formatted_customer_number}").classes(classes)
-        ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
-            "dense flat size=sm"
-        ).tooltip("Kundennummer kopieren")
 
 
 #: What the list shows, on the administrator's own choice: "wichtig wäre mir
@@ -272,13 +255,13 @@ def persons_page() -> None:
         # row carries `is_active`.
         table.add_slot(
             "body-cell-customer_number",
-            r'''
+            r"""
             <q-td :props="props" class="text-no-wrap">
                 {{ props.value }}
                 <q-btn dense flat round size="sm" icon="content_copy"
                        @click.stop="navigator.clipboard.writeText(props.value)" />
             </q-td>
-            ''',
+            """,
         )
         table.add_slot(
             "body-cell-actions",
@@ -477,79 +460,62 @@ def person_detail_page(person_id: int) -> None:
         render_problem_notes(person_problems)
         if not person.active:
             ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
-        if person.company:
-            with ui.card().classes("w-full max-w-5xl p-3 mb-2"):
-                with ui.row().classes("items-baseline gap-2"):
-                    ui.label("Firma").classes("text-caption text-grey-6")
-                    ui.label(person.company).classes("font-medium")
-
-        with (
-            ui.element("div")
-            .classes("grid w-full max-w-5xl gap-2")
-            .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));")
-        ):
-            with ui.card().classes("w-full h-full p-3"):
-                with ui.row().classes("items-center gap-2"):
-                    ui.label("1").classes(
-                        "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
-                    )
-                    ui.label("Person 1").classes("text-base font-bold")
-                    ui.label("Hauptkontakt").classes("text-caption text-grey-6")
-                first_person = " ".join(part for part in (person.salutation, person.full_name) if part)
-                ui.label(first_person or "-").classes("text-body1 font-medium mt-2")
-                with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
-                    with ui.column().classes("gap-0"):
-                        ui.label("E-Mail").classes("text-caption text-grey-6")
-                        ui.label(person.contact_email or "-").classes("leading-tight break-all")
-                    with ui.column().classes("gap-0"):
-                        ui.label("Telefon").classes("text-caption text-grey-6")
-                        ui.label(person.contact_phone or "-").classes("leading-tight")
-
-            if person.has_second_person or person.second_contact_email:
-                with ui.card().classes("w-full h-full p-3"):
-                    with ui.row().classes("items-center gap-2"):
-                        ui.label("2").classes(
-                            "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
-                        )
-                        ui.label("Person 2").classes("text-base font-bold")
-                    second_person = " ".join(
-                        part for part in (person.second_salutation, person.second_full_name) if part
-                    )
-                    ui.label(second_person or "-").classes("text-body1 font-medium mt-2")
-                    with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
-                        with ui.column().classes("gap-0"):
-                            ui.label("E-Mail").classes("text-caption text-grey-6")
-                            ui.label(person.second_contact_email or "-").classes("leading-tight break-all")
-                        with ui.column().classes("gap-0"):
-                            ui.label("Telefon").classes("text-caption text-grey-6")
-                            ui.label("bei Person 1").classes("leading-tight text-grey-7")
-
-        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
-            ui.label("Rechnungsdaten").classes("text-base font-bold")
+        # Name and address are one block, as on the document: whoever is
+        # named here is who the invoice goes to, at this address.
+        with ui.card().classes("w-full max-w-5xl p-3"):
+            ui.label("Name und Adresse").classes("text-base font-bold")
             with (
                 ui.element("div")
                 .classes("grid gap-x-6 gap-y-2 mt-2")
                 .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));")
             ):
                 with ui.column().classes("gap-0"):
-                    ui.label("Rechnungsadresse").classes("text-caption text-grey-6")
+                    for line in person.address_block_lines:
+                        ui.label(line).classes("leading-tight font-medium")
                     ui.label(person.billing_street_with_number or "-").classes("leading-tight")
                     locality = " ".join(
                         part for part in (person.billing_postal_code, person.billing_city) if part
                     )
-                    address_tail = " · ".join(
-                        part for part in (locality, person.billing_country or "CH") if part
-                    )
-                    ui.label(address_tail or "-").classes("leading-tight")
+                    ui.label(locality or "-").classes("leading-tight")
+                    if person.billing_country and person.billing_country != "CH":
+                        ui.label(person.billing_country).classes("leading-tight")
                 with ui.column().classes("gap-0"):
                     ui.label("Briefanrede").classes("text-caption text-grey-6")
                     ui.label(letter_salutation(person)).classes("leading-tight")
-            ui.separator().classes("my-2")
+
+        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+            ui.label("Kontakt").classes("text-base font-bold")
+            contacts = [(person.full_name or person.company, person.contact_email, person.contact_phone)]
+            if person.has_second_person or person.second_contact_email:
+                # The second person has no phone field of their own.
+                contacts.append((person.second_full_name, person.second_contact_email, None))
+            for index, (name, email, phone) in enumerate(contacts, start=1):
+                with (
+                    ui.element("div")
+                    .classes("grid gap-x-6 gap-y-2 mt-2")
+                    .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
+                ):
+                    with ui.column().classes("gap-0"):
+                        ui.label(f"Person {index}").classes("text-caption text-grey-6")
+                        ui.label(name or "-").classes("leading-tight")
+                    with ui.column().classes("gap-0"):
+                        ui.label("E-Mail").classes("text-caption text-grey-6")
+                        ui.label(email or "-").classes("leading-tight break-all")
+                    if index == 1:
+                        with ui.column().classes("gap-0"):
+                            ui.label("Telefon").classes("text-caption text-grey-6")
+                            ui.label(phone or "-").classes("leading-tight")
+
+        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+            ui.label("Rechnungsdaten").classes("text-base font-bold")
             with (
                 ui.element("div")
-                .classes("grid gap-x-6 gap-y-2")
+                .classes("grid gap-x-6 gap-y-2 mt-2")
                 .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
             ):
+                with ui.column().classes("gap-0"):
+                    ui.label("Kunden-Nr.").classes("text-caption text-grey-6")
+                    render_customer_number_row(person, label="", classes="leading-tight")
                 with ui.column().classes("gap-0"):
                     ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
                     ui.label(format_iban(person.iban) if person.iban else "-").classes("leading-tight")
@@ -558,8 +524,6 @@ def person_detail_page(person_id: int) -> None:
                 with ui.column().classes("gap-0"):
                     ui.label("Papierrechnung").classes("text-caption text-grey-6")
                     ui.label("Ja" if person.paper_invoice else "Nein").classes("leading-tight")
-                with ui.column().classes("gap-0"):
-                    _customer_number_row(person, label="Kunden-Nr.:", classes="text-caption text-grey-6")
                 if person.bkw_customer_number is not None:
                     with ui.column().classes("gap-0"):
                         ui.label("BKW-Kundennummer").classes("text-caption text-grey-6")

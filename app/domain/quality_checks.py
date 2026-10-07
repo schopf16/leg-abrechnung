@@ -20,7 +20,8 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.sort_keys import text_key
+from app.models.person import Person
+from app.sort_keys import person_name_key, text_key
 from app.models import assignment as assignment_repo
 from app.domain.production_capacity import (
     REQUIRED_PERCENT,
@@ -303,27 +304,28 @@ def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> 
 def check_feed_in_without_iban(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag current or upcoming feed-in participants without a payout IBAN."""
     today = datetime.combine(date.today(), time())
-    missing: set[int] = set()
+    missing: dict[int, Person] = {}
     for metering_point in metering_point_repo.list_all(connection):
         if metering_point.direction != metering_point_repo.DIRECTION_FEED_IN:
             continue
         for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
-            if assignment.is_current_or_upcoming(today):
+            if assignment.is_current_or_upcoming(today) and assignment.person_id not in missing:
                 person = person_repo.get(connection, assignment.person_id)
                 if person is not None and not person.iban.strip():
-                    missing.add(person.id)
+                    missing[person.id] = person
     warnings = []
-    for person_id in sorted(missing):
-        person = person_repo.get(connection, person_id)
-        warnings.append(QualityWarning(
-            category="feed_in_without_iban",
-            message=f'"{person.display_name}" speist ein, hat aber keine IBAN für Gutschriften hinterlegt.',
-            summary="Einspeiser ohne IBAN für Gutschriften",
-            summary_link="/persons",
-            subject_kind=SUBJECT_PERSON,
-            subject_id=person.id,
-            link=f"/persons/{person.id}",
-        ))
+    for person in sorted(missing.values(), key=person_name_key):
+        warnings.append(
+            QualityWarning(
+                category="feed_in_without_iban",
+                message=f'"{person.display_name}" speist ein, hat aber keine IBAN für Gutschriften hinterlegt.',
+                summary="Einspeiser ohne IBAN für Gutschriften",
+                summary_link="/persons",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id,
+                link=f"/persons/{person.id}",
+            )
+        )
     return warnings
 
 

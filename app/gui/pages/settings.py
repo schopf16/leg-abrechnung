@@ -67,16 +67,14 @@ def settings_page() -> None:
             qr_iban = ui.input("QR-IBAN", value=current.qr_iban).classes("w-full")
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
-            def check_qr_iban() -> None:
-                """Show a validation error once the field could hold a complete IBAN."""
-                qr_iban_error.text = (
-                    validate_qr_iban(qr_iban.value) or ""
-                    if iban_entry_is_complete(qr_iban.value)
-                    else ""
-                )
+            def check_qr_iban(finished: bool) -> None:
+                """Validate on blur, or while typing once the country's full length is reached."""
+                value = qr_iban.value or ""
+                complete = finished or iban_entry_is_complete(value)
+                qr_iban_error.text = (validate_qr_iban(value) or "") if complete else ""
 
-            qr_iban.on_value_change(lambda _: check_qr_iban())
-            qr_iban.on("blur", check_qr_iban)
+            qr_iban.on_value_change(lambda _: check_qr_iban(finished=False))
+            qr_iban.on("blur", lambda: check_qr_iban(finished=True))
             price = ui.number(
                 "Interner Strompreis (Rp./kWh)",
                 value=current.price_rp_per_kwh,
