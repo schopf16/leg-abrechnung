@@ -29,6 +29,7 @@ from app.emailing.templates import (
     render_template,
 )
 from app.format_size import format_size
+from app.formatting import format_date
 from app.gui.form_dialog import form_guard
 from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.safe_notify import safe_notify
@@ -48,54 +49,84 @@ def open_message_send_dialog(
     occasion: str,
     *,
     on_sent: Optional[Callable[[], None]] = None,
+    choices: Optional[list[DueMessage]] = None,
 ) -> None:
-    """Show one baustein's mail for this person, and send it on a click."""
-    template = due.template
+    """Show one baustein's mail for this person, and send it on a click.
 
+    With several `choices`, a select at the very top picks the baustein and
+    the subject, text, signature and attachments follow it.
+    """
+    choices = choices or [due]
+    by_id = {message.template.id: message for message in choices}
     with connection_scope() as connection:
         values = placeholder_values(connection, person)
-        prepared = message_attachments.prepare(
-            connection, person, template.auto_attachments, directory=SEND_DIR
-        )
-        prepared += message_attachments.stored_attachments(
-            connection,
-            template.id,
-            directory=SEND_DIR,
-            taken=[entry.filename for entry in prepared],
-        )
-        chosen = signature_repo.get(connection, template.signature_id) if template.signature_id else None
-
-    # Composed before it is shown, not on the way out: the promise of this
-    # dialog is that what is read is what goes out, signature included.
-    #
-    # Compose **then** render, which is the order `app.emailing.bulk_send`
-    # uses for the Rundmail -- it appends the signature and substitutes
-    # afterwards. The other way round, a placeholder inside a signature
-    # would go out literally here while working there.
-    raw_body = compose_with_signature(template.body, chosen.content if chosen else "")
-    rendered_body = render_template(raw_body, values)
+    current = {"due": due}
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-3xl"):
-        ui.label(f"{template.name} an {person.display_name}").classes("text-lg font-bold")
+        if len(choices) > 1:
+            ui.select(
+                {message.template.id: _choice_label(message) for message in choices},
+                label="Textbaustein",
+                value=due.template.id,
+                on_change=lambda event: show(by_id[event.value]),
+            ).props("outlined").classes("w-full text-lg")
+        title = ui.label("").classes("text-lg font-bold")
         recipients = ", ".join(person.contact_emails) or "— keine E-Mail-Adresse hinterlegt"
         ui.label(f"An: {recipients}").classes("text-caption text-grey-7")
+        settled_label = ui.label("").classes("text-warning text-body2")
 
-        subject_input = ui.input("Betreff", value=render_template(template.subject, values)).classes("w-full")
-        body_input = ui.textarea("Text", value=rendered_body).props("autogrow outlined").classes("w-full")
-        if chosen is not None:
-            ui.label(f"Signatur: {chosen.name}").classes("text-caption text-grey-7")
-
-        # Over the composed text, since the signature takes part in the
-        # substitution too.
-        _render_placeholder_note(template.subject + "\n" + raw_body, occasion)
+        subject_input = ui.input("Betreff").classes("w-full")
+        body_input = ui.textarea("Text").props("autogrow outlined").classes("w-full")
+        details = ui.column().classes("w-full gap-1")
         render_placeholder_help(occasion)
+        attachments_box = ui.column().classes("w-full gap-1")
+        pickers: list[AttachmentPicker] = []
 
-        picker = AttachmentPicker(prepared, directory=SEND_DIR)
+        def show(message: DueMessage) -> None:
+            """Fill the dialog from one baustein."""
+            current["due"] = message
+            template = message.template
+            with connection_scope() as connection:
+                prepared = message_attachments.prepare(
+                    connection, person, template.auto_attachments, directory=SEND_DIR
+                )
+                prepared += message_attachments.stored_attachments(
+                    connection,
+                    template.id,
+                    directory=SEND_DIR,
+                    taken=[entry.filename for entry in prepared],
+                )
+                chosen = (
+                    signature_repo.get(connection, template.signature_id) if template.signature_id else None
+                )
+            # Compose **then** render, the order `app.emailing.bulk_send` uses:
+            # the other way round a placeholder inside a signature goes out
+            # literally here while working there.
+            raw_body = compose_with_signature(template.body, chosen.content if chosen else "")
+            title.text = f"{template.name} an {person.display_name}"
+            settled_label.text = _settled_text(message) if message.was_sent else ""
+            subject_input.value = render_template(template.subject, values)
+            body_input.value = render_template(raw_body, values)
+            details.clear()
+            with details:
+                if chosen is not None:
+                    ui.label(f"Signatur: {chosen.name}").classes("text-caption text-grey-7")
+                # Over the composed text, since the signature takes part in the
+                # substitution too.
+                _render_placeholder_note(template.subject + "\n" + raw_body, occasion)
+            attachments_box.clear()
+            pickers.clear()
+            with attachments_box:
+                pickers.append(AttachmentPicker(prepared, directory=SEND_DIR))
+
+        show(due)
 
         error_label = ui.label("").classes("text-negative text-body2")
 
         async def do_send() -> None:
             """Send exactly this text, with exactly these attachments."""
+            template = current["due"].template
+            picker = pickers[0]
             if not person.contact_emails:
                 error_label.text = "Diese Person hat keine E-Mail-Adresse hinterlegt."
                 return
@@ -142,6 +173,20 @@ def open_message_send_dialog(
 
     form_guard(dialog)
     dialog.open()
+
+
+def _choice_label(message: DueMessage) -> str:
+    """A baustein's name in the select, with its date once settled."""
+    if not message.was_sent:
+        return message.template.name
+    return f"{message.template.name} (erledigt am {format_date(message.sent_on)})"
+
+
+def _settled_text(message: DueMessage) -> str:
+    """Why sending this one again deserves a second look."""
+    if message.by_hand:
+        return f"⚠ Am {format_date(message.sent_on)} ohne Versand als erledigt markiert."
+    return f"⚠ Bereits am {format_date(message.sent_on)} gesendet."
 
 
 def _render_placeholder_note(raw_text: str, occasion: str) -> None:
