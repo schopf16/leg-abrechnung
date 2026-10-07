@@ -56,9 +56,62 @@ def render_step_messages(
     *,
     on_changed: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Render the controls for one step's bausteine, inline on that step's row."""
-    for message in due:
-        _render_one(person, message, occasion, on_changed)
+    """Render one direct action or a choice when several bausteine are due."""
+    if len(due) == 1:
+        _render_one(person, due[0], occasion, on_changed)
+    elif len(due) > 1:
+        _render_choices(person, due, occasion, on_changed)
+
+
+def _render_choices(
+    person: Person,
+    messages: list[DueMessage],
+    occasion: str,
+    on_changed: Optional[Callable[[], None]],
+) -> None:
+    """Let the administrator choose which due baustein to open for this step."""
+    options = {
+        message.template.id: (
+            f"{message.template.name} (bereits erledigt am {format_date(message.sent_on)})"
+            if message.was_sent
+            else message.template.name
+        )
+        for message in messages
+    }
+    with ui.column().classes("gap-1 items-start no-wrap"):
+        with ui.row().classes("items-center gap-1 no-wrap"):
+            choice = ui.select(options, label="Textbaustein wählen").props("dense outlined").classes("min-w-48")
+
+            def open_selected() -> None:
+                """Open the selected draft, asking first if it was already settled."""
+                message = next(
+                    (candidate for candidate in messages if candidate.template.id == choice.value), None
+                )
+                if message is None:
+                    safe_notify("Bitte einen Textbaustein wählen.", type="warning")
+                elif message.was_sent:
+                    _ask_again(person, message, occasion, on_changed)
+                else:
+                    open_message_send_dialog(person, message, occasion, on_sent=on_changed)
+
+            ui.button("Mail öffnen", on_click=open_selected).props("dense flat color=primary")
+
+        for message in messages:
+            if message.was_sent:
+                suffix = " (von Hand)" if message.by_hand else ""
+                ui.label(f"{message.template.name}: {format_date(message.sent_on)}{suffix}").classes(
+                    "text-caption text-grey-7"
+                )
+            else:
+                with ui.row().classes("items-center gap-1 no-wrap"):
+                    if message.days_waiting is not None:
+                        ui.label(f"seit {message.days_waiting} Tagen offen").classes(
+                            "text-caption text-grey-6"
+                        )
+                    ui.button(
+                        f"{message.template.name}: erledigt ohne Versand",
+                        on_click=lambda m=message: _mark(person, m, occasion, on_changed),
+                    ).props(_QUIET)
 
 
 def _render_one(

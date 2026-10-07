@@ -562,6 +562,51 @@ def test_the_card_offers_the_send_button():
     assert any("Willkommen senden" in (text or "") for text in buttons), buttons
 
 
+def test_multiple_due_bausteine_require_a_choice_before_opening_a_draft(db, no_drafts):
+    """The selected template, not an arbitrary first one, opens the send dialog."""
+    person = _person(db)
+    first_id = _template(db, "Willkommen 20%", step="leg_assigned_at")
+    second_id = _template(db, "Willkommen 40%", step="leg_assigned_at")
+    templates = {template.id: template for template in template_repo.list_all(db)}
+    due = [
+        DueMessage(templates[first_id], "Einteilung in LEG", None),
+        DueMessage(templates[second_id], "Einteilung in LEG", None),
+    ]
+
+    from app.gui import message_buttons
+
+    client = Client(ui.page("/probe-message-choice")(lambda: None), request=None)
+    with patch("app.gui.message_buttons.open_message_send_dialog") as open_draft:
+        with client:
+            message_buttons.render_step_messages(person, due, OCCASION_ONBOARDING)
+            choice = next(
+                element
+                for element in client.elements.values()
+                if element.__class__.__name__ == "Select"
+                and element._props.get("label") == "Textbaustein wählen"
+            )
+            button = next(
+                element
+                for element in client.elements.values()
+                if element.__class__.__name__ == "Button" and element.text == "Mail öffnen"
+            )
+            assert choice.options == {
+                first_id: "Willkommen 20%",
+                second_id: "Willkommen 40%",
+            }
+            assert not any(
+                element.__class__.__name__ == "Button" and "senden" in (element.text or "")
+                for element in client.elements.values()
+            )
+            choice.value = second_id
+            next(listener.handler for listener in button._event_listeners.values() if listener.type == "click")(
+                None
+            )
+
+    open_draft.assert_called_once()
+    assert open_draft.call_args.args[1].template.name == "Willkommen 40%"
+
+
 def test_a_mail_sits_on_the_row_of_its_own_step():
     """Which event a mail belongs to has to be visible, not inferred.
 

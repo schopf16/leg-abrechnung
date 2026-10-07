@@ -4,10 +4,13 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen.canvas import Canvas
 
 from app.db.connection import connection_scope
-from app.domain.membership_contract import gather
+from app.domain.membership_contract import ContractFields, gather
 from app.models import assignment as assignment_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -288,3 +291,14 @@ def test_the_bundled_form_is_filled_and_its_contract_pages_are_preserved():
     assert filled["messpunkt_bezug"]["/V"] == "CH1018000000000000000000001"
     assert filled["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"
     assert filled["ort_datum"]["/V"] == ""
+
+
+def test_contract_generation_reports_missing_template_fields(tmp_path):
+    """An incomplete PDF template fails with the field names that are missing."""
+    source = tmp_path / "no-fields.pdf"
+    canvas = Canvas(str(source), pagesize=A4)
+    canvas.showPage()
+    canvas.save()
+
+    with pytest.raises(ValueError, match="Fehlende Formularfelder:.*firma.*messpunkt_bezug"):
+        build_contract(ContractFields(), source.read_bytes(), tmp_path / "vertrag.pdf")
