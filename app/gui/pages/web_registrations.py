@@ -29,6 +29,7 @@ from app.importers.cloudflare_client import (
     delete_submissions,
 )
 from app.domain.registration_matching import RegistrationMatch, decide_take_over, load_matches
+from app.domain.metering_point_validation import split_metering_point_designation
 from app.importers.registration_sync import sync_registrations
 from app.models import person_onboarding as person_onboarding_repo
 from app.models import site as site_repo
@@ -428,7 +429,19 @@ def web_registrations_page() -> None:
                 matching_site = site_repo.find_by_address(
                     connection, reg.street, reg.house_number, reg.postal_code
                 )
-            prefill = {"metering_point_number": meter.meter_number}
+            submitted_number = meter.meter_number.strip().upper()
+            full_designation = split_metering_point_designation(submitted_number)
+            if full_designation:
+                # The registration may contain the full CH + BKW identifier +
+                # meter number. Split it into the form's three parts so the
+                # identifier is not duplicated when the designation is built.
+                prefill = {
+                    "country": full_designation[0],
+                    "identifier": full_designation[1],
+                    "metering_point_number": full_designation[2],
+                }
+            else:
+                prefill = {"metering_point_number": meter.meter_number}
             if matching_site is not None:
                 prefill["site_id"] = matching_site.id
 

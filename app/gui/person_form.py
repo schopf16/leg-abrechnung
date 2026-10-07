@@ -10,6 +10,8 @@ from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.email_validation import validate_email
 from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_iban
+from app.domain.iban_validation import format_iban
+from app.domain.phone_format import format_swiss_phone
 from app.domain.message_templates import iban_request
 from app.gui.message_buttons import render_step_messages
 from app.gui.cooperative_form import CooperativeEditor
@@ -128,7 +130,7 @@ def open_person_form(
                 first_email_error = ui.label("").classes("text-negative text-caption")
                 phone = ui.input(
                     "Telefon Person 1 (optional)",
-                    value=_initial(existing, "contact_phone", prefill, "phone"),
+                    value=format_swiss_phone(_initial(existing, "contact_phone", prefill, "phone")),
                 ).classes("w-full max-w-xs")
 
             with ui.card().classes("w-full h-full"):
@@ -204,7 +206,7 @@ def open_person_form(
         ui.label("Abrechnung").classes("text-base font-bold")
         with ui.row().classes("w-full gap-2"):
             iban = ui.input(
-                "IBAN (für Gutschriften)", value=_initial(existing, "iban", prefill, "iban")
+                "IBAN (für Gutschriften)", value=format_iban(_initial(existing, "iban", prefill, "iban"))
             ).classes("w-full max-w-md")
             paper_invoice = ui.checkbox(
                 "Papierrechnung (kostenpflichtig)",
@@ -278,6 +280,8 @@ def open_person_form(
 
         iban.on_value_change(lambda _: check_iban(finished=False))
         iban.on("blur", lambda: check_iban(finished=True))
+        iban.on("blur", lambda: setattr(iban, "value", format_iban(iban.value or "")))
+        phone.on("blur", lambda: setattr(phone, "value", format_swiss_phone(phone.value or "")))
 
         def check_emails() -> None:
             """Report a certainly-wrong address when a field loses focus."""

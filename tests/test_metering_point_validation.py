@@ -2,6 +2,7 @@
 
 from app.domain.metering_point_validation import (
     assemble_metering_point_designation,
+    split_metering_point_designation,
     validate_identifier,
     validate_country,
     validate_metering_point_designation,
@@ -25,6 +26,19 @@ def test_assemble_uppercases_and_strips():
 
 def test_validate_metering_point_designation_accepts_guideline_example():
     assert validate_metering_point_designation(_EXAMPLE) is None
+
+
+def test_split_full_registration_designation_removes_country_identifier_and_padding():
+    full = "CH1022201234500000000000000032841"
+    assert split_metering_point_designation(full) == ("CH", "10222012345", "32841")
+    parts = split_metering_point_designation(full)
+    assert parts is not None
+    assert assemble_metering_point_designation(*parts) == full
+
+
+def test_split_registration_number_leaves_plain_or_invalid_values_alone():
+    assert split_metering_point_designation("32841") is None
+    assert split_metering_point_designation("CH123") is None
 
 
 def test_validate_metering_point_designation_rejects_empty():

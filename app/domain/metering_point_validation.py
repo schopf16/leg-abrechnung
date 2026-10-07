@@ -44,6 +44,18 @@ def validate_metering_point_designation(value: str) -> Optional[str]:
     return None
 
 
+def split_metering_point_designation(value: str) -> Optional[tuple[str, str, str]]:
+    """Split a complete designation into country, identifier and unpadded number.
+
+    Return ``None`` for a partial or otherwise invalid value so callers can
+    continue treating it as a plain metering point number.
+    """
+    candidate = value.strip().upper()
+    if validate_metering_point_designation(candidate):
+        return None
+    return candidate[:2], candidate[2:13], candidate[13:].lstrip("0")
+
+
 def validate_country(value: str) -> Optional[str]:
     """Check that a Land value is exactly 2 uppercase letters, if given."""
     candidate = value.strip().upper()
