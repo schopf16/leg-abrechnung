@@ -1,9 +1,8 @@
 """Turning a baustein's ticked documents into files that can go along.
 
-A ticked document is not attached but **produced**: the Beitrittserklärung's
-first page is drawn from the person's own record. So this is where the ticks
-become paths, and where one that cannot be produced says why instead of
-failing the send -- the administrator may send the mail without it.
+A ticked document is not attached but **produced**: the administrator-supplied
+Beitrittserklärung is filled from the person's own record. This is where the
+ticks become paths and template errors are reported.
 """
 
 import sqlite3
@@ -157,20 +156,16 @@ def _membership_contract(
 ) -> PreparedAttachment:
     """Build the filled-in Beitrittserklärung, or say why there is none."""
     document = leg_document_repo.get(connection, KEY_MEMBERSHIP_CONTRACT)
-    if document is None:
-        # Page 1 alone is not the Gesellschaftsvertrag, so nothing is
-        # produced rather than something that looks complete. The send goes
-        # ahead without it if the administrator insists.
+    filename = f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
+    target = directory / filename
+    try:
+        build_contract(gather(connection, person), document.content if document else None, target)
+    except ValueError as exc:
         return PreparedAttachment(
             key=KEY_MEMBERSHIP_CONTRACT,
             label=label,
             path=None,
             filename="",
-            problem=(
-                "Kein Formular hinterlegt (Einstellungen → Allgemein → Aufnahmeprozess → LEG-Dokumente)."
-            ),
+            problem=str(exc),
         )
-    filename = f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
-    target = directory / filename
-    build_contract(gather(connection, person), document.content, target)
     return PreparedAttachment(key=KEY_MEMBERSHIP_CONTRACT, label=label, path=target, filename=filename)

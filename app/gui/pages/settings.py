@@ -6,18 +6,20 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.gui.address_input import SuggestionBox
+from app.domain import auto_attachments
+from app.domain.auto_attachments import KEY_MEMBERSHIP_CONTRACT
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
-from app.domain import auto_attachments
+from app.gui.navigation import page_frame
+from app.gui.safe_notify import safe_notify
+from app.gui.upload import read_uploaded_file
 from app.format_size import format_size
 from app.formatting import format_date
-from app.gui.upload import read_uploaded_file
 from app.models import leg_document as leg_document_repo
-from app.gui.safe_notify import safe_notify
-from app.gui.navigation import page_frame
 from app.models import settings as settings_repo
+from app.pdf.membership_contract import validate_contract_template
 
 
 @ui.page("/settings")
@@ -228,17 +230,15 @@ def settings_page() -> None:
 
         ui.label("LEG-Dokumente").classes("text-body1 font-bold mt-4")
         ui.label(
-            "Formulare, die ein Textbaustein anfügen kann (siehe "
-            "„Textbausteine“). Einmal hier hinterlegt, gilt für alle "
-            "Bausteine -- eine neue Fassung ersetzt die alte an dieser "
-            "einen Stelle. Die Datei liegt in der Datenbank und ist damit "
-            "in jedem Backup."
+            "Hier hinterlegen Sie die ausfüllbare PDF-Vorlage für die Beitrittserklärung. "
+            "Sie wird nicht mit der Software ausgeliefert. Beim Hochladen prüfen wir, "
+            "ob alle benötigten Formularfelder vorhanden sind."
         ).classes("text-body2 text-grey-8")
 
         documents_column = ui.column().classes("w-full gap-2")
 
         def render_documents() -> None:
-            """Draw one row per form that a checkbox can attach."""
+            """Show stored source forms, including the required contract template."""
             with connection_scope() as connection:
                 stored = {document.key: document for document in leg_document_repo.list_all(connection)}
             documents_column.clear()
@@ -250,7 +250,9 @@ def settings_page() -> None:
                     with ui.card().classes("w-full"):
                         with ui.row().classes("w-full items-center gap-3"):
                             ui.label(entry.label.replace(" anfügen", "")).classes("font-bold")
-                            if document is None:
+                            if document is None and entry.key == KEY_MEMBERSHIP_CONTRACT:
+                                ui.label("Keine Vorlage hinterlegt.").classes("text-warning text-body2")
+                            elif document is None:
                                 ui.label("Noch keine Datei hinterlegt.").classes("text-warning text-body2")
                             else:
                                 ui.label(
@@ -264,7 +266,8 @@ def settings_page() -> None:
                                 ).props("dense flat color=negative").classes("ml-auto")
 
                         async def handle_upload(event, key=entry.key) -> None:
-                            """Store the picked file as this form."""
+                            """Validate and store a replacement form."""
+                            stored_any = False
                             for file in event.files:
                                 filename, content = await read_uploaded_file(file)
                                 if len(content) > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
@@ -274,18 +277,26 @@ def settings_page() -> None:
                                         type="negative",
                                     )
                                     continue
+                                if key == KEY_MEMBERSHIP_CONTRACT:
+                                    try:
+                                        validate_contract_template(content)
+                                    except ValueError as exc:
+                                        safe_notify(f"Vorlage nicht übernommen: {exc}", type="negative")
+                                        continue
                                 with connection_scope() as connection:
                                     leg_document_repo.put(connection, key, filename, content)
-                            safe_notify("Datei hinterlegt.", type="positive")
+                                stored_any = True
+                            if stored_any:
+                                safe_notify("Datei hinterlegt.", type="positive")
                             render_documents()
 
                         upload = ui.upload(on_multi_upload=handle_upload, multiple=False, auto_upload=True)
-                        upload.props('label="Datei wählen" accept=".pdf" flat bordered dense')
+                        upload.props('label="PDF wählen" accept=".pdf" flat bordered dense')
                         if entry.hint:
                             ui.label(entry.hint).classes("text-caption text-grey-6")
 
         def remove_document(key: str) -> None:
-            """Remove one stored form."""
+            """Remove a stored source document."""
             with connection_scope() as connection:
                 leg_document_repo.delete(connection, key)
             safe_notify("Datei entfernt.", type="warning")

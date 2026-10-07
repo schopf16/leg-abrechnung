@@ -9,8 +9,8 @@ from app.models.message_template import (
     OCCASION_ONBOARDING,
 )
 
-#: The filled-in Beitrittserklärung: page 1 from the person's own record,
-#: pages 2 onward from the stored form (see `app.pdf.membership_contract`).
+#: The filled-in Beitrittserklärung: the fillable PDF uploaded in the
+#: settings (stored in the database, never in the repository), filled in.
 KEY_MEMBERSHIP_CONTRACT = "membership_contract"
 
 #: The person's invoice for the billing run being sent.
@@ -34,7 +34,7 @@ AUTO_ATTACHMENTS: tuple[AutoAttachment, ...] = (
     AutoAttachment(
         key=KEY_MEMBERSHIP_CONTRACT,
         label="Gesellschaftsvertrag anfügen",
-        hint="Seite 1 wird aus den Angaben der Person ausgefüllt",
+        hint="Eine ausfüllbare Formularvorlage muss in den Einstellungen hinterlegt sein.",
         needs_source=True,
         occasions=(OCCASION_ONBOARDING,),
     ),

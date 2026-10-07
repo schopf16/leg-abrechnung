@@ -1,13 +1,15 @@
 """The filled-in Beitrittserklärung: what goes on page 1, and the pages behind it."""
 
-import tempfile
 from datetime import date
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen.canvas import Canvas
 
 from app.db.connection import connection_scope
-from app.domain.membership_contract import gather
+from app.domain.membership_contract import ContractFields, gather
 from app.models import assignment as assignment_repo
 from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
@@ -19,25 +21,6 @@ from app.models.person import Person
 from app.models.site import Site
 from app.models.substation_area import SubstationArea
 from app.pdf.membership_contract import build_contract
-
-#: A one-page PDF standing in for the official seven-page form. Built with
-#: reportlab rather than carried as a fixture: the repository holds no
-#: tracked PDFs (see `.gitignore`), and a form belongs in the database.
-_SOURCE_PAGES = 4
-
-
-def _source_pdf() -> bytes:
-    """A stand-in for the stored Gesellschaftsvertrag."""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen.canvas import Canvas
-
-    target = Path(tempfile.mkdtemp()) / "source.pdf"
-    canvas = Canvas(str(target), pagesize=A4)
-    for number in range(_SOURCE_PAGES):
-        canvas.drawString(40, 700, f"Vertragsseite {number + 1}")
-        canvas.showPage()
-    canvas.save()
-    return target.read_bytes()
 
 
 def _person(connection, **overrides) -> Person:
@@ -182,8 +165,23 @@ def test_a_couple_is_named_twice_on_one_line():
         fields = gather(connection, person)
 
     assert fields.names == "Anna Muster und Beat Beispiel"
+    # The form splits Vorname and Nachname; read together they still name both.
+    assert (fields.first_name, fields.last_name) == ("Anna Muster und Beat", "Beispiel")
+    assert fields.salutation == ""
     assert "anna@example.invalid" in fields.email
     assert "beat@example.invalid" in fields.email
+
+
+def test_a_couple_sharing_a_surname_is_one_familie():
+    """The form's Anrede offers "Familie", and the surname is not repeated."""
+    with connection_scope() as connection:
+        person = _person(
+            connection, second_salutation="Herr", second_first_name="Beat", second_last_name="Muster"
+        )
+
+        fields = gather(connection, person)
+
+    assert (fields.salutation, fields.first_name, fields.last_name) == ("Familie", "Anna und Beat", "Muster")
 
 
 def test_two_metering_points_per_direction_both_appear():
@@ -280,69 +278,8 @@ def test_a_participant_without_any_meter_still_yields_a_form():
 # --- The document ---------------------------------------------------------
 
 
-def test_the_document_is_page_one_plus_the_contract():
-    """Page 1 is drawn here; the original's first page is replaced by it."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "vertrag.pdf"
-    build_contract(fields, _source_pdf(), target)
-
-    reader = PdfReader(str(target))
-    assert len(reader.pages) == _SOURCE_PAGES  # 1 drawn + (_SOURCE_PAGES - 1) appended
-    assert "Vertragsseite 1" not in reader.pages[0].extract_text()
-    assert "Vertragsseite 2" in reader.pages[1].extract_text()
-
-
-def test_without_a_stored_form_only_the_filled_page_is_written():
-    """Still a usable sheet, and the caller says what is missing."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "nur_seite1.pdf"
-    build_contract(fields, None, target)
-
-    assert len(PdfReader(str(target)).pages) == 1
-
-
-def test_page_one_carries_the_forms_own_wording():
-    """Page 1 is not a pixel copy of the original, so the labels are what make it recognisable as the..."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "wortlaut.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
-
-    for label in (
-        "LEG Teilnehmer",
-        "Firma:",
-        "Vorname, Name:",
-        "Adresse:",
-        "PLZ / Ort:",
-        "E-Mail:",
-        "Tel:",
-        "Trafokreis TRA",
-        "Bezüger",
-        "Messpunktnummer Bezug:",
-        "Produzent",
-        "Messpunktnummer Einspeisung:",
-        "Zusätzliche Angaben bei Einspeisung",
-        "IBAN-Nr. für Rückvergütung:",
-        "Leistung Solaranlage",
-        "Batteriespeicher",
-        "Wallbox max. Leistung",
-        "Ort und Datum",
-        "Unterschrift LEG Teilnehmer",
-    ):
-        assert label in text, label
-
-
-def test_the_values_reach_the_page():
-    """Drawing them is the point; a page of labels would pass every other test here."""
+def test_uploaded_form_is_filled_and_its_contract_pages_are_preserved(tmp_path):
+    """The configured form supplies page one and its contract pages behind it."""
     with connection_scope() as connection:
         person = _person(connection, iban="CH9300762011623852957")
         site = _site(connection)
@@ -355,47 +292,98 @@ def test_the_values_reach_the_page():
         )
         fields = gather(connection, person)
 
-    target = Path(tempfile.mkdtemp()) / "werte.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
+    source = tmp_path / "synthetic-form.pdf"
+    _write_synthetic_form(source)
+    target = tmp_path / "vertrag.pdf"
+    build_contract(fields, source.read_bytes(), target)
 
-    assert "Anna Muster" in text
-    assert "Erstweg 4" in text
-    assert "3048 Musterdorf" in text
-    assert "9365" in text
-    assert "CH1018000000000000000000001" in text
-    assert "CH9300762011623852957" in text
-
-
-def test_ort_datum_and_the_signature_are_left_empty():
-    """They come from the participant, with a pen."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "unterschrift.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
-
-    assert "Ort und Datum" in text
-    assert date.today().strftime("%d.%m.%Y") not in text
-    assert date.today().isoformat() not in text
+    reader = PdfReader(str(target))
+    filled = reader.get_fields()
+    assert len(reader.pages) == 3
+    assert filled["vorname"]["/V"] == "Anna"
+    assert filled["nachname"]["/V"] == "Muster"
+    assert filled["adresse"]["/V"] == "Erstweg 4"
+    assert filled["plz"]["/V"] == "3048"
+    assert filled["ort"]["/V"] == "Musterdorf"
+    assert filled["messpunkt_bezug"]["/V"] == "CH1018000000000000000000001"
+    assert filled["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"
+    assert filled["ort_datum"]["/V"] == ""
 
 
-def test_a_long_value_is_truncated_rather_than_running_off_the_page():
-    """reportlab draws past the margin and says nothing, the trap `app.pdf.layout` documents for its..."""
-    with connection_scope() as connection:
-        person = _person(
-            connection,
-            company="Sehr lange Firmenbezeichnung mit vielen Wörtern AG in Liquidation",
-            second_first_name="Beat",
-            second_last_name="Beispiel-Muster-von-Langenthal",
-        )
-        fields = gather(connection, person)
+def test_contract_generation_reports_missing_template_fields(tmp_path):
+    """An incomplete PDF template fails with the field names that are missing."""
+    source = tmp_path / "no-fields.pdf"
+    canvas = Canvas(str(source), pagesize=A4)
+    canvas.showPage()
+    canvas.save()
 
-    target = Path(tempfile.mkdtemp()) / "lang.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
+    with pytest.raises(ValueError, match="Fehlende Formularfelder:.*firma.*messpunkt_bezug"):
+        build_contract(ContractFields(), source.read_bytes(), tmp_path / "vertrag.pdf")
 
-    # Shortened with an ellipsis rather than written over the margin.
-    assert "…" in text
+
+def test_contract_generation_requires_an_uploaded_template(tmp_path):
+    with pytest.raises(ValueError, match="Keine Beitrittserklärungs-Vorlage"):
+        build_contract(ContractFields(), None, tmp_path / "vertrag.pdf")
+
+
+def _write_synthetic_form(path: Path) -> None:
+    """Create a fake form for tests without including any real contract PDF."""
+    field_names = (
+        "firma",
+        "anrede",
+        "vorname",
+        "nachname",
+        "adresse",
+        "plz",
+        "ort",
+        "email",
+        "telefon",
+        "messpunkt_bezug",
+        "messpunkt_einspeisung",
+        "iban",
+        "pv_leistung_kwp",
+        "batteriespeicher_kwh",
+        "wallbox_leistung_kw",
+        "ort_datum",
+    )
+    canvas = Canvas(str(path), pagesize=A4)
+    for index, name in enumerate(field_names):
+        canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
+    canvas.showPage()
+    canvas.showPage()
+    canvas.showPage()
+    canvas.save()
+
+
+def test_a_field_beyond_page_one_is_filled_too(tmp_path):
+    """Validation accepts a field on any page, so filling must reach it there."""
+    source = tmp_path / "split-form.pdf"
+    names = (
+        "firma",
+        "anrede",
+        "vorname",
+        "nachname",
+        "adresse",
+        "plz",
+        "ort",
+        "email",
+        "telefon",
+        "messpunkt_bezug",
+        "messpunkt_einspeisung",
+        "pv_leistung_kwp",
+        "batteriespeicher_kwh",
+        "wallbox_leistung_kw",
+        "ort_datum",
+    )
+    canvas = Canvas(str(source), pagesize=A4)
+    for index, name in enumerate(names):
+        canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
+    canvas.showPage()
+    canvas.acroForm.textfield(name="iban", x=10, y=800, width=180, height=12)
+    canvas.showPage()
+    canvas.save()
+    target = tmp_path / "vertrag.pdf"
+
+    build_contract(ContractFields(iban="CH9300762011623852957"), source.read_bytes(), target)
+
+    assert PdfReader(str(target)).get_fields()["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"

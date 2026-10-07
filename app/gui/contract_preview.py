@@ -31,20 +31,12 @@ def open_contract_preview(*, document_key: str) -> None:
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
         ui.label("Beitrittserklärung ansehen").classes("text-lg font-bold")
         ui.label(
-            "Erzeugt das Formular für eine Person, wie es ein Versand "
-            "anhängen würde -- Seite 1 aus den gespeicherten Angaben, die "
-            "übrigen Seiten aus der hinterlegten Vorlage. Es wird nichts "
-            "versendet."
+            "Erzeugt die aktive Beitrittserklärung für eine Person, ausgefüllt "
+            "mit den gespeicherten Angaben. Es wird nichts versendet."
         ).classes("text-body2 text-grey-8")
-
-        if stored is None:
-            ui.label(
-                "⚠ Es ist keine Vorlage hinterlegt, die Vorschau zeigt daher "
-                "nur die ausgefüllte erste Seite. Einstellungen → Allgemein → "
-                "Aufnahmeprozess → LEG-Dokumente."
-            ).classes("text-warning text-body2")
-        else:
-            ui.label(f"Vorlage: {stored.filename}").classes("text-caption text-grey-7")
+        ui.label(
+            f"Vorlage: {stored.filename}" if stored else "Keine Vorlage in den Einstellungen hinterlegt"
+        ).classes("text-caption text-grey-7")
 
         person_select = ui.select(
             options, label="Person", with_input=True, value=people[0].id if people else None
@@ -65,7 +57,11 @@ def open_contract_preview(*, document_key: str) -> None:
                 document = leg_document_repo.get(connection, document_key)
 
             target = OUTPUT_DIR / "Vorschau" / f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
-            build_contract(fields, document.content if document else None, target)
+            try:
+                build_contract(fields, document.content if document else None, target)
+            except ValueError as exc:
+                safe_notify(f"Beitrittserklärung konnte nicht erzeugt werden: {exc}", type="negative")
+                return
 
             result.clear()
             with result:

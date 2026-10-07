@@ -141,8 +141,8 @@ def test_a_document_is_only_offered_where_it_can_be_delivered():
     assert invoice_keys == [KEY_INVOICE]
 
 
-def test_a_ticked_document_without_a_stored_form_is_reported(db):
-    """A statement, not a refusal: the box may be ticked before the file is to hand, which is what the..."""
+def test_the_contract_requires_a_stored_source_file(db):
+    """The contract is only produced from a template uploaded in the settings."""
     missing = auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], set())
     assert [entry.key for entry in missing] == [KEY_MEMBERSHIP_CONTRACT]
 

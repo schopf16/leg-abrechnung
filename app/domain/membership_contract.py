@@ -24,9 +24,14 @@ class ContractFields:
     """What goes on page 1, each already a finished line of text."""
 
     company: str = ""
+    salutation: str = ""
+    first_name: str = ""
+    last_name: str = ""
     names: str = ""
     address: str = ""
     locality: str = ""
+    postal_code: str = ""
+    city: str = ""
     email: str = ""
     phone: str = ""
     substation_area: str = ""
@@ -95,13 +100,36 @@ def gather(connection: sqlite3.Connection, person: Person) -> ContractFields:
     battery = [_number(p.battery_capacity_kwh) for p in feed_in if p.battery_capacity_kwh is not None]
     wallbox = [_number(p.wallbox_capacity_kw) for p in feed_in if p.wallbox_capacity_kw is not None]
 
+    named = person.named_persons
+    shared_last_name = len({one.last_name for one in named}) == 1
+    if len(named) == 2 and shared_last_name:
+        first_name, last_name = f"{named[0].first_name} und {named[1].first_name}", named[0].last_name
+    elif len(named) == 2:
+        # Different surnames: the first person whole in the Vorname field, so
+        # the two fields read "Anna Muster und Beat" + "Beispiel".
+        first_name, last_name = f"{named[0].full_name} und {named[1].first_name}", named[1].last_name
+    elif named:
+        first_name, last_name = named[0].first_name, named[0].last_name
+    else:
+        first_name, last_name = "", ""
+    if len(named) == 2:
+        # The form's choice offers "Familie" but nothing for two surnames.
+        salutation = "Familie" if shared_last_name else ""
+    else:
+        salutation = person.salutation
+
     return ContractFields(
         company=person.company,
+        salutation=salutation,
+        first_name=first_name,
+        last_name=last_name,
         # Both names of a couple: both are contract parties and both sign.
         # Without the salutations -- the form's line is "Vorname, Name".
         names=" und ".join(named.full_name for named in person.named_persons),
         address=person.billing_street_with_number,
         locality=f"{person.billing_postal_code} {person.billing_city}".strip(),
+        postal_code=person.billing_postal_code,
+        city=person.billing_city,
         email=", ".join(person.contact_emails),
         phone=person.contact_phone,
         substation_area=", ".join(_substation_area_names(connection, unique_points)),

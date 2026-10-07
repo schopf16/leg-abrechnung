@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
+from app.domain.phone_format import format_swiss_phone
 from app.domain.message_templates import iban_request
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
@@ -177,7 +178,7 @@ def _print_row(person: Person, membership) -> dict:
         "salutation": " / ".join(one.salutation or "?" for one in person.named_persons),
         "name": person.display_name,
         "email": ", ".join(person.contact_emails),
-        "phone": person.contact_phone,
+        "phone": format_swiss_phone(person.contact_phone),
         "address": (
             f"{person.billing_street_with_number}, {person.billing_postal_code} {person.billing_city}"
         ),
@@ -515,7 +516,7 @@ def person_detail_page(person_id: int) -> None:
                 _fact_label("E-Mail")
                 ui.label(person.contact_email or "-").classes("break-all")
                 _fact_label("Telefon")
-                ui.label(person.contact_phone or "-")
+                ui.label(format_swiss_phone(person.contact_phone) or "-")
                 # The second person has no phone field of their own.
                 if person.has_second_person or person.second_contact_email:
                     _fact_label("Person 2").classes("mt-2")
