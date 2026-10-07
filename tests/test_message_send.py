@@ -953,3 +953,26 @@ def test_after_the_send_the_finding_shows_the_date(monkeypatch):
 
     assert "IBAN-Anfrage senden" not in texts
     assert any(text.startswith("IBAN-Anfrage: ") for text in texts), texts
+
+
+def test_the_edit_dialog_offers_the_iban_request_at_the_field(monkeypatch):
+    """The pencil offers it too, beside the field that is missing."""
+    from app.domain.quality_checks import SUBJECT_PERSON, QualityWarning
+    from app.gui import person_form
+    from app.gui.person_form import open_person_form
+
+    with connection_scope() as connection:
+        person = _person(connection)
+    finding = QualityWarning(
+        category="feed_in_without_iban",
+        message="speist ein, hat aber keine IBAN",
+        subject_kind=SUBJECT_PERSON,
+        subject_id=person.id,
+    )
+    monkeypatch.setattr(person_form, "load_problems", lambda kind: {person.id: [finding]})
+    client = Client(ui.page("/probe-iban-request-form")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+        texts = [getattr(element, "text", "") or "" for element in client.elements.values()]
+
+    assert "IBAN-Anfrage senden" in texts

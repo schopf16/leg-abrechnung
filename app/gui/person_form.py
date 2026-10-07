@@ -10,10 +10,13 @@ from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.email_validation import validate_email
 from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_iban
+from app.domain.message_templates import iban_request
+from app.gui.message_buttons import render_step_messages
 from app.gui.cooperative_form import CooperativeEditor
 from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
+from app.models.message_template import OCCASION_IBAN_REQUEST
 from app.models.person import SALUTATION_OPTIONS, Person
 
 
@@ -215,6 +218,19 @@ def open_person_form(
         )
         if missing_iban_finding:
             iban.props("error")
+        if missing_iban_finding and existing:
+
+            @ui.refreshable
+            def iban_request_controls() -> None:
+                """The IBAN-Anfrage or its date, refreshed in place so typed data survives a send."""
+                with connection_scope() as connection:
+                    message = iban_request(connection, existing)
+                if message:
+                    render_step_messages(
+                        existing, [message], OCCASION_IBAN_REQUEST, on_changed=iban_request_controls.refresh
+                    )
+
+            iban_request_controls()
 
         ui.separator().classes("my-2")
         ui.label("Mitgliedschaft").classes("text-base font-bold")
