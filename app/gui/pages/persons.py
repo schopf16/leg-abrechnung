@@ -271,6 +271,16 @@ def persons_page() -> None:
         # active person and restore for a deactivated one, which is why the
         # row carries `is_active`.
         table.add_slot(
+            "body-cell-customer_number",
+            r'''
+            <q-td :props="props" class="text-no-wrap">
+                {{ props.value }}
+                <q-btn dense flat round size="sm" icon="content_copy"
+                       @click.stop="navigator.clipboard.writeText(props.value)" />
+            </q-td>
+            ''',
+        )
+        table.add_slot(
             "body-cell-actions",
             f"""
             <q-td :props="props">
@@ -463,7 +473,8 @@ def person_detail_page(person_id: int) -> None:
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.
-        render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
+        person_problems = load_problems(SUBJECT_PERSON).get(person.id)
+        render_problem_notes(person_problems)
         if not person.active:
             ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
         if person.company:
@@ -542,6 +553,8 @@ def person_detail_page(person_id: int) -> None:
                 with ui.column().classes("gap-0"):
                     ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
                     ui.label(format_iban(person.iban) if person.iban else "-").classes("leading-tight")
+                    if any(w.category == "feed_in_without_iban" for w in (person_problems or [])):
+                        ui.label("Fehlt für die Einspeisung").classes("text-negative text-caption")
                 with ui.column().classes("gap-0"):
                     ui.label("Papierrechnung").classes("text-caption text-grey-6")
                     ui.label("Ja" if person.paper_invoice else "Nein").classes("leading-tight")
@@ -581,12 +594,12 @@ def person_detail_page(person_id: int) -> None:
                         ui.label(
                             f"Aktueller Schritt: {step_label} (seit {onboarding.days_open()} Tagen)"
                         ).classes("text-negative" if overdue else "")
-                    ui.button(
-                        "Bearbeiten",
-                        on_click=lambda: open_onboarding_form(
-                            onboarding, person, on_saved=lambda _: render_onboarding_status()
-                        ),
-                    ).props("dense flat").classes("mt-2")
+                        ui.button(
+                            "Bearbeiten",
+                            on_click=lambda: open_onboarding_form(
+                                onboarding, person, on_saved=lambda _: render_onboarding_status()
+                            ),
+                        ).props("dense flat").classes("mt-2")
 
             render_onboarding_status()
 

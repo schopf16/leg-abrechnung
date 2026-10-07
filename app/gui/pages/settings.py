@@ -7,7 +7,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.address_input import SuggestionBox
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
-from app.domain.iban_validation import normalize_iban, validate_qr_iban
+from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
 from app.domain import auto_attachments
@@ -68,9 +68,14 @@ def settings_page() -> None:
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
             def check_qr_iban() -> None:
-                """Validate the QR-IBAN once the field loses focus."""
-                qr_iban_error.text = validate_qr_iban(qr_iban.value) or ""
+                """Show a validation error once the field could hold a complete IBAN."""
+                qr_iban_error.text = (
+                    validate_qr_iban(qr_iban.value) or ""
+                    if iban_entry_is_complete(qr_iban.value)
+                    else ""
+                )
 
+            qr_iban.on_value_change(lambda _: check_qr_iban())
             qr_iban.on("blur", check_qr_iban)
             price = ui.number(
                 "Interner Strompreis (Rp./kWh)",

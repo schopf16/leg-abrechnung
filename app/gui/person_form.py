@@ -9,12 +9,18 @@ from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.email_validation import validate_email
-from app.domain.iban_validation import normalize_iban, validate_iban
+from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_iban
 from app.gui.cooperative_form import CooperativeEditor
 from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
 from app.models.person import SALUTATION_OPTIONS, Person
+
+
+def _copy_customer_number(person: Person) -> None:
+    """Copy a person's formatted customer number to the clipboard."""
+    ui.clipboard.write(person.formatted_customer_number)
+    safe_notify("Kundennummer kopiert.")
 
 #: Person-shaped fields `open_person_form`'s `prefill` dict may set for a
 #: new person -- see that function's docstring.
@@ -55,8 +61,9 @@ def open_person_form(
         ui.label("Person bearbeiten" if existing else "Neue Person").classes("text-lg font-bold")
         # The findings for this record, except the ones rendered
         # beside their own field further down.
+        existing_problems = (load_problems(SUBJECT_PERSON).get(existing.id) or []) if existing is not None else []
         if existing is not None:
-            render_problem_notes(load_problems(SUBJECT_PERSON).get(existing.id), exclude=AT_THE_FIELD)
+            render_problem_notes(existing_problems, exclude=AT_THE_FIELD)
 
         ui.label("Firma").classes("text-base font-bold mt-2")
         ui.label("Optional, zum Beispiel bei einer Firmenanschrift.").classes("text-caption text-grey-6")
@@ -138,6 +145,9 @@ def open_person_form(
 
         ui.separator().classes("my-2")
         ui.label("Rechnungsadresse").classes("text-base font-bold")
+        ui.label(
+            "Gemeinsame Adresse für beide Kontaktpersonen; die Rechnung kann auch an eine andere Person oder Firma gehen."
+        ).classes("text-caption text-grey-6")
         with ui.row().classes("w-full gap-2"):
             street = ui.input(
                 "Strasse",
@@ -183,7 +193,14 @@ def open_person_form(
                 "Papierrechnung (kostenpflichtig)",
                 value=existing.paper_invoice if existing else False,
             ).classes("self-center")
-        iban_error = ui.label("").classes("text-negative text-caption")
+        missing_iban_finding = next(
+            (warning for warning in existing_problems if warning.category == "feed_in_without_iban"), None
+        )
+        iban_error = ui.label(
+            "IBAN für Gutschriften fehlt" if missing_iban_finding else ""
+        ).classes("text-warning text-caption")
+        if missing_iban_finding:
+            iban.props("error")
 
         ui.separator().classes("my-2")
         ui.label("Mitgliedschaft").classes("text-base font-bold")
@@ -213,9 +230,18 @@ def open_person_form(
         note.props('hint="Erscheint auf keinem Beleg und in keiner E-Mail"')
 
         def check_iban() -> None:
-            """Validate the IBAN once the field loses focus (not on every keystroke)."""
-            iban_error.text = validate_iban(iban.value) or ""
+            """Validate once an IBAN is long enough to be a complete entry."""
+            if iban_entry_is_complete(iban.value):
+                problem = validate_iban(iban.value)
+                iban_error.text = problem or ""
+                iban_error.classes(remove="text-warning", add="text-negative")
+            else:
+                problem = bool(missing_iban_finding)
+                iban_error.text = "IBAN für Gutschriften fehlt" if problem else ""
+                iban_error.classes(remove="text-negative", add="text-warning")
+            iban.props(f"error={bool(iban_error.text)}")
 
+        iban.on_value_change(lambda _: check_iban())
         iban.on("blur", check_iban)
 
         def check_emails() -> None:
@@ -226,9 +252,14 @@ def open_person_form(
         email.on("blur", check_emails)
         second_email.on("blur", check_emails)
         if existing:
-            ui.label(
-                f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
-            ).classes("text-caption text-grey-6")
+            with ui.row().classes("items-center gap-1"):
+                ui.label(
+                    f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
+                ).classes("text-caption text-grey-6")
+                ui.button(
+                    icon="content_copy",
+                    on_click=lambda: _copy_customer_number(existing),
+                ).props("dense flat size=sm").tooltip("Kundennummer kopieren")
         else:
             ui.label("Die Kunden-Nr. wird beim Speichern vergeben.").classes("text-caption text-grey-6")
 

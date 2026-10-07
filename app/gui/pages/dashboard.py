@@ -14,6 +14,7 @@ from app.domain.quality_checks import (
     check_cooperative_members_without_shares,
     check_addresses,
     check_feed_in_without_consumption,
+    check_feed_in_without_iban,
     check_offboarding_completed_but_active,
     check_onboarding_progress,
     check_open_billing_cycle,
@@ -85,6 +86,8 @@ def _load_overview(connection) -> dict:
     for warning in check_offboarding_completed_but_active(connection):
         collected.append(warning)
     for warning in check_cooperative_members_without_shares(connection):
+        collected.append(warning)
+    for warning in check_feed_in_without_iban(connection):
         collected.append(warning)
     for warning in check_feed_in_without_consumption(connection):
         collected.append(warning)

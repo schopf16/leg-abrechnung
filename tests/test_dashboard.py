@@ -2,9 +2,16 @@
 
 from app.gui.pages.dashboard import _load_overview
 from app.models import person as person_repo
+from app.models import leg as leg_repo
+from app.models import metering_point as metering_point_repo
+from app.models import assignment as assignment_repo
 from app.models import site as site_repo
 from app.models.person import Person
 from app.models.site import Site
+from app.models.leg import Leg
+from app.models.metering_point import DIRECTION_FEED_IN, MeteringPoint
+from app.models.assignment import Assignment
+from datetime import date
 
 
 def _person(db, name: str = "Test") -> int:
@@ -77,3 +84,39 @@ def test_site_count_still_includes_sites_without_persons(db):
     _site(db, "Fischrain", "68")
 
     assert _load_overview(db)["counts"]["sites"] == 1
+
+
+def test_missing_feed_in_iban_appears_in_overview_handlungsbedarf(db):
+    """The new person finding must reach the overview as a link to the person list."""
+    person_id = _person(db, "Einspeiser")
+    site_id = _site(db, "Sonnenweg", "3")
+    leg_id = leg_repo.create(db, Leg(id=None, name="Test", note="", created_at=""))
+    metering_point_id = metering_point_repo.create(
+        db,
+        MeteringPoint(
+            id=None,
+            designation="CH-Feed",
+            direction=DIRECTION_FEED_IN,
+            site_id=site_id,
+            leg_id=leg_id,
+            pv_capacity_kwp=None,
+            battery_capacity_kwh=None,
+            created_at="",
+        ),
+    )
+    assignment_repo.create(
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date.today(),
+            valid_to=None,
+            created_at="",
+        ),
+    )
+
+    action_items = _load_overview(db)["action_items"]
+
+    assert any("keine IBAN für Gutschriften" in message for message, _ in action_items), action_items
+    assert any(link == f"/persons/{person_id}" for _, link in action_items)

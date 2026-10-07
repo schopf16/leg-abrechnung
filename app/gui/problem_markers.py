@@ -58,7 +58,7 @@ class ProblemFilter:
 #: Findings an edit dialog already shows at the field itself. Repeating them
 #: in the block at the top would say the same thing twice, once far from the
 #: input it is about.
-AT_THE_FIELD = frozenset({"address_not_official"})
+AT_THE_FIELD = frozenset({"address_not_official", "feed_in_without_iban"})
 
 
 def render_problem_notes(
