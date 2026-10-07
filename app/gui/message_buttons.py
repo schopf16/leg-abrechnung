@@ -69,37 +69,20 @@ def _render_choices(
     occasion: str,
     on_changed: Optional[Callable[[], None]],
 ) -> None:
-    """Let the administrator choose which due baustein to open for this step."""
-    options = {
-        message.template.id: (
-            f"{message.template.name} (bereits erledigt am {format_date(message.sent_on)})"
-            if message.was_sent
-            else message.template.name
-        )
-        for message in messages
-    }
+    """One link like a single baustein's; the send dialog chooses among them.
+
+    A select on the card stretched it; the choice sits at the top of the
+    dialog, where the text it changes is visible.
+    """
+    first_open = next((message for message in messages if not message.was_sent), None)
+    verb = "Mail senden" if first_open else "nochmals senden"
     with ui.column().classes("gap-1 items-start no-wrap"):
-        with ui.row().classes("items-center gap-1 no-wrap"):
-            first_open = next((message.template.id for message in messages if not message.was_sent), None)
-            choice = (
-                ui.select(options, label="Textbaustein wählen", value=first_open)
-                .props("dense outlined")
-                .classes("min-w-48")
-            )
-
-            def open_selected() -> None:
-                """Open the selected draft, asking first if it was already settled."""
-                message = next(
-                    (candidate for candidate in messages if candidate.template.id == choice.value), None
-                )
-                if message is None:
-                    safe_notify("Bitte einen Textbaustein wählen.", type="warning")
-                elif message.was_sent:
-                    _ask_again(person, message, occasion, on_changed)
-                else:
-                    open_message_send_dialog(person, message, occasion, on_sent=on_changed)
-
-            ui.button("Mail öffnen", on_click=open_selected).props("dense flat color=primary")
+        ui.button(
+            f"{verb} ({len(messages)} Textbausteine)",
+            on_click=lambda: open_message_send_dialog(
+                person, first_open or messages[0], occasion, on_sent=on_changed, choices=messages
+            ),
+        ).props("dense flat color=primary" if first_open else _QUIET)
 
         for message in messages:
             if message.was_sent:

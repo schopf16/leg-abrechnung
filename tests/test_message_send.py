@@ -415,21 +415,28 @@ def test_a_variant_marked_by_hand_can_be_unmarked_from_the_choice(db, no_drafts)
     from app.gui import message_buttons
 
     client = Client(ui.page("/probe-message-choice-unmark")(lambda: None), request=None)
-    with client:
-        message_buttons.render_step_messages(person, due, OCCASION_ONBOARDING)
-        choice = next(
-            element
-            for element in client.elements.values()
-            if element.__class__.__name__ == "Select" and element._props.get("label") == "Textbaustein wählen"
-        )
-        unmark = [
-            element
-            for element in client.elements.values()
-            if element.__class__.__name__ == "Button" and element.text == "Markierung entfernen"
-        ]
+    with patch("app.gui.message_buttons.open_message_send_dialog") as open_draft:
+        with client:
+            message_buttons.render_step_messages(person, due, OCCASION_ONBOARDING)
+            link = next(
+                element
+                for element in client.elements.values()
+                if element.__class__.__name__ == "Button" and element.text.startswith("Mail senden")
+            )
+            unmark = [
+                element
+                for element in client.elements.values()
+                if element.__class__.__name__ == "Button" and element.text == "Markierung entfernen"
+            ]
+            _click(link)
 
-    assert choice.value == second_id, "the open variant is preselected"
+    assert open_draft.call_args.args[1].template.id == second_id, "the open variant is preselected"
     assert len(unmark) == 1
+
+
+def _click(button) -> None:
+    """Run a button's click handler as NiceGUI would."""
+    next(listener.handler for listener in button._event_listeners.values() if listener.type == "click")(None)
 
 
 def test_an_invoice_cannot_be_attached_outside_a_billing_run(db, tmp_path):
@@ -630,8 +637,8 @@ def test_the_card_offers_the_send_button():
     assert any("Willkommen senden" in (text or "") for text in buttons), buttons
 
 
-def test_multiple_due_bausteine_require_a_choice_before_opening_a_draft(db, no_drafts):
-    """The selected template, not an arbitrary first one, opens the send dialog."""
+def test_multiple_due_bausteine_are_one_link_on_the_card(db, no_drafts):
+    """No select on the card -- it stretched it; the dialog gets the choices."""
     person = _person(db)
     first_id = _template(db, "Willkommen 20%", step="leg_assigned_at")
     second_id = _template(db, "Willkommen 40%", step="leg_assigned_at")
@@ -647,32 +654,45 @@ def test_multiple_due_bausteine_require_a_choice_before_opening_a_draft(db, no_d
     with patch("app.gui.message_buttons.open_message_send_dialog") as open_draft:
         with client:
             message_buttons.render_step_messages(person, due, OCCASION_ONBOARDING)
-            choice = next(
+            assert not any(element.__class__.__name__ == "Select" for element in client.elements.values())
+            link = next(
                 element
                 for element in client.elements.values()
-                if element.__class__.__name__ == "Select"
-                and element._props.get("label") == "Textbaustein wählen"
+                if element.__class__.__name__ == "Button" and element.text == "Mail senden (2 Textbausteine)"
             )
-            button = next(
-                element
-                for element in client.elements.values()
-                if element.__class__.__name__ == "Button" and element.text == "Mail öffnen"
-            )
-            assert choice.options == {
-                first_id: "Willkommen 20%",
-                second_id: "Willkommen 40%",
-            }
-            assert not any(
-                element.__class__.__name__ == "Button" and "senden" in (element.text or "")
-                for element in client.elements.values()
-            )
-            choice.value = second_id
-            next(
-                listener.handler for listener in button._event_listeners.values() if listener.type == "click"
-            )(None)
+            _click(link)
 
     open_draft.assert_called_once()
-    assert open_draft.call_args.args[1].template.name == "Willkommen 40%"
+    assert open_draft.call_args.kwargs["choices"] == due
+
+
+def test_the_dialog_select_switches_the_text():
+    """Several bausteine: a select at the top, and the text follows it."""
+    with connection_scope() as connection:
+        person = _person(connection)
+        first = template_repo.get(connection, _template(connection, "Willkommen 20%"))
+        second = template_repo.get(connection, _template(connection, "Willkommen 40%"))
+        second.body = "Ganz anderer Text"
+        template_repo.update(connection, second)
+        second = template_repo.get(connection, second.id)
+    due = [DueMessage(first, "Einteilung in LEG", None), DueMessage(second, "Einteilung in LEG", None)]
+
+    client = Client(ui.page("/probe-send-choice-switch")(lambda: None), request=None)
+    with client:
+        open_message_send_dialog(person, due[0], OCCASION_ONBOARDING, choices=due)
+        choice = next(
+            element
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Select" and element._props.get("label") == "Textbaustein"
+        )
+        choice.value = second.id
+        body = next(
+            element.value
+            for element in client.elements.values()
+            if element.__class__.__name__ == "Textarea" and element.label == "Text"
+        )
+
+    assert body.startswith("Ganz anderer Text")
 
 
 def test_a_mail_sits_on_the_row_of_its_own_step():
