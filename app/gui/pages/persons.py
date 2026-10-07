@@ -54,6 +54,20 @@ DIRECTION_LABELS = {
 }
 
 
+def _fact_grid() -> ui.element:
+    """A label-left, value-right grid; the fixed label width lines the cards up with each other."""
+    return (
+        ui.element("div")
+        .classes("grid gap-x-4 gap-y-1 mt-2 items-baseline")
+        .style("grid-template-columns: 11rem minmax(0, 1fr);")
+    )
+
+
+def _fact_label(text: str) -> ui.label:
+    """The label cell of a `_fact_grid` row."""
+    return ui.label(text).classes("text-grey-6")
+
+
 #: What the list shows, on the administrator's own choice: "wichtig wäre mir
 #: sicher kundennummer, name vielleicht noch adresse? alles andere dann
 #: hinter auge". Everything else was already on the detail page.
@@ -464,70 +478,52 @@ def person_detail_page(person_id: int) -> None:
         # named here is who the invoice goes to, at this address.
         with ui.card().classes("w-full max-w-5xl p-3"):
             ui.label("Name und Adresse").classes("text-base font-bold")
-            with (
-                ui.element("div")
-                .classes("grid gap-x-6 gap-y-2 mt-2")
-                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));")
-            ):
+            with _fact_grid():
+                _fact_label("Adresse")
                 with ui.column().classes("gap-0"):
                     for line in person.address_block_lines:
-                        ui.label(line).classes("leading-tight font-medium")
-                    ui.label(person.billing_street_with_number or "-").classes("leading-tight")
+                        ui.label(line).classes("font-medium")
+                    ui.label(person.billing_street_with_number or "-")
                     locality = " ".join(
                         part for part in (person.billing_postal_code, person.billing_city) if part
                     )
-                    ui.label(locality or "-").classes("leading-tight")
+                    ui.label(locality or "-")
                     if person.billing_country and person.billing_country != "CH":
-                        ui.label(person.billing_country).classes("leading-tight")
-                with ui.column().classes("gap-0"):
-                    ui.label("Briefanrede").classes("text-caption text-grey-6")
-                    ui.label(letter_salutation(person)).classes("leading-tight")
+                        ui.label(person.billing_country)
+                _fact_label("Briefanrede")
+                ui.label(letter_salutation(person))
 
         with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
             ui.label("Kontakt").classes("text-base font-bold")
-            contacts = [(person.full_name or person.company, person.contact_email, person.contact_phone)]
-            if person.has_second_person or person.second_contact_email:
+            with _fact_grid():
+                _fact_label("Person 1")
+                ui.label(person.full_name or person.company or "-")
+                _fact_label("E-Mail")
+                ui.label(person.contact_email or "-").classes("break-all")
+                _fact_label("Telefon")
+                ui.label(person.contact_phone or "-")
                 # The second person has no phone field of their own.
-                contacts.append((person.second_full_name, person.second_contact_email, None))
-            for index, (name, email, phone) in enumerate(contacts, start=1):
-                with (
-                    ui.element("div")
-                    .classes("grid gap-x-6 gap-y-2 mt-2")
-                    .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
-                ):
-                    with ui.column().classes("gap-0"):
-                        ui.label(f"Person {index}").classes("text-caption text-grey-6")
-                        ui.label(name or "-").classes("leading-tight")
-                    with ui.column().classes("gap-0"):
-                        ui.label("E-Mail").classes("text-caption text-grey-6")
-                        ui.label(email or "-").classes("leading-tight break-all")
-                    if index == 1:
-                        with ui.column().classes("gap-0"):
-                            ui.label("Telefon").classes("text-caption text-grey-6")
-                            ui.label(phone or "-").classes("leading-tight")
+                if person.has_second_person or person.second_contact_email:
+                    _fact_label("Person 2").classes("mt-2")
+                    ui.label(person.second_full_name or "-").classes("mt-2")
+                    _fact_label("E-Mail")
+                    ui.label(person.second_contact_email or "-").classes("break-all")
 
         with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
             ui.label("Rechnungsdaten").classes("text-base font-bold")
-            with (
-                ui.element("div")
-                .classes("grid gap-x-6 gap-y-2 mt-2")
-                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
-            ):
+            with _fact_grid():
+                _fact_label("Kunden-Nr.")
+                render_customer_number_row(person, label="", classes="")
+                _fact_label("IBAN für Gutschriften")
                 with ui.column().classes("gap-0"):
-                    ui.label("Kunden-Nr.").classes("text-caption text-grey-6")
-                    render_customer_number_row(person, label="", classes="leading-tight")
-                with ui.column().classes("gap-0"):
-                    ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
-                    ui.label(format_iban(person.iban) if person.iban else "-").classes("leading-tight")
+                    ui.label(format_iban(person.iban) if person.iban else "-")
                     if any(w.category == "feed_in_without_iban" for w in (person_problems or [])):
                         ui.label("Fehlt für die Einspeisung").classes("text-negative text-caption")
-                with ui.column().classes("gap-0"):
-                    ui.label("Papierrechnung").classes("text-caption text-grey-6")
-                    ui.label("Ja" if person.paper_invoice else "Nein").classes("leading-tight")
+                _fact_label("Papierrechnung")
+                ui.label("Ja" if person.paper_invoice else "Nein")
                 if person.bkw_customer_number is not None:
-                    with ui.column().classes("gap-0"):
-                        ui.label("BKW-Kundennummer").classes("text-caption text-grey-6")
-                        ui.label(str(person.bkw_customer_number)).classes("leading-tight")
+                    _fact_label("BKW-Kundennummer")
+                    ui.label(str(person.bkw_customer_number))
 
         if person.note:
             with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
