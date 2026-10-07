@@ -12,6 +12,8 @@ OCCASION_OFFBOARDING = "offboarding"
 OCCASION_INVOICE = "invoice"
 OCCASION_DUNNING1 = "dunning1"
 OCCASION_DUNNING2 = "dunning2"
+#: Offered beside the "Einspeiser ohne IBAN" finding, gone once an IBAN is in.
+OCCASION_IBAN_REQUEST = "iban_request"
 
 #: German labels, in the order the list shows them.
 OCCASION_LABELS = {
@@ -20,6 +22,7 @@ OCCASION_LABELS = {
     OCCASION_INVOICE: "Rechnung",
     OCCASION_DUNNING1: "1. Mahnung",
     OCCASION_DUNNING2: "2. Mahnung",
+    OCCASION_IBAN_REQUEST: "IBAN fehlt",
 }
 
 #: The two occasions that hang off a process step.

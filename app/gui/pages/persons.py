@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
+from app.domain.message_templates import iban_request
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.filter_bar import FilterBar
@@ -19,6 +20,7 @@ from app.gui.problem_markers import (
     render_problem_notes,
 )
 from app.gui.cooperative_form import render_cooperative_history
+from app.gui.message_buttons import render_step_messages
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
 from app.gui.person_form import open_person_form, render_customer_number_row
@@ -44,6 +46,7 @@ from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
+from app.models.message_template import OCCASION_IBAN_REQUEST
 from app.models.person_offboarding import REASON_OPTIONS
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.person import Person
@@ -471,7 +474,18 @@ def person_detail_page(person_id: int) -> None:
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.
         person_problems = load_problems(SUBJECT_PERSON).get(person.id)
-        render_problem_notes(person_problems)
+        with connection_scope() as connection:
+            iban_message = iban_request(connection, person)
+        render_problem_notes(
+            person_problems,
+            actions={
+                "feed_in_without_iban": lambda: render_step_messages(
+                    person, [iban_message], OCCASION_IBAN_REQUEST, on_changed=ui.navigate.reload
+                )
+            }
+            if iban_message
+            else None,
+        )
         if not person.active:
             ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
         # Name and address are one block, as on the document: whoever is

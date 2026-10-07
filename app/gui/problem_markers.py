@@ -65,8 +65,9 @@ def render_problem_notes(
     warnings: Optional[list[QualityWarning]],
     *,
     exclude: frozenset = frozenset(),
+    actions: Optional[dict[str, Callable[[], None]]] = None,
 ) -> None:
-    """Spell the findings out, for a detail page or an edit dialog."""
+    """Spell the findings out, for a detail page or an edit dialog; `actions` renders under a category's line."""
     warnings = [w for w in (warnings or []) if w.category not in exclude]
     if not warnings:
         return
@@ -76,3 +77,5 @@ def render_problem_notes(
             ui.label("Zu prüfen").classes("text-body1 font-bold")
         for warning in warnings:
             ui.label(warning.message).classes("text-body2")
+            if actions and warning.category in actions:
+                actions[warning.category]()
