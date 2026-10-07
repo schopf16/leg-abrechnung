@@ -14,6 +14,7 @@ from typing import Optional
 from app.models import message_template as template_repo
 from app.models import person_message_log as log_repo
 from app.models.message_template import (
+    OCCASION_IBAN_REQUEST,
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
     TRIGGER_STEP_DONE,
@@ -113,6 +114,22 @@ def due_by_person(
         }
         result[tracker.person_id] = _due_for(tracker, occasion, templates, latest, day)
     return result
+
+
+def iban_request(connection: sqlite3.Connection, person) -> Optional[DueMessage]:
+    """The IBAN-Anfrage for this person, or `None` once an IBAN is in or no baustein exists."""
+    if person.iban.strip():
+        return None
+    templates = template_repo.list_for_occasion(connection, OCCASION_IBAN_REQUEST)
+    if not templates:
+        return None
+    template = templates[0]
+    return DueMessage(
+        template=template,
+        step_label="",
+        days_waiting=None,
+        log=log_repo.latest_by_template(connection, person.id).get(template.id),
+    )
 
 
 def mark_done(

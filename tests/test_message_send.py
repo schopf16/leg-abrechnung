@@ -15,7 +15,7 @@ from nicegui import Client, ui
 from app.config import GraphConfig
 from app.db.connection import connection_scope
 from app.domain import message_attachments
-from app.domain.message_templates import DueMessage, due_by_person, due_templates, mark_done
+from app.domain.message_templates import DueMessage, due_by_person, due_templates, iban_request, mark_done
 from app.emailing.person_send import send_person_message
 from app.emailing.templates import SIGNATURE_DELIMITER
 from app.gui.message_send_dialog import open_message_send_dialog
@@ -29,6 +29,7 @@ from app.models import signature as signature_repo
 from app.models.person_message_log import CHANNEL_MANUAL
 from app.models.signature import Signature
 from app.models.message_template import (
+    OCCASION_IBAN_REQUEST,
     OCCASION_OFFBOARDING,
     OCCASION_ONBOARDING,
     TRIGGER_STEP_DONE,
@@ -859,3 +860,119 @@ def test_the_dialog_offers_the_picker_and_the_stored_files(db):
     assert any("Eigener Vertrag.pdf" in text for text in labels), "die Datei des Bausteins fehlt"
     uploads = [element for element in client.elements.values() if isinstance(element, Upload)]
     assert len(uploads) == 1, "genau ein Upload-Feld im Versanddialog"
+
+
+# --- IBAN-Anfrage ------------------------------------------------------------
+
+
+def test_the_iban_request_is_seeded_without_a_step(db):
+    """Migration 59 brings the IBAN-Anfrage; it hangs off the finding, not a step."""
+    template = template_repo.list_for_occasion(db, OCCASION_IBAN_REQUEST)[0]
+
+    assert template.name == "IBAN-Anfrage"
+    assert template.step == ""
+    assert "{briefanrede}" in template.body
+
+
+def test_the_iban_request_is_offered_until_an_iban_is_in(db):
+    """Without an IBAN: offered, unsent. With one: nothing."""
+    person = _person(db)
+
+    offered = iban_request(db, person)
+    assert offered is not None and not offered.was_sent
+
+    person.iban = "CH93 0076 2011 6238 5295 7"
+    assert iban_request(db, person) is None
+
+
+def test_a_sent_iban_request_carries_its_date(db):
+    """The date guards against sending it twice."""
+    person = _person(db)
+    template = iban_request(db, person).template
+    log_repo.record(
+        db,
+        person_id=person.id,
+        template_id=template.id,
+        occasion=OCCASION_IBAN_REQUEST,
+        step="",
+        subject="s",
+        body="b",
+        recipient_emails=["muster@example.invalid"],
+        attachment_filenames=[],
+    )
+
+    assert iban_request(db, person).was_sent
+
+
+def _person_page_texts(person_id: int, route: str, monkeypatch) -> list[str]:
+    """Render one person's detail page with the IBAN finding on it, and return every text."""
+    from app.domain.quality_checks import SUBJECT_PERSON, QualityWarning
+    from app.gui.pages import persons as persons_page
+
+    finding = QualityWarning(
+        category="feed_in_without_iban",
+        message="speist ein, hat aber keine IBAN",
+        subject_kind=SUBJECT_PERSON,
+        subject_id=person_id,
+    )
+    monkeypatch.setattr(persons_page, "load_problems", lambda kind: {person_id: [finding]})
+    client = Client(ui.page(route)(lambda: None), request=None)
+    with client:
+        persons_page.person_detail_page(person_id)
+        return [getattr(element, "text", "") or "" for element in client.elements.values()]
+
+
+def test_the_finding_offers_the_iban_request(monkeypatch):
+    """The button sits under the finding."""
+    with connection_scope() as connection:
+        person_id = _person(connection).id
+
+    texts = _person_page_texts(person_id, "/probe-iban-request-button", monkeypatch)
+
+    assert "IBAN-Anfrage senden" in texts
+
+
+def test_after_the_send_the_finding_shows_the_date(monkeypatch):
+    """The button has become a date."""
+    with connection_scope() as connection:
+        person = _person(connection)
+        template = iban_request(connection, person).template
+        log_repo.record(
+            connection,
+            person_id=person.id,
+            template_id=template.id,
+            occasion=OCCASION_IBAN_REQUEST,
+            step="",
+            subject="s",
+            body="b",
+            recipient_emails=["muster@example.invalid"],
+            attachment_filenames=[],
+        )
+
+    texts = _person_page_texts(person.id, "/probe-iban-request-date", monkeypatch)
+
+    assert "IBAN-Anfrage senden" not in texts
+    assert any(text.startswith("IBAN-Anfrage: ") for text in texts), texts
+
+
+def test_the_edit_dialog_offers_the_iban_request_at_the_field(monkeypatch):
+    """The pencil offers it too, beside the field that is missing."""
+    from app.domain.quality_checks import SUBJECT_PERSON, QualityWarning
+    from app.gui import person_form
+    from app.gui.person_form import open_person_form
+
+    with connection_scope() as connection:
+        person = _person(connection)
+    finding = QualityWarning(
+        category="feed_in_without_iban",
+        message="speist ein, hat aber keine IBAN",
+        subject_kind=SUBJECT_PERSON,
+        subject_id=person.id,
+    )
+    monkeypatch.setattr(person_form, "load_problems", lambda kind: {person.id: [finding]})
+    client = Client(ui.page("/probe-iban-request-form")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+        texts = [getattr(element, "text", "") or "" for element in client.elements.values()]
+
+    assert "IBAN-Anfrage senden" in texts

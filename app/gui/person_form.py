@@ -9,12 +9,33 @@ from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.problem_markers import AT_THE_FIELD, load_problems, render_problem_notes
 from app.gui.address_input import SuggestionBox, store_dismissals
 from app.domain.email_validation import validate_email
-from app.domain.iban_validation import normalize_iban, validate_iban
+from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_iban
+from app.domain.message_templates import iban_request
+from app.gui.message_buttons import render_step_messages
 from app.gui.cooperative_form import CooperativeEditor
 from app.gui.form_dialog import form_guard
 from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
+from app.models.message_template import OCCASION_IBAN_REQUEST
 from app.models.person import SALUTATION_OPTIONS, Person
+
+
+def _copy_customer_number(person: Person) -> None:
+    """Copy a person's formatted customer number to the clipboard and confirm."""
+    ui.clipboard.write(person.formatted_customer_number)
+    safe_notify("Kundennummer kopiert.")
+
+
+def render_customer_number_row(
+    person: Person, *, label: str, classes: str = "text-caption text-grey-6"
+) -> None:
+    """Render the Kunden-Nr. label with an inline copy-to-clipboard button."""
+    with ui.row().classes("items-center gap-1"):
+        ui.label(f"{label} {person.formatted_customer_number}".strip()).classes(classes)
+        ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
+            "dense flat size=sm"
+        ).tooltip("Kundennummer kopieren")
+
 
 #: Person-shaped fields `open_person_form`'s `prefill` dict may set for a
 #: new person -- see that function's docstring.
@@ -55,8 +76,11 @@ def open_person_form(
         ui.label("Person bearbeiten" if existing else "Neue Person").classes("text-lg font-bold")
         # The findings for this record, except the ones rendered
         # beside their own field further down.
+        existing_problems = (
+            (load_problems(SUBJECT_PERSON).get(existing.id) or []) if existing is not None else []
+        )
         if existing is not None:
-            render_problem_notes(load_problems(SUBJECT_PERSON).get(existing.id), exclude=AT_THE_FIELD)
+            render_problem_notes(existing_problems, exclude=AT_THE_FIELD)
 
         ui.label("Firma").classes("text-base font-bold mt-2")
         ui.label("Optional, zum Beispiel bei einer Firmenanschrift.").classes("text-caption text-grey-6")
@@ -137,7 +161,10 @@ def open_person_form(
                 ).classes("text-caption text-grey-6 mt-2")
 
         ui.separator().classes("my-2")
-        ui.label("Rechnungsadresse").classes("text-base font-bold")
+        ui.label("Adresse").classes("text-base font-bold")
+        ui.label("Gilt für beide Personen und ist zugleich die Rechnungsadresse.").classes(
+            "text-caption text-grey-6"
+        )
         with ui.row().classes("w-full gap-2"):
             street = ui.input(
                 "Strasse",
@@ -183,7 +210,27 @@ def open_person_form(
                 "Papierrechnung (kostenpflichtig)",
                 value=existing.paper_invoice if existing else False,
             ).classes("self-center")
-        iban_error = ui.label("").classes("text-negative text-caption")
+        missing_iban_finding = next(
+            (warning for warning in existing_problems if warning.category == "feed_in_without_iban"), None
+        )
+        iban_error = ui.label("IBAN für Gutschriften fehlt" if missing_iban_finding else "").classes(
+            "text-warning text-caption"
+        )
+        if missing_iban_finding:
+            iban.props("error")
+        if missing_iban_finding and existing:
+
+            @ui.refreshable
+            def iban_request_controls() -> None:
+                """The IBAN-Anfrage or its date, refreshed in place so typed data survives a send."""
+                with connection_scope() as connection:
+                    message = iban_request(connection, existing)
+                if message:
+                    render_step_messages(
+                        existing, [message], OCCASION_IBAN_REQUEST, on_changed=iban_request_controls.refresh
+                    )
+
+            iban_request_controls()
 
         ui.separator().classes("my-2")
         ui.label("Mitgliedschaft").classes("text-base font-bold")
@@ -212,11 +259,25 @@ def open_person_form(
         )
         note.props('hint="Erscheint auf keinem Beleg und in keiner E-Mail"')
 
-        def check_iban() -> None:
-            """Validate the IBAN once the field loses focus (not on every keystroke)."""
-            iban_error.text = validate_iban(iban.value) or ""
+        def check_iban(finished: bool) -> None:
+            """Validate on blur, or while typing once the country's full length is reached."""
+            value = iban.value or ""
+            if not value.strip():
+                iban_error.text = "IBAN für Gutschriften fehlt" if missing_iban_finding else ""
+                iban_error.classes(remove="text-negative", add="text-warning")
+            elif finished or iban_entry_is_complete(value):
+                iban_error.text = validate_iban(value) or ""
+                iban_error.classes(remove="text-warning", add="text-negative")
+            else:
+                iban_error.text = ""
+            # A props string "error=False" reaches Vue as the truthy text "False".
+            if iban_error.text:
+                iban.props("error")
+            else:
+                iban.props(remove="error")
 
-        iban.on("blur", check_iban)
+        iban.on_value_change(lambda _: check_iban(finished=False))
+        iban.on("blur", lambda: check_iban(finished=True))
 
         def check_emails() -> None:
             """Report a certainly-wrong address when a field loses focus."""
@@ -226,9 +287,7 @@ def open_person_form(
         email.on("blur", check_emails)
         second_email.on("blur", check_emails)
         if existing:
-            ui.label(
-                f"Kunden-Nr.: {existing.formatted_customer_number} (automatisch vergeben, nicht änderbar)"
-            ).classes("text-caption text-grey-6")
+            render_customer_number_row(existing, label="Kunden-Nr. (automatisch vergeben, nicht änderbar):")
         else:
             ui.label("Die Kunden-Nr. wird beim Speichern vergeben.").classes("text-caption text-grey-6")
 

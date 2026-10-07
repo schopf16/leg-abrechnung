@@ -8,6 +8,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain.iban_validation import format_iban
+from app.domain.message_templates import iban_request
 from app.domain.salutation import letter_salutation
 from app.domain.quality_checks import SUBJECT_PERSON
 from app.gui.filter_bar import FilterBar
@@ -19,9 +20,10 @@ from app.gui.problem_markers import (
     render_problem_notes,
 )
 from app.gui.cooperative_form import render_cooperative_history
+from app.gui.message_buttons import render_step_messages
 from app.gui.offboarding_form import open_offboarding_form
 from app.gui.onboarding_form import open_onboarding_form
-from app.gui.person_form import open_person_form
+from app.gui.person_form import open_person_form, render_customer_number_row
 from app.gui.print_list import render_print_button
 from app.gui.safe_notify import safe_notify
 from app.gui.table_list import paged_table
@@ -44,6 +46,7 @@ from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
 from app.models import assignment as assignment_repo
+from app.models.message_template import OCCASION_IBAN_REQUEST
 from app.models.person_offboarding import REASON_OPTIONS
 from app.models.metering_point import DIRECTION_CONSUMPTION, DIRECTION_FEED_IN
 from app.models.person import Person
@@ -54,21 +57,18 @@ DIRECTION_LABELS = {
 }
 
 
-def _copy_customer_number(person: Person) -> None:
-    """Copy a person's formatted customer number to the clipboard and confirm."""
-    ui.clipboard.write(person.formatted_customer_number)
-    safe_notify("Kundennummer kopiert.")
+def _fact_grid() -> ui.element:
+    """A label-left, value-right grid; the fixed label width lines the cards up with each other."""
+    return (
+        ui.element("div")
+        .classes("grid gap-x-4 gap-y-1 mt-2 items-baseline")
+        .style("grid-template-columns: 11rem minmax(0, 1fr);")
+    )
 
 
-def _customer_number_row(
-    person: Person, *, label: str = "Kunden-Nr.", classes: str = "text-caption text-grey-6"
-) -> None:
-    """Render the Kunden-Nr. label with an inline copy-to-clipboard button."""
-    with ui.row().classes("items-center gap-1"):
-        ui.label(f"{label} {person.formatted_customer_number}").classes(classes)
-        ui.button(icon="content_copy", on_click=lambda: _copy_customer_number(person)).props(
-            "dense flat size=sm"
-        ).tooltip("Kundennummer kopieren")
+def _fact_label(text: str) -> ui.label:
+    """The label cell of a `_fact_grid` row."""
+    return ui.label(text).classes("text-grey-6")
 
 
 #: What the list shows, on the administrator's own choice: "wichtig wäre mir
@@ -271,6 +271,16 @@ def persons_page() -> None:
         # active person and restore for a deactivated one, which is why the
         # row carries `is_active`.
         table.add_slot(
+            "body-cell-customer_number",
+            r"""
+            <q-td :props="props" class="text-no-wrap">
+                {{ props.value }}
+                <q-btn dense flat round size="sm" icon="content_copy"
+                       @click.stop="navigator.clipboard.writeText(props.value)" />
+            </q-td>
+            """,
+        )
+        table.add_slot(
             "body-cell-actions",
             f"""
             <q-td :props="props">
@@ -463,94 +473,71 @@ def person_detail_page(person_id: int) -> None:
 
         # What the triangle in the list withheld: the eye shows it,
         # the pencil fixes it. See `app.gui.problem_markers`.
-        render_problem_notes(load_problems(SUBJECT_PERSON).get(person.id))
+        person_problems = load_problems(SUBJECT_PERSON).get(person.id)
+        with connection_scope() as connection:
+            iban_message = iban_request(connection, person)
+        render_problem_notes(
+            person_problems,
+            actions={
+                "feed_in_without_iban": lambda: render_step_messages(
+                    person, [iban_message], OCCASION_IBAN_REQUEST, on_changed=ui.navigate.reload
+                )
+            }
+            if iban_message
+            else None,
+        )
         if not person.active:
             ui.label(f"Status: {_status_text(person)}").classes("text-negative font-medium mb-2")
-        if person.company:
-            with ui.card().classes("w-full max-w-5xl p-3 mb-2"):
-                with ui.row().classes("items-baseline gap-2"):
-                    ui.label("Firma").classes("text-caption text-grey-6")
-                    ui.label(person.company).classes("font-medium")
-
-        with (
-            ui.element("div")
-            .classes("grid w-full max-w-5xl gap-2")
-            .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));")
-        ):
-            with ui.card().classes("w-full h-full p-3"):
-                with ui.row().classes("items-center gap-2"):
-                    ui.label("1").classes(
-                        "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
-                    )
-                    ui.label("Person 1").classes("text-base font-bold")
-                    ui.label("Hauptkontakt").classes("text-caption text-grey-6")
-                first_person = " ".join(part for part in (person.salutation, person.full_name) if part)
-                ui.label(first_person or "-").classes("text-body1 font-medium mt-2")
-                with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
-                    with ui.column().classes("gap-0"):
-                        ui.label("E-Mail").classes("text-caption text-grey-6")
-                        ui.label(person.contact_email or "-").classes("leading-tight break-all")
-                    with ui.column().classes("gap-0"):
-                        ui.label("Telefon").classes("text-caption text-grey-6")
-                        ui.label(person.contact_phone or "-").classes("leading-tight")
-
-            if person.has_second_person or person.second_contact_email:
-                with ui.card().classes("w-full h-full p-3"):
-                    with ui.row().classes("items-center gap-2"):
-                        ui.label("2").classes(
-                            "w-7 h-7 rounded-full bg-blue-1 text-primary flex items-center justify-center font-bold"
-                        )
-                        ui.label("Person 2").classes("text-base font-bold")
-                    second_person = " ".join(
-                        part for part in (person.second_salutation, person.second_full_name) if part
-                    )
-                    ui.label(second_person or "-").classes("text-body1 font-medium mt-2")
-                    with ui.element("div").classes("grid grid-cols-2 gap-x-4 gap-y-2 mt-2"):
-                        with ui.column().classes("gap-0"):
-                            ui.label("E-Mail").classes("text-caption text-grey-6")
-                            ui.label(person.second_contact_email or "-").classes("leading-tight break-all")
-                        with ui.column().classes("gap-0"):
-                            ui.label("Telefon").classes("text-caption text-grey-6")
-                            ui.label("bei Person 1").classes("leading-tight text-grey-7")
-
-        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
-            ui.label("Rechnungsdaten").classes("text-base font-bold")
-            with (
-                ui.element("div")
-                .classes("grid gap-x-6 gap-y-2 mt-2")
-                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));")
-            ):
+        # Name and address are one block, as on the document: whoever is
+        # named here is who the invoice goes to, at this address.
+        with ui.card().classes("w-full max-w-5xl p-3"):
+            ui.label("Name und Adresse").classes("text-base font-bold")
+            with _fact_grid():
+                _fact_label("Adresse")
                 with ui.column().classes("gap-0"):
-                    ui.label("Rechnungsadresse").classes("text-caption text-grey-6")
-                    ui.label(person.billing_street_with_number or "-").classes("leading-tight")
+                    for line in person.address_block_lines:
+                        ui.label(line).classes("font-medium")
+                    ui.label(person.billing_street_with_number or "-")
                     locality = " ".join(
                         part for part in (person.billing_postal_code, person.billing_city) if part
                     )
-                    address_tail = " · ".join(
-                        part for part in (locality, person.billing_country or "CH") if part
-                    )
-                    ui.label(address_tail or "-").classes("leading-tight")
+                    ui.label(locality or "-")
+                    if person.billing_country and person.billing_country != "CH":
+                        ui.label(person.billing_country)
+                _fact_label("Briefanrede")
+                ui.label(letter_salutation(person))
+
+        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+            ui.label("Kontakt").classes("text-base font-bold")
+            with _fact_grid():
+                _fact_label("Person 1")
+                ui.label(person.full_name or person.company or "-")
+                _fact_label("E-Mail")
+                ui.label(person.contact_email or "-").classes("break-all")
+                _fact_label("Telefon")
+                ui.label(person.contact_phone or "-")
+                # The second person has no phone field of their own.
+                if person.has_second_person or person.second_contact_email:
+                    _fact_label("Person 2").classes("mt-2")
+                    ui.label(person.second_full_name or "-").classes("mt-2")
+                    _fact_label("E-Mail")
+                    ui.label(person.second_contact_email or "-").classes("break-all")
+
+        with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
+            ui.label("Rechnungsdaten").classes("text-base font-bold")
+            with _fact_grid():
+                _fact_label("Kunden-Nr.")
+                render_customer_number_row(person, label="", classes="")
+                _fact_label("IBAN für Gutschriften")
                 with ui.column().classes("gap-0"):
-                    ui.label("Briefanrede").classes("text-caption text-grey-6")
-                    ui.label(letter_salutation(person)).classes("leading-tight")
-            ui.separator().classes("my-2")
-            with (
-                ui.element("div")
-                .classes("grid gap-x-6 gap-y-2")
-                .style("grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));")
-            ):
-                with ui.column().classes("gap-0"):
-                    ui.label("IBAN für Gutschriften").classes("text-caption text-grey-6")
-                    ui.label(format_iban(person.iban) if person.iban else "-").classes("leading-tight")
-                with ui.column().classes("gap-0"):
-                    ui.label("Papierrechnung").classes("text-caption text-grey-6")
-                    ui.label("Ja" if person.paper_invoice else "Nein").classes("leading-tight")
-                with ui.column().classes("gap-0"):
-                    _customer_number_row(person, label="Kunden-Nr.:", classes="text-caption text-grey-6")
+                    ui.label(format_iban(person.iban) if person.iban else "-")
+                    if any(w.category == "feed_in_without_iban" for w in (person_problems or [])):
+                        ui.label("Fehlt für die Einspeisung").classes("text-negative text-caption")
+                _fact_label("Papierrechnung")
+                ui.label("Ja" if person.paper_invoice else "Nein")
                 if person.bkw_customer_number is not None:
-                    with ui.column().classes("gap-0"):
-                        ui.label("BKW-Kundennummer").classes("text-caption text-grey-6")
-                        ui.label(str(person.bkw_customer_number)).classes("leading-tight")
+                    _fact_label("BKW-Kundennummer")
+                    ui.label(str(person.bkw_customer_number))
 
         if person.note:
             with ui.card().classes("w-full max-w-5xl p-3 mt-2"):
@@ -581,12 +568,12 @@ def person_detail_page(person_id: int) -> None:
                         ui.label(
                             f"Aktueller Schritt: {step_label} (seit {onboarding.days_open()} Tagen)"
                         ).classes("text-negative" if overdue else "")
-                    ui.button(
-                        "Bearbeiten",
-                        on_click=lambda: open_onboarding_form(
-                            onboarding, person, on_saved=lambda _: render_onboarding_status()
-                        ),
-                    ).props("dense flat").classes("mt-2")
+                        ui.button(
+                            "Bearbeiten",
+                            on_click=lambda: open_onboarding_form(
+                                onboarding, person, on_saved=lambda _: render_onboarding_status()
+                            ),
+                        ).props("dense flat").classes("mt-2")
 
             render_onboarding_status()
 

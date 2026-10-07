@@ -20,7 +20,8 @@ from app.models import person_onboarding as person_onboarding_repo
 from app.models import settings as settings_repo
 from app.models import site as site_repo
 from app.models import substation_area as substation_area_repo
-from app.sort_keys import text_key
+from app.models.person import Person
+from app.sort_keys import person_name_key, text_key
 from app.models import assignment as assignment_repo
 from app.domain.production_capacity import (
     REQUIRED_PERCENT,
@@ -300,6 +301,34 @@ def check_cooperative_members_without_shares(connection: sqlite3.Connection) -> 
     return warnings
 
 
+def check_feed_in_without_iban(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag current or upcoming feed-in participants without a payout IBAN."""
+    today = datetime.combine(date.today(), time())
+    missing: dict[int, Person] = {}
+    for metering_point in metering_point_repo.list_all(connection):
+        if metering_point.direction != metering_point_repo.DIRECTION_FEED_IN:
+            continue
+        for assignment in assignment_repo.list_for_metering_point(connection, metering_point.id):
+            if assignment.is_current_or_upcoming(today) and assignment.person_id not in missing:
+                person = person_repo.get(connection, assignment.person_id)
+                if person is not None and not person.iban.strip():
+                    missing[person.id] = person
+    warnings = []
+    for person in sorted(missing.values(), key=person_name_key):
+        warnings.append(
+            QualityWarning(
+                category="feed_in_without_iban",
+                message=f'"{person.display_name}" speist ein, hat aber keine IBAN für Gutschriften hinterlegt.',
+                summary="Einspeiser ohne IBAN für Gutschriften",
+                summary_link="/persons",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id,
+                link=f"/persons/{person.id}",
+            )
+        )
+    return warnings
+
+
 def check_onboarding_progress(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag interested persons stuck too long on their current onboarding step."""
     threshold_days = settings_repo.get_settings(connection).onboarding_overdue_days
@@ -497,6 +526,7 @@ ALL_CHECKS = (
     check_onboarding_progress,
     check_offboarding_completed_but_active,
     check_cooperative_members_without_shares,
+    check_feed_in_without_iban,
     check_feed_in_without_consumption,
     check_open_billing_cycle,
     check_unresolved_bank_transactions,
@@ -524,6 +554,7 @@ CHECK_SUBJECTS: dict = {
     check_onboarding_progress: (SUBJECT_PERSON,),
     check_offboarding_completed_but_active: (SUBJECT_PERSON,),
     check_cooperative_members_without_shares: (SUBJECT_PERSON,),
+    check_feed_in_without_iban: (SUBJECT_PERSON,),
     check_feed_in_without_consumption: (SUBJECT_PERSON,),
     # Deployment-wide findings: they belong on the overview and mark no
     # single record, so no list has to run them.

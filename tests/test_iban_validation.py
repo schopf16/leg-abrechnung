@@ -4,6 +4,7 @@ from stdnum import iban as iban_stdnum
 
 from app.domain.iban_validation import (
     format_iban,
+    iban_entry_is_complete,
     normalize_iban,
     validate_iban,
     validate_qr_iban,
@@ -69,3 +70,17 @@ def test_validate_qr_iban_still_reports_checksum_errors():
     error = validate_qr_iban("CH93 0076 2011 6238 5295 0")
     assert error is not None
     assert "Prüfziffer" in error
+
+
+def test_an_iban_entry_is_complete_at_its_country_length():
+    """Swiss IBANs have 21 characters, German 22; spaces do not count."""
+    assert iban_entry_is_complete("CH93 0076 2011 6238 5295 7")
+    assert not iban_entry_is_complete("CH93 0076 2011 6238 5295")
+    assert iban_entry_is_complete("DE89370400440532013000")
+    assert not iban_entry_is_complete("DE8937040044053201300")
+
+
+def test_an_unknown_country_falls_back_to_the_shortest_iban_length():
+    """Without a known structure, 15 characters (Norway, the shortest) count as complete."""
+    assert not iban_entry_is_complete("XX12345")
+    assert iban_entry_is_complete("XX1234567890123")

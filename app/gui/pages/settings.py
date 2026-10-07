@@ -7,7 +7,7 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.gui.address_input import SuggestionBox
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
-from app.domain.iban_validation import normalize_iban, validate_qr_iban
+from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
 from app.emailing import graph_client
 from app.domain import auto_attachments
@@ -67,11 +67,14 @@ def settings_page() -> None:
             qr_iban = ui.input("QR-IBAN", value=current.qr_iban).classes("w-full")
             qr_iban_error = ui.label("").classes("text-negative text-caption")
 
-            def check_qr_iban() -> None:
-                """Validate the QR-IBAN once the field loses focus."""
-                qr_iban_error.text = validate_qr_iban(qr_iban.value) or ""
+            def check_qr_iban(finished: bool) -> None:
+                """Validate on blur, or while typing once the country's full length is reached."""
+                value = qr_iban.value or ""
+                complete = finished or iban_entry_is_complete(value)
+                qr_iban_error.text = (validate_qr_iban(value) or "") if complete else ""
 
-            qr_iban.on("blur", check_qr_iban)
+            qr_iban.on_value_change(lambda _: check_qr_iban(finished=False))
+            qr_iban.on("blur", lambda: check_qr_iban(finished=True))
             price = ui.number(
                 "Interner Strompreis (Rp./kWh)",
                 value=current.price_rp_per_kwh,

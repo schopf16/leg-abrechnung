@@ -1949,4 +1949,30 @@ Freundliche Grüsse',
                 ADD COLUMN dwelling_count INTEGER;
         """,
     ),
+    Migration(
+        version=59,
+        description="A Textbaustein asking a feed-in participant for the IBAN "
+        "a credit is paid to. Offered beside the 'Einspeiser ohne IBAN' "
+        "finding on the Person page, so it hangs off no step.",
+        sql="""
+            INSERT INTO message_template
+                (name, occasion, step, trigger_kind, deadline_days,
+                 subject, body, sort_order, created_at, auto_attachments)
+            VALUES
+                ('IBAN-Anfrage', 'iban_request', '', '', NULL,
+                 'Ihre IBAN für Gutschriften',
+                 '{briefanrede}
+
+Sie speisen Strom in unsere Elektrizitätsgemeinschaft ein. Ergibt Ihre
+Quartalsabrechnung ein Guthaben, überweisen wir es Ihnen -- dafür fehlt uns
+noch Ihre IBAN.
+
+Bitte teilen Sie uns die IBAN des Kontos mit, auf das wir Gutschriften
+überweisen dürfen, und auf welchen Namen das Konto lautet. Eine kurze Antwort
+auf diese Mail genügt.
+
+Freundliche Grüsse',
+                 80, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '');
+        """,
+    ),
 ]

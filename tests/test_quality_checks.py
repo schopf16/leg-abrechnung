@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from app.domain.quality_checks import (
     check_assignment_consistency,
     check_feed_in_without_consumption,
+    check_feed_in_without_iban,
     check_leg_assignment,
     check_onboarding_progress,
     check_reading_completeness,
@@ -637,6 +638,60 @@ def test_feeding_in_without_drawing_is_reported(db):
     assert len(warnings) == 1
     assert "NurEinspeisung" in warnings[0].message
     assert warnings[0].link == f"/persons/{person_id}"
+
+
+def test_feed_in_without_iban_is_reported_for_the_person(db):
+    """A current feed-in assignment needs a payout account and points to its person record."""
+    site_id = _site_in(db, _substation_area(db, "TK-IBAN"))
+    leg_id = _leg(db)
+    person_id = _person(db, "OhneIBAN")
+    metering_point_id = _metering_point_direction(db, "CH-IBAN", site_id, DIRECTION_FEED_IN, leg_id=leg_id)
+    assignment_repo.create(
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=metering_point_id,
+            valid_from=date.today(),
+            valid_to=None,
+            created_at="",
+        ),
+    )
+
+    warnings = check_feed_in_without_iban(db)
+
+    assert len(warnings) == 1
+    assert warnings[0].category == "feed_in_without_iban"
+    assert warnings[0].subject_id == person_id
+    assert warnings[0].link == f"/persons/{person_id}"
+    assert "IBAN" in warnings[0].message
+
+
+def test_feed_in_with_iban_and_consumers_without_iban_are_not_flagged(db):
+    """Only feed-in participants require a payout IBAN for this warning."""
+    site_id = _site_in(db, _substation_area(db, "TK-IBAN"))
+    leg_id = _leg(db)
+    payer_id = _person(db, "Einspeiser")
+    payer = person_repo.get(db, payer_id)
+    payer.iban = "CH9300762011623852957"
+    person_repo.update(db, payer)
+    feed_in_id = _metering_point_direction(db, "CH-Feed", site_id, DIRECTION_FEED_IN, leg_id=leg_id)
+    consumption_id = _metering_point_direction(db, "CH-Use", site_id, DIRECTION_CONSUMPTION, leg_id=leg_id)
+    consumer_id = _person(db, "Bezug")
+    for person_id, metering_point_id in ((payer_id, feed_in_id), (consumer_id, consumption_id)):
+        assignment_repo.create(
+            db,
+            Assignment(
+                id=None,
+                person_id=person_id,
+                metering_point_id=metering_point_id,
+                valid_from=date.today(),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+
+    assert check_feed_in_without_iban(db) == []
 
 
 def test_drawing_without_feeding_in_is_never_reported(db):

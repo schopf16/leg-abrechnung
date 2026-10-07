@@ -450,6 +450,96 @@ def test_the_dialog_leaves_the_address_finding_at_its_field(address_register):
     assert any("Meinten Sie" in text or "amtlichen Verzeichnis" in text for text in texts)
 
 
+def test_the_dialog_marks_a_missing_feed_in_iban_at_the_iban_field():
+    """A feed-in IBAN finding is shown beside the IBAN input, like address findings."""
+    from datetime import date
+
+    from app.gui.person_form import open_person_form
+    from app.models import assignment as assignment_repo
+    from app.models import leg as leg_repo
+    from app.models import metering_point as metering_point_repo
+    from app.models import site as site_repo
+    from app.models.assignment import Assignment
+    from app.models.leg import Leg
+    from app.models.metering_point import DIRECTION_FEED_IN, MeteringPoint
+    from app.models.site import Site
+
+    person_id = _person()
+    with connection_scope() as connection:
+        site_id = site_repo.create(
+            connection,
+            Site(
+                id=None,
+                street="Sonnenweg",
+                house_number="3",
+                postal_code="3048",
+                municipality="Musterdorf",
+                address_detail="",
+                substation_area_id=None,
+                created_at="",
+            ),
+        )
+        leg_id = leg_repo.create(connection, Leg(id=None, name="Test", note="", created_at=""))
+        metering_point_id = metering_point_repo.create(
+            connection,
+            MeteringPoint(
+                id=None,
+                designation="CH-Feed",
+                direction=DIRECTION_FEED_IN,
+                site_id=site_id,
+                leg_id=leg_id,
+                pv_capacity_kwp=None,
+                battery_capacity_kwh=None,
+                created_at="",
+            ),
+        )
+        assignment_repo.create(
+            connection,
+            Assignment(
+                id=None,
+                person_id=person_id,
+                metering_point_id=metering_point_id,
+                valid_from=date.today(),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+        person = person_repo.get(connection, person_id)
+
+    client = Client(ui.page("/probe-dialog-feed-in-iban")(lambda: None), request=None)
+    with client:
+        open_person_form(existing=person)
+
+    texts = _labels(client)
+    assert not any("keine IBAN für Gutschriften" in text for text in texts)
+    assert "IBAN für Gutschriften fehlt" in texts
+    iban = next(
+        element
+        for element in client.elements.values()
+        if element.__class__.__name__ == "Input" and "IBAN" in element.label
+    )
+    assert iban._props.get("error") is True
+
+    # A props string "error=False" would reach Vue as truthy text, so the
+    # mark has to be removed, not set to False.
+    with client:
+        iban.value = "CH93 0076 2011 6238 5295 7"
+        assert "error" not in iban._props
+        assert "IBAN für Gutschriften fehlt" not in _labels(client)
+
+        # Not yet complete: nothing while typing, the error once the field is left.
+        iban.value = "CH93 0076 2011"
+        assert "error" not in iban._props
+        blur = next(
+            listener.handler for listener in iban._event_listeners.values() if listener.type == "blur"
+        )
+        blur()
+        assert iban._props.get("error") is True
+        assert any(
+            text.startswith("IBAN ") and text != "IBAN für Gutschriften fehlt" for text in _labels(client)
+        )
+
+
 def test_the_dialog_names_a_finding_that_has_no_field(address_register):
     """Everything that is not shown beside an input belongs in the block."""
     from datetime import date
