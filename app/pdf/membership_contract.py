@@ -1,16 +1,15 @@
-"""Fill the bundled, interactive Beitrittserklärung and retain its contract pages."""
+"""Fill an uploaded, interactive Beitrittserklärung and retain its contract pages."""
 
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.errors import PdfReadError
 
 from app.domain.iban_validation import format_iban
 from app.domain.membership_contract import ContractFields
 from app.domain.phone_format import format_swiss_phone
 
-TEMPLATE_PATH = Path(__file__).with_name("templates") / "beitrittserklaerung.pdf"
 
 # These are the form fields this software fills. A changed or incomplete
 # template must fail visibly instead of producing an apparently complete PDF.
@@ -36,26 +35,19 @@ _FIELD_NAMES = {
 
 def build_contract(
     fields: ContractFields,
-    source_pdf: Optional[bytes],
+    source_pdf: bytes | None,
     target: Path,
 ) -> Path:
-    """Fill page one of a form PDF and keep its remaining pages unchanged.
-
-    ``source_pdf`` remains available for an explicitly supplied edition. When
-    absent, the form bundled with the application is used.
-    """
+    """Fill page one of an explicitly supplied form PDF and retain its pages."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    content = source_pdf if source_pdf is not None else TEMPLATE_PATH.read_bytes()
-    reader = PdfReader(BytesIO(content))
-    actual_fields = reader.get_fields() or {}
-    missing = sorted(set(_FIELD_NAMES.values()) - set(actual_fields))
-    if missing:
+    if source_pdf is None:
         raise ValueError(
-            "Die Beitrittserklärungs-Vorlage ist unvollständig. "
-            "Fehlende Formularfelder: " + ", ".join(missing)
+            "Keine Beitrittserklärungs-Vorlage in den Einstellungen hinterlegt. "
+            "Bitte laden Sie dort ein ausfüllbares PDF hoch."
         )
-    if not reader.pages:
-        raise ValueError("Die Beitrittserklärungs-Vorlage enthält keine Seiten.")
+    content = source_pdf
+    validate_contract_template(content)
+    reader = PdfReader(BytesIO(content))
 
     values = {
         "firma": fields.company,
@@ -84,3 +76,20 @@ def build_contract(
     with target.open("wb") as handle:
         writer.write(handle)
     return target
+
+
+def validate_contract_template(content: bytes) -> None:
+    """Reject PDF templates that lack a page or a field the app must fill."""
+    try:
+        reader = PdfReader(BytesIO(content))
+    except PdfReadError as exc:
+        raise ValueError("Die Beitrittserklärungs-Vorlage ist keine lesbare PDF-Datei.") from exc
+    if not reader.pages:
+        raise ValueError("Die Beitrittserklärungs-Vorlage enthält keine Seiten.")
+    actual_fields = reader.get_fields() or {}
+    missing = sorted(set(_FIELD_NAMES.values()) - set(actual_fields))
+    if missing:
+        raise ValueError(
+            "Die Beitrittserklärungs-Vorlage ist unvollständig. "
+            "Fehlende Formularfelder: " + ", ".join(missing)
+        )

@@ -141,10 +141,10 @@ def test_a_document_is_only_offered_where_it_can_be_delivered():
     assert invoice_keys == [KEY_INVOICE]
 
 
-def test_the_bundled_contract_needs_no_stored_source_file(db):
+def test_the_contract_requires_a_stored_source_file(db):
     """The template is part of the application, independent of database uploads."""
     missing = auto_attachments.missing_sources([KEY_MEMBERSHIP_CONTRACT], set())
-    assert missing == []
+    assert [entry.key for entry in missing] == [KEY_MEMBERSHIP_CONTRACT]
 
     leg_document_repo.put(db, KEY_MEMBERSHIP_CONTRACT, "Vertrag.pdf", b"%PDF")
 

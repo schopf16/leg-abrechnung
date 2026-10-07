@@ -1,8 +1,8 @@
 """Turning a baustein's ticked documents into files that can go along.
 
-A ticked document is not attached but **produced**: the bundled
+A ticked document is not attached but **produced**: the administrator-supplied
 Beitrittserklärung is filled from the person's own record. This is where the
-ticks become paths, and where a template error is reported to the sender.
+ticks become paths and template errors are reported.
 """
 
 import sqlite3
@@ -12,6 +12,7 @@ from typing import Optional, Sequence
 
 from app.domain.auto_attachments import BY_KEY, KEY_INVOICE, KEY_MEMBERSHIP_CONTRACT
 from app.domain.membership_contract import gather
+from app.models import leg_document as leg_document_repo
 from app.models import message_template as message_template_repo
 from app.models.person import Person
 from app.pdf.membership_contract import build_contract
@@ -154,10 +155,11 @@ def _membership_contract(
     connection: sqlite3.Connection, person: Person, label: str, directory: Path
 ) -> PreparedAttachment:
     """Build the filled-in Beitrittserklärung, or say why there is none."""
+    document = leg_document_repo.get(connection, KEY_MEMBERSHIP_CONTRACT)
     filename = f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
     target = directory / filename
     try:
-        build_contract(gather(connection, person), None, target)
+        build_contract(gather(connection, person), document.content if document else None, target)
     except ValueError as exc:
         return PreparedAttachment(
             key=KEY_MEMBERSHIP_CONTRACT,

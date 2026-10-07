@@ -10,7 +10,7 @@ from app.models.message_template import (
 )
 
 #: The filled-in Beitrittserklärung, using the interactive PDF bundled with
-#: the application (see `app.pdf.membership_contract`).
+#: uploaded in settings and stored in the application's database.
 KEY_MEMBERSHIP_CONTRACT = "membership_contract"
 
 #: The person's invoice for the billing run being sent.
@@ -34,8 +34,8 @@ AUTO_ATTACHMENTS: tuple[AutoAttachment, ...] = (
     AutoAttachment(
         key=KEY_MEMBERSHIP_CONTRACT,
         label="Gesellschaftsvertrag anfügen",
-        hint="Die Formularvorlage ist in der Software hinterlegt und wird ausgefüllt.",
-        needs_source=False,
+        hint="Eine ausfüllbare Formularvorlage muss in den Einstellungen hinterlegt sein.",
+        needs_source=True,
         occasions=(OCCASION_ONBOARDING,),
     ),
     AutoAttachment(

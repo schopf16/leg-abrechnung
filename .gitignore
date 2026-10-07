@@ -10,9 +10,8 @@ config.local.*
 .env
 
 # Dokumente und Tabellen liegen zum Prüfen im Projektordner und gehören
-# nicht ins Repo. Die aktive Beitrittserklärungs-Vorlage ist die Ausnahme.
+# nicht ins Repo. Vertragsvorlagen werden ausschliesslich in den Einstellungen hinterlegt.
 *.pdf
-!app/pdf/templates/beitrittserklaerung.pdf
 *.xlsx
 *.docx
 

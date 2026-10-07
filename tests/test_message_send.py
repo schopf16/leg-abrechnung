@@ -338,11 +338,19 @@ def test_after_a_send_the_button_has_become_a_date(db, no_drafts):
 
 def test_the_contract_is_built_when_a_form_is_stored(db, tmp_path):
     """A ticked Gesellschaftsvertrag becomes a real file."""
-    from app.pdf.membership_contract import build_contract
-    from app.domain.membership_contract import ContractFields
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen.canvas import Canvas
 
     source = tmp_path / "formular.pdf"
-    build_contract(ContractFields(names="Vorlage"), None, source)
+    canvas = Canvas(str(source), pagesize=A4)
+    for index, name in enumerate((
+        "firma", "anrede", "vorname", "nachname", "adresse", "plz", "ort", "email",
+        "telefon", "messpunkt_bezug", "messpunkt_einspeisung", "iban", "pv_leistung_kwp",
+        "batteriespeicher_kwh", "wallbox_leistung_kw", "ort_datum",
+    )):
+        canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
+    canvas.showPage()
+    canvas.save()
     leg_document_repo.put(db, "membership_contract", "formular.pdf", source.read_bytes())
     person = _person(db)
 
@@ -354,14 +362,14 @@ def test_the_contract_is_built_when_a_form_is_stored(db, tmp_path):
     assert prepared[0].filename.endswith(".pdf")
 
 
-def test_the_contract_is_generated_without_a_database_form(db, tmp_path):
-    """The interactive PDF is bundled with the application."""
+def test_the_contract_reports_missing_database_form(db, tmp_path):
+    """A contract template must be explicitly uploaded in settings."""
     person = _person(db)
 
     prepared = message_attachments.prepare(db, person, ["membership_contract"], directory=tmp_path / "out")
 
-    assert prepared[0].is_ready
-    assert prepared[0].path.exists()
+    assert not prepared[0].is_ready
+    assert "Keine Beitrittserklärungs-Vorlage" in prepared[0].problem
 
 
 def test_an_invoice_cannot_be_attached_outside_a_billing_run(db, tmp_path):

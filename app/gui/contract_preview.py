@@ -10,6 +10,7 @@ from app.db.connection import connection_scope
 from app.domain.membership_contract import gather
 from app.domain.message_attachments import safe_filename
 from app.gui.safe_notify import safe_notify
+from app.models import leg_document as leg_document_repo
 from app.models import person as person_repo
 from app.paths import OUTPUT_DIR
 from app.pdf.membership_contract import build_contract
@@ -23,16 +24,19 @@ def open_contract_preview(*, document_key: str) -> None:
             (person for person in person_repo.list_all(connection) if person.active),
             key=person_name_key,
         )
+        stored = leg_document_repo.get(connection, document_key)
 
     options = {person.id: person.display_name for person in people}
 
     with ui.dialog() as dialog, ui.card().classes("w-full max-w-lg"):
         ui.label("Beitrittserklärung ansehen").classes("text-lg font-bold")
         ui.label(
-            "Erzeugt die mit der Software gelieferte Beitrittserklärung für eine Person, "
-            "ausgefüllt mit den gespeicherten Angaben. Es wird nichts "
-            "versendet."
+            "Erzeugt die aktive Beitrittserklärung für eine Person, ausgefüllt "
+            "mit den gespeicherten Angaben. Es wird nichts versendet."
         ).classes("text-body2 text-grey-8")
+        ui.label(
+            f"Vorlage: {stored.filename}" if stored else "Keine Vorlage in den Einstellungen hinterlegt"
+        ).classes("text-caption text-grey-7")
 
         person_select = ui.select(
             options, label="Person", with_input=True, value=people[0].id if people else None
@@ -50,10 +54,11 @@ def open_contract_preview(*, document_key: str) -> None:
                     safe_notify("Diese Person gibt es nicht mehr.", type="warning")
                     return
                 fields = gather(connection, person)
+                document = leg_document_repo.get(connection, document_key)
 
             target = OUTPUT_DIR / "Vorschau" / f"Beitrittserklaerung_{safe_filename(person.display_name)}.pdf"
             try:
-                build_contract(fields, None, target)
+                build_contract(fields, document.content if document else None, target)
             except ValueError as exc:
                 safe_notify(f"Beitrittserklärung konnte nicht erzeugt werden: {exc}", type="negative")
                 return

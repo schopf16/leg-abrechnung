@@ -1,6 +1,5 @@
 """The filled-in Beitrittserklärung: what goes on page 1, and the pages behind it."""
 
-import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -263,8 +262,8 @@ def test_a_participant_without_any_meter_still_yields_a_form():
 # --- The document ---------------------------------------------------------
 
 
-def test_the_bundled_form_is_filled_and_its_contract_pages_are_preserved():
-    """The official form supplies page one and the Gesellschaftsvertrag behind it."""
+def test_uploaded_form_is_filled_and_its_contract_pages_are_preserved(tmp_path):
+    """The configured form supplies page one and its contract pages behind it."""
     with connection_scope() as connection:
         person = _person(connection, iban="CH9300762011623852957")
         site = _site(connection)
@@ -277,12 +276,14 @@ def test_the_bundled_form_is_filled_and_its_contract_pages_are_preserved():
         )
         fields = gather(connection, person)
 
-    target = Path(tempfile.mkdtemp()) / "vertrag.pdf"
-    build_contract(fields, None, target)
+    source = tmp_path / "synthetic-form.pdf"
+    _write_synthetic_form(source)
+    target = tmp_path / "vertrag.pdf"
+    build_contract(fields, source.read_bytes(), target)
 
     reader = PdfReader(str(target))
     filled = reader.get_fields()
-    assert len(reader.pages) == 7
+    assert len(reader.pages) == 3
     assert filled["vorname"]["/V"] == "Anna"
     assert filled["nachname"]["/V"] == "Muster"
     assert filled["adresse"]["/V"] == "Erstweg 4"
@@ -302,3 +303,24 @@ def test_contract_generation_reports_missing_template_fields(tmp_path):
 
     with pytest.raises(ValueError, match="Fehlende Formularfelder:.*firma.*messpunkt_bezug"):
         build_contract(ContractFields(), source.read_bytes(), tmp_path / "vertrag.pdf")
+
+
+def test_contract_generation_requires_an_uploaded_template(tmp_path):
+    with pytest.raises(ValueError, match="Keine Beitrittserklärungs-Vorlage"):
+        build_contract(ContractFields(), None, tmp_path / "vertrag.pdf")
+
+
+def _write_synthetic_form(path: Path) -> None:
+    """Create a fake form for tests without including any real contract PDF."""
+    field_names = (
+        "firma", "anrede", "vorname", "nachname", "adresse", "plz", "ort", "email",
+        "telefon", "messpunkt_bezug", "messpunkt_einspeisung", "iban", "pv_leistung_kwp",
+        "batteriespeicher_kwh", "wallbox_leistung_kw", "ort_datum",
+    )
+    canvas = Canvas(str(path), pagesize=A4)
+    for index, name in enumerate(field_names):
+        canvas.acroForm.textfield(name=name, x=10, y=800 - index * 20, width=180, height=12)
+    canvas.showPage()
+    canvas.showPage()
+    canvas.showPage()
+    canvas.save()
