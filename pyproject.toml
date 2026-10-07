@@ -10,6 +10,9 @@ dynamic = ["dependencies"]
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 
+[tool.setuptools.package-data]
+app = ["pdf/templates/*.pdf"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py311"

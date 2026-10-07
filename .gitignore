@@ -10,9 +10,9 @@ config.local.*
 .env
 
 # Dokumente und Tabellen liegen zum Prüfen im Projektordner und gehören
-# nicht ins Repo -- Formulare wie der Gesellschaftsvertrag werden in der
-# Datenbank hinterlegt (Einstellungen -> LEG-Dokumente), nicht hier.
+# nicht ins Repo. Die aktive Beitrittserklärungs-Vorlage ist die Ausnahme.
 *.pdf
+!app/pdf/templates/beitrittserklaerung.pdf
 *.xlsx
 *.docx
 

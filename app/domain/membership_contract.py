@@ -24,9 +24,14 @@ class ContractFields:
     """What goes on page 1, each already a finished line of text."""
 
     company: str = ""
+    salutation: str = ""
+    first_name: str = ""
+    last_name: str = ""
     names: str = ""
     address: str = ""
     locality: str = ""
+    postal_code: str = ""
+    city: str = ""
     email: str = ""
     phone: str = ""
     substation_area: str = ""
@@ -97,11 +102,16 @@ def gather(connection: sqlite3.Connection, person: Person) -> ContractFields:
 
     return ContractFields(
         company=person.company,
+        salutation=("Familie" if person.has_second_person else person.salutation),
+        first_name=" und ".join(named.first_name for named in person.named_persons),
+        last_name=" und ".join(named.last_name for named in person.named_persons),
         # Both names of a couple: both are contract parties and both sign.
         # Without the salutations -- the form's line is "Vorname, Name".
         names=" und ".join(named.full_name for named in person.named_persons),
         address=person.billing_street_with_number,
         locality=f"{person.billing_postal_code} {person.billing_city}".strip(),
+        postal_code=person.billing_postal_code,
+        city=person.billing_city,
         email=", ".join(person.contact_emails),
         phone=person.contact_phone,
         substation_area=", ".join(_substation_area_names(connection, unique_points)),

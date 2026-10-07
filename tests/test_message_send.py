@@ -354,15 +354,14 @@ def test_the_contract_is_built_when_a_form_is_stored(db, tmp_path):
     assert prepared[0].filename.endswith(".pdf")
 
 
-def test_a_missing_form_is_named_and_does_not_block(db, tmp_path):
-    """The administrator asked for a warning, not a refusal."""
+def test_the_contract_is_generated_without_a_database_form(db, tmp_path):
+    """The interactive PDF is bundled with the application."""
     person = _person(db)
 
     prepared = message_attachments.prepare(db, person, ["membership_contract"], directory=tmp_path / "out")
 
-    assert not prepared[0].is_ready
-    assert "Kein Formular hinterlegt" in prepared[0].problem
-    assert prepared[0].path is None, "nichts Halbes, das vollständig aussieht"
+    assert prepared[0].is_ready
+    assert prepared[0].path.exists()
 
 
 def test_an_invoice_cannot_be_attached_outside_a_billing_run(db, tmp_path):

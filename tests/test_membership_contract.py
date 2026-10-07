@@ -20,26 +20,6 @@ from app.models.site import Site
 from app.models.substation_area import SubstationArea
 from app.pdf.membership_contract import build_contract
 
-#: A one-page PDF standing in for the official seven-page form. Built with
-#: reportlab rather than carried as a fixture: the repository holds no
-#: tracked PDFs (see `.gitignore`), and a form belongs in the database.
-_SOURCE_PAGES = 4
-
-
-def _source_pdf() -> bytes:
-    """A stand-in for the stored Gesellschaftsvertrag."""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen.canvas import Canvas
-
-    target = Path(tempfile.mkdtemp()) / "source.pdf"
-    canvas = Canvas(str(target), pagesize=A4)
-    for number in range(_SOURCE_PAGES):
-        canvas.drawString(40, 700, f"Vertragsseite {number + 1}")
-        canvas.showPage()
-    canvas.save()
-    return target.read_bytes()
-
-
 def _person(connection, **overrides) -> Person:
     """Create a participant."""
     values = {
@@ -280,69 +260,8 @@ def test_a_participant_without_any_meter_still_yields_a_form():
 # --- The document ---------------------------------------------------------
 
 
-def test_the_document_is_page_one_plus_the_contract():
-    """Page 1 is drawn here; the original's first page is replaced by it."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "vertrag.pdf"
-    build_contract(fields, _source_pdf(), target)
-
-    reader = PdfReader(str(target))
-    assert len(reader.pages) == _SOURCE_PAGES  # 1 drawn + (_SOURCE_PAGES - 1) appended
-    assert "Vertragsseite 1" not in reader.pages[0].extract_text()
-    assert "Vertragsseite 2" in reader.pages[1].extract_text()
-
-
-def test_without_a_stored_form_only_the_filled_page_is_written():
-    """Still a usable sheet, and the caller says what is missing."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "nur_seite1.pdf"
-    build_contract(fields, None, target)
-
-    assert len(PdfReader(str(target)).pages) == 1
-
-
-def test_page_one_carries_the_forms_own_wording():
-    """Page 1 is not a pixel copy of the original, so the labels are what make it recognisable as the..."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "wortlaut.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
-
-    for label in (
-        "LEG Teilnehmer",
-        "Firma:",
-        "Vorname, Name:",
-        "Adresse:",
-        "PLZ / Ort:",
-        "E-Mail:",
-        "Tel:",
-        "Trafokreis TRA",
-        "Bezüger",
-        "Messpunktnummer Bezug:",
-        "Produzent",
-        "Messpunktnummer Einspeisung:",
-        "Zusätzliche Angaben bei Einspeisung",
-        "IBAN-Nr. für Rückvergütung:",
-        "Leistung Solaranlage",
-        "Batteriespeicher",
-        "Wallbox max. Leistung",
-        "Ort und Datum",
-        "Unterschrift LEG Teilnehmer",
-    ):
-        assert label in text, label
-
-
-def test_the_values_reach_the_page():
-    """Drawing them is the point; a page of labels would pass every other test here."""
+def test_the_bundled_form_is_filled_and_its_contract_pages_are_preserved():
+    """The official form supplies page one and the Gesellschaftsvertrag behind it."""
     with connection_scope() as connection:
         person = _person(connection, iban="CH9300762011623852957")
         site = _site(connection)
@@ -355,47 +274,17 @@ def test_the_values_reach_the_page():
         )
         fields = gather(connection, person)
 
-    target = Path(tempfile.mkdtemp()) / "werte.pdf"
+    target = Path(tempfile.mkdtemp()) / "vertrag.pdf"
     build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
 
-    assert "Anna Muster" in text
-    assert "Erstweg 4" in text
-    assert "3048 Musterdorf" in text
-    assert "9365" in text
-    assert "CH1018000000000000000000001" in text
-    assert "CH9300762011623852957" in text
-
-
-def test_ort_datum_and_the_signature_are_left_empty():
-    """They come from the participant, with a pen."""
-    with connection_scope() as connection:
-        person = _person(connection)
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "unterschrift.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
-
-    assert "Ort und Datum" in text
-    assert date.today().strftime("%d.%m.%Y") not in text
-    assert date.today().isoformat() not in text
-
-
-def test_a_long_value_is_truncated_rather_than_running_off_the_page():
-    """reportlab draws past the margin and says nothing, the trap `app.pdf.layout` documents for its..."""
-    with connection_scope() as connection:
-        person = _person(
-            connection,
-            company="Sehr lange Firmenbezeichnung mit vielen Wörtern AG in Liquidation",
-            second_first_name="Beat",
-            second_last_name="Beispiel-Muster-von-Langenthal",
-        )
-        fields = gather(connection, person)
-
-    target = Path(tempfile.mkdtemp()) / "lang.pdf"
-    build_contract(fields, None, target)
-    text = PdfReader(str(target)).pages[0].extract_text()
-
-    # Shortened with an ellipsis rather than written over the margin.
-    assert "…" in text
+    reader = PdfReader(str(target))
+    filled = reader.get_fields()
+    assert len(reader.pages) == 7
+    assert filled["vorname"]["/V"] == "Anna"
+    assert filled["nachname"]["/V"] == "Muster"
+    assert filled["adresse"]["/V"] == "Erstweg 4"
+    assert filled["plz"]["/V"] == "3048"
+    assert filled["ort"]["/V"] == "Musterdorf"
+    assert filled["messpunkt_bezug"]["/V"] == "CH1018000000000000000000001"
+    assert filled["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"
+    assert filled["ort_datum"]["/V"] == ""

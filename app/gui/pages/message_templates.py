@@ -327,7 +327,7 @@ def message_templates_page() -> None:
                     note_missing_sources()
 
                 def note_missing_sources() -> None:
-                    """Say which ticked document has no form stored yet."""
+                    """Say which ticked document has no uploaded source."""
                     ticked = [key for key, switch in auto_switches.items() if switch.value]
                     with connection_scope() as connection:
                         stored = leg_document_repo.stored_keys(connection)
