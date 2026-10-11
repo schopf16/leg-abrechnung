@@ -34,6 +34,7 @@ class ContractFields:
     city: str = ""
     email: str = ""
     phone: str = ""
+    customer_number: str = ""
     substation_area: str = ""
     consumption_designations: list[str] = field(default_factory=list)
     feed_in_designations: list[str] = field(default_factory=list)
@@ -64,13 +65,9 @@ def _substation_area_names(connection: sqlite3.Connection, points: list[Metering
         area = areas.get(site.substation_area_id) if site else None
         if area is None:
             continue
-        # `bkw_designation` is BKW's own, "TRA9365", and it is filled for all
-        # 34 areas in the live data. `name` is the administrator's label for
-        # the same thing, "Trafokreis-TRA9365", so it would print the word
-        # twice on a form whose line already reads "Trafokreis TRA ___".
+        # `bkw_designation` is BKW's own, "TRA9365", as `{trafokreis}` prints
+        # it; `name` is the administrator's label, "Trafokreis-TRA9365".
         designation = (area.bkw_designation or area.name).strip()
-        if designation[:3].upper() == "TRA":
-            designation = designation[3:]
         if designation and designation not in found:
             found.append(designation)
     return found
@@ -132,6 +129,7 @@ def gather(connection: sqlite3.Connection, person: Person) -> ContractFields:
         city=person.billing_city,
         email=", ".join(person.contact_emails),
         phone=person.contact_phone,
+        customer_number=person.formatted_customer_number,
         substation_area=", ".join(_substation_area_names(connection, unique_points)),
         consumption_designations=[p.designation for p in consumption],
         feed_in_designations=[p.designation for p in feed_in],

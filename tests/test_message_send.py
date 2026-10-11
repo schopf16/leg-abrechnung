@@ -354,6 +354,8 @@ def test_the_contract_is_built_when_a_form_is_stored(db, tmp_path):
             "ort",
             "email",
             "telefon",
+            "kundennummer",
+            "trafokreis",
             "messpunkt_bezug",
             "messpunkt_einspeisung",
             "iban",
