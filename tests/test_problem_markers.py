@@ -1,5 +1,7 @@
 """Tests for the one problem marker and filter every list uses."""
 
+from datetime import date
+
 import pytest
 from nicegui import Client, ui
 
@@ -11,14 +13,22 @@ from app.domain.quality_checks import (
     problems_for,
 )
 from app.gui.problem_markers import FILTER_LABEL, ProblemFilter, render_problem_notes
+from app.models import assignment as assignment_repo
+from app.models import leg as leg_repo
+from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
+from app.models import site as site_repo
+from app.models.assignment import Assignment
+from app.models.leg import Leg
+from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
 from app.models.person import Person
+from app.models.site import Site
 
 
 def _person(last_name: str = "Muster", street: str = "Erstweg") -> int:
-    """Create a person with a billing address."""
+    """Create a person with a valid meter so tests isolate their own findings."""
     with connection_scope() as connection:
-        return person_repo.create(
+        person_id = person_repo.create(
             connection,
             Person(
                 id=None,
@@ -41,6 +51,48 @@ def _person(last_name: str = "Muster", street: str = "Erstweg") -> int:
                 created_at="",
             ),
         )
+        site_id = site_repo.create(
+            connection,
+            Site(
+                id=None,
+                street="Testweg",
+                house_number="1",
+                postal_code="3048",
+                municipality="Musterdorf",
+                address_detail="",
+                substation_area_id=None,
+                created_at="",
+            ),
+        )
+        leg_id = leg_repo.create(
+            connection,
+            Leg(id=None, name=f"Test-LEG-{person_id}", note="", created_at=""),
+        )
+        metering_point_id = metering_point_repo.create(
+            connection,
+            MeteringPoint(
+                id=None,
+                designation=f"CH-TEST-{person_id}",
+                direction=DIRECTION_CONSUMPTION,
+                site_id=site_id,
+                leg_id=leg_id,
+                pv_capacity_kwp=None,
+                battery_capacity_kwh=None,
+                created_at="",
+            ),
+        )
+        assignment_repo.create(
+            connection,
+            Assignment(
+                id=None,
+                person_id=person_id,
+                metering_point_id=metering_point_id,
+                valid_from=date.today(),
+                valid_to=None,
+                created_at="",
+            ),
+        )
+        return person_id
 
 
 def _persons_page() -> Client:
@@ -108,6 +160,24 @@ def test_the_marker_carries_no_text(address_register):
     # The table draws it from the shared constant, so that is where the
     # absence of text has to hold.
     assert ">" not in TABLE_MARKER_HTML.replace("/>", ""), TABLE_MARKER_HTML
+
+
+def test_an_active_person_without_a_meter_is_marked_in_the_list_and_detail(address_register):
+    person_id = _person()
+    with connection_scope() as connection:
+        for assignment in assignment_repo.list_for_person(connection, person_id):
+            assignment_repo.delete(connection, assignment.id)
+
+    list_client = _persons_page()
+    row = next(row for row in _table(list_client).rows if row["id"] == person_id)
+    assert row["has_problem"] is True
+
+    from app.gui.pages import persons as persons_module
+
+    detail_client = Client(ui.page("/probe-detail-no-meter")(lambda: None), request=None)
+    with detail_client:
+        persons_module.person_detail_page(person_id)
+    assert any("hat aber keinen Messpunkt zugeordnet" in text for text in _labels(detail_client))
 
 
 # --- The filter ------------------------------------------------------------

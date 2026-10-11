@@ -14,6 +14,7 @@ from app.domain.dunning import DUNNING_EXTRA_PLACEHOLDERS
 from app.emailing.bulk_send import INVOICE_EXTRA_PLACEHOLDERS
 from app.emailing.templates import ALL_PLACEHOLDERS, placeholder_examples, placeholder_values
 from app.formatting import MISSING
+from app.gui.safe_notify import safe_notify
 from app.models import person as person_repo
 from app.models.message_template import (
     OCCASION_DUNNING1,
@@ -45,6 +46,7 @@ AT_THE_SEND_NOTE = "Betrag, Quartal, Jahr und Frist entstehen erst beim Versand 
 COLUMNS = [
     {"name": "placeholder", "label": "Platzhalter", "field": "placeholder", "align": "left"},
     {"name": "example", "label": "Beispiel", "field": "example", "align": "left"},
+    {"name": "copy", "label": "", "field": "placeholder", "align": "right"},
 ]
 
 
@@ -95,6 +97,23 @@ def open_placeholder_dialog(names: Sequence[str]) -> None:
         table = ui.table(columns=COLUMNS, rows=example_rows(names), row_key="placeholder").classes("w-full")
         table.props("flat bordered dense wrap-cells hide-pagination")
         table._props["rows-per-page-options"] = [0]
+        table.add_slot(
+            "body-cell-copy",
+            r"""<q-td :props="props">
+                <q-btn flat dense round icon="content_copy"
+                       :aria-label="'Kopiere ' + props.row.placeholder"
+                       @click="$parent.$emit('copy_placeholder', props.row.placeholder)">
+                    <q-tooltip>Platzhalter kopieren</q-tooltip>
+                </q-btn>
+            </q-td>""",
+        )
+
+        def copy_placeholder(event) -> None:
+            """Copy exactly the displayed placeholder, including its braces."""
+            ui.clipboard.write(str(event.args))
+            safe_notify(f"{event.args} kopiert. Im Textfeld mit Strg+V einfügen.", type="positive")
+
+        table.on("copy_placeholder", copy_placeholder)
 
         def show_chosen() -> None:
             """Resolve the list again, for whoever is chosen now."""

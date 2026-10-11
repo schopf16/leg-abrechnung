@@ -87,6 +87,7 @@ def _render_missing_note(fields) -> None:
         "locality": "PLZ / Ort",
         "email": "E-Mail",
         "phone": "Tel",
+        "customer_number": "Kundennummer",
         "substation_area": "Trafokreis",
     }
     empty = [label for name, label in labels.items() if not getattr(fields, name)]

@@ -120,3 +120,16 @@ def test_missing_feed_in_iban_appears_in_overview_handlungsbedarf(db):
 
     assert any("keine IBAN für Gutschriften" in message for message, _ in action_items), action_items
     assert any(link == f"/persons/{person_id}" for _, link in action_items)
+
+
+def test_active_people_without_a_meter_are_collapsed_into_overview_warning(db):
+    """Repeated missing assignments stay readable and lead to the persons list."""
+    _person(db, "OhneMesspunkt A")
+    _person(db, "OhneMesspunkt B")
+
+    action_items = _load_overview(db)["action_items"]
+
+    assert (
+        "2 aktive Personen ohne Messpunkt-Zuordnung",
+        "/persons",
+    ) in action_items

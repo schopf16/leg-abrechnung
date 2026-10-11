@@ -5,13 +5,14 @@ from nicegui import ui
 from app.db.connection import connection_scope
 from app.domain import auto_attachments
 from app.emailing import graph_client
+from app.emailing.templates import placeholder_errors
 from app.format_size import format_size
 from app.formatting import format_date
 from app.gui.contract_preview import open_contract_preview
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
-from app.gui.placeholder_help import render_placeholder_help
+from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import SortOption, apply_sort, sort_description, text_key
@@ -412,6 +413,12 @@ def message_templates_page() -> None:
                         return
                     if not subject.value.strip():
                         error_label.text = "Betreff darf nicht leer sein."
+                        return
+                    placeholder_problems = placeholder_errors(
+                        subject.value + "\n" + body.value, placeholders_for(occasion.value)
+                    )
+                    if placeholder_problems:
+                        error_label.text = "Bitte Platzhalter korrigieren: " + "; ".join(placeholder_problems)
                         return
                     has_steps = occasion.value in STEP_OCCASIONS
                     if has_steps and not step.value:

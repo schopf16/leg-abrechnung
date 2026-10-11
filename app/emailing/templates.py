@@ -102,13 +102,7 @@ def placeholder_examples(
 
 
 _PLACEHOLDER_PATTERN = re.compile(r"\{(\w+)\}")
-
-
-class _SafeDict(dict):
-    """A dict that leaves an unmatched `{key}` in the template untouched."""
-
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
+_PLACEHOLDER_NAME_PATTERN = re.compile(r"[A-Za-z_]\w*")
 
 
 def person_placeholder_values(person: Person) -> dict[str, str]:
@@ -125,8 +119,8 @@ def placeholder_values(connection: sqlite3.Connection, person: Person) -> dict[s
 
 
 def render_template(template: str, values: dict) -> str:
-    """Substitute known `{placeholder}`s in a template with their values."""
-    return template.format_map(_SafeDict(values))
+    """Substitute complete `{placeholder}`s without parsing unrelated braces."""
+    return _PLACEHOLDER_PATTERN.sub(lambda match: str(values.get(match.group(1), match.group(0))), template)
 
 
 #: Classic plain-text signature delimiter (RFC 3676) -- some mail clients
@@ -151,6 +145,50 @@ def find_unknown_placeholders(template: str, known_keys) -> set[str]:
     """Find `{placeholder}`s in a template that aren't in `known_keys`."""
     known = set(known_keys)
     return {name for name in _PLACEHOLDER_PATTERN.findall(template) if name not in known}
+
+
+def find_malformed_placeholders(template: str) -> list[str]:
+    """Find braces that do not form one complete `{placeholder}` token."""
+    malformed: list[str] = []
+    index = 0
+    while index < len(template):
+        if template[index] == "}":
+            malformed.append(f"'}}' an Position {index + 1}")
+            index += 1
+            continue
+        if template[index] != "{":
+            index += 1
+            continue
+
+        start = index
+        depth = 1
+        nested = False
+        index += 1
+        while index < len(template) and depth:
+            if template[index] == "{":
+                depth += 1
+                nested = True
+            elif template[index] == "}":
+                depth -= 1
+            index += 1
+
+        token = template[start:index]
+        name = token[1:-1] if depth == 0 else token[1:]
+        if depth or nested or not _PLACEHOLDER_NAME_PATTERN.fullmatch(name):
+            malformed.append(token)
+    return malformed
+
+
+def placeholder_errors(template: str, known_keys) -> list[str]:
+    """Return readable errors for misspelled and syntactically broken tokens."""
+    errors = []
+    unknown = find_unknown_placeholders(template, known_keys)
+    if unknown:
+        errors.append("Unbekannte Platzhalter: " + ", ".join("{" + name + "}" for name in sorted(unknown)))
+    malformed = find_malformed_placeholders(template)
+    if malformed:
+        errors.append("Fehlerhafte Platzhalterklammern: " + ", ".join(malformed))
+    return errors
 
 
 def validate_person_placeholders(

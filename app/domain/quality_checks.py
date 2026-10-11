@@ -245,6 +245,35 @@ def check_offboarding_completed_but_active(connection: sqlite3.Connection) -> li
     return warnings
 
 
+def check_active_person_without_metering_point(connection: sqlite3.Connection) -> list[QualityWarning]:
+    """Flag active person records without a current or upcoming meter assignment."""
+    moment = datetime.combine(date.today(), time())
+    assigned_person_ids = {
+        assignment.person_id
+        for assignment in assignment_repo.list_all(connection)
+        if assignment.is_current_or_upcoming(moment)
+    }
+    warnings = []
+    for person in sorted(person_repo.list_all(connection), key=person_name_key):
+        if not person.active or person.id in assigned_person_ids:
+            continue
+        warnings.append(
+            QualityWarning(
+                category="active_person_without_metering_point",
+                message=(
+                    f'"{person.display_name}" ist aktiv, hat aber keinen Messpunkt zugeordnet '
+                    "-- unter „Zuordnungen“ ergänzen oder Person deaktivieren."
+                ),
+                link=f"/persons/{person.id}",
+                summary="aktive Personen ohne Messpunkt-Zuordnung",
+                summary_link="/persons",
+                subject_kind=SUBJECT_PERSON,
+                subject_id=person.id,
+            )
+        )
+    return warnings
+
+
 def check_feed_in_without_consumption(connection: sqlite3.Connection) -> list[QualityWarning]:
     """Flag people who feed into the LEG but draw nothing from it."""
     warnings: list[QualityWarning] = []
@@ -525,6 +554,7 @@ ALL_CHECKS = (
     check_leg_assignment,
     check_onboarding_progress,
     check_offboarding_completed_but_active,
+    check_active_person_without_metering_point,
     check_cooperative_members_without_shares,
     check_feed_in_without_iban,
     check_feed_in_without_consumption,
@@ -537,7 +567,7 @@ ALL_CHECKS = (
 
 #: Which `SUBJECT_*` each check can mark, so a list can run only the checks
 #: that could possibly concern it. Measured on the live deployment, where
-#: every list page ran all eleven: `problems_for` took 128 ms, of which
+#: every list page ran all checks: `problems_for` took 128 ms, of which
 #: `check_substation_area_one_sided` was 49 ms and `check_addresses` 41 ms
 #: -- and on the Personen page the first of those cannot produce a single
 #: finding. The administrator reported the page opening slowly, and this was
@@ -547,12 +577,13 @@ ALL_CHECKS = (
 #: after running it, which is the thing being avoided. Drift is caught by
 #: `test_every_check_declares_the_subjects_it_can_mark`, which re-derives
 #: the table from the source rather than from a run -- no test data triggers
-#: all eleven checks at once.
+#: all checks at once.
 CHECK_SUBJECTS: dict = {
     check_assignment_consistency: (SUBJECT_METERING_POINT,),
     check_leg_assignment: (SUBJECT_METERING_POINT,),
     check_onboarding_progress: (SUBJECT_PERSON,),
     check_offboarding_completed_but_active: (SUBJECT_PERSON,),
+    check_active_person_without_metering_point: (SUBJECT_PERSON,),
     check_cooperative_members_without_shares: (SUBJECT_PERSON,),
     check_feed_in_without_iban: (SUBJECT_PERSON,),
     check_feed_in_without_consumption: (SUBJECT_PERSON,),

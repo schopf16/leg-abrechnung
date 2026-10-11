@@ -3,9 +3,10 @@
 from nicegui import ui
 
 from app.db.connection import connection_scope
+from app.emailing.templates import placeholder_errors
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
-from app.gui.placeholder_help import render_placeholder_help
+from app.gui.placeholder_help import placeholders_for, render_placeholder_help
 from app.gui.print_list import render_print_button, table_columns
 from app.gui.safe_notify import safe_notify
 from app.gui.sorting import text_key
@@ -132,6 +133,10 @@ def signatures_page() -> None:
                         return
                     if not content.value.strip():
                         error_label.text = "Inhalt darf nicht leer sein."
+                        return
+                    placeholder_problems = placeholder_errors(content.value, placeholders_for())
+                    if placeholder_problems:
+                        error_label.text = "Bitte Platzhalter korrigieren: " + "; ".join(placeholder_problems)
                         return
                     if check_duplicate():
                         error_label.text = "Dieser Name wird bereits verwendet."

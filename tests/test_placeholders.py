@@ -259,6 +259,30 @@ def test_the_dialog_lists_the_placeholders_with_their_examples():
     assert by_name["{briefanrede}"].startswith("Guten Tag")
 
 
+def test_the_dialog_offers_one_click_copy_for_each_placeholder(monkeypatch):
+    from app.gui import placeholder_help
+
+    copied = []
+    notices = []
+    monkeypatch.setattr(placeholder_help.ui.clipboard, "write", copied.append)
+    monkeypatch.setattr(placeholder_help, "safe_notify", lambda message, **_: notices.append(message))
+    client = Client(ui.page("/probe-placeholder-copy")(lambda: None), request=None)
+    with client:
+        open_placeholder_dialog(placeholders_for())
+        _table_rows(client)
+        table_element = next(
+            element for element in client.elements.values() if element.__class__.__name__ == "Table"
+        )
+        assert "copy_placeholder" in table_element.slots["body-cell-copy"].template
+        listener = next(
+            item for item in table_element._event_listeners.values() if item.type == "copy_placeholder"
+        )
+        listener.handler(type("Event", (), {"args": "{vorname}"})())
+
+    assert copied == ["{vorname}"]
+    assert "Strg+V" in notices[0]
+
+
 def test_the_link_beside_the_fields_opens_that_same_list():
     """The reference is reached by a click, so the click is what is tested."""
     client = Client(ui.page("/probe-placeholder-link")(lambda: None), request=None)

@@ -14,7 +14,7 @@ from app.domain.statistics import quarter_energy_totals
 from app.emailing import bulk_send, graph_client
 from app.emailing.templates import (
     find_invalid_email_addresses,
-    find_unknown_placeholders,
+    placeholder_errors,
 )
 from app.gui.billing_cycle_view import render_billing_cycle
 from app.gui.form_dialog import form_guard
@@ -551,9 +551,9 @@ def billing_page() -> None:
                             skip_lines.append(f"{name}: {reason}")
                         else:
                             eligible_persons.append(person)
-                    unknown = find_unknown_placeholders(
-                        subject_input.value, _INVOICE_PLACEHOLDER_KEYS
-                    ) | find_unknown_placeholders(body_textarea.value, _INVOICE_PLACEHOLDER_KEYS)
+                    placeholder_problems = placeholder_errors(
+                        subject_input.value + "\n" + body_textarea.value, _INVOICE_PLACEHOLDER_KEYS
+                    )
                     invalid_emails = find_invalid_email_addresses(eligible_persons)
                     with info_container:
                         ui.label(
@@ -561,9 +561,8 @@ def billing_page() -> None:
                         ).classes("font-bold")
                         for line in skip_lines:
                             ui.label(f"- {line}").classes("text-caption text-grey-6")
-                        if unknown:
-                            placeholder_list = ", ".join(f"{{{name}}}" for name in unknown)
-                            ui.label(f"⚠ Unbekannte Platzhalter: {placeholder_list}").classes("text-negative")
+                        for problem in placeholder_problems:
+                            ui.label(f"⚠ {problem}").classes("text-negative")
                         for person in invalid_emails:
                             ui.label(
                                 f"⚠ {person.display_name}: E-Mail-Adresse ungültig "
@@ -584,6 +583,15 @@ def billing_page() -> None:
 
                 async def do_send() -> None:
                     """Send invoice emails for this run and report the outcome."""
+                    placeholder_problems = placeholder_errors(
+                        subject_input.value + "\n" + body_textarea.value, _INVOICE_PLACEHOLDER_KEYS
+                    )
+                    if placeholder_problems:
+                        safe_notify(
+                            "Bitte Platzhalter korrigieren: " + "; ".join(placeholder_problems),
+                            type="negative",
+                        )
+                        return
                     send_button.disable()
                     try:
                         config = get_graph_config()

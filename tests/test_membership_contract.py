@@ -141,8 +141,8 @@ def test_every_field_the_form_asks_for_is_filled_from_the_record():
     assert fields.locality == "3048 Musterdorf"
     assert fields.email == "anna@example.invalid"
     assert fields.phone == "031 000 00 00"
-    # Without the "TRA" the form's own line already prints.
-    assert fields.substation_area == "9365"
+    # BKW's designation whole, as `{trafokreis}` prints it.
+    assert fields.substation_area == "TRA9365"
     assert fields.consumption_designations == ["CH1018000000000000000000001"]
     assert fields.feed_in_designations == ["CH1018000000000000000000002"]
     assert fields.iban == "CH9300762011623852957"
@@ -305,6 +305,8 @@ def test_uploaded_form_is_filled_and_its_contract_pages_are_preserved(tmp_path):
     assert filled["adresse"]["/V"] == "Erstweg 4"
     assert filled["plz"]["/V"] == "3048"
     assert filled["ort"]["/V"] == "Musterdorf"
+    assert filled["kundennummer"]["/V"] == person.formatted_customer_number != ""
+    assert filled["trafokreis"]["/V"] == "TRA9365"
     assert filled["messpunkt_bezug"]["/V"] == "CH1018000000000000000000001"
     assert filled["iban"]["/V"] == "CH93 0076 2011 6238 5295 7"
     assert filled["ort_datum"]["/V"] == ""
@@ -338,6 +340,8 @@ def _write_synthetic_form(path: Path) -> None:
         "ort",
         "email",
         "telefon",
+        "kundennummer",
+        "trafokreis",
         "messpunkt_bezug",
         "messpunkt_einspeisung",
         "iban",
@@ -368,6 +372,8 @@ def test_a_field_beyond_page_one_is_filled_too(tmp_path):
         "ort",
         "email",
         "telefon",
+        "kundennummer",
+        "trafokreis",
         "messpunkt_bezug",
         "messpunkt_einspeisung",
         "pv_leistung_kwp",
