@@ -3,8 +3,10 @@
 from app.emailing.templates import (
     PERSON_PLACEHOLDERS,
     find_invalid_email_addresses,
+    find_malformed_placeholders,
     find_unknown_placeholders,
     person_placeholder_values,
+    placeholder_errors,
     render_template,
     validate_person_placeholders,
 )
@@ -57,6 +59,26 @@ def test_render_template_merges_extra_context_values():
     values = {**person_placeholder_values(person), "leg": "LEG Ittigen"}
     rendered = render_template("{vorname} -- {leg}", values)
     assert rendered == "Anna -- LEG Ittigen"
+
+
+def test_render_template_does_not_crash_on_malformed_braces():
+    assert render_template("Text {vorname!r} {{literal", {"vorname": "Anna"}) == (
+        "Text {vorname!r} {{literal"
+    )
+
+
+def test_malformed_placeholders_are_reported():
+    assert find_malformed_placeholders("Hallo {vorname!r} und {name") == ["{vorname!r}", "{name"]
+
+
+def test_a_well_formed_but_unknown_placeholder_is_not_a_syntax_error():
+    assert find_malformed_placeholders("Hallo {vornamee}") == []
+
+
+def test_placeholder_errors_report_typo_and_broken_braces():
+    errors = placeholder_errors("Hallo {vornamee} {anrede", PERSON_PLACEHOLDERS)
+    assert "{vornamee}" in errors[0]
+    assert "{anrede" in errors[1]
 
 
 def test_find_unknown_placeholders_detects_typo():

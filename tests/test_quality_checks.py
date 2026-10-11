@@ -5,6 +5,7 @@ import uuid
 from datetime import date, datetime, timedelta
 
 from app.domain.quality_checks import (
+    check_active_person_without_metering_point,
     check_assignment_consistency,
     check_feed_in_without_consumption,
     check_feed_in_without_iban,
@@ -13,6 +14,7 @@ from app.domain.quality_checks import (
     check_reading_completeness,
     check_substation_area_one_sided,
     check_unresolved_bank_transactions,
+    problems_for,
 )
 from app.models import bank_transaction as bank_transaction_repo
 from app.models import leg as leg_repo
@@ -715,6 +717,48 @@ def test_a_person_with_both_directions_is_not_reported(db):
         _assign(db, person_id, _metering_point_direction(db, f"CH{index}", site_id, direction, leg_id=leg_id))
 
     assert check_feed_in_without_consumption(db) == []
+
+
+def test_active_person_without_current_or_upcoming_meter_is_reported(db):
+    """The person list needs one finding for an active record with no assigned point."""
+    person_id = _person(db, "OhneMesspunkt")
+
+    warnings = check_active_person_without_metering_point(db)
+
+    assert len(warnings) == 1
+    assert warnings[0].category == "active_person_without_metering_point"
+    assert warnings[0].subject_kind == "person"
+    assert warnings[0].subject_id == person_id
+    assert warnings[0].link == f"/persons/{person_id}"
+    assert warnings[0].summary_link == "/persons"
+    assert person_id in problems_for(db, "person")
+
+
+def test_current_and_upcoming_meter_assignments_satisfy_the_check(db):
+    """A future start is already a recorded assignment, just like current participation."""
+    person_id = _person(db, "MitMesspunkt")
+    site_id = _site_in(db, _substation_area(db, "TK-ZUGEORDNET"))
+    point_id = _metering_point(db, "CH-ZUGEORDNET", site_id)
+    assignment_repo.create(
+        db,
+        Assignment(
+            id=None,
+            person_id=person_id,
+            metering_point_id=point_id,
+            valid_from=date.today() + timedelta(days=30),
+            valid_to=None,
+            created_at="",
+        ),
+    )
+
+    assert check_active_person_without_metering_point(db) == []
+
+
+def test_deactivated_people_are_not_reported_for_missing_meter_assignments(db):
+    person_id = _person(db, "Deaktiviert")
+    person_repo.set_active(db, person_id, False)
+
+    assert check_active_person_without_metering_point(db) == []
 
 
 def test_the_warning_stops_once_the_assignment_is_added(db):

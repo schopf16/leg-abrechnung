@@ -463,6 +463,6 @@ def test_the_tiles_show_both_counts_and_admit_the_gaps():
     ]
     assert "Prosumer" in texts
     assert "Konsumer" in texts
-    assert "Anschlüsse mit Einspeisung und Bezug" in texts
-    assert "Anschlüsse nur mit Bezug" in texts
+    assert "Anschlüsse mit Einspeisung (pro Person und Standort)" in texts
+    assert "Anschlüsse nur mit Bezug (pro Person und Standort)" in texts
     assert "davon 1 ohne Bezug" in texts

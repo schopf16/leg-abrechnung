@@ -25,6 +25,8 @@ from app.emailing.person_send import send_person_message
 from app.emailing.templates import (
     compose_with_signature,
     find_unknown_placeholders,
+    find_malformed_placeholders,
+    placeholder_errors,
     placeholder_values,
     render_template,
 )
@@ -103,6 +105,7 @@ def open_message_send_dialog(
             # the other way round a placeholder inside a signature goes out
             # literally here while working there.
             raw_body = compose_with_signature(template.body, chosen.content if chosen else "")
+            current["raw_body"] = raw_body
             title.text = f"{template.name} an {person.display_name}"
             settled_label.text = _settled_text(message) if message.was_sent else ""
             subject_input.value = render_template(template.subject, values)
@@ -126,6 +129,12 @@ def open_message_send_dialog(
         async def do_send() -> None:
             """Send exactly this text, with exactly these attachments."""
             template = current["due"].template
+            problems = placeholder_errors(
+                template.subject + "\n" + current["raw_body"], placeholders_for(occasion)
+            )
+            if problems:
+                error_label.text = "Bitte Platzhalter im Textbaustein korrigieren: " + "; ".join(problems)
+                return
             picker = pickers[0]
             if not person.contact_emails:
                 error_label.text = "Diese Person hat keine E-Mail-Adresse hinterlegt."
@@ -192,10 +201,14 @@ def _settled_text(message: DueMessage) -> str:
 def _render_placeholder_note(raw_text: str, occasion: str) -> None:
     """Name any placeholder the template uses that nothing can fill."""
     unknown = find_unknown_placeholders(raw_text, placeholders_for(occasion))
-    if not unknown:
-        return
-    names = ", ".join("{" + name + "}" for name in sorted(unknown))
-    ui.label(f"⚠ Unbekannte Platzhalter, sie gehen so hinaus: {names}").classes("text-warning text-body2")
+    if unknown:
+        names = ", ".join("{" + name + "}" for name in sorted(unknown))
+        ui.label(f"⚠ Unbekannte Platzhalter: {names}").classes("text-negative text-body2")
+    malformed = find_malformed_placeholders(raw_text)
+    if malformed:
+        ui.label("⚠ Fehlerhafte Platzhalterklammern: " + ", ".join(malformed)).classes(
+            "text-negative text-body2"
+        )
 
 
 class AttachmentPicker:

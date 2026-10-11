@@ -16,6 +16,7 @@ from app.domain.quality_checks import (
     check_feed_in_without_consumption,
     check_feed_in_without_iban,
     check_offboarding_completed_but_active,
+    check_active_person_without_metering_point,
     check_onboarding_progress,
     check_open_billing_cycle,
     check_substation_area_one_sided,
@@ -84,6 +85,8 @@ def _load_overview(connection) -> dict:
     for warning in check_onboarding_progress(connection):
         collected.append(warning)
     for warning in check_offboarding_completed_but_active(connection):
+        collected.append(warning)
+    for warning in check_active_person_without_metering_point(connection):
         collected.append(warning)
     for warning in check_cooperative_members_without_shares(connection):
         collected.append(warning)
@@ -200,14 +203,16 @@ def dashboard_page() -> None:
                     ui.label(str(counts[key])).classes("text-3xl font-bold")
                     ui.label(label)
 
-            # People, counted once each: somebody who feeds in and draws
-            # is a Prosumer and appears here only there. The two therefore
-            # add up, unlike the "9:26" ratio on the LEG pages, which counts
-            # metering points and is answering a different question.
+            # Connections (person + site), counted once each: somebody who
+            # feeds in and draws is a Prosumer and appears here only there.
+            # The two therefore add up, unlike the "9:26" ratio on the LEG
+            # pages, which counts metering points and answers a different question.
             with ui.card().classes(_TILE_CLASSES):
                 ui.label(str(roles.prosumers)).classes("text-3xl font-bold")
                 ui.label("Prosumer")
-                ui.label("Anschlüsse mit Einspeisung und Bezug").classes("text-caption text-grey-6")
+                ui.label("Anschlüsse mit Einspeisung (pro Person und Standort)").classes(
+                    "text-caption text-grey-6"
+                )
                 # The caption describes the intended state. Until the gaps
                 # are closed a few of these have no Bezug at all, and a
                 # tile that quietly included them would not survive the
@@ -221,7 +226,9 @@ def dashboard_page() -> None:
             with ui.card().classes(_TILE_CLASSES):
                 ui.label(str(roles.consumers)).classes("text-3xl font-bold")
                 ui.label("Konsumer")
-                ui.label("Anschlüsse nur mit Bezug").classes("text-caption text-grey-6")
+                ui.label("Anschlüsse nur mit Bezug (pro Person und Standort)").classes(
+                    "text-caption text-grey-6"
+                )
 
             # Two cards apart from the counting ones, because these are not
             # complete by construction: a capacity is typed in by hand per

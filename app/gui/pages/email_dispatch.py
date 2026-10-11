@@ -15,6 +15,7 @@ from app.emailing.templates import (
     compose_with_signature,
     find_invalid_email_addresses,
     find_unknown_placeholders,
+    placeholder_errors,
     placeholder_values,
     render_template,
     validate_person_placeholders,
@@ -288,6 +289,16 @@ def email_dispatch_page() -> None:
                     if not subject_input.value.strip():
                         safe_notify("Bitte einen Betreff eingeben.", type="warning")
                         return
+                    signature = signatures_by_id.get(signature_select.value)
+                    composed_body = compose_with_signature(
+                        body_textarea.value, signature.content if signature else ""
+                    )
+                    problems = placeholder_errors(
+                        subject_input.value + "\n" + composed_body, BROADCAST_PLACEHOLDERS
+                    )
+                    if problems:
+                        safe_notify("Bitte Platzhalter korrigieren: " + "; ".join(problems), type="negative")
+                        return
                     refresh_validation_step()
                     stepper.next()
 
@@ -408,6 +419,16 @@ def email_dispatch_page() -> None:
 
                 async def do_send() -> None:
                     """Send the composed email to every current recipient."""
+                    signature = signatures_by_id.get(signature_select.value)
+                    final_body = compose_with_signature(
+                        body_textarea.value, signature.content if signature else ""
+                    )
+                    problems = placeholder_errors(
+                        subject_input.value + "\n" + final_body, BROADCAST_PLACEHOLDERS
+                    )
+                    if problems:
+                        safe_notify("Bitte Platzhalter korrigieren: " + "; ".join(problems), type="negative")
+                        return
                     if attachments_too_large(attachments):
                         safe_notify(
                             "Die Anhänge sind zusammen zu gross -- bitte unter "
@@ -432,11 +453,6 @@ def email_dispatch_page() -> None:
                     def on_progress(done: int, total: int) -> None:
                         progress_bar.value = done / total if total else 1.0
                         progress_label.text = f"{done} von {total} gesendet"
-
-                    signature = signatures_by_id.get(signature_select.value)
-                    final_body = compose_with_signature(
-                        body_textarea.value, signature.content if signature else ""
-                    )
 
                     # Written to disk only for the duration of this one
                     # send -- graph_client.send_email expects a Path (the
