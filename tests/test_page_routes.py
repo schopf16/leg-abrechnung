@@ -15,6 +15,7 @@ EXPECTED_ROUTES = [
     "/assignments",
     "/backup",
     "/billing",
+    "/data-export",
     "/dunning",
     "/email-dispatch",
     "/import",

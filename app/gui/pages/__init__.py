@@ -9,6 +9,7 @@ from app.gui.pages import (  # noqa: F401
     reports,
     backup,
     dashboard,
+    data_export,
     receivables,
     settings,
     email_dispatch,
