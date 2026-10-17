@@ -715,6 +715,13 @@ mailed to them. `{betrag}`, `{quartal}`, `{jahr}` and `{neue_frist}` keep their
 invented value even then, and the note says so: they exist at the moment of the
 send, not before.
 
+### Data export for leg-platform
+
+`app/export/data_export.py`: `TABLES` is the contract (columns, types, foreign keys, load order); the
+ZIP's `manifest.json` is generated from it. A new migration column must be added to `TABLES` or to
+`NOT_EXPORTED_*` in `tests/test_data_export.py`, which fails otherwise. Changing or removing an exported
+column raises `FORMAT_VERSION`. The page is `/data-export` (drawer: Einstellungen).
+
 ## Tooling and CI
 
 `.github/workflows/ci.yml` runs on every push/PR: `ruff check`, pytest,

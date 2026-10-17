@@ -83,6 +83,7 @@ NAV_GROUPS: list[tuple[Optional[str], list[tuple[str, str]]]] = [
             ("/settings", "Allgemein"),
             ("/address-register", "Adressregister"),
             ("/backup", "Backup"),
+            ("/data-export", "Datenexport"),
         ],
     ),
 ]
