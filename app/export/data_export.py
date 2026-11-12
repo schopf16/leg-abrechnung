@@ -472,6 +472,8 @@ TABLES: tuple[TableSpec, ...] = (
             _c("address_zip", "text"),
             _c("address_city", "text"),
             _c("address_country", "text"),
+            _c("sender_name", "text", doc="Sender and QR-bill payee; empty means the LEG's own name."),
+            _c("sender_addition", "text", doc="Optional line under the sender name, e.g. 'c/o ...'."),
             _c("qr_iban", "text"),
             _c("price_rp_per_kwh", "real", doc="Current price, Rappen per kWh."),
             _c("admin_fee_consumption_rp_per_kwh", "real"),

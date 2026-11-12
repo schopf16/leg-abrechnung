@@ -32,12 +32,20 @@ def draw_sender_block(canvas: Canvas, settings: LegSettings, leg: Leg) -> None:
     y = PAGE_HEIGHT - 20 * mm
     canvas.setFont("Helvetica", 8)
     for line in (
-        leg.name,
+        settings.sender_name_for(leg.name),
+        settings.sender_addition,
         settings.address_street_with_number,
         f"{settings.address_zip} {settings.address_city}",
     ):
+        if not line.strip():
+            continue
         canvas.drawString(_LEFT_MARGIN, y, line)
         y -= 10
+
+
+def leg_meta_lines(settings: LegSettings, leg: Leg) -> list[str]:
+    """`["LEG: …"]` when a sender name hides the LEG's own name, else nothing."""
+    return [f"LEG: {leg.name}"] if settings.sender_name else []
 
 
 def draw_recipient_block(canvas: Canvas, person: Person) -> None:

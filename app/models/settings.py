@@ -35,6 +35,12 @@ class LegSettings:
     dunning2_email_subject: str
     dunning2_email_body: str
     updated_at: str
+    sender_name: str = ""
+    sender_addition: str = ""
+
+    def sender_name_for(self, leg_name: str) -> str:
+        """The name a document is sent from: the configured sender, else the LEG's own name."""
+        return self.sender_name or leg_name
 
     @property
     def address_street_with_number(self) -> str:
@@ -71,6 +77,8 @@ class LegSettings:
             dunning2_email_subject=row["dunning2_email_subject"],
             dunning2_email_body=row["dunning2_email_body"],
             updated_at=row["updated_at"],
+            sender_name=row["sender_name"],
+            sender_addition=row["sender_addition"],
         )
 
 
@@ -98,7 +106,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             invoice_email_subject = ?, invoice_email_body = ?,
             dunning_new_deadline_days = ?, dunning_minimum_rappen = ?,
             dunning1_email_subject = ?, dunning1_email_body = ?,
-            dunning2_email_subject = ?, dunning2_email_body = ?, updated_at = ?
+            dunning2_email_subject = ?, dunning2_email_body = ?,
+            sender_name = ?, sender_addition = ?, updated_at = ?
         WHERE id = 1
         """,
         (
@@ -127,6 +136,8 @@ def update_settings(connection: sqlite3.Connection, settings: LegSettings) -> No
             settings.dunning1_email_body,
             settings.dunning2_email_subject,
             settings.dunning2_email_body,
+            settings.sender_name,
+            settings.sender_addition,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
