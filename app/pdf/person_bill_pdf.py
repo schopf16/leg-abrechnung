@@ -20,6 +20,7 @@ from app.pdf.layout import (
     draw_net_settlement,
     draw_recipient_block,
     draw_sender_block,
+    leg_meta_lines,
     draw_title,
     ensure_space,
     new_canvas,
@@ -102,6 +103,7 @@ def generate_person_bill_pdf(
             f"Kunden-Nr.: {person.formatted_customer_number}",
             f"Periode: {period}",
             _quarter_period_label(run.period_year, run.period_quarter),
+            *leg_meta_lines(settings, leg),
         ],
     )
 

@@ -1975,4 +1975,18 @@ Freundliche Grüsse',
                  80, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '');
         """,
     ),
+    Migration(
+        version=60,
+        description="A sender name and an optional addition line (e.g. 'c/o "
+        "...') for every document, for a deployment where the association "
+        "and not each LEG is the contracting party and the QR-IBAN holder. "
+        "Return post must reach a letterbox, and the QR-bill payee should "
+        "match the account holder. Empty means the LEG's own name, as before.",
+        sql="""
+            ALTER TABLE leg_settings
+                ADD COLUMN sender_name TEXT NOT NULL DEFAULT '';
+            ALTER TABLE leg_settings
+                ADD COLUMN sender_addition TEXT NOT NULL DEFAULT '';
+        """,
+    ),
 ]
