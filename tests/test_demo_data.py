@@ -133,7 +133,7 @@ def test_demo_move_splits_metering_point_between_two_persons(db):
         """
         SELECT person_id, valid_from, valid_to FROM assignment
         WHERE metering_point_id = (
-            SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000007'
+            SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000000000007'
         )
         ORDER BY valid_from
         """
