@@ -289,7 +289,7 @@ def _create_demo_metering_points(
     definitions = {
         "anna_bezug": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000001",
+            designation="CH1000000000000000000000000000001",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["anna"].id,
             leg_id=leg.id,
@@ -299,7 +299,7 @@ def _create_demo_metering_points(
         ),
         "anna_einspeisung": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000002",
+            designation="CH1000000000000000000000000000002",
             direction=DIRECTION_FEED_IN,
             site_id=sites["anna"].id,
             leg_id=leg.id,
@@ -309,7 +309,7 @@ def _create_demo_metering_points(
         ),
         "beat_bezug": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000003",
+            designation="CH1000000000000000000000000000003",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["beat"].id,
             leg_id=leg.id,
@@ -319,7 +319,7 @@ def _create_demo_metering_points(
         ),
         "beat_einspeisung": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000004",
+            designation="CH1000000000000000000000000000004",
             direction=DIRECTION_FEED_IN,
             site_id=sites["beat"].id,
             leg_id=leg.id,
@@ -329,7 +329,7 @@ def _create_demo_metering_points(
         ),
         "carla_bezug_1": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000005",
+            designation="CH1000000000000000000000000000005",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["carla"].id,
             leg_id=leg.id,
@@ -340,7 +340,7 @@ def _create_demo_metering_points(
         ),
         "carla_bezug_2": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000006",
+            designation="CH1000000000000000000000000000006",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["carla"].id,
             leg_id=leg.id,
@@ -351,7 +351,7 @@ def _create_demo_metering_points(
         ),
         "bergstrasse4_bezug": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000007",
+            designation="CH1000000000000000000000000000007",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["bergstrasse4"].id,
             leg_id=leg.id,
@@ -364,7 +364,7 @@ def _create_demo_metering_points(
         # bill internally cannot do anything with "CH10000...".
         "lindenweg7_allgemein": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000008",
+            designation="CH1000000000000000000000000000008",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["lindenweg7"].id,
             leg_id=leg.id,
@@ -375,7 +375,7 @@ def _create_demo_metering_points(
         ),
         "lindenweg7_whg1": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000009",
+            designation="CH1000000000000000000000000000009",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["lindenweg7"].id,
             leg_id=leg.id,
@@ -386,7 +386,7 @@ def _create_demo_metering_points(
         ),
         "lindenweg7_whg2": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000010",
+            designation="CH1000000000000000000000000000010",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["lindenweg7"].id,
             leg_id=leg.id,
@@ -397,7 +397,7 @@ def _create_demo_metering_points(
         ),
         "lindenweg7_pv": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000011",
+            designation="CH1000000000000000000000000000011",
             direction=DIRECTION_FEED_IN,
             site_id=sites["lindenweg7"].id,
             leg_id=leg.id,
@@ -411,7 +411,7 @@ def _create_demo_metering_points(
         # unlabelled on purpose, which is what most of them look like.
         "parkstrasse12_allgemein": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000012",
+            designation="CH1000000000000000000000000000012",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["parkstrasse12"].id,
             leg_id=leg.id,
@@ -422,7 +422,7 @@ def _create_demo_metering_points(
         ),
         "parkstrasse12_whg_eg": MeteringPoint(
             id=None,
-            designation="CH1000000000000000000000013",
+            designation="CH1000000000000000000000000000013",
             direction=DIRECTION_CONSUMPTION,
             site_id=sites["parkstrasse12"].id,
             leg_id=leg.id,
