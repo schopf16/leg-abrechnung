@@ -319,7 +319,7 @@ def _create_demo_metering_points(
         ),
         "beat_einspeisung": MeteringPoint(
             id=None,
-            designation="CH100000000000000000000000000004",
+            designation="CH1000000000000000000000000000004",
             direction=DIRECTION_FEED_IN,
             site_id=sites["beat"].id,
             leg_id=leg.id,
