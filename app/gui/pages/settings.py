@@ -20,6 +20,7 @@ from app.formatting import format_date
 from app.models import leg_document as leg_document_repo
 from app.models import settings as settings_repo
 from app.pdf.membership_contract import validate_contract_template
+from app.pdf.qr_bill_render import QR_NAME_MAX_LENGTH
 
 
 @ui.page("/settings")
@@ -30,8 +31,8 @@ def settings_page() -> None:
             current = settings_repo.get_settings(connection)
 
         ui.label(
-            "Diese Angaben gelten für alle LEGs. Der Name auf der Rechnung "
-            "kommt von der jeweiligen LEG -- siehe „LEGs“."
+            "Diese Angaben gelten für alle LEGs. Ohne eigenen Absendernamen "
+            "kommt der Name auf der Rechnung von der jeweiligen LEG -- siehe „LEGs“."
         ).classes("text-body2 text-grey-8")
 
         ui.label("Absender und Abrechnung").classes("text-lg font-bold mt-4")
@@ -40,6 +41,21 @@ def settings_page() -> None:
         ).classes("text-body2 text-grey-8")
 
         with ui.card().classes("w-full max-w-lg"):
+            sender_name = ui.input(
+                "Name des Absenders",
+                value=current.sender_name,
+                validation={
+                    f"Höchstens {QR_NAME_MAX_LENGTH} Zeichen (QR-Rechnung)": lambda v: (
+                        len((v or "").strip()) <= QR_NAME_MAX_LENGTH
+                    )
+                },
+            ).classes("w-full")
+            sender_name.props(
+                'hint="z. B. der Verein, Inhaber des QR-IBAN-Kontos. Leer: Name der jeweiligen LEG."'
+            )
+            sender_addition = ui.input(
+                "Zusatz (z. B. c/o Vorname Name)", value=current.sender_addition
+            ).classes("w-full")
             with ui.row().classes("w-full gap-2"):
                 street = ui.input("Strasse", value=current.address_street).classes("flex-grow")
                 house_number = ui.input("Hausnummer", value=current.address_house_number).classes("w-28")
@@ -122,6 +138,11 @@ def settings_page() -> None:
                     error_label.text = "Kosten Papierrechnung müssen positiv sein."
                     return
                 qr_iban_problem = validate_qr_iban(qr_iban.value)
+                if len(sender_name.value.strip()) > QR_NAME_MAX_LENGTH:
+                    error_label.text = (
+                        f"Name des Absenders: höchstens {QR_NAME_MAX_LENGTH} Zeichen (QR-Rechnung)."
+                    )
+                    return
                 if qr_iban_problem:
                     qr_iban_error.text = qr_iban_problem
                     error_label.text = qr_iban_problem
@@ -133,6 +154,8 @@ def settings_page() -> None:
                 # the fields this form owns are touched.
                 with connection_scope() as connection:
                     updated = settings_repo.get_settings(connection)
+                    updated.sender_name = sender_name.value.strip()
+                    updated.sender_addition = sender_addition.value.strip()
                     updated.address_street = street.value.strip()
                     updated.address_house_number = house_number.value.strip()
                     updated.address_zip = zip_code.value.strip()

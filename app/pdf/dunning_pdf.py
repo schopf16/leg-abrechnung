@@ -15,6 +15,7 @@ from app.pdf.layout import (
     draw_meta_block,
     draw_recipient_block,
     draw_sender_block,
+    leg_meta_lines,
     draw_title,
     new_canvas,
 )
@@ -55,6 +56,7 @@ def generate_dunning_pdf(
                 f"Datum: {date.today().strftime('%d.%m.%Y')}",
                 f"Zu Abrechnung Nr. {item.id}",
                 f"Kunden-Nr.: {person.formatted_customer_number}",
+                *leg_meta_lines(settings, leg),
             ],
         )
 
