@@ -15,6 +15,7 @@ from app.models import metering_point as metering_point_repo
 from app.models import person as person_repo
 from app.models import settings as settings_repo
 from app.models import substation_area as substation_area_repo
+from app.domain.metering_point_validation import validate_metering_point_designation
 
 #: Every test in this module needs the real generator, not the template.
 pytestmark = pytest.mark.real_demo_data
@@ -133,7 +134,7 @@ def test_demo_move_splits_metering_point_between_two_persons(db):
         """
         SELECT person_id, valid_from, valid_to FROM assignment
         WHERE metering_point_id = (
-            SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000007'
+            SELECT id FROM metering_point WHERE designation = 'CH1000000000000000000000000000007'
         )
         ORDER BY valid_from
         """
@@ -142,3 +143,11 @@ def test_demo_move_splits_metering_point_between_two_persons(db):
     assert rows[0]["person_id"] == erika.id
     assert rows[1]["person_id"] == david.id
     assert rows[1]["valid_to"] is None
+
+
+def test_demo_designations_are_valid(db):
+    """Every demo metering point passes the same check as one typed in by hand."""
+    create_demo_data(db)
+    designations = [row["designation"] for row in db.execute("SELECT designation FROM metering_point")]
+    assert len(designations) == 13
+    assert [d for d in designations if validate_metering_point_designation(d)] == []
