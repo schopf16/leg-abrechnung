@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
-from app.config import GraphConfig
-from app.emailing import graph_client
+from app.config import MailConfig
+from app.emailing import mail
 from app.emailing.templates import placeholder_values, render_template
 from app.models import billing_run as billing_run_repo
 from app.models import cooperative_membership as cooperative_membership_repo
@@ -61,14 +61,14 @@ class EmailSendResult:
 
 async def send_broadcast_email(
     connection,
-    config: GraphConfig,
+    config: MailConfig,
     recipients: list[Person],
     subject: str,
     body: str,
     *,
     scope: str,
     leg_id: Optional[int] = None,
-    attachments: Sequence[graph_client.Attachment] = (),
+    attachments: Sequence[mail.Attachment] = (),
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> EmailSendResult:
     """Send a personalized email to each of an explicit list of recipients."""
@@ -77,7 +77,7 @@ async def send_broadcast_email(
     if total == 0:
         return result
 
-    access_token = await graph_client.get_access_token(config)
+    token = await mail.prepare(config)
     sent_emails: list[str] = []
 
     for index, person in enumerate(recipients):
@@ -85,9 +85,9 @@ async def send_broadcast_email(
             values = placeholder_values(connection, person)
             rendered_subject = render_template(subject, values)
             rendered_body = render_template(body, values)
-            await graph_client.send_email(
+            await mail.send_email(
                 config,
-                access_token,
+                token,
                 to_addresses=person.contact_emails,
                 to_name=person.display_name,
                 subject=rendered_subject,
@@ -96,11 +96,11 @@ async def send_broadcast_email(
             )
             result.sent.append(person.display_name)
             sent_emails.extend(person.contact_emails)
-        except graph_client.GraphAuthError:
+        except mail.MailAuthError:
             if on_progress:
                 on_progress(index + 1, total)
             raise
-        except graph_client.GraphApiError as exc:
+        except mail.MailError as exc:
             result.errors.append(f"{person.display_name}: {exc}")
         if on_progress:
             on_progress(index + 1, total)
@@ -124,7 +124,7 @@ async def send_broadcast_email(
 
 async def send_invoice_emails(
     connection,
-    config: GraphConfig,
+    config: MailConfig,
     run: BillingRun,
     subject: str,
     body: str,
@@ -139,7 +139,7 @@ async def send_invoice_emails(
         return result
 
     leg = leg_repo.get(connection, run.leg_id)
-    access_token = await graph_client.get_access_token(config)
+    token = await mail.prepare(config)
 
     for index, item in enumerate(items):
         person = person_repo.get(connection, item.person_id)
@@ -152,15 +152,13 @@ async def send_invoice_emails(
             continue
 
         try:
-            await _send_one_invoice_email(
-                connection, config, access_token, run, item, person, leg, subject, body
-            )
+            await _send_one_invoice_email(connection, config, token, run, item, person, leg, subject, body)
             result.sent.append(person.display_name)
-        except graph_client.GraphAuthError:
+        except mail.MailAuthError:
             if on_progress:
                 on_progress(index + 1, total)
             raise
-        except graph_client.GraphApiError as exc:
+        except mail.MailError as exc:
             result.errors.append(f"{person.display_name}: {exc}")
         if on_progress:
             on_progress(index + 1, total)
@@ -169,7 +167,7 @@ async def send_invoice_emails(
 
 
 async def resend_invoice_email(
-    connection, config: GraphConfig, run: BillingRun, item: BillingRunItem, subject: str, body: str
+    connection, config: MailConfig, run: BillingRun, item: BillingRunItem, subject: str, body: str
 ) -> None:
     """Force-resend one already-sent invoice, regardless of `email_sent_at`."""
     person = person_repo.get(connection, item.person_id)
@@ -181,8 +179,8 @@ async def resend_invoice_email(
         raise ValueError("Für diese Position wurde noch kein PDF erzeugt.")
 
     leg = leg_repo.get(connection, run.leg_id)
-    access_token = await graph_client.get_access_token(config)
-    await _send_one_invoice_email(connection, config, access_token, run, item, person, leg, subject, body)
+    token = await mail.prepare(config)
+    await _send_one_invoice_email(connection, config, token, run, item, person, leg, subject, body)
 
 
 #: Invoice-email-only placeholders, not derived from `Person` -- see
@@ -217,18 +215,16 @@ def _invoice_placeholder_values(run: BillingRun, item: BillingRunItem, leg) -> d
     }
 
 
-async def _send_one_invoice_email(
-    connection, config, access_token, run, item, person, leg, subject, body
-) -> None:
+async def _send_one_invoice_email(connection, config, token, run, item, person, leg, subject, body) -> None:
     """Render and send one person's invoice email, then record `email_sent_at`."""
     values = {**placeholder_values(connection, person), **_invoice_placeholder_values(run, item, leg)}
-    await graph_client.send_email(
+    await mail.send_email(
         config,
-        access_token,
+        token,
         to_addresses=person.contact_emails,
         to_name=person.display_name,
         subject=render_template(subject, values),
         body=render_template(body, values),
-        attachments=[graph_client.Attachment(path=Path(item.pdf_path), filename=Path(item.pdf_path).name)],
+        attachments=[mail.Attachment(path=Path(item.pdf_path), filename=Path(item.pdf_path).name)],
     )
     billing_run_repo.set_item_email_sent_at(connection, item.id, datetime.now(timezone.utc).isoformat())

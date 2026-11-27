@@ -6,11 +6,11 @@ from datetime import date
 
 from nicegui import ui
 
-from app.config import ConfigError, get_graph_config
+from app.config import ConfigError, get_mail_config
 from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain import dunning
-from app.emailing import graph_client
+from app.emailing import mail
 from app.gui.filter_bar import FilterBar
 from app.gui.form_dialog import form_guard
 from app.gui.navigation import page_frame
@@ -188,7 +188,7 @@ def dunning_page() -> None:
                     config = None
                     if candidate.person.contact_emails and not candidate.person.paper_invoice:
                         try:
-                            config = get_graph_config()
+                            config = get_mail_config()
                         except ConfigError as exc:
                             safe_notify(str(exc), type="negative")
                             send_button.enable()
@@ -196,7 +196,7 @@ def dunning_page() -> None:
                     try:
                         with connection_scope() as connection:
                             await dunning.send_dunning(connection, config, candidate)
-                    except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    except mail.MailError as exc:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
                         return

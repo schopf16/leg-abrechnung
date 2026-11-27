@@ -7,10 +7,10 @@ from typing import Optional
 
 from nicegui import events, ui
 
-from app.config import ConfigError, get_graph_config
+from app.config import ConfigError, get_mail_config
 from app.db.connection import connection_scope
 from app.format_size import format_size
-from app.emailing import bulk_send, graph_client
+from app.emailing import bulk_send, mail
 from app.emailing.templates import (
     compose_with_signature,
     find_invalid_email_addresses,
@@ -37,8 +37,8 @@ BROADCAST_PLACEHOLDERS = placeholders_for()
 
 
 def attachments_too_large(attachments: list[tuple[str, bytes]]) -> bool:
-    """Whether this set exceeds what one Graph request can carry."""
-    return sum(len(content) for _, content in attachments) > graph_client.MAX_INLINE_ATTACHMENT_BYTES
+    """Whether this set exceeds what one message may carry."""
+    return sum(len(content) for _, content in attachments) > mail.MAX_INLINE_ATTACHMENT_BYTES
 
 
 def describe_attachments(attachments: list[tuple[str, bytes]]) -> str:
@@ -234,7 +234,7 @@ def email_dispatch_page() -> None:
                         if attachments_too_large(attachments):
                             ui.label(
                                 f"⚠ Zusammen zu gross -- erlaubt sind "
-                                f"{format_size(graph_client.MAX_INLINE_ATTACHMENT_BYTES)} pro "
+                                f"{format_size(mail.MAX_INLINE_ATTACHMENT_BYTES)} pro "
                                 "E-Mail. Bitte einen Anhang entfernen."
                             ).classes("text-negative text-body2")
 
@@ -264,7 +264,7 @@ def email_dispatch_page() -> None:
 
                 def handle_attachment_rejected() -> None:
                     """Notify when the upload widget rejects a too-large file."""
-                    max_mb = graph_client.MAX_INLINE_ATTACHMENT_BYTES // 1024 // 1024
+                    max_mb = mail.MAX_INLINE_ATTACHMENT_BYTES // 1024 // 1024
                     safe_notify(f"Anhang zu gross -- maximal {max_mb} MB.", type="negative")
 
                 upload_widget = (
@@ -273,10 +273,10 @@ def email_dispatch_page() -> None:
                         multiple=True,
                         on_multi_upload=handle_attachment_upload,
                         on_rejected=handle_attachment_rejected,
-                        max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                        max_file_size=mail.MAX_INLINE_ATTACHMENT_BYTES,
                         # Bounds one selection, not the running total -- the
                         # app-side check below is still what actually decides.
-                        max_total_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                        max_total_size=mail.MAX_INLINE_ATTACHMENT_BYTES,
                         auto_upload=True,
                     )
                     .props("accept=* flat")
@@ -439,7 +439,7 @@ def email_dispatch_page() -> None:
                     send_button.disable()
                     send_result_container.clear()
                     try:
-                        config = get_graph_config()
+                        config = get_mail_config()
                     except ConfigError as exc:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
@@ -455,17 +455,17 @@ def email_dispatch_page() -> None:
                         progress_label.text = f"{done} von {total} gesendet"
 
                     # Written to disk only for the duration of this one
-                    # send -- graph_client.send_email expects a Path (the
+                    # send -- mail.send_email expects a Path (the
                     # same shape as an invoice PDF), and the temp file is
                     # always removed again below, success or failure.
                     temp_paths: list[Path] = []
-                    graph_attachments: list[graph_client.Attachment] = []
+                    mail_attachments: list[mail.Attachment] = []
                     for name, content in attachments:
                         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(name).suffix) as tmp_file:
                             tmp_file.write(content)
                             temp_path = Path(tmp_file.name)
                         temp_paths.append(temp_path)
-                        graph_attachments.append(graph_client.Attachment(path=temp_path, filename=name))
+                        mail_attachments.append(mail.Attachment(path=temp_path, filename=name))
 
                     try:
                         with connection_scope() as inner_connection:
@@ -477,10 +477,10 @@ def email_dispatch_page() -> None:
                                 final_body,
                                 scope=scope_select.value,
                                 leg_id=leg_select.value if scope_select.value == "leg" else None,
-                                attachments=graph_attachments,
+                                attachments=mail_attachments,
                                 on_progress=on_progress,
                             )
-                    except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    except mail.MailError as exc:
                         safe_notify(str(exc), type="negative")
                         back_button.enable()
                         send_button.enable()
@@ -492,13 +492,13 @@ def email_dispatch_page() -> None:
                     back_button.enable()
                     with send_result_container:
                         with ui.card().classes("w-full"):
-                            ui.label(f"{len(result.sent)} E-Mail(s) an Microsoft übergeben.").classes(
+                            ui.label(f"{len(result.sent)} E-Mail(s) an den Mailserver übergeben.").classes(
                                 "font-bold"
                             )
                             ui.label(
-                                "„Übergeben“ heisst: von Microsoft zur Zustellung "
-                                "angenommen -- ob eine Adresse tatsächlich existiert, "
-                                "kann die App nicht prüfen."
+                                "„Übergeben“ heisst: vom Mailserver (Microsoft bzw. SMTP-Server) "
+                                "zur Zustellung angenommen -- ob eine Adresse tatsächlich "
+                                "existiert, kann die App nicht prüfen."
                             ).classes("text-caption text-grey-6")
                             for line in result.errors:
                                 ui.label(f"⚠ {line}").classes("text-negative text-body2")
@@ -551,31 +551,31 @@ def email_dispatch_page() -> None:
 
         ui.label("Verbindung").classes("text-lg font-bold")
         ui.label(
-            "Holt ein Zugriffstoken bei Microsoft Graph, ohne etwas zu "
-            "versenden -- die Zugangsdaten aus `config.local.json` prüfen, "
-            "bevor der erste echte Versand gestartet wird. Stand bis jetzt "
-            "unter Einstellungen; es gehört dorthin, wo versendet wird."
+            "Meldet sich beim Versandweg an (Microsoft Graph oder SMTP/IMAP), "
+            "ohne etwas zu versenden -- die Zugangsdaten prüfen, bevor der "
+            "erste echte Versand gestartet wird. Eingerichtet wird der "
+            "Versandweg in config.local.json (siehe README, Abschnitt 5)."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
             connection_test_result = ui.label("").classes("text-caption")
 
-            async def test_graph_connection() -> None:
-                """Acquire a Graph API access token without sending anything."""
+            async def test_mail_connection() -> None:
+                """Log in to the configured transport without sending anything."""
                 connection_test_result.text = "Prüfe Verbindung..."
                 connection_test_result.classes(remove="text-negative text-positive")
                 try:
-                    config = get_graph_config()
+                    config = get_mail_config()
                 except ConfigError as exc:
                     connection_test_result.text = str(exc)
                     connection_test_result.classes(add="text-negative")
                     return
                 try:
-                    await graph_client.get_access_token(config)
-                except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    description = await mail.check_connection(config)
+                except mail.MailError as exc:
                     connection_test_result.text = str(exc)
                     connection_test_result.classes(add="text-negative")
                     return
-                connection_test_result.text = f"Verbindung erfolgreich -- Absender: {config.sender_address}"
+                connection_test_result.text = f"Verbindung erfolgreich -- {description}"
                 connection_test_result.classes(add="text-positive")
 
-            ui.button("Verbindung testen", on_click=test_graph_connection).props("outline")
+            ui.button("Verbindung testen", on_click=test_mail_connection).props("outline")

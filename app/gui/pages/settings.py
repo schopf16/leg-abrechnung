@@ -11,7 +11,7 @@ from app.domain.auto_attachments import KEY_MEMBERSHIP_CONTRACT
 from app.domain.demo_data import DemoDataAlreadyExists, create_demo_data
 from app.domain.iban_validation import iban_entry_is_complete, normalize_iban, validate_qr_iban
 from app.domain.metering_point_validation import validate_identifier, validate_country
-from app.emailing import graph_client
+from app.emailing import mail
 from app.gui.navigation import page_frame
 from app.gui.safe_notify import safe_notify
 from app.gui.upload import read_uploaded_file
@@ -293,7 +293,7 @@ def settings_page() -> None:
                             stored_any = False
                             for file in event.files:
                                 filename, content = await read_uploaded_file(file)
-                                if len(content) > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
+                                if len(content) > mail.MAX_INLINE_ATTACHMENT_BYTES:
                                     safe_notify(
                                         "Die Datei ist zu gross für eine E-Mail "
                                         f"({format_size(len(content))}).",

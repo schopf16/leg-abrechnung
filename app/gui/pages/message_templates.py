@@ -4,7 +4,7 @@ from nicegui import ui
 
 from app.db.connection import connection_scope
 from app.domain import auto_attachments
-from app.emailing import graph_client
+from app.emailing import mail
 from app.emailing.templates import placeholder_errors
 from app.format_size import format_size
 from app.formatting import format_date
@@ -398,8 +398,8 @@ def message_templates_page() -> None:
                     on_multi_upload=handle_upload,
                     multiple=True,
                     auto_upload=True,
-                    max_file_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
-                    max_total_size=graph_client.MAX_INLINE_ATTACHMENT_BYTES,
+                    max_file_size=mail.MAX_INLINE_ATTACHMENT_BYTES,
+                    max_total_size=mail.MAX_INLINE_ATTACHMENT_BYTES,
                 )
                 upload.props('label="Datei wählen" accept=".pdf,.docx,.txt" flat bordered')
                 render_attachments()
@@ -425,7 +425,7 @@ def message_templates_page() -> None:
                         error_label.text = "Bitte den Schritt wählen, zu dem dieser Text gehört."
                         return
                     total = sum(len(content) for _, content in pending)
-                    if total > graph_client.MAX_INLINE_ATTACHMENT_BYTES:
+                    if total > mail.MAX_INLINE_ATTACHMENT_BYTES:
                         error_label.text = (
                             f"Die Anhänge sind zusammen zu gross für eine E-Mail ({format_size(total)})."
                         )

@@ -75,8 +75,11 @@ Strict layering, don't blur it:
   `ParsedBankTransaction`).
 - `app/pdf/` — PDF/QR-bill (`qrbill`, `reportlab`, `svglib`, `pypdf`) and CSV
   export.
-- `app/emailing/` — Microsoft Graph (not SMTP; Basic Auth is off for Exchange
-  Online), placeholder substitution, send orchestration.
+- `app/emailing/` — `mail` picks the transport from the config's type:
+  Microsoft Graph (Microsoft 365; Basic Auth is off for Exchange Online) or
+  SMTP plus an IMAP copy in Sent. Callers catch `MailAuthError` (abort the
+  batch) before `MailError` (skip this recipient). Also placeholder
+  substitution and send orchestration.
 - `app/db/` — `migrations.py`, `schema.py` (`initialize_database`),
   `connection.py` (`connection_scope()`).
 - `app/backup/` — backup/restore via SQLite's online backup API.

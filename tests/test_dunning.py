@@ -218,8 +218,8 @@ def test_send_dunning_sends_email_with_pdf_attachment_and_advances_level(db, tmp
     candidate = dunning.list_due_dunnings(db)[0]
 
     with (
-        patch.object(dunning.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send,
+        patch.object(dunning.mail, "prepare", AsyncMock(return_value="tok")),
+        patch.object(dunning.mail, "send_email", AsyncMock()) as mock_send,
     ):
         pdf_path = asyncio.run(dunning.send_dunning(db, config=object(), candidate=candidate))
 
@@ -249,7 +249,7 @@ def test_send_dunning_skips_email_for_paper_invoice_person_but_still_generates_p
     _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     candidate = dunning.list_due_dunnings(db)[0]
 
-    with patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send:
+    with patch.object(dunning.mail, "send_email", AsyncMock()) as mock_send:
         pdf_path = asyncio.run(dunning.send_dunning(db, config=None, candidate=candidate))
 
     assert pdf_path.exists()
@@ -278,8 +278,8 @@ def test_send_dunning_qr_bill_amount_excludes_item_linked_payments_already_recei
     candidate = dunning.list_due_dunnings(db)[0]
 
     with (
-        patch.object(dunning.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(dunning.graph_client, "send_email", AsyncMock()),
+        patch.object(dunning.mail, "prepare", AsyncMock(return_value="tok")),
+        patch.object(dunning.mail, "send_email", AsyncMock()),
         patch("app.pdf.dunning_pdf.build_qr_bill", wraps=dunning_pdf.build_qr_bill) as mock_build,
     ):
         asyncio.run(dunning.send_dunning(db, config=object(), candidate=candidate))
@@ -311,8 +311,8 @@ def test_send_dunning_skips_qr_bill_for_an_item_already_fully_covered(db, tmp_pa
     assert {item.id for item in candidate.items} == {covered_item.id, open_item.id}
 
     with (
-        patch.object(dunning.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(dunning.graph_client, "send_email", AsyncMock()),
+        patch.object(dunning.mail, "prepare", AsyncMock(return_value="tok")),
+        patch.object(dunning.mail, "send_email", AsyncMock()),
         patch("app.pdf.dunning_pdf.build_qr_bill", wraps=dunning_pdf.build_qr_bill) as mock_build,
     ):
         asyncio.run(dunning.send_dunning(db, config=object(), candidate=candidate))
@@ -341,8 +341,8 @@ def test_send_dunning_reaches_a_person_who_only_has_a_partner_address(db, tmp_pa
     candidate = dunning.list_due_dunnings(db)[0]
 
     with (
-        patch.object(dunning.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send,
+        patch.object(dunning.mail, "prepare", AsyncMock(return_value="tok")),
+        patch.object(dunning.mail, "send_email", AsyncMock()) as mock_send,
     ):
         asyncio.run(dunning.send_dunning(db, config=object(), candidate=candidate))
 
@@ -364,7 +364,7 @@ def test_send_dunning_still_skips_someone_with_no_address_at_all(db, tmp_path, m
     _billing_item(db, person.id, 10_000, due_date=(date.today() - timedelta(days=1)).isoformat())
     candidate = dunning.list_due_dunnings(db)[0]
 
-    with patch.object(dunning.graph_client, "send_email", AsyncMock()) as mock_send:
+    with patch.object(dunning.mail, "send_email", AsyncMock()) as mock_send:
         pdf_path = asyncio.run(dunning.send_dunning(db, config=None, candidate=candidate))
 
     assert pdf_path.exists(), "der Beleg zum Ausdrucken muss trotzdem entstehen"

@@ -6,8 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.config import GraphConfig
-from app.emailing import graph_client
+from app.config import MailConfig
+from app.emailing import mail
 from app.domain import message_templates
 from app.emailing.templates import placeholder_values, render_template
 from app.models.message_template import OCCASION_DUNNING1, OCCASION_DUNNING2
@@ -117,7 +117,7 @@ def render_dunning_text(connection, settings, candidate: DunningCandidate) -> tu
     return render_template(subject_template, values), render_template(body_template, values)
 
 
-async def send_dunning(connection, config: Optional[GraphConfig], candidate: DunningCandidate) -> Path:
+async def send_dunning(connection, config: Optional[MailConfig], candidate: DunningCandidate) -> Path:
     """Render, send (or leave for manual printing) and log one dunning notice."""
     settings = settings_repo.get_settings(connection)
     person = candidate.person
@@ -132,16 +132,16 @@ async def send_dunning(connection, config: Optional[GraphConfig], candidate: Dun
 
     if person.contact_emails and not person.paper_invoice:
         if config is None:
-            raise ValueError("Graph-Konfiguration fehlt, E-Mail-Versand nicht möglich.")
-        access_token = await graph_client.get_access_token(config)
-        await graph_client.send_email(
+            raise ValueError("E-Mail-Konfiguration fehlt, E-Mail-Versand nicht möglich.")
+        token = await mail.prepare(config)
+        await mail.send_email(
             config,
-            access_token,
+            token,
             to_addresses=person.contact_emails,
             to_name=person.display_name,
             subject=subject,
             body=body,
-            attachments=[graph_client.Attachment(path=pdf_path, filename=pdf_path.name)],
+            attachments=[mail.Attachment(path=pdf_path, filename=pdf_path.name)],
         )
 
     now = datetime.now(timezone.utc).isoformat()

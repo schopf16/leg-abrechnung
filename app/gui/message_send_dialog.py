@@ -16,11 +16,11 @@ from typing import Callable, Optional
 
 from nicegui import events, ui
 
-from app.config import ConfigError, get_graph_config
+from app.config import ConfigError, get_mail_config
 from app.db.connection import connection_scope
 from app.domain import message_attachments
 from app.domain.message_templates import DueMessage
-from app.emailing.graph_client import MAX_INLINE_ATTACHMENT_BYTES, GraphApiError, GraphAuthError
+from app.emailing.mail import MAX_INLINE_ATTACHMENT_BYTES, MailError
 from app.emailing.person_send import send_person_message
 from app.emailing.templates import (
     compose_with_signature,
@@ -142,7 +142,7 @@ def open_message_send_dialog(
             error_label.text = ""
             send_button.disable()
             try:
-                config = get_graph_config()
+                config = get_mail_config()
             except ConfigError as exc:
                 send_button.enable()
                 error_label.text = f"E-Mail-Versand ist nicht konfiguriert: {exc}"
@@ -167,7 +167,7 @@ def open_message_send_dialog(
                         template_id=template.id,
                         attachment_paths=picker.paths,
                     )
-            except (GraphApiError, GraphAuthError) as exc:
+            except MailError as exc:
                 send_button.enable()
                 error_label.text = f"Senden fehlgeschlagen: {exc}"
                 return
@@ -251,7 +251,7 @@ class AttachmentPicker:
 
     @property
     def is_too_large(self) -> bool:
-        """Whether Microsoft would refuse the message over its attachments."""
+        """Whether the mail server would refuse the message over its attachments."""
         return self.total_bytes > MAX_INLINE_ATTACHMENT_BYTES
 
     async def add_picked(self, event: events.MultiUploadEventArguments) -> None:

@@ -249,11 +249,24 @@ Rechnungsversand (jede Person erhält nur ihre eigene PDF-Rechnung). Jede
 Person bekommt dabei eine eigene, separate E-Mail — niemand sieht die
 anderen Empfänger oder kann ihnen versehentlich antworten.
 
-Der Versand läuft über die **Microsoft Graph API** (nicht klassisches
-SMTP, da Microsoft Basic-Auth für Exchange Online inzwischen
-grösstenteils abgeschaltet hat).
+Es gibt zwei Versandwege, gewählt mit `"mail_transport"` in `config.local.json`:
 
-**Einmalig einrichten** (durch einen Administrator des Microsoft-365-Tenants):
+- **Microsoft 365 (Graph API)**, `"graph"` — für Postfächer bei Microsoft 365
+  (klassisches SMTP funktioniert dort nicht mehr, da Microsoft Basic-Auth
+  für Exchange Online grösstenteils abgeschaltet hat). Ohne
+  `"mail_transport"` gilt Graph wie bisher.
+- **SMTP / IMAP**, `"smtp"` — für jeden anderen Anbieter (z. B. Infomaniak,
+  Hostpoint, Gmail). Versendet wird per SMTP; danach legt die App eine Kopie
+  per IMAP im Ordner „Gesendet" ab, weil per SMTP versandte E-Mails sonst
+  nicht im Postfach erscheinen.
+
+Die Angaben stehen in `config.local.json`, nicht in der Datenbank — sie
+gehen also weder ins Backup noch in den Datenexport. Alle Schlüssel zeigt
+`config.example.json`.
+
+### Microsoft 365 (Graph) einrichten
+
+Einmalig, durch einen Administrator des Microsoft-365-Tenants:
 
 1. In [Entra ID](https://entra.microsoft.com) (früher Azure AD) eine neue
    **App-Registrierung** anlegen.
@@ -267,6 +280,7 @@ grösstenteils abgeschaltet hat).
    falls noch nicht geschehen, und die Graph-Werte eintragen:
    ```json
    {
+     "mail_transport": "graph",
      "graph_tenant_id": "<tenant-id>",
      "graph_client_id": "<client-id>",
      "graph_client_secret": "<client-secret>",
@@ -274,9 +288,48 @@ grösstenteils abgeschaltet hat).
      "graph_sender_name": "<anzeigename>"
    }
    ```
-6. Unter „Einstellungen" → „E-Mail-Versand" auf **„Verbindung testen"**
-   klicken, um die Einrichtung zu prüfen, bevor der erste echte Versand an
-   viele Personen gewagt wird.
+6. Unter „E-Mail versenden" → „Verbindung" auf **„Verbindung testen"**
+   klicken, bevor der erste echte Versand an viele Personen gewagt wird.
+
+### SMTP / IMAP einrichten
+
+1. In `config.local.json` die Angaben des Anbieters eintragen, z. B. für
+   Infomaniak:
+   ```json
+   {
+     "mail_transport": "smtp",
+     "smtp_host": "mail.infomaniak.com",
+     "smtp_port": 465,
+     "smtp_security": "ssl",
+     "smtp_username": "<postfach@ihredomain.ch>",
+     "smtp_password": "<passwort>",
+     "smtp_sender_address": "<postfach@ihredomain.ch>",
+     "smtp_sender_name": "<anzeigename>"
+   }
+   ```
+   `"smtp_security"` ist `"ssl"` (meist Port 465) oder `"starttls"` (meist
+   Port 587); unverschlüsselte Verbindungen sind bewusst nicht möglich. Mit
+   Zwei-Faktor-Anmeldung braucht es ein App-Passwort des Anbieters.
+2. **IMAP:** Die Kopie unter „Gesendet" ist eingeschaltet und nutzt dieselbe
+   Anmeldung. Ohne weitere Angaben gilt der SMTP-Server als IMAP-Server
+   (Port 993), und der Ordner wird automatisch gefunden. Abweichend:
+   `"imap_host"`, `"imap_port"`, `"imap_sent_folder"`; ausschalten mit
+   `"imap_enabled": false`.
+3. Unter „E-Mail versenden" → „Verbindung" auf **„Verbindung testen"**
+   klicken (meldet sich bei SMTP und IMAP an und nennt den gefundenen
+   Ordner).
+
+Hinweise zum SMTP-Versand:
+
+- Zwischen zwei E-Mails wartet die App standardmässig eine Sekunde
+  (`"smtp_send_delay_seconds"`), damit der Anbieter einen Massenversand
+  nicht bremst oder als Spam einstuft.
+- Lehnt der Anbieter eine einzelne E-Mail ab (z. B. Infomaniak mit
+  `550 5.2.0 Spam message rejected`), steht seine Meldung beim Empfänger
+  im Ergebnis; die übrigen E-Mails gehen weiter. Bei falschem Passwort
+  bricht der Versand sofort ab.
+- Klappt die Ablage unter „Gesendet" einmal nicht, gilt die E-Mail trotzdem
+  als gesendet (sie ist ja verschickt); die App schreibt das ins Protokoll.
 
 **Verwendung:**
 
@@ -404,8 +457,8 @@ und werden nie mitversioniert:
   Auszahlungslisten (CSV)
 - `backups/` — Datenbank-Backups
 - `config.local.json` — der API-Token für die Web-Registrierungen
-  (Abschnitt 4) sowie die Microsoft-Graph-Zugangsdaten für den
-  E-Mail-Versand (Abschnitt 5)
+  (Abschnitt 4) sowie die Zugangsdaten für den E-Mail-Versand, Graph oder
+  SMTP/IMAP (Abschnitt 5)
 - `.venv/` — die lokale Python-Umgebung
 
 Diese Liste ist der Grund, weshalb das Repository öffentlich sein kann:

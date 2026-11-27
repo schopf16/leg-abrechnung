@@ -10,6 +10,7 @@ from typing import Optional, Sequence
 import httpx
 
 from app.config import GraphConfig
+from app.emailing.errors import MailAuthError, MailError
 from app.format_size import format_size
 
 _TOKEN_URL_TEMPLATE = "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
@@ -52,11 +53,11 @@ class Attachment:
     filename: str
 
 
-class GraphAuthError(Exception):
+class GraphAuthError(MailAuthError):
     """Raised when Microsoft rejects the request due to invalid/expired credentials or insufficient..."""
 
 
-class GraphApiError(Exception):
+class GraphApiError(MailError):
     """Raised for any other failure talking to the Graph API (network error, non-2xx status after..."""
 
 

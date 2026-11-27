@@ -1,8 +1,21 @@
 {
     "leg_api_token": "PASTE_TOKEN_HERE",
+    "mail_transport": "graph",
     "graph_tenant_id": "PASTE_ENTRA_TENANT_ID_HERE",
     "graph_client_id": "PASTE_APP_REGISTRATION_CLIENT_ID_HERE",
     "graph_client_secret": "PASTE_APP_REGISTRATION_CLIENT_SECRET_HERE",
     "graph_sender_address": "leg@example.ch",
-    "graph_sender_name": "LEG Ittigen"
+    "graph_sender_name": "LEG Ittigen",
+    "smtp_host": "mail.example.ch",
+    "smtp_port": 465,
+    "smtp_security": "ssl",
+    "smtp_username": "leg@example.ch",
+    "smtp_password": "PASTE_MAILBOX_PASSWORD_HERE",
+    "smtp_sender_address": "leg@example.ch",
+    "smtp_sender_name": "LEG Ittigen",
+    "smtp_send_delay_seconds": 1.0,
+    "imap_enabled": true,
+    "imap_host": "",
+    "imap_port": 993,
+    "imap_sent_folder": ""
 }

@@ -2,7 +2,7 @@
 
 from nicegui import ui
 
-from app.config import ConfigError, get_graph_config
+from app.config import ConfigError, get_mail_config
 from app.formatting import format_chf
 from app.db.connection import connection_scope
 from app.domain import message_templates
@@ -11,7 +11,7 @@ from app.domain.billing import create_billing_runs_for_all_legs, create_or_repla
 from app.domain.distribution import LegNotAssignedError
 from app.domain.period import last_completed_quarter
 from app.domain.statistics import quarter_energy_totals
-from app.emailing import bulk_send, graph_client
+from app.emailing import bulk_send, mail
 from app.emailing.templates import (
     find_invalid_email_addresses,
     placeholder_errors,
@@ -457,7 +457,7 @@ def billing_page() -> None:
                     async def do_resend() -> None:
                         """Force-resend this one invoice regardless of `email_sent_at`."""
                         try:
-                            config = get_graph_config()
+                            config = get_mail_config()
                         except ConfigError as exc:
                             confirm.close()
                             safe_notify(str(exc), type="negative")
@@ -470,8 +470,7 @@ def billing_page() -> None:
                                 )
                         except (
                             ValueError,
-                            graph_client.GraphAuthError,
-                            graph_client.GraphApiError,
+                            mail.MailError,
                         ) as exc:
                             confirm.close()
                             safe_notify(str(exc), type="negative")
@@ -594,7 +593,7 @@ def billing_page() -> None:
                         return
                     send_button.disable()
                     try:
-                        config = get_graph_config()
+                        config = get_mail_config()
                     except ConfigError as exc:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
@@ -617,7 +616,7 @@ def billing_page() -> None:
                                 body_textarea.value,
                                 on_progress=on_progress,
                             )
-                    except (graph_client.GraphAuthError, graph_client.GraphApiError) as exc:
+                    except mail.MailError as exc:
                         safe_notify(str(exc), type="negative")
                         send_button.enable()
                         return

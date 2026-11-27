@@ -1,14 +1,16 @@
-"""Tests for app.emailing.bulk_send (recipient resolution and send orchestration -- graph_client is
-mocked throughout, no real network calls and no real SMTP/Graph server involved)."""
+"""Tests for app.emailing.bulk_send (recipient resolution and send orchestration). Every send test runs
+once per transport, Graph and SMTP, with that transport's own send mocked -- no network involved."""
 
 import asyncio
-from dataclasses import replace
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.emailing import bulk_send, graph_client
+from app.config import GraphConfig, SmtpConfig
+from app.emailing import bulk_send, graph_client, smtp_client
 from app.emailing.bulk_send import (
     EmailSendResult,
     list_broadcast_recipients,
@@ -17,6 +19,7 @@ from app.emailing.bulk_send import (
     send_broadcast_email,
     send_invoice_emails,
 )
+from app.emailing.errors import MailAuthError, MailError
 from app.emailing.graph_client import GraphApiError, GraphAuthError
 from app.models import billing_run as billing_run_repo
 from app.models import cooperative_membership as cooperative_membership_repo
@@ -33,6 +36,69 @@ from app.models.metering_point import DIRECTION_CONSUMPTION, MeteringPoint
 from app.models.person import Person
 from app.models.site import Site
 from app.models.assignment import Assignment
+
+
+@dataclass(frozen=True)
+class Transport:
+    """One way of sending, as a send test sees it: its config, its errors, its mocked send."""
+
+    name: str
+    config: object
+    error: type
+    auth_error: type
+
+    @contextmanager
+    def sending(self, side_effect=None):
+        """Mock this transport's own send (below `mail`, so its routing is tested too); the other one must stay unused."""
+        send = AsyncMock(side_effect=side_effect)
+        unused = AsyncMock(side_effect=AssertionError(f"{self.name}: falscher Versandweg"))
+        if self.name == "graph":
+            with (
+                patch.object(graph_client, "get_access_token", AsyncMock(return_value="tok")),
+                patch.object(graph_client, "send_email", send),
+                patch.object(smtp_client, "send_email", unused),
+            ):
+                yield send
+        else:
+            with (
+                patch.object(graph_client, "get_access_token", unused),
+                patch.object(graph_client, "send_email", unused),
+                patch.object(smtp_client, "send_email", send),
+            ):
+                yield send
+
+
+GRAPH = Transport(
+    "graph",
+    GraphConfig("tenant", "client", "secret", "leg@example.invalid", "LEG"),
+    GraphApiError,
+    GraphAuthError,
+)
+SMTP = Transport(
+    "smtp",
+    SmtpConfig(
+        host="mail.example.invalid",
+        port=465,
+        security="ssl",
+        username="leg@example.invalid",
+        password="geheim",
+        sender_address="leg@example.invalid",
+        sender_name="LEG",
+        send_delay_seconds=0.0,
+        imap_enabled=False,
+        imap_host="mail.example.invalid",
+        imap_port=993,
+        imap_sent_folder="",
+    ),
+    MailError,
+    MailAuthError,
+)
+
+
+@pytest.fixture(params=[GRAPH, SMTP], ids=lambda transport: transport.name)
+def transport(request) -> Transport:
+    """Each send test runs once with Graph and once with SMTP."""
+    return request.param
 
 
 def _person(db, name: str = "P", email: str = "p@example.invalid", paper_invoice: bool = False) -> int:
@@ -209,18 +275,15 @@ def test_list_leg_recipients_excludes_missing_email(db):
 # -- send_broadcast_email -------------------------------------------------------
 
 
-def test_send_broadcast_email_sends_individually_and_logs(db):
+def test_send_broadcast_email_sends_individually_and_logs(db, transport):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
+    with transport.sending() as mock_send:
         result = asyncio.run(
             send_broadcast_email(
                 db,
-                "config",
+                transport.config,
                 [person_a, person_b],
                 "Betreff {vorname}",
                 "Hallo {vorname}",
@@ -241,19 +304,14 @@ def test_send_broadcast_email_sends_individually_and_logs(db):
     assert sorted(log_entries[0].recipient_emails) == ["anna@example.invalid", "beat@example.invalid"]
 
 
-def test_send_broadcast_email_continues_after_single_recipient_error(db):
+def test_send_broadcast_email_continues_after_single_recipient_error(db, transport):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(
-            bulk_send.graph_client,
-            "send_email",
-            AsyncMock(side_effect=[GraphApiError("boom"), None]),
-        ),
-    ):
-        result = asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all"))
+    with transport.sending(side_effect=[transport.error("boom"), None]):
+        result = asyncio.run(
+            send_broadcast_email(db, transport.config, [person_a, person_b], "s", "b", scope="all")
+        )
 
     assert result.sent == ["Beat Test"]
     assert len(result.errors) == 1
@@ -262,33 +320,27 @@ def test_send_broadcast_email_continues_after_single_recipient_error(db):
     assert email_log_repo.list_all(db)[0].recipient_emails == ["beat@example.invalid"]
 
 
-def test_send_broadcast_email_aborts_on_auth_error(db):
+def test_send_broadcast_email_aborts_on_auth_error(db, transport):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(
-            bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphAuthError("bad creds"))
-        ),
-    ):
-        with pytest.raises(GraphAuthError):
-            asyncio.run(send_broadcast_email(db, "config", [person_a, person_b], "s", "b", scope="all"))
+    with transport.sending(side_effect=transport.auth_error("bad creds")):
+        with pytest.raises(transport.auth_error):
+            asyncio.run(
+                send_broadcast_email(db, transport.config, [person_a, person_b], "s", "b", scope="all")
+            )
 
 
-def test_send_broadcast_email_calls_on_progress_per_recipient(db):
+def test_send_broadcast_email_calls_on_progress_per_recipient(db, transport):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
     progress_calls = []
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()),
-    ):
+    with transport.sending():
         asyncio.run(
             send_broadcast_email(
                 db,
-                "config",
+                transport.config,
                 [person_a, person_b],
                 "s",
                 "b",
@@ -300,20 +352,17 @@ def test_send_broadcast_email_calls_on_progress_per_recipient(db):
     assert progress_calls == [(1, 2), (2, 2)]
 
 
-def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(db, tmp_path):
+def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(db, tmp_path, transport):
     person_a = person_repo.get(db, _person(db, "Anna", email="anna@example.invalid"))
     person_b = person_repo.get(db, _person(db, "Beat", email="beat@example.invalid"))
     attachment_path = tmp_path / "einladung.pdf"
     attachment_path.write_bytes(b"%PDF-fake-content")
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
+    with transport.sending() as mock_send:
         asyncio.run(
             send_broadcast_email(
                 db,
-                "config",
+                transport.config,
                 [person_a, person_b],
                 "s",
                 "b",
@@ -330,9 +379,9 @@ def test_send_broadcast_email_passes_attachment_to_every_recipient_and_logs_it(d
     assert email_log_repo.list_all(db)[0].attachment_filenames == "einladung.pdf"
 
 
-def test_send_broadcast_email_returns_early_for_no_recipients(db):
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock()) as mock_token:
-        result = asyncio.run(send_broadcast_email(db, "config", [], "s", "b", scope="all"))
+def test_send_broadcast_email_returns_early_for_no_recipients(db, transport):
+    with patch.object(bulk_send.mail, "prepare", AsyncMock()) as mock_token:
+        result = asyncio.run(send_broadcast_email(db, transport.config, [], "s", "b", scope="all"))
 
     assert result == EmailSendResult()
     mock_token.assert_not_called()
@@ -389,63 +438,50 @@ def _run_with_item(
     return run, item
 
 
-def test_send_invoice_emails_skips_paper_invoice(db):
+def test_send_invoice_emails_skips_paper_invoice(db, transport):
     run, _ = _run_with_item(db, paper_invoice=True)
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with transport.sending() as mock_send:
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert result.sent == []
     assert "Papierrechnung" in result.skipped[0]
     mock_send.assert_not_called()
 
 
-def test_send_invoice_emails_skips_missing_email(db):
+def test_send_invoice_emails_skips_missing_email(db, transport):
     run, _ = _run_with_item(db, email="")
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with transport.sending() as mock_send:
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert "E-Mail-Adresse" in result.skipped[0]
     mock_send.assert_not_called()
 
 
-def test_send_invoice_emails_skips_missing_pdf(db):
+def test_send_invoice_emails_skips_missing_pdf(db, transport):
     run, _ = _run_with_item(db, pdf_path=None)
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with transport.sending() as mock_send:
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert "PDF" in result.skipped[0]
     mock_send.assert_not_called()
 
 
-def test_send_invoice_emails_skips_already_sent(db):
+def test_send_invoice_emails_skips_already_sent(db, transport):
     run, item = _run_with_item(db)
     billing_run_repo.set_item_email_sent_at(db, item.id, "2026-01-01T00:00:00+00:00")
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with transport.sending() as mock_send:
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert "bereits" in result.skipped[0]
     mock_send.assert_not_called()
 
 
-def test_send_invoice_emails_sends_and_records_timestamp(db):
+def test_send_invoice_emails_sends_and_records_timestamp(db, transport):
     run, item = _run_with_item(db, net_amount_rappen=4250)
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "Rechnung {leg}", "Betrag: {betrag}"))
+    with transport.sending() as mock_send:
+        result = asyncio.run(
+            send_invoice_emails(db, transport.config, run, "Rechnung {leg}", "Betrag: {betrag}")
+        )
 
     assert result.sent == ["Anna Test"]
     kwargs = mock_send.call_args.kwargs
@@ -457,48 +493,42 @@ def test_send_invoice_emails_sends_and_records_timestamp(db):
     assert updated_item.email_sent_at is not None
 
 
-def test_send_invoice_emails_continues_after_error(db):
+def test_send_invoice_emails_continues_after_error(db, transport):
     run, _ = _run_with_item(db)
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock(side_effect=GraphApiError("boom"))),
-    ):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with transport.sending(side_effect=transport.error("boom")):
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert result.sent == []
     assert len(result.errors) == 1
 
 
-def test_send_invoice_emails_treats_missing_pdf_file_as_error_not_crash(db, tmp_path):
+def test_send_invoice_emails_treats_missing_pdf_file_as_error_not_crash(db, tmp_path, transport):
     """A PDF recorded in pdf_path but since deleted/moved from disk must be a clean per-person error..."""
     missing_pdf = tmp_path / "verschwunden.pdf"
     run, _ = _run_with_item(db, pdf_path=str(missing_pdf))
-    with patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")):
-        result = asyncio.run(send_invoice_emails(db, "config", run, "s", "b"))
+    with patch.object(bulk_send.mail, "prepare", AsyncMock(return_value="tok")):
+        result = asyncio.run(send_invoice_emails(db, transport.config, run, "s", "b"))
 
     assert result.sent == []
     assert len(result.errors) == 1
     assert "verschwunden.pdf" in result.errors[0]
 
 
-def test_resend_invoice_email_sends_despite_already_sent(db):
+def test_resend_invoice_email_sends_despite_already_sent(db, transport):
     run, item = _run_with_item(db)
     billing_run_repo.set_item_email_sent_at(db, item.id, "2026-01-01T00:00:00+00:00")
     item = billing_run_repo.list_items(db, run.id)[0]
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as mock_send,
-    ):
-        asyncio.run(resend_invoice_email(db, "config", run, item, "s", "b"))
+    with transport.sending() as mock_send:
+        asyncio.run(resend_invoice_email(db, transport.config, run, item, "s", "b"))
 
     mock_send.assert_called_once()
 
 
-def test_resend_invoice_email_raises_if_no_pdf(db):
+def test_resend_invoice_email_raises_if_no_pdf(db, transport):
     run, item = _run_with_item(db, pdf_path=None)
     with pytest.raises(ValueError, match="PDF"):
-        asyncio.run(resend_invoice_email(db, "config", run, item, "s", "b"))
+        asyncio.run(resend_invoice_email(db, transport.config, run, item, "s", "b"))
 
 
 # --- Genossenschafter as a recipient group ------------------------------
@@ -559,7 +589,7 @@ def test_list_cooperative_recipients_excludes_inactive_and_addressless(db):
 # --- A couple's second address ------------------------------------------
 
 
-def test_a_broadcast_reaches_both_addresses_of_one_party(db):
+def test_a_broadcast_reaches_both_addresses_of_one_party(db, transport):
     """One send, two addresses -- and both are logged as reached."""
     person_id = _person(db, "Anna", "anna@example.invalid")
     person = person_repo.get(db, person_id)
@@ -568,14 +598,11 @@ def test_a_broadcast_reaches_both_addresses_of_one_party(db):
     person.second_contact_email = "beat@example.invalid"
     person_repo.update(db, person)
 
-    with (
-        patch.object(bulk_send.graph_client, "get_access_token", AsyncMock(return_value="tok")),
-        patch.object(bulk_send.graph_client, "send_email", AsyncMock()) as send,
-    ):
+    with transport.sending() as send:
         result = asyncio.run(
             send_broadcast_email(
                 db,
-                "config",
+                transport.config,
                 [person_repo.get(db, person_id)],
                 "Betreff",
                 "Text",

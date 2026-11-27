@@ -1,2 +1,2 @@
-"""E-mail sending: Microsoft Graph API client, placeholder templates, and bulk/invoice send
-orchestration."""
+"""E-mail sending: one door (`mail`) to Microsoft Graph or SMTP/IMAP, placeholder templates, and
+bulk/invoice send orchestration."""

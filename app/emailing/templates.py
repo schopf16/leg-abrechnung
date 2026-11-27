@@ -213,7 +213,7 @@ def validate_person_placeholders(
 
 
 def _is_plausible_address(email: str) -> bool:
-    """Whether an address is plausible enough to hand to Graph."""
+    """Whether an address is plausible enough to hand to the mail server."""
     at_index = email.find("@")
     return at_index > 0 and "." in email[at_index + 1 :]
 
