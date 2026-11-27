@@ -203,3 +203,13 @@ def test_test_mail_to_another_address():
         ):
             _click(client, "Test-E-Mail senden")
         assert send.await_args.kwargs["to_addresses"] == ["jemand@example.invalid"]
+
+
+def test_test_mail_to_a_broken_address_is_not_sent():
+    client = _render("/probe-email-settings-test-mail-broken")
+    with client:
+        _field(client, "Test-E-Mail an").value = "jemand@example"
+        with patch.object(mail, "send_email", AsyncMock()) as send:
+            _click(client, "Test-E-Mail senden")
+        send.assert_not_awaited()
+        assert _feedback(client).startswith("Test-E-Mail nicht gesendet: E-Mail-Adresse")

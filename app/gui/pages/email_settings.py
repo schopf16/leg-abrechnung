@@ -18,6 +18,7 @@ from app.config import (
     read_mail_settings,
     save_mail_settings,
 )
+from app.domain.email_validation import validate_email
 from app.emailing import mail
 from app.gui.navigation import page_frame
 from app.gui.safe_notify import safe_notify
@@ -213,6 +214,10 @@ def email_settings_page() -> None:
                     show(str(exc), ok=False)
                     return
                 recipient = (test_recipient.value or "").strip() or config.sender_address
+                problem = validate_email(recipient)
+                if problem:
+                    show(f"Test-E-Mail nicht gesendet: {problem}", ok=False)
+                    return
                 show(f"Sende Test-E-Mail an {recipient}...", ok=True)
                 try:
                     token = await mail.prepare(config)
