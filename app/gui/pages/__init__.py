@@ -13,6 +13,7 @@ from app.gui.pages import (  # noqa: F401
     receivables,
     settings,
     email_dispatch,
+    email_settings,
     import_page,
     legs,
     dunning,

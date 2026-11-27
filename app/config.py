@@ -1,9 +1,11 @@
 """Local, gitignored secrets -- the leg-ittigen.ch API token and the email credentials (Microsoft
-Graph or SMTP/IMAP)."""
+Graph or SMTP/IMAP). The app writes only the email keys back and keeps every other key as it was."""
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
 from app.paths import PROJECT_ROOT
 
@@ -80,6 +82,28 @@ DEFAULT_SMTP_PORTS = {SECURITY_SSL: 465, SECURITY_STARTTLS: 587}
 DEFAULT_IMAP_PORT = 993
 DEFAULT_SEND_DELAY_SECONDS = 1.0
 MAX_SEND_DELAY_SECONDS = 60.0
+
+#: Every key the email settings page reads and writes, with its default.
+MAIL_SETTING_DEFAULTS: dict[str, object] = {
+    "mail_transport": TRANSPORT_GRAPH,
+    "graph_tenant_id": "",
+    "graph_client_id": "",
+    "graph_client_secret": "",
+    "graph_sender_address": "",
+    "graph_sender_name": "",
+    "smtp_host": "",
+    "smtp_port": DEFAULT_SMTP_PORTS[SECURITY_SSL],
+    "smtp_security": SECURITY_SSL,
+    "smtp_username": "",
+    "smtp_password": "",
+    "smtp_sender_address": "",
+    "smtp_sender_name": "",
+    "smtp_send_delay_seconds": DEFAULT_SEND_DELAY_SECONDS,
+    "imap_enabled": True,
+    "imap_host": "",
+    "imap_port": DEFAULT_IMAP_PORT,
+    "imap_sent_folder": "",
+}
 
 
 @dataclass(frozen=True)
@@ -186,3 +210,53 @@ def _flag(data: dict, key: str, default: bool) -> bool:
     if isinstance(raw, str):
         return raw.strip().lower() not in ("false", "0", "no", "nein", "")
     return bool(raw)
+
+
+def read_mail_settings() -> dict[str, object]:
+    """The email keys as stored, unvalidated, for the settings form -- defaults where a key is missing."""
+    try:
+        data = _load_local_config()
+    except ConfigError:
+        data = {}
+    return {key: data.get(key, default) for key, default in MAIL_SETTING_DEFAULTS.items()}
+
+
+def save_mail_settings(values: dict[str, object], path: Optional[os.PathLike] = None) -> None:
+    """Write the email keys into `config.local.json`, keeping every other key; validate first."""
+    unknown = set(values) - set(MAIL_SETTING_DEFAULTS)
+    if unknown:
+        raise ValueError(f"Unbekannte E-Mail-Einstellungen: {', '.join(sorted(unknown))}")
+    target = CONFIG_LOCAL_PATH if path is None else path
+    try:
+        if os.path.exists(target):
+            with open(target, encoding="utf-8") as config_file:
+                data = json.load(config_file)
+        else:
+            data = {}
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"{os.path.basename(target)} ist kein gültiges JSON: {exc}") from exc
+    merged = {**data, **{key: _strip(value) for key, value in values.items()}}
+    # Only the chosen transport has to be complete; the other one may stay half-filled.
+    mail_config_from(merged)
+    _write_atomically(target, json.dumps(merged, indent=4, ensure_ascii=False) + "\n")
+
+
+def _strip(value: object) -> object:
+    """Surrounding blanks trimmed, the one thing a pasted credential always has too many of."""
+    return value.strip() if isinstance(value, str) else value
+
+
+def _write_atomically(target: os.PathLike, text: str) -> None:
+    """Replace the file in one step, readable by the owner only -- it holds passwords."""
+    directory = os.path.dirname(os.path.abspath(target))
+    # Named so .gitignore's `config.local.*` covers a copy a crash might leave behind.
+    handle, temp_name = tempfile.mkstemp(prefix="config.local.", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as temp_file:
+            temp_file.write(text)
+        os.chmod(temp_name, 0o600)
+        os.replace(temp_name, target)
+    except BaseException:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+        raise

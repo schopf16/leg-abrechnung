@@ -554,7 +554,7 @@ def email_dispatch_page() -> None:
             "Meldet sich beim Versandweg an (Microsoft Graph oder SMTP/IMAP), "
             "ohne etwas zu versenden -- die Zugangsdaten prüfen, bevor der "
             "erste echte Versand gestartet wird. Eingerichtet wird der "
-            "Versandweg in config.local.json (siehe README, Abschnitt 5)."
+            "Versandweg unter Einstellungen → E-Mail-Versand."
         ).classes("text-body2 text-grey-8")
         with ui.card().classes("w-full max-w-lg"):
             connection_test_result = ui.label("").classes("text-caption")

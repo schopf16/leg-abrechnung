@@ -86,7 +86,7 @@ async def get_access_token(config: GraphConfig) -> str:
             description = response.text[:300]
         raise GraphAuthError(
             "Anmeldung bei Microsoft fehlgeschlagen -- Tenant-ID/Client-ID/"
-            f"Client-Secret in config.local.json prüfen. Details: {description}"
+            f"Client-Secret unter Einstellungen → E-Mail-Versand prüfen. Details: {description}"
         )
 
     try:

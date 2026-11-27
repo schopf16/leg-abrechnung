@@ -268,8 +268,8 @@ def _sent_folder(config: SmtpConfig, imap: imaplib.IMAP4) -> str:
     folder = find_sent_folder(lines if status == "OK" else [])
     if folder is None:
         raise MailError(
-            "Kein Ordner für gesendete Nachrichten gefunden -- den Ordnernamen als "
-            "„imap_sent_folder“ in config.local.json eintragen."
+            "Kein Ordner für gesendete Nachrichten gefunden -- den Ordnernamen in den "
+            "E-Mail-Einstellungen eintragen."
         )
     return folder
 

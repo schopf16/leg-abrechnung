@@ -249,20 +249,19 @@ Rechnungsversand (jede Person erhält nur ihre eigene PDF-Rechnung). Jede
 Person bekommt dabei eine eigene, separate E-Mail — niemand sieht die
 anderen Empfänger oder kann ihnen versehentlich antworten.
 
-Es gibt zwei Versandwege, gewählt mit `"mail_transport"` in `config.local.json`:
+Es gibt zwei Versandwege, gewählt unter „Einstellungen" → „E-Mail-Versand":
 
-- **Microsoft 365 (Graph API)**, `"graph"` — für Postfächer bei Microsoft 365
+- **Microsoft 365 (Graph API)** — für Postfächer bei Microsoft 365
   (klassisches SMTP funktioniert dort nicht mehr, da Microsoft Basic-Auth
-  für Exchange Online grösstenteils abgeschaltet hat). Ohne
-  `"mail_transport"` gilt Graph wie bisher.
-- **SMTP / IMAP**, `"smtp"` — für jeden anderen Anbieter (z. B. Infomaniak,
-  Hostpoint, Gmail). Versendet wird per SMTP; danach legt die App eine Kopie
-  per IMAP im Ordner „Gesendet" ab, weil per SMTP versandte E-Mails sonst
-  nicht im Postfach erscheinen.
+  für Exchange Online grösstenteils abgeschaltet hat).
+- **SMTP / IMAP** — für jeden anderen Anbieter (z. B. Infomaniak, Hostpoint,
+  Gmail). Versendet wird per SMTP; danach legt die App eine Kopie per IMAP
+  im Ordner „Gesendet" ab, weil per SMTP versandte E-Mails sonst nicht im
+  Postfach erscheinen.
 
 Die Angaben stehen in `config.local.json`, nicht in der Datenbank — sie
-gehen also weder ins Backup noch in den Datenexport. Alle Schlüssel zeigt
-`config.example.json`.
+gehen also weder ins Backup noch in den Datenexport. Die Seite schreibt nur
+die E-Mail-Werte und lässt alle anderen (z. B. `leg_api_token`) unverändert.
 
 ### Microsoft 365 (Graph) einrichten
 
@@ -276,60 +275,42 @@ Einmalig, durch einen Administrator des Microsoft-365-Tenants:
 3. Unter „Zertifikate & Geheimnisse" ein neues **Client-Secret** erzeugen
    und den Wert sofort kopieren (wird danach nicht mehr angezeigt).
 4. Tenant-ID und Client-ID (Anwendungs-ID) der App-Registrierung notieren.
-5. `config.example.json` im Projektordner zu `config.local.json` kopieren,
-   falls noch nicht geschehen, und die Graph-Werte eintragen:
-   ```json
-   {
-     "mail_transport": "graph",
-     "graph_tenant_id": "<tenant-id>",
-     "graph_client_id": "<client-id>",
-     "graph_client_secret": "<client-secret>",
-     "graph_sender_address": "<absender-postfach@ihredomain.ch>",
-     "graph_sender_name": "<anzeigename>"
-   }
-   ```
-6. Unter „E-Mail versenden" → „Verbindung" auf **„Verbindung testen"**
-   klicken, bevor der erste echte Versand an viele Personen gewagt wird.
+5. Unter „Einstellungen" → „E-Mail-Versand" „Microsoft 365 (Graph)"
+   wählen, die Werte eintragen und **„Speichern"**.
+6. **„Verbindung testen"** (meldet sich an, ohne zu senden) und
+   **„Test-E-Mail senden"**, bevor der erste echte Versand an viele
+   Personen gewagt wird.
 
 ### SMTP / IMAP einrichten
 
-1. In `config.local.json` die Angaben des Anbieters eintragen, z. B. für
-   Infomaniak:
-   ```json
-   {
-     "mail_transport": "smtp",
-     "smtp_host": "mail.infomaniak.com",
-     "smtp_port": 465,
-     "smtp_security": "ssl",
-     "smtp_username": "<postfach@ihredomain.ch>",
-     "smtp_password": "<passwort>",
-     "smtp_sender_address": "<postfach@ihredomain.ch>",
-     "smtp_sender_name": "<anzeigename>"
-   }
-   ```
-   `"smtp_security"` ist `"ssl"` (meist Port 465) oder `"starttls"` (meist
-   Port 587); unverschlüsselte Verbindungen sind bewusst nicht möglich. Mit
+1. Unter „Einstellungen" → „E-Mail-Versand" „SMTP / IMAP" wählen.
+2. Server, Verschlüsselung (SSL/TLS, meist Port 465, oder STARTTLS, meist
+   Port 587), Benutzername (meist die E-Mail-Adresse), Passwort, Absender-
+   Adresse und Absender-Name eintragen — die Angaben des Anbieters, z. B.
+   bei Infomaniak `mail.infomaniak.com`, Port 465, SSL/TLS. Mit
    Zwei-Faktor-Anmeldung braucht es ein App-Passwort des Anbieters.
-2. **IMAP:** Die Kopie unter „Gesendet" ist eingeschaltet und nutzt dieselbe
-   Anmeldung. Ohne weitere Angaben gilt der SMTP-Server als IMAP-Server
-   (Port 993), und der Ordner wird automatisch gefunden. Abweichend:
-   `"imap_host"`, `"imap_port"`, `"imap_sent_folder"`; ausschalten mit
-   `"imap_enabled": false`.
-3. Unter „E-Mail versenden" → „Verbindung" auf **„Verbindung testen"**
-   klicken (meldet sich bei SMTP und IMAP an und nennt den gefundenen
-   Ordner).
+   Unverschlüsselte Verbindungen sind bewusst nicht möglich.
+3. **IMAP:** Die Kopie unter „Gesendet" ist eingeschaltet und nutzt dieselbe
+   Anmeldung. Leer gelassen, gilt der SMTP-Server als IMAP-Server (Port 993)
+   und der Ordner wird automatisch gefunden.
+4. **„Speichern"**, dann **„Verbindung testen"** (meldet sich bei SMTP und
+   IMAP an und nennt den gefundenen Ordner) und **„Test-E-Mail senden"**.
+   Danach den Posteingang und den Ordner „Gesendet" prüfen.
 
 Hinweise zum SMTP-Versand:
 
 - Zwischen zwei E-Mails wartet die App standardmässig eine Sekunde
-  (`"smtp_send_delay_seconds"`), damit der Anbieter einen Massenversand
-  nicht bremst oder als Spam einstuft.
+  (einstellbar), damit der Anbieter einen Massenversand nicht bremst oder
+  als Spam einstuft.
 - Lehnt der Anbieter eine einzelne E-Mail ab (z. B. Infomaniak mit
   `550 5.2.0 Spam message rejected`), steht seine Meldung beim Empfänger
   im Ergebnis; die übrigen E-Mails gehen weiter. Bei falschem Passwort
   bricht der Versand sofort ab.
 - Klappt die Ablage unter „Gesendet" einmal nicht, gilt die E-Mail trotzdem
   als gesendet (sie ist ja verschickt); die App schreibt das ins Protokoll.
+
+`config.local.json` kann auch von Hand bearbeitet werden; die Schlüssel
+zeigt `config.example.json`. Ohne `"mail_transport"` gilt Graph wie bisher.
 
 **Verwendung:**
 
